@@ -7876,6 +7876,12 @@ S:	Maintained
 F:	Documentation/hwmon/k10temp
 F:	drivers/hwmon/k10temp.c
 
+K1C PORT
+M:	Kalray <kalray@kalray.eu>
+S:	Supported
+F:	arch/k1c/
+F:	Documentation/k1c/
+
 K8TEMP HARDWARE MONITORING DRIVER
 M:	Rudolf Marek <r.marek@assembler.cz>
 L:	linux-hwmon@vger.kernel.org

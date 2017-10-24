@@ -1,0 +1,88 @@
+#
+# For a description of the syntax of this configuration file,
+# see Documentation/kbuild/kconfig-language.txt.
+#
+
+config 64BIT
+	def_bool y
+
+config GENERIC_CALIBRATE_DELAY
+	def_bool y
+
+config MMU
+	def_bool n
+
+config GENERIC_CSUM
+	def_bool y
+
+config RWSEM_GENERIC_SPINLOCK
+	def_bool y
+
+config GENERIC_HWEIGHT
+	def_bool y
+
+config HAVE_COPY_THREAD_TLS
+	def_bool y
+
+config K1C
+	def_bool y
+	select OF
+	select OF_EARLY_FLATTREE
+	select OF_RESERVED_MEM
+	select GENERIC_IRQ_CHIP
+	select GENERIC_IRQ_PROBE
+	select GENERIC_IRQ_SHOW
+	select GENERIC_IOMAP
+	select GENERIC_CPU_DEVICES
+	select GENERIC_CLOCKEVENTS
+	select THREAD_INFO_IN_TASK
+	select COMMON_CLK
+	select CLKSRC_OF
+	select GENERIC_CLOCKEVENTS
+	select HAVE_MEMBLOCK
+	select NO_BOOTMEM
+	select TIMER_OF
+
+config HAVE_KPROBES
+	def_bool n
+
+menu "System setup"
+
+config POISON_INITMEM
+	bool "Enable to poison freed initmem"
+	default y
+        help
+          In order to debug initmem, using poison allows to verify if
+	  some data/code is stille using them. Enable this for debug
+	  purposes
+
+config KERNEL_RAM_BASE_ADDRESS
+	hex "RAM address of memory base"
+	default 0x80000000
+
+config STACK_MAX_DEPTH_TO_PRINT
+	int "Maximum depth of stack to print"
+	range 1 128
+	default "24"
+
+config NR_CPUS
+	int "Maximum number of CPUs"
+	range 2 16
+	depends on SMP
+	help
+	  Kalray support can handle a maximum of 16 CPUs.
+
+config CMDLINE
+        string "Default kernel command string"
+        default ""
+        help
+          On some architectures there is currently no way for the boot loader
+          to pass arguments to the kernel. For these architectures, you should
+          supply some command-line options at build time by entering them
+          here.
+
+endmenu
+
+menu "Kernel Features"
+source "kernel/Kconfig.hz"
+endmenu
