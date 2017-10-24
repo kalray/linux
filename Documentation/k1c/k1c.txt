@@ -1,0 +1,101 @@
+K1C Core Implementation
+=======================
+
+This documents will try to explain any architecture choice for the k1c
+linux port.
+
+Regarding the peripheral, we MUST use device tree to describe ALL
+peripherals. The bindings should always start with "kalray,k1c" for all
+core related peripherals (watchdog, timer, etc)
+
+System
+======
+
+sr0 will hold the current task_struct. This register is reserved and
+should not be touched by any other code.
+
+Boot arguments
+==============
+
+When booting, the kernel will look for a special magic in $r0 (0x494C314B)
+This magic tells the kernel if there is arguments passed by a bootloader.
+Currently, the following values are passed through registers:
+ - r1: pointer to command line setup by bootloader
+ - r2: device tree
+
+If this magic is not set, then, the command line will be the one
+provided in the device tree (see bootargs). The default device tree is
+not builtin but will be setup by the runner used (simulator or jtag).
+
+A default stdout-path is desirable to allow early printk.
+
+Timers
+======
+
+The free-runinng clock (clocksource) is based on the DSU. This clock is
+not interruptible and never stops even if core go into idle.
+
+Regarding the tick (clockevent), we use the timer 0 available on the core.
+This timer allows to set a periodic tick which will be used as the main
+tick for each core. Note that this clock is percpu.
+
+get_cycles implementation is based on performance counter. One of them
+is used to count cycles. Note that since this is used only when the core
+is running, there is no need to worry about core sleeping (which will
+stop the cycle counter)
+
+Exceptions
+==========
+
+Interrupts, and traps are serviced like normal exceptions.
+The vector base is based on the linker script and the stride is fixed.
+
+The entry.S file is (as other architecture) the entry point into kernel.
+It contains all assembly routines related to exceptions/traps.
+
+
+Context switching
+=================
+
+context switching is done in entry.S. When spawning a fresh thread,
+copy_thread is called. During this call, we setup callee saved register
+r15 and r16 to special values containing the function to call.
+
+The normal path for a kernel thread will be the following:
+
+ 1 - Enter copy_thread_tls and setup callee saved registers which will
+     be restored in __switch_to.
+ 2 - set r15 and r16 (in thread_struct) to function and argument and
+     ra to ret_from_kernel_thread.
+     These callee saved will be restored in switch_to.
+ 3 - Call _switch_to at some point.
+ 4 - Save all callee saved register since switch_to is seen as a
+     standard function call by the caller.
+ 5 - Change stack pointer to the new stack
+ 6 - At the end of switch to, set sr0 to the new task and use ret to
+     jump to ret_from_kernel_thread (address restored from ra).
+ 7 - In ret_from_kernel_thread, execute the function with arguments by
+     using r15, r16 and we are done
+
+
+Building
+========
+
+In order to build the kernel, you will need a complete k1c toolchain.
+First, setup the config using the following command line
+
+$ make ARCH=k1c O=your_directory default_defconfig
+
+Adjust any configuration option you may need and then, build the kernel:
+
+$ make ARCH=k1c O=your_directory -j12
+
+You will finally have a vmlinux image ready to be run.
+
+$ k1-mppa -- vmlinux
+
+Additionally, you may want to debug it. To do so, use k1-gdb:
+
+$ k1-gdb vmlinux
+
+
