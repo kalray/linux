@@ -242,8 +242,8 @@ int __init of_setup_earlycon(const struct earlycon_id *match,
 	port->iotype = UPIO_MEM;
 	addr = of_flat_dt_translate_address(node);
 	if (addr == OF_BAD_ADDR) {
-		pr_warn("[%s] bad address\n", match->name);
-		return -ENXIO;
+		pr_warn("[%s] missing address\n", match->name);
+		addr = 0;
 	}
 	port->mapbase = addr;
 
