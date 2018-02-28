@@ -24,36 +24,36 @@ void show_regs(struct pt_regs *regs)
 
 	int in_kernel = 1;
 	unsigned short i, reg_offset;
-	long ptr;
+	void *ptr;
 
 	if (user_mode(regs))
 		in_kernel = 0;
 
 	pr_info("\nCPU #: %d, mode: %s\n"
-	       "    PC: %08llx    PS: %08llx\n"
-	       "    CS: %08llx    RA: %08llx\n"
-	       "    LS: %08llx    LE: %08llx    LC: %08llx",
+	       "    PC: %016llx    PS: %016llx\n"
+	       "    CS: %016llx    RA: %016llx\n"
+	       "    LS: %016llx    LE: %016llx\n"
+	       "    LC: %016llx\n\n",
 	       smp_processor_id(), in_kernel ? "kernel" : "user",
 	       regs->spc, regs->sps,
 	       regs->cs, regs->ra, regs->ls, regs->le, regs->lc);
 
 	/* GPR */
-	ptr = (long)regs;
+	ptr = regs;
 	ptr += offsetof(struct pt_regs, r0);
-	reg_offset =
-	    offsetof(struct pt_regs, r1) - offsetof(struct pt_regs, r0);
+	reg_offset = offsetof(struct pt_regs, r1) -
+		     offsetof(struct pt_regs, r0);
 
 	/**
 	 * Display all the 64 GPRs assuming they are ordered correctly
 	 * in the pt_regs struct...
 	 */
-	for (i = 0; i < 64; i++) {
+	for (i = 0; i < GPR_COUNT; i += 2) {
+		pr_info("    R%d: %016llx    R%d: %016llx\n",
+			 i, *(uint64_t *)ptr,
+			 i + 1, *(uint64_t *)(ptr + reg_offset));
+		ptr += reg_offset * 2;
 
-		if ((i % 3) == 0)
-			pr_info("\n    ");
-
-		pr_info("R%d: %08lx\t", i, *(long *)ptr);
-		ptr += reg_offset;
 	}
 
 	pr_info("\n\n");
