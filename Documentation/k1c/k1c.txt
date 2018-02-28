@@ -44,16 +44,6 @@ is used to count cycles. Note that since this is used only when the core
 is running, there is no need to worry about core sleeping (which will
 stop the cycle counter)
 
-Exceptions
-==========
-
-Interrupts, and traps are serviced like normal exceptions.
-The vector base is based on the linker script and the stride is fixed.
-
-The entry.S file is (as other architecture) the entry point into kernel.
-It contains all assembly routines related to exceptions/traps.
-
-
 Context switching
 =================
 

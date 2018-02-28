@@ -14,6 +14,7 @@
 #define SCRATCHPAD_SIZE		16
 
 #define PS_HWLOOP_ENABLE	(K1C_MASK_PS_HLE << 32)
+#define PS_HLE_EN_ET_CLEAR	(K1C_MASK_PS_HLE << 32 | K1C_MASK_PS_ET)
 
 .macro save_register_for_exception to_reg
 	/* FIXME AUTO: If we are coming from userspace, restore kernel
@@ -188,10 +189,31 @@
 ***********************************************************************/
 .section .exception.trap, "ax", @progbits
 ENTRY(k1c_trap_handler):
-	errop
+	save_register_for_exception $r12
+	;;
+	addd $r12 = $r12, -SCRATCHPAD_SIZE
+	make $r8 = PS_HLE_EN_ET_CLEAR
+	copyd $r2 = $r12
+	get $r1 = $ea
+	;;
+	/* Enable hwloop */
+	wfxl $ps, $r8
+	;;
+	make $r7 = trap_handler
+	get $r0 = $es
+	;;
+	/* Handler call */
+	icall $r7
+	;;
+	addd $r12 = $r12, SCRATCHPAD_SIZE
+	;;
+	restore_register_after_exception $r12
+	;;
+	/* FIXME AUTO: when using userspace, we should restore user
+	stack pointer and potentially call "schedule" function */
+	rfe
 	;;
 ENDPROC(k1c_trap_handler)
-
 
 /***********************************************************************
 *                      Interrupts handling
