@@ -14,12 +14,38 @@
 #include <linux/init.h>
 
 #include <asm/ptrace.h>
+#include <asm/traps.h>
 
 #define STACK_SLOT_PER_LINE		8
 #define STACK_MAX_SLOT_PRINT		(STACK_SLOT_PER_LINE * 4)
 
 /* 0 == entire stack */
 static unsigned long kstack_depth_to_print = CONFIG_STACK_MAX_DEPTH_TO_PRINT;
+
+static trap_handler_func trap_handler_table[TRAP_COUNT] = { NULL };
+
+/**
+ * Trap names associated to the trap numbers
+ */
+static const char * const trap_name[] = {
+	"RESET",
+	"OPCODE",
+	"PRIVILEGE",
+	"DMISALIGN",
+	"PSYSERROR",
+	"DSYSERROR",
+	"PDECCERROR",
+	"DDECCERROR",
+	"PPARERROR",
+	"DPARERROR",
+	"PSECERROR",
+	"DSECERROR",
+	/* MMU related traps */
+	"NOMAPPING",
+	"PROTECTION",
+	"WRITETOCLEAN",
+	"ATOMICTOCLEAN"
+};
 
 void __init trap_init(void)
 {
@@ -107,5 +133,40 @@ void show_stack(struct task_struct *task, unsigned long *sp)
 	pr_info("\n");
 
 	show_trace(stack);
+}
 
+static void default_trap_handler(uint64_t es, uint64_t ea,
+				 struct pt_regs *regs)
+{
+	show_regs(regs);
+	panic("ERROR: TRAP %s received at 0x%.8llx\n",
+	      trap_name[trap_cause(es)], regs->spc);
+}
+/**
+ * Main trap handler called by the _trap_handler routine in trap_handler.S
+ * This handler will redirect to other trap handlers if present
+ * If not then it will do a generic action
+ * @es: Exception Syndrome register value
+ * @ea: Exception Address register
+ * @regs: pointer to registers saved when trapping
+ */
+void trap_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
+{
+	trap_handler_func trap_func = NULL;
+	int htc = trap_cause(es);
+
+	/* Normal traps number should and must be between 0 and 15 included */
+	if (WARN_ON(htc >= TRAP_COUNT)) {
+		pr_err("Invalid trap number !\n");
+		return;
+	}
+
+	/* call the specific trap handler if it exists */
+	trap_func = trap_handler_table[htc];
+	if (trap_func) {
+		trap_func(es, ea, regs);
+		return;
+	}
+
+	default_trap_handler(es, ea, regs);
 }

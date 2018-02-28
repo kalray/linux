@@ -1,0 +1,27 @@
+Exceptions
+==========
+On K1C, handlers are set using $ev register which specifies a base
+address and a stride. Then, handlers are laid in the following order:
+
+         _____________
+        |             |
+        |  Syscall    |
+        |_____________|
+        |             |
+        |  Interrupts |
+        |_____________|
+        |             | ^
+        |   Traps     | | Stride
+BASE -> |_____________| v
+
+
+Interrupts, and traps are serviced similarly, ie:
+- Jump to handler
+- Save all registers
+- Prepare the call (do_IRQ or trap_handler)
+- restore all registers
+- return from exception
+
+entry.S file is (as for other architectures) the entry point into kernel.
+It contains all assembly routines related to Interrupts/traps/syscall.
+
