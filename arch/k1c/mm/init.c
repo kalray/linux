@@ -89,6 +89,13 @@ void __init mem_init(void)
 	mem_init_print_info(NULL);
 }
 
+#ifdef CONFIG_BLK_DEV_INITRD
+void __init free_initrd_mem(unsigned long start, unsigned long end)
+{
+	free_reserved_area((void *)start, (void *)end, -1, "initrd");
+}
+#endif
+
 void free_initmem(void)
 {
 #ifdef CONFIG_POISON_INITMEM
