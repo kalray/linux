@@ -82,7 +82,7 @@ ENTRY(k1c_start)
 	;;
 	set $sr0 = $r41
 	;;
-	addd $r12 = $r40, THREAD_SIZE
+	addd $sp = $r40, THREAD_SIZE
 	/* Here we go ! start the C stuff */
 	make $r20 = arch_low_level_start
 	;;
