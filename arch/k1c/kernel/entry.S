@@ -19,7 +19,7 @@
 .macro save_register_for_exception to_reg
 	/* FIXME AUTO: If we are coming from userspace, restore kernel
 	   stack pointer */
-	addd $r12 = $r12, -(PT_SIZE_ON_STACK)
+	addd $sp = $sp, -(PT_SIZE_ON_STACK)
 	sq (PT_R0R1-PT_SIZE_ON_STACK)[\to_reg] = $r0r1
 	get $r0 = $spc
 	;;
@@ -180,7 +180,7 @@
 	lq $r2r3 = PT_R2R3[\from_reg]
 	;;
 	lq $r0r1 = PT_R0R1[\from_reg]
-	addd $r12 = $r12, PT_SIZE_ON_STACK
+	addd $sp = $sp, PT_SIZE_ON_STACK
 	;;
 .endm
 
@@ -189,11 +189,11 @@
 ***********************************************************************/
 .section .exception.trap, "ax", @progbits
 ENTRY(k1c_trap_handler):
-	save_register_for_exception $r12
+	save_register_for_exception $sp
 	;;
-	addd $r12 = $r12, -SCRATCHPAD_SIZE
+	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HLE_EN_ET_CLEAR
-	copyd $r2 = $r12
+	copyd $r2 = $sp
 	get $r1 = $ea
 	;;
 	/* Enable hwloop */
@@ -205,9 +205,9 @@ ENTRY(k1c_trap_handler):
 	/* Handler call */
 	icall $r7
 	;;
-	addd $r12 = $r12, SCRATCHPAD_SIZE
+	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
-	restore_register_after_exception $r12
+	restore_register_after_exception $sp
 	;;
 	/* FIXME AUTO: when using userspace, we should restore user
 	stack pointer and potentially call "schedule" function */
@@ -220,11 +220,11 @@ ENDPROC(k1c_trap_handler)
 ***********************************************************************/
 .section .exception.interrupt, "ax", @progbits
 ENTRY(k1c_interrupt_handler):
-	save_register_for_exception $r12
+	save_register_for_exception $sp
 	;;
-	addd $r12 = $r12, -SCRATCHPAD_SIZE
+	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HWLOOP_ENABLE
-	copyd $r1 = $r12
+	copyd $r1 = $sp
 	;;
 	/* Enable hwloop */
 	wfxl $ps, $r8
@@ -237,9 +237,9 @@ ENTRY(k1c_interrupt_handler):
 	extfz $r0 = $r0, 7, 3
 	icall $r7
 	;;
-	addd $r12 = $r12, SCRATCHPAD_SIZE
+	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
-	restore_register_after_exception $r12
+	restore_register_after_exception $sp
 	;;
 	/* FIXME AUTO: when using userspace, we should restore user
 	stack pointer and potentially call "schedule" function */
@@ -308,7 +308,7 @@ ENTRY(__switch_to)
 	/* Save previous task context */
 	sd TASK_THREAD_R10[$r0] = $r10
 	;;
-	sd TASK_THREAD_SP[$r0] = $r12
+	sd TASK_THREAD_SP[$r0] = $sp
 	;;
 	sd TASK_THREAD_R15[$r0] = $r15
 	get $r5 = $ra
@@ -334,7 +334,7 @@ ENTRY(__switch_to)
 	/* Restore next task context */
 	ld $r10 = TASK_THREAD_R10[$r1]
 	;;
-	ld $r12 = TASK_THREAD_SP[$r1]
+	ld $sp = TASK_THREAD_SP[$r1]
 	;;
 	ld $r15 = TASK_THREAD_R15[$r1]
 	;;
