@@ -9,6 +9,9 @@ config 64BIT
 config GENERIC_CALIBRATE_DELAY
 	def_bool y
 
+config FIX_EARLYCON_MEM
+	def_bool y
+
 config MMU
 	def_bool n
 
