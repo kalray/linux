@@ -20,6 +20,8 @@ extern char _exception_start;
 
 
 struct thread_struct {
+	uint64_t kernel_sp;
+	uint64_t user_sp;
 	mm_segment_t addr_limit;	/* Addr limit */
 /**
  * According to k1c ABI, we have 18 callee-saved which are the following:
@@ -29,7 +31,6 @@ struct thread_struct {
  * registers + sp (r12) and ra
  */
 	uint64_t ra;		/* Return address */
-	uint64_t sp;		/* Kernel stack pointer */
 	uint64_t r10;
 	uint64_t r15;
 	uint64_t r16;
@@ -51,7 +52,7 @@ struct thread_struct {
 };
 
 #define INIT_THREAD  {                          \
-	.sp = sizeof(init_stack) + (unsigned long) &init_stack, \
+	.kernel_sp = sizeof(init_stack) + (unsigned long) &init_stack, \
 }
 
 #define KSTK_ESP(tsk)   (task_pt_regs(tsk)->r12)
