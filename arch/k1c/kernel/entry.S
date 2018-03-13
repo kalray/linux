@@ -19,180 +19,210 @@
 /**
  * Prepare and save registers for entry in kernel space.
  */
-.macro prep_save_regs_for_exception to_reg
-	/* FIXME AUTO: If we are coming from userspace, restore kernel
-	   stack pointer */
-	addd $sp = $sp, -(PT_SIZE_ON_STACK)
-	sq (PT_R0R1-PT_SIZE_ON_STACK)[\to_reg] = $r0r1
+.macro prep_save_regs_for_exception
+	/* Get a free register */
+	set $sr1 = $r48
+	;;
+	get $r48 = $sps
+	;;
+	/* Check if $sps.pm bit is set */
+	cb.odd $r48? 1f
+	;;
+	/* Get the current task_struct */
+	get $r48 = $sr0
+	;;
+	/* Store current pointer to user pointer sp of thread_info */
+	sd TASK_THREAD_USER_SP[$r48] = $sp
+	;;
+	/* restore sp from kernel stack pointer and r48 from sr1 */
+	ld $sp = TASK_THREAD_KERNEL_SP[$r48]
+	get $r48 = $sr1
+	;;
+	/* make some place on stack to save registers */
+1:	addd $sp = $sp, -(PT_SIZE_ON_STACK)
+	sq (PT_R0R1-PT_SIZE_ON_STACK)[$sp] = $r0r1
 	get $r0 = $spc
 	;;
-	sq PT_R2R3[\to_reg] = $r2r3
+	sq PT_R2R3[$sp] = $r2r3
 	get $r1 = $sps
 	;;
-	sq PT_R4R5[\to_reg] = $r4r5
+	sq PT_R4R5[$sp] = $r4r5
 	get $r2 = $cs
 	;;
-	sq PT_R6R7[\to_reg] = $r6r7
+	sq PT_R6R7[$sp] = $r6r7
 	get $r3 = $ra
 	;;
-	sq PT_R8R9[\to_reg] = $r8r9
+	sq PT_R8R9[$sp] = $r8r9
 	get $r4 = $lc
 	;;
-	sq PT_R10R11[\to_reg] = $r10r11
+	sq PT_R10R11[$sp] = $r10r11
 	get $r5 = $le
 	;;
-	sq PT_R12R13[\to_reg] = $r12r13
+	sq PT_R12R13[$sp] = $r12r13
 	get $r6 = $ls
 	;;
-	sq PT_R14R15[\to_reg] = $r14r15
+	sq PT_R14R15[$sp] = $r14r15
 	make $r10 = 0x0
 	;;
 	/* Since we are going to enable hardware loop, we must be careful
 	 * and reset le (loop exit) to avoid any exploit and return to
 	 * user with kernel mode */
 	set $le = $r10
-	sq PT_R16R17[\to_reg] = $r16r17
+	sq PT_R16R17[$sp] = $r16r17
 	;;
-	sq PT_R18R19[\to_reg] = $r18r19
+	sq PT_R18R19[$sp] = $r18r19
+	/* $r48 was cloberred during kernel->user stack switch
+	 * restore it from sr1 */
+	get $r48 = $sr1
 	;;
-	sq PT_R20R21[\to_reg] = $r20r21
+	sq PT_R20R21[$sp] = $r20r21
 	;;
-	sq PT_R22R23[\to_reg] = $r22r23
+	sq PT_R22R23[$sp] = $r22r23
 	;;
-	sq PT_R24R25[\to_reg] = $r24r25
+	sq PT_R24R25[$sp] = $r24r25
 	;;
-	sq PT_R26R27[\to_reg] = $r26r27
+	sq PT_R26R27[$sp] = $r26r27
 	;;
-	sq PT_R28R29[\to_reg] = $r28r29
+	sq PT_R28R29[$sp] = $r28r29
 	;;
-	sq PT_R30R31[\to_reg] = $r30r31
+	sq PT_R30R31[$sp] = $r30r31
 	;;
-	sq PT_R32R33[\to_reg] = $r32r33
+	sq PT_R32R33[$sp] = $r32r33
 	;;
-	sq PT_R34R35[\to_reg] = $r34r35
+	sq PT_R34R35[$sp] = $r34r35
 	;;
-	sq PT_R36R37[\to_reg] = $r36r37
+	sq PT_R36R37[$sp] = $r36r37
 	;;
-	sq PT_R38R39[\to_reg] = $r38r39
+	sq PT_R38R39[$sp] = $r38r39
 	;;
-	sq PT_R40R41[\to_reg] = $r40r41
+	sq PT_R40R41[$sp] = $r40r41
 	;;
-	sq PT_R42R43[\to_reg] = $r42r43
+	sq PT_R42R43[$sp] = $r42r43
 	;;
-	sq PT_R44R45[\to_reg] = $r44r45
+	sq PT_R44R45[$sp] = $r44r45
 	;;
-	sq PT_R46R47[\to_reg] = $r46r47
+	sq PT_R46R47[$sp] = $r46r47
 	;;
-	sq PT_R48R49[\to_reg] = $r48r49
+	sq PT_R48R49[$sp] = $r48r49
 	;;
-	sq PT_R50R51[\to_reg] = $r50r51
+	sq PT_R50R51[$sp] = $r50r51
 	;;
-	sq PT_R52R53[\to_reg] = $r52r53
+	sq PT_R52R53[$sp] = $r52r53
 	;;
-	sq PT_R54R55[\to_reg] = $r54r55
+	sq PT_R54R55[$sp] = $r54r55
 	;;
-	sq PT_R56R57[\to_reg] = $r56r57
+	sq PT_R56R57[$sp] = $r56r57
 	;;
-	sq PT_R58R59[\to_reg] = $r58r59
+	sq PT_R58R59[$sp] = $r58r59
 	;;
-	sq PT_R60R61[\to_reg] = $r60r61
+	sq PT_R60R61[$sp] = $r60r61
 	;;
-	sq PT_R62R63[\to_reg] = $r62r63
+	sq PT_R62R63[$sp] = $r62r63
 	;;
-	sq PT_SPCSPS[\to_reg] = $r0r1
+	sq PT_SPCSPS[$sp] = $r0r1
 	;;
-	sq PT_CSRA[\to_reg] = $r2r3
+	sq PT_CSRA[$sp] = $r2r3
 	;;
-	sq PT_LCLE[\to_reg] = $r4r5
+	sq PT_LCLE[$sp] = $r4r5
 	;;
-	sd PT_LS[\to_reg] = $r6
+	sd PT_LS[$sp] = $r6
 	;;
 .endm
 
 /**
  * Restore registers after exception
  */
-.macro restore_regs_after_exception from_reg
-	ld $r6 = PT_LS[\from_reg]
+.macro restore_regs_after_exception
+	ld $r6 = PT_LS[$sp]
 	;;
-	lq $r4r5 = PT_LCLE[\from_reg]
+	lq $r4r5 = PT_LCLE[$sp]
 	set $ls = $r6
 	;;
-	lq $r2r3 = PT_CSRA[\from_reg]
+	lq $r2r3 = PT_CSRA[$sp]
 	set $le = $r5
 	;;
-	lq $r0r1 = PT_SPCSPS[\from_reg]
+	lq $r0r1 = PT_SPCSPS[$sp]
 	set $lc = $r4
 	;;
-	lq $r62r63 = PT_R62R63[\from_reg]
+	lq $r62r63 = PT_R62R63[$sp]
 	set $ra = $r3
 	;;
-	lq $r60r61 = PT_R60R61[\from_reg]
+	lq $r60r61 = PT_R60R61[$sp]
 	set $cs = $r2
 	;;
-	lq $r58r59 = PT_R58R59[\from_reg]
+	lq $r58r59 = PT_R58R59[$sp]
 	set $sps = $r1
 	;;
-	lq $r56r57 = PT_R56R57[\from_reg]
+	lq $r56r57 = PT_R56R57[$sp]
 	set $spc = $r0
 	;;
-	lq $r54r55 = PT_R54R55[\from_reg]
+	lq $r54r55 = PT_R54R55[$sp]
 	;;
-	lq $r52r53 = PT_R52R53[\from_reg]
+	lq $r52r53 = PT_R52R53[$sp]
 	;;
-	lq $r50r51 = PT_R50R51[\from_reg]
+	lq $r50r51 = PT_R50R51[$sp]
+	/* Save r52 and r53 into srx */
+	set $sr1 = $r52
 	;;
-	lq $r48r49 = PT_R48R49[\from_reg]
+	lq $r48r49 = PT_R48R49[$sp]
+	set $sr2 = $r53
 	;;
-	lq $r46r47 = PT_R46R47[\from_reg]
+	lq $r46r47 = PT_R46R47[$sp]
+	get $r52 = $sps
 	;;
-	lq $r44r45 = PT_R44R45[\from_reg]
+	lq $r44r45 = PT_R44R45[$sp]
+	get $r53 = $sr0
 	;;
-	lq $r42r43 = PT_R42R43[\from_reg]
+	lq $r42r43 = PT_R42R43[$sp]
 	;;
-	lq $r40r41 = PT_R40R41[\from_reg]
+	lq $r40r41 = PT_R40R41[$sp]
 	;;
-	lq $r38r39 = PT_R38R39[\from_reg]
+	lq $r38r39 = PT_R38R39[$sp]
 	;;
-	lq $r36r37 = PT_R36R37[\from_reg]
+	lq $r36r37 = PT_R36R37[$sp]
 	;;
-	lq $r34r35 = PT_R34R35[\from_reg]
+	lq $r34r35 = PT_R34R35[$sp]
 	;;
-	lq $r32r33 = PT_R32R33[\from_reg]
+	lq $r32r33 = PT_R32R33[$sp]
 	;;
-	lq $r30r31 = PT_R30R31[\from_reg]
+	lq $r30r31 = PT_R30R31[$sp]
 	;;
-	lq $r28r29 = PT_R28R29[\from_reg]
+	lq $r28r29 = PT_R28R29[$sp]
 	;;
-	lq $r26r27 = PT_R26R27[\from_reg]
+	lq $r26r27 = PT_R26R27[$sp]
 	;;
-	lq $r24r25 = PT_R24R25[\from_reg]
+	lq $r24r25 = PT_R24R25[$sp]
 	;;
-	lq $r22r23 = PT_R22R23[\from_reg]
+	lq $r22r23 = PT_R22R23[$sp]
 	;;
-	lq $r20r21 = PT_R20R21[\from_reg]
+	lq $r20r21 = PT_R20R21[$sp]
 	;;
-	lq $r18r19 = PT_R18R19[\from_reg]
+	lq $r18r19 = PT_R18R19[$sp]
 	;;
-	lq $r16r17 = PT_R16R17[\from_reg]
+	lq $r16r17 = PT_R16R17[$sp]
 	;;
-	lq $r14r15 = PT_R14R15[\from_reg]
+	lq $r14r15 = PT_R14R15[$sp]
 	;;
-	ld $r13 = PT_R13[\from_reg]
+	ld $r13 = PT_R13[$sp]
 	;;
-	lq $r10r11 = PT_R10R11[\from_reg]
+	lq $r10r11 = PT_R10R11[$sp]
 	;;
-	lq $r8r9 = PT_R8R9[\from_reg]
+	lq $r8r9 = PT_R8R9[$sp]
 	;;
-	lq $r6r7 = PT_R6R7[\from_reg]
+	lq $r6r7 = PT_R6R7[$sp]
 	;;
-	lq $r4r5 = PT_R4R5[\from_reg]
+	lq $r4r5 = PT_R4R5[$sp]
 	;;
-	lq $r2r3 = PT_R2R3[\from_reg]
+	lq $r2r3 = PT_R2R3[$sp]
 	;;
-	lq $r0r1 = PT_R0R1[\from_reg]
+	lq $r0r1 = PT_R0R1[$sp]
 	addd $sp = $sp, PT_SIZE_ON_STACK
 	;;
+	/* Restore user stack pointer if sps.pm == 0 */
+	ld.even $r52? $sp = TASK_THREAD_USER_SP[$r53]
+	get $r52 = $sr1
+	;;
+	get $r53 = $sr2
 .endm
 
 /***********************************************************************
@@ -200,7 +230,7 @@
 ***********************************************************************/
 .section .exception.trap, "ax", @progbits
 ENTRY(k1c_trap_handler):
-	prep_save_regs_for_exception $sp
+	prep_save_regs_for_exception
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HLE_EN_ET_CLEAR
@@ -218,10 +248,10 @@ ENTRY(k1c_trap_handler):
 	;;
 	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
-	restore_regs_after_exception $sp
+	restore_regs_after_exception
 	;;
-	/* FIXME AUTO: when using userspace, we should restore user
-	stack pointer and potentially call "schedule" function */
+	/* FIXME AUTO: when returning to userspace we should call
+	 * "schedule" function */
 	rfe
 	;;
 ENDPROC(k1c_trap_handler)
@@ -231,7 +261,7 @@ ENDPROC(k1c_trap_handler)
 ***********************************************************************/
 .section .exception.interrupt, "ax", @progbits
 ENTRY(k1c_interrupt_handler):
-	prep_save_regs_for_exception $sp
+	prep_save_regs_for_exception
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HWLOOP_ENABLE
@@ -250,10 +280,10 @@ ENTRY(k1c_interrupt_handler):
 	;;
 	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
-	restore_regs_after_exception $sp
+	restore_regs_after_exception
 	;;
-	/* FIXME AUTO: when using userspace, we should restore user
-	stack pointer and potentially call "schedule" function */
+	/* FIXME AUTO: when returning to userspace we should call
+	 * "schedule" function */
 	rfe
 	;;
 ENDPROC(k1c_interrupt_handler)
@@ -319,7 +349,7 @@ ENTRY(__switch_to)
 	/* Save previous task context */
 	sd TASK_THREAD_R10[$r0] = $r10
 	;;
-	sd TASK_THREAD_SP[$r0] = $sp
+	sd TASK_THREAD_KERNEL_SP[$r0] = $sp
 	;;
 	sd TASK_THREAD_R15[$r0] = $r15
 	get $r5 = $ra
@@ -345,7 +375,7 @@ ENTRY(__switch_to)
 	/* Restore next task context */
 	ld $r10 = TASK_THREAD_R10[$r1]
 	;;
-	ld $sp = TASK_THREAD_SP[$r1]
+	ld $sp = TASK_THREAD_KERNEL_SP[$r1]
 	;;
 	ld $r15 = TASK_THREAD_R15[$r1]
 	;;
