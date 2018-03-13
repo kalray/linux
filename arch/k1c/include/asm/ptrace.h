@@ -89,10 +89,12 @@ struct pt_regs {
 	uint64_t sps;
 	uint64_t cs;
 	uint64_t ra;
+
 	uint64_t lc;
 	uint64_t le;
 	uint64_t ls;
-};
+	uint64_t dummy;
+} __packed;
 
 #define SPS_PM_MASK	0x1	
 
