@@ -105,7 +105,7 @@ SECTIONS
 	EXCEPTION_TABLE(4)
 	NOTES
 
-	BSS_SECTION(16, 16, 16)
+	BSS_SECTION(32, 32, 32)
 	_end = .;
 
 	/* Debugging sections */
