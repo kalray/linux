@@ -54,9 +54,9 @@ static inline void
 k1c_sfr_clear_bit(unsigned char sfr, unsigned char bit)
 {
 	if (bit < 32)
-		wfxl(sfr, 1 << bit);
+		wfxl(sfr, (uint64_t) 1 << bit);
 	else
-		wfxm(sfr, 1 << (bit - 32));
+		wfxm(sfr, (uint64_t) 1 << (bit - 32));
 }
 
 #define k1c_sfr_set(_sfr, _val)	__builtin_k1_set(_sfr, _val)
