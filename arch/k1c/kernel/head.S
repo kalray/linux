@@ -62,18 +62,19 @@ ENTRY(k1c_start)
 	;;
 	sbfd $r22 = $r21, $r22
 	make $r24 = 0
-	;;
-	addd $r22 = $r22, 16
-	;;
-	/* Divide by 16 for hardware loop */
-	srld $r22, $r22, 4
 	make $r25 = 0
+	;;
+	make $r26 = 0
+	make $r27 = 0
+	;;
+	/* Divide by 32 for hardware loop */
+	srld $r22, $r22, 5
 	;;
 	/* Clear bss with hardware loop */
 	loopdo $r22, clear_bss_done
 		;;
-		sq 0[$r21] = $r24r25
-		addd $r21 = $r21, 16
+		so 0[$r21] = $r24r25r26r27
+		addd $r21 = $r21, 32
 		;;
 	clear_bss_done:
 	/* Setup stack */
