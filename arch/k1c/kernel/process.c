@@ -77,7 +77,7 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		panic("%s unimplemented for user thread\n", __func__);
 	}
 
-	p->thread.sp = (unsigned long) childregs; /* kernel sp */
+	p->thread.kernel_sp = (unsigned long) childregs; /* kernel sp */
 
 	return 0;
 }
