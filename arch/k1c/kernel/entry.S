@@ -16,7 +16,10 @@
 #define PS_HWLOOP_ENABLE	(K1C_MASK_PS_HLE << 32)
 #define PS_HLE_EN_ET_CLEAR	(K1C_MASK_PS_HLE << 32 | K1C_MASK_PS_ET)
 
-.macro save_register_for_exception to_reg
+/**
+ * Prepare and save registers for entry in kernel space.
+ */
+.macro prep_save_regs_for_exception to_reg
 	/* FIXME AUTO: If we are coming from userspace, restore kernel
 	   stack pointer */
 	addd $sp = $sp, -(PT_SIZE_ON_STACK)
@@ -42,7 +45,12 @@
 	get $r6 = $ls
 	;;
 	sq PT_R14R15[\to_reg] = $r14r15
+	make $r10 = 0x0
 	;;
+	/* Since we are going to enable hardware loop, we must be careful
+	 * and reset le (loop exit) to avoid any exploit and return to
+	 * user with kernel mode */
+	set $le = $r10
 	sq PT_R16R17[\to_reg] = $r16r17
 	;;
 	sq PT_R18R19[\to_reg] = $r18r19
@@ -101,7 +109,10 @@
 	;;
 .endm
 
-.macro restore_register_after_exception from_reg
+/**
+ * Restore registers after exception
+ */
+.macro restore_regs_after_exception from_reg
 	ld $r6 = PT_LS[\from_reg]
 	;;
 	lq $r4r5 = PT_LCLE[\from_reg]
@@ -189,7 +200,7 @@
 ***********************************************************************/
 .section .exception.trap, "ax", @progbits
 ENTRY(k1c_trap_handler):
-	save_register_for_exception $sp
+	prep_save_regs_for_exception $sp
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HLE_EN_ET_CLEAR
@@ -207,7 +218,7 @@ ENTRY(k1c_trap_handler):
 	;;
 	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
-	restore_register_after_exception $sp
+	restore_regs_after_exception $sp
 	;;
 	/* FIXME AUTO: when using userspace, we should restore user
 	stack pointer and potentially call "schedule" function */
@@ -220,7 +231,7 @@ ENDPROC(k1c_trap_handler)
 ***********************************************************************/
 .section .exception.interrupt, "ax", @progbits
 ENTRY(k1c_interrupt_handler):
-	save_register_for_exception $sp
+	prep_save_regs_for_exception $sp
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HWLOOP_ENABLE
@@ -239,7 +250,7 @@ ENTRY(k1c_interrupt_handler):
 	;;
 	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
-	restore_register_after_exception $sp
+	restore_regs_after_exception $sp
 	;;
 	/* FIXME AUTO: when using userspace, we should restore user
 	stack pointer and potentially call "schedule" function */
