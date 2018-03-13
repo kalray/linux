@@ -20,19 +20,28 @@ extern char _exception_start;
 
 
 struct thread_struct {
-	uint64_t kernel_sp;
 	uint64_t user_sp;
 	mm_segment_t addr_limit;	/* Addr limit */
+
 /**
  * According to k1c ABI, we have 18 callee-saved which are the following:
  * r10 r15 r16 r17 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30
  * r31.
  * In order to switch from a task to another, we only need to save these
  * registers + sp (r12) and ra
+ *
+ * WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING
+ *
+ * Do not reorder the following fields !
+ * They are used in asm-offset for store octuples so they must be
+ * all right behind each other
  */
+
 	uint64_t ra;		/* Return address */
+	uint64_t kernel_sp;
 	uint64_t r10;
 	uint64_t r15;
+
 	uint64_t r16;
 	uint64_t r17;
 	uint64_t r18;
@@ -49,7 +58,7 @@ struct thread_struct {
 	uint64_t r29;
 	uint64_t r30;
 	uint64_t r31;
-};
+} __packed;
 
 #define INIT_THREAD  {                          \
 	.kernel_sp = sizeof(init_stack) + (unsigned long) &init_stack, \

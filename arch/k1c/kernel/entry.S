@@ -40,92 +40,56 @@
 	;;
 	/* make some place on stack to save registers */
 1:	addd $sp = $sp, -(PT_SIZE_ON_STACK)
-	sq (PT_R0R1-PT_SIZE_ON_STACK)[$sp] = $r0r1
-	get $r0 = $spc
+	so (PT_Q0-PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
 	;;
-	sq PT_R2R3[$sp] = $r2r3
-	get $r1 = $sps
+	so PT_Q4[$sp] = $r4r5r6r7
 	;;
-	sq PT_R4R5[$sp] = $r4r5
-	get $r2 = $cs
+	so PT_Q8[$sp] = $r8r9r10r11
 	;;
-	sq PT_R6R7[$sp] = $r6r7
-	get $r3 = $ra
+	so PT_Q12[$sp] = $r12r13r14r15
 	;;
-	sq PT_R8R9[$sp] = $r8r9
-	get $r4 = $lc
-	;;
-	sq PT_R10R11[$sp] = $r10r11
-	get $r5 = $le
-	;;
-	sq PT_R12R13[$sp] = $r12r13
-	get $r6 = $ls
-	;;
-	sq PT_R14R15[$sp] = $r14r15
+	so PT_Q16[$sp] = $r16r17r18r19
 	make $r10 = 0x0
 	;;
+	so PT_Q20[$sp] = $r20r21r22r23
 	/* Since we are going to enable hardware loop, we must be careful
 	 * and reset le (loop exit) to avoid any exploit and return to
 	 * user with kernel mode */
 	set $le = $r10
-	sq PT_R16R17[$sp] = $r16r17
 	;;
-	sq PT_R18R19[$sp] = $r18r19
+	so PT_Q24[$sp] = $r24r25r26r27
+	get $r0 = $spc
+	;;
+	so PT_Q28[$sp] = $r28r29r30r31
+	get $r1 = $sps
+	;;
+	so PT_Q32[$sp] = $r32r33r34r35
+	get $r2 = $cs
+	;;
+	so PT_Q36[$sp] = $r36r37r38r39
+	get $r3 = $ra
+	;;
+	so PT_Q40[$sp] = $r40r41r42r43
+	get $r4 = $lc
+	;;
+	so PT_Q44[$sp] = $r44r45r46r47
 	/* $r48 was cloberred during kernel->user stack switch
-	 * restore it from sr1 */
+	 * restore it from sr1 before storing it */
 	get $r48 = $sr1
 	;;
-	sq PT_R20R21[$sp] = $r20r21
+	so PT_Q48[$sp] = $r48r49r50r51
+	get $r5 = $le
 	;;
-	sq PT_R22R23[$sp] = $r22r23
+	so PT_Q52[$sp] = $r52r53r54r55
+	get $r6 = $ls
 	;;
-	sq PT_R24R25[$sp] = $r24r25
+	so PT_Q56[$sp] = $r56r57r58r59
 	;;
-	sq PT_R26R27[$sp] = $r26r27
+	so PT_Q60[$sp] = $r60r61r62r63
 	;;
-	sq PT_R28R29[$sp] = $r28r29
+	so PT_SPC_SPS_CS_RA[$sp] = $r0r1r2r3
 	;;
-	sq PT_R30R31[$sp] = $r30r31
-	;;
-	sq PT_R32R33[$sp] = $r32r33
-	;;
-	sq PT_R34R35[$sp] = $r34r35
-	;;
-	sq PT_R36R37[$sp] = $r36r37
-	;;
-	sq PT_R38R39[$sp] = $r38r39
-	;;
-	sq PT_R40R41[$sp] = $r40r41
-	;;
-	sq PT_R42R43[$sp] = $r42r43
-	;;
-	sq PT_R44R45[$sp] = $r44r45
-	;;
-	sq PT_R46R47[$sp] = $r46r47
-	;;
-	sq PT_R48R49[$sp] = $r48r49
-	;;
-	sq PT_R50R51[$sp] = $r50r51
-	;;
-	sq PT_R52R53[$sp] = $r52r53
-	;;
-	sq PT_R54R55[$sp] = $r54r55
-	;;
-	sq PT_R56R57[$sp] = $r56r57
-	;;
-	sq PT_R58R59[$sp] = $r58r59
-	;;
-	sq PT_R60R61[$sp] = $r60r61
-	;;
-	sq PT_R62R63[$sp] = $r62r63
-	;;
-	sq PT_SPCSPS[$sp] = $r0r1
-	;;
-	sq PT_CSRA[$sp] = $r2r3
-	;;
-	sq PT_LCLE[$sp] = $r4r5
-	;;
-	sd PT_LS[$sp] = $r6
+	so PT_LC_LE_LS_DUMMY[$sp] = $r4r5r6r7
 	;;
 .endm
 
@@ -133,90 +97,57 @@
  * Restore registers after exception
  */
 .macro restore_regs_after_exception
-	ld $r6 = PT_LS[$sp]
+	lo $r0r1r2r3 = PT_SPC_SPS_CS_RA[$sp]
 	;;
-	lq $r4r5 = PT_LCLE[$sp]
-	set $ls = $r6
+	lo $r4r5r6r7 = PT_LC_LE_LS_DUMMY[$sp]
 	;;
-	lq $r2r3 = PT_CSRA[$sp]
-	set $le = $r5
+	lo $r60r61r62r63 = PT_Q60[$sp]
 	;;
-	lq $r0r1 = PT_SPCSPS[$sp]
+	lo $r56r57r58r59 = PT_Q56[$sp]
+	;;
+	lo $r52r53r54r55 = PT_Q52[$sp]
+	;;
+	lo $r48r49r50r51 = PT_Q48[$sp]
+	;;
+	lo $r44r45r46r47 = PT_Q44[$sp]
+	;;
+	lo $r40r41r42r43 = PT_Q40[$sp]
 	set $lc = $r4
 	;;
-	lq $r62r63 = PT_R62R63[$sp]
+	lo $r36r37r38r39 = PT_Q36[$sp]
+	set $le = $r5
+	;;
+	lo $r32r33r34r35 = PT_Q32[$sp]
+	set $ls = $r6
+	;;
+	lo $r28r29r30r31 = PT_Q28[$sp]
 	set $ra = $r3
 	;;
-	lq $r60r61 = PT_R60R61[$sp]
+	lo $r24r25r26r27 = PT_Q24[$sp]
 	set $cs = $r2
 	;;
-	lq $r58r59 = PT_R58R59[$sp]
+	lo $r20r21r22r23 = PT_Q20[$sp]
 	set $sps = $r1
 	;;
-	lq $r56r57 = PT_R56R57[$sp]
+	lo $r16r17r18r19 = PT_Q16[$sp]
 	set $spc = $r0
-	;;
-	lq $r54r55 = PT_R54R55[$sp]
-	;;
-	lq $r52r53 = PT_R52R53[$sp]
-	;;
-	lq $r50r51 = PT_R50R51[$sp]
-	/* Save r52 and r53 into srx */
-	set $sr1 = $r52
-	;;
-	lq $r48r49 = PT_R48R49[$sp]
-	set $sr2 = $r53
-	;;
-	lq $r46r47 = PT_R46R47[$sp]
-	get $r52 = $sps
-	;;
-	lq $r44r45 = PT_R44R45[$sp]
-	get $r53 = $sr0
-	;;
-	lq $r42r43 = PT_R42R43[$sp]
-	;;
-	lq $r40r41 = PT_R40R41[$sp]
-	;;
-	lq $r38r39 = PT_R38R39[$sp]
-	;;
-	lq $r36r37 = PT_R36R37[$sp]
-	;;
-	lq $r34r35 = PT_R34R35[$sp]
-	;;
-	lq $r32r33 = PT_R32R33[$sp]
-	;;
-	lq $r30r31 = PT_R30R31[$sp]
-	;;
-	lq $r28r29 = PT_R28R29[$sp]
-	;;
-	lq $r26r27 = PT_R26R27[$sp]
-	;;
-	lq $r24r25 = PT_R24R25[$sp]
-	;;
-	lq $r22r23 = PT_R22R23[$sp]
-	;;
-	lq $r20r21 = PT_R20R21[$sp]
-	;;
-	lq $r18r19 = PT_R18R19[$sp]
-	;;
-	lq $r16r17 = PT_R16R17[$sp]
 	;;
 	lq $r14r15 = PT_R14R15[$sp]
 	;;
 	ld $r13 = PT_R13[$sp]
+	/* Save r52 and r53 into srx */
+	set $sr1 = $r52
 	;;
-	lq $r10r11 = PT_R10R11[$sp]
+	lo $r8r9r10r11 = PT_Q8[$sp]
+	set $sr2 = $r53
 	;;
-	lq $r8r9 = PT_R8R9[$sp]
+	lo $r4r5r6r7 = PT_Q4[$sp]
+	/* in order to compute stack switching */
+	get $r52 = $sps
 	;;
-	lq $r6r7 = PT_R6R7[$sp]
-	;;
-	lq $r4r5 = PT_R4R5[$sp]
-	;;
-	lq $r2r3 = PT_R2R3[$sp]
-	;;
-	lq $r0r1 = PT_R0R1[$sp]
+	lo $r0r1r2r3 = PT_Q0[$sp]
 	addd $sp = $sp, PT_SIZE_ON_STACK
+	get $r53 = $sr0
 	;;
 	/* Restore user stack pointer if sps.pm == 0 */
 	ld.even $r52? $sp = TASK_THREAD_USER_SP[$r53]
@@ -347,56 +278,34 @@ ENDPROC(ret_from_kernel_thread)
  */
 ENTRY(__switch_to)
 	/* Save previous task context */
-	sd TASK_THREAD_R10[$r0] = $r10
+	so TASK_THREAD_Q16[$r0] = $r16r17r18r19
+	get $r4 = $ra
 	;;
-	sd TASK_THREAD_KERNEL_SP[$r0] = $sp
+	so TASK_THREAD_Q20[$r0] = $r20r21r22r23
+	copyd $r5 = $sp
 	;;
-	sd TASK_THREAD_R15[$r0] = $r15
-	get $r5 = $ra
+	so TASK_THREAD_Q24[$r0] = $r24r25r26r27
+	copyd $r6 = $r10
 	;;
-	sd TASK_THREAD_RA[$r0] = $r5
+	so TASK_THREAD_Q28[$r0] = $r28r29r30r31
+	copyd $r7 = $r15
 	;;
-	sq TASK_THREAD_R16R17[$r0] = $r16r17
-	;;
-	sq TASK_THREAD_R18R19[$r0] = $r18r19
-	;;
-	sq TASK_THREAD_R20R21[$r0] = $r20r21
-	;;
-	sq TASK_THREAD_R22R23[$r0] = $r22r23
-	;;
-	sq TASK_THREAD_R24R25[$r0] = $r24r25
-	;;
-	sq TASK_THREAD_R26R27[$r0] = $r26r27
-	;;
-	sq TASK_THREAD_R28R29[$r0] = $r28r29
-	;;
-	sq TASK_THREAD_R30R31[$r0] = $r30r31
+	so TASK_THREAD_RA_KERNELSP_R10_R15[$r0] = $r4r5r6r7
 	;;
 	/* Restore next task context */
-	ld $r10 = TASK_THREAD_R10[$r1]
+	lo $r4r5r6r7 = TASK_THREAD_RA_KERNELSP_R10_R15[$r1]
 	;;
-	ld $sp = TASK_THREAD_KERNEL_SP[$r1]
+	lo $r16r17r18r19 = TASK_THREAD_Q16[$r1]
 	;;
-	ld $r15 = TASK_THREAD_R15[$r1]
+	lo $r20r21r22r23 = TASK_THREAD_Q20[$r1]
 	;;
-	ld $r5 = TASK_THREAD_RA[$r1]
+	lo $r24r25r26r27 = TASK_THREAD_Q24[$r1]
+	copyd $r12 = $r5
+	set $ra = $r4
 	;;
-	lq $r16r17 = TASK_THREAD_R16R17[$r1]
-	set $ra = $r5
-	;;
-	lq $r18r19 = TASK_THREAD_R18R19[$r1]
-	;;
-	lq $r20r21 = TASK_THREAD_R20R21[$r1]
-	;;
-	lq $r22r23 = TASK_THREAD_R22R23[$r1]
-	;;
-	lq $r24r25 = TASK_THREAD_R24R25[$r1]
-	;;
-	lq $r26r27 = TASK_THREAD_R26R27[$r1]
-	;;
-	lq $r28r29 = TASK_THREAD_R28R29[$r1]
-	;;
-	lq $r30r31 = TASK_THREAD_R30R31[$r1]
+	lo $r28r29r30r31 = TASK_THREAD_Q28[$r1]
+	copyd $r10 = $r6
+	copyd $r15 = $r7
 	set $sr0 = $r1
 	;;
 	ret
