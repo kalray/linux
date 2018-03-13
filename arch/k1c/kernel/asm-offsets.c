@@ -30,6 +30,11 @@ int foo(void)
 	OFFSET(PT_R8R9, pt_regs, r8);
 	OFFSET(PT_R10R11, pt_regs, r10);
 	OFFSET(PT_R12R13, pt_regs, r12);
+	/* When restoring registers, we do not want to restore r12
+	 * right now since this is our stack pointer. Allow to save
+	 * only $r13 by using this offset
+	 */
+	OFFSET(PT_R13, pt_regs, r13);
 	OFFSET(PT_R14R15, pt_regs, r14);
 	OFFSET(PT_R16R17, pt_regs, r16);
 	OFFSET(PT_R18R19, pt_regs, r18);
@@ -60,15 +65,20 @@ int foo(void)
 	OFFSET(PT_LCLE, pt_regs, lc);
 	OFFSET(PT_LS, pt_regs, ls);
 
-	/* When restoring registers, we do not want to restore r12
-	 * right now since this is our stack pointer
+	/*
+	 * Flags in thread info
 	 */
-	OFFSET(PT_R13, pt_regs, r13);
+	OFFSET(TASK_TI_FLAGS, task_struct, thread_info.flags);
+
+	/*
+	 * Stack pointers
+	 */
+	OFFSET(TASK_THREAD_KERNEL_SP, task_struct, thread.kernel_sp);
+	OFFSET(TASK_THREAD_USER_SP, task_struct, thread.user_sp);
 
 	/*
 	 * Offsets to save registers in switch_to
 	 */
-	OFFSET(TASK_THREAD_SP, task_struct, thread.sp);
 	OFFSET(TASK_THREAD_RA, task_struct, thread.ra);
 	OFFSET(TASK_THREAD_R10, task_struct, thread.r10);
 	OFFSET(TASK_THREAD_R15, task_struct, thread.r15);
