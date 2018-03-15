@@ -3,7 +3,7 @@
 # License.  See the file "COPYING" in the main directory of this archive
 # for more details.
 #
-# K1 port by Kalray Inc
+# Copyright (C) 2018 Kalray Inc.
 
 ifeq ($(CROSS_COMPILE),)
 CROSS_COMPILE := k1-elf-
