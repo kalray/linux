@@ -56,6 +56,7 @@
 #define K1C_SFR_ES 50 // Exception Syndrome $es $s50
 #define K1C_SFR_ILR 51 // Interrupt Line Request $ilr $s51
 #define K1C_SFR_MES 52 // Memory Error Status $mes $s54
+#define K1C_SFR_WS 53 // Wake-Up Status $ws $s53
 
 /* Register masks*/
 
@@ -747,12 +748,29 @@
 #define K1C_HALF_TC_WIE 1
 #define K1C_HFX_TC_WIE 0x200
 
-#define K1C_MASK_CS_WU 0x8000 // Wake-Up
-#define K1C_SHIFT_CS_WU  15
-#define K1C_BYTE_CS_WU 1
-#define K1C_BFX_CS_WU 0x80
-#define K1C_HALF_CS_WU 0
-#define K1C_HFX_CS_WU 0x8000
+#define K1C_MASK_WS_WS 0xffffffff // Wake-Up Status
+#define K1C_SHIFT_WS_WS  0
+
+#define K1C_MASK_WS_WU0 0x1 // Wake-Up 0
+#define K1C_SHIFT_WS_WU0  0
+#define K1C_BYTE_WS_WU0 0
+#define K1C_BFX_WS_WU0 0x1
+#define K1C_HALF_WS_WU0 0
+#define K1C_HFX_WS_WU0 0x1
+
+#define K1C_MASK_WS_WU1 0x2 // Wake-Up 1
+#define K1C_SHIFT_WS_WU1  1
+#define K1C_BYTE_WS_WU1 0
+#define K1C_BFX_WS_WU1 0x2
+#define K1C_HALF_WS_WU1 0
+#define K1C_HFX_WS_WU1 0x2
+
+#define K1C_MASK_WS_WU2 0x4 // Wake-Up 2
+#define K1C_SHIFT_WS_WU2  2
+#define K1C_BYTE_WS_WU2 0
+#define K1C_BFX_WS_WU2 0x4
+#define K1C_HALF_WS_WU2 0
+#define K1C_HFX_WS_WU2 0x4
 
 #define K1C_MASK_TC_WUI 0x4000000 // Watchdog Underflow Inform
 #define K1C_SHIFT_TC_WUI  26
