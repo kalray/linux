@@ -8,6 +8,7 @@
 
 #include <linux/linkage.h>
 
+#include <asm/thread_info.h>
 #include <asm/asm-offsets.h>
 #include <asm/sfr_defs.h>
 
@@ -15,6 +16,8 @@
 
 #define PS_HWLOOP_ENABLE	(K1C_MASK_PS_HLE << 32)
 #define PS_HLE_EN_ET_CLEAR	(K1C_MASK_PS_HLE << 32 | K1C_MASK_PS_ET)
+
+.altmacro
 
 /**
  * Prepare and save registers for entry in kernel space.
@@ -96,7 +99,23 @@
 /**
  * Restore registers after exception
  */
-.macro restore_regs_after_exception
+.macro restore_regs_after_exception sps_reg sr0_reg
+	LOCAL _restore_regs
+	/* Are we returning to userspace ? */
+	cb.odd \sps_reg? _restore_regs
+	;;
+	ld $r1 = TASK_TI_FLAGS[\sr0_reg]
+	;;
+	/* Do we have work pending ? */
+	andd $r5 = $r1, _TIF_WORK_MASK
+	copyd $r0 = \sr0_reg
+	;;
+	/* If not, directly return */
+	cb.dnez $r5? _restore_regs
+	;;
+	call work_pending
+	;;
+_restore_regs:
 	lo $r0r1r2r3 = PT_SPC_SPS_CS_RA[$sp]
 	;;
 	lo $r4r5r6r7 = PT_LC_LE_LS_DUMMY[$sp]
@@ -171,18 +190,18 @@ ENTRY(k1c_trap_handler):
 	/* Enable hwloop */
 	wfxl $ps, $r8
 	;;
-	make $r7 = trap_handler
+	/* Handler call */
 	get $r0 = $es
 	;;
-	/* Handler call */
-	icall $r7
+	call trap_handler
 	;;
+	get $r10 = $sps
+	;;
+	get $r11 = $sr0
 	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
-	restore_regs_after_exception
+	restore_regs_after_exception $r10 $r11
 	;;
-	/* FIXME AUTO: when returning to userspace we should call
-	 * "schedule" function */
 	rfe
 	;;
 ENDPROC(k1c_trap_handler)
@@ -203,18 +222,18 @@ ENTRY(k1c_interrupt_handler):
 	;;
 	/* Prepare handler call */
 	get $r0 = $es
-	make $r7 = do_IRQ
 	;;
 	/* Extract syscall number */
 	extfz $r0 = $r0, 7, 3
-	icall $r7
+	call do_IRQ
 	;;
 	addd $sp = $sp, SCRATCHPAD_SIZE
+	get $r10 = $sps
 	;;
-	restore_regs_after_exception
+	get $r11 = $sr0
 	;;
-	/* FIXME AUTO: when returning to userspace we should call
-	 * "schedule" function */
+	restore_regs_after_exception $r10 $r11
+	;;
 	rfe
 	;;
 ENDPROC(k1c_interrupt_handler)
@@ -311,3 +330,34 @@ ENTRY(__switch_to)
 	ret
 	;;
 ENDPROC(__switch_to)
+
+
+/***********************************************************************
+*            Common return from exceptions (trap/interrupts)
+***********************************************************************/
+
+.section ".rodata"
+notify_panic_str_label:
+	.string "Unimplemented do_notify_resume"
+
+.text
+/**
+ * $r0 = current_task
+ * $r1 = current task flags
+ */
+ENTRY(work_pending)
+	andd $r2 = $r1, _TIF_NEED_RESCHED
+	;;
+	/* Do we have to call schedule ? */
+	cb.deqz $r2? 1f
+	andd $r4 = $r1, _TIF_NEED_RESCHED
+	;;
+	call schedule
+	;;
+	ret
+	;;
+1:	make $r0 = notify_panic_str_label
+	;;
+	call panic
+	;;
+ENDPROC(work_pending)
