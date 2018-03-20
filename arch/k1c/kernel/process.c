@@ -13,6 +13,8 @@
 
 #include <asm/processor.h>
 
+#define SCALL_NUM_EXIT	"0xfff"
+
 void arch_cpu_idle(void)
 {
 	wait_for_interrupt();
@@ -98,19 +100,24 @@ unsigned long get_wchan(struct task_struct *p)
 	return 0;
 }
 
-void machine_restart(char *cmd)
-{
-	panic("%s unimplemented\n", __func__);
+void machine_halt(void)
+{	register int status asm("r0") = 0;
+
+	asm volatile ("scall " SCALL_NUM_EXIT "\n\t;;"
+		      : /* out */
+		      : "r"(status));
+
+	unreachable();
 }
 
 void machine_power_off(void)
 {
-	panic("%s unimplemented\n", __func__);
+	machine_halt();
 }
 
-void machine_halt(void)
+void machine_restart(char *cmd)
 {
-	panic("%s unimplemented\n", __func__);
+	machine_halt();
 }
 
 void (*pm_power_off)(void) = machine_power_off;
