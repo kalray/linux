@@ -29,6 +29,49 @@ not builtin but will be setup by the runner used (simulator or jtag).
 
 A default stdout-path is desirable to allow early printk.
 
+Boot Memory Allocator
+=====================
+
+The boot memory allocator is used to allocate memory before paging is enabled.
+It is initialized with DDR and also with the shared memory. This first one is
+initialized during the setup_bootmem() and the second one when calling
+early_init_fdt_scan_reserved_mem().
+
+
+Virtual and physical memory
+===========================
+
+The mapping used and the memory management is described in
+Documentation/k1c/k1c-mmu.txt.
+Our Kernel is compiled using virtual addresses that starts at
+0xffffff0000000000. But when it is started the kernel uses physical addresses.
+Before calling the first function arch_low_level_start() we configure 2 entries
+of the LTLB.
+
+The first entry will map the first 1G of virtual address space to the first
+1G of DDR:
+  - TLB[0]: 0xffffff0000000000 -> 0x80000000 (size 1Go)
+
+The second entry will be a flat mapping of the first 512 Ko of the SMEM. It
+is required to have this flat mapping because there is still code located at
+this address that needs to be executed:
+  - TLB[1]: 0x0 -> 0x0 (size 512Ko)
+
+Once virtual space reached the second entry is removed.
+
+To be able to set breakpoints when MMU is enabled we added a label called
+gdb_mmu_enabled. If you try to set a breakpoint on a function that is in
+virtual memory before the activation of the MMU this address as no signification
+for GDB. So, for example, if you want to break on the function start_kernel()
+you will need to run:
+
+	k1-gdb -silent path_to/vmlinux \
+		-ex 'tbreak gdb_mmu_enabled' -ex 'run' \
+		-ex 'break start_kernel' \
+		-ex 'continue'
+
+We will also add an option to k1-gdb to simplify this step.
+
 Timers
 ======
 
