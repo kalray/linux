@@ -7,6 +7,8 @@
  */
 #include <asm/thread_info.h>
 #include <asm/sfr_defs.h>
+#include <asm/page.h>
+#include <asm/tlb.h>
 
 #include <linux/linkage.h>
 #include <linux/init.h>
@@ -15,10 +17,13 @@
 #define PS_ENABLE_64BIT		(K1C_SFR_PS_MASK_P64 | K1C_SFR_PS_MASK_U64)
 /* Enable both ICache and DCache */
 #define PS_ENABLE_CACHES	(K1C_SFR_PS_MASK_DCE | K1C_SFR_PS_MASK_ICE)
+/* Enable MMU */
+#define PS_ENABLE_MMU		(K1C_SFR_PS_MASK_MME)
+
 /* Enable also hardware loops and uncached streaming */
 #define PS_DEFAULT_VALUE	(K1C_SFR_PS_MASK_HLE | K1C_SFR_PS_MASK_USE | \
 				 PS_ENABLE_CACHES | PS_ENABLE_64BIT | \
-				 K1C_SFR_PS_MASK_CE)
+				 K1C_SFR_PS_MASK_CE | PS_ENABLE_MMU)
 /* Shift the whole value to set the bits to set using wfxl */
 #define PS_WFXL_VALUE		(PS_DEFAULT_VALUE << 32)
 
@@ -26,6 +31,39 @@
 #define WS_ENABLE_WU2		(K1C_SFR_WS_MASK_WU2)
 /* We only want to clear bits in ws */
 #define WS_WFXL_VALUE		(WS_ENABLE_WU2)
+
+#define JTLB_MAX_SETS 63
+#define JTLB_MAX_WAYS 3
+#define LTLB_MAX_WAYS 15
+
+/* Clean error and selected buffer */
+#define MMC_CLEAR_ERROR (K1C_SFR_MMC_MASK_E)
+#define MMC_SET_PMJ     ((0xF << K1C_SFR_MMC_SHIFT_PMJ) << 32)
+
+#define MMC_SELECT_WAY(n) \
+	(((n << K1C_SFR_MMC_SHIFT_SW) << 32) | K1C_SFR_MMC_MASK_SW)
+
+#define TEH_VIRTUAL_MEMORY (\
+	(PAGE_OFFSET >> 12) << K1C_SFR_TEH_SHIFT_PN | \
+	TLB_PS_1GB << K1C_SFR_TEH_SHIFT_PS | \
+	K1C_SFR_TEH_MASK_G)
+
+#define TEL_VIRTUAL_MEMORY (\
+	(PHYS_OFFSET >> 12) << K1C_SFR_TEL_SHIFT_FN | \
+	TLB_PA_NA_RWX << K1C_SFR_TEL_SHIFT_PA | \
+	TLB_CP_W_C << K1C_SFR_TEL_SHIFT_CP | \
+	TLB_ES_A_MODIFIED << K1C_SFR_TEL_SHIFT_ES)
+
+/* (TEH|TEL)_SHARED_MEMORY are mapping 0x0 to 0x0 so we don't need to set
+   PN and FN */
+#define TEH_SHARED_MEMORY (\
+	TLB_PS_512K << K1C_SFR_TEH_SHIFT_PS | \
+	K1C_SFR_TEH_MASK_G)
+
+#define TEL_SHARED_MEMORY (\
+	TLB_PA_NA_RWX << K1C_SFR_TEL_SHIFT_PA | \
+	TLB_CP_W_C << K1C_SFR_TEL_SHIFT_CP | \
+	TLB_ES_A_MODIFIED << K1C_SFR_TEL_SHIFT_ES)
 
 /*
  * This is our entry point. When entering from bootloader,
@@ -43,19 +81,138 @@
 
 __HEAD
 
+.altmacro
+
+/* To select the JTLB we clear SB from MMC */
+.macro select_jtlb scratch_reg
+	make \scratch_reg, K1C_SFR_MMC_MASK_SB
+	;;
+	wfxl $mmc, \scratch_reg
+.endm
+
+/* To select the LTLB we set SB from MMC */
+.macro select_ltlb scratch_reg
+	make \scratch_reg, K1C_SFR_MMC_MASK_SB << 32
+	;;
+	wfxl $mmc, \scratch_reg
+.endm
+
+/* Set SW of the MMC with number found in the reg register */
+.macro select_way_from_register reg scratch1 scratch2
+	slld \scratch1 = \reg, K1C_SFR_MMC_SHIFT_SW
+	make \scratch2 = K1C_SFR_MMC_MASK_SW
+	;;
+	slld \scratch1 = \scratch1, 32
+	;;
+	ord \scratch1 = \scratch1, \scratch2
+	;;
+	wfxl $mmc = \scratch1
+.endm
+
+/* Set SW of the MMC with the immediate */
+.macro select_way_from_immediate imm scratch1 scratch2
+	make \scratch1 = (\imm << K1C_SFR_MMC_SHIFT_SW) << 32
+	make \scratch2 = K1C_SFR_MMC_MASK_SW
+	;;
+	ord \scratch1 = \scratch1, \scratch2
+	;;
+	wfxl $mmc = \scratch1
+.endm
+
+/* write tlb after setting teh and tel registers */
+.macro write_tlb_entry teh tel
+	set $teh = \teh
+	;;
+	set $tel = \tel
+	;;
+	tlbwrite
+.endm
+
 .align 8
 .section .boot.startup, "ax", @progbits
+
 ENTRY(k1c_start)
 	/* (Re)initialize performance counter */
 	make $r20 = 0x00000000
 	;;
 	set $pmc = $r20
 	;;
+	make $r20 = MMC_SET_PMJ | MMC_CLEAR_ERROR
+	;;
+	wfxl $mmc = $r20
+	;;
+	/* Reset the JTLB */
+	select_jtlb $r20
+	;;
+	make $r20 = JTLB_MAX_SETS /* Used to select the set 63->0 */
+	make $r21 = 0  /* Used for shifting and as scratch register */
+	;;
+	set $tel = $r21	 /* tel is always equal to 0 */
+	;;
+	clear_jtlb:
+		slld $r21 = $r20, K1C_SFR_TEH_SHIFT_PN
+		addd $r20 = $r20, -1
+		;;
+		set $teh = $r21
+		;;
+		make $r22 = JTLB_MAX_WAYS  /* Used to select the way 3->0 */
+		;;
+		loop_jtlb_way:
+			select_way_from_register $r22 $r23 $r24
+			;;
+			tlbwrite
+			;;
+			addd $r22 = $r22, -1
+			;;
+			cb.dgez $r22? loop_jtlb_way
+			;;
+		/* loop_jtlb_way done */
+		cb.dgez $r20? clear_jtlb
+		;;
+	clear_jtlb_done:
+	/* Reset the LTLB */
+	select_ltlb $r20
+	;;
+	clear_ltlb:
+		/* There is only one set that is 0 so we can reuse the same
+		   values for TEH and TEL. */
+		make $r20 = 15
+		;;
+		loop_ltlb_way:
+			select_way_from_register $r20, $r21, $r22
+			;;
+			tlbwrite
+			;;
+			addd $r20 = $r20, -1
+			;;
+			cb.dgez $r20? loop_ltlb_way
+			;;
+	clear_ltlb_done:
+
+	/* See Documentation/k1c/k1c.txt for details about the settings of
+	   the LTLB */
+	select_way_from_immediate 0, $r20, $r21
+	;;
+	make $r20 = TEH_VIRTUAL_MEMORY
+	make $r21 = TEL_VIRTUAL_MEMORY
+	;;
+	write_tlb_entry $r20, $r21
+	;;
+	select_way_from_immediate 1, $r20, $r21
+	;;
+	make $r20 = TEH_SHARED_MEMORY
+	make $r21 = TEL_SHARED_MEMORY
+	;;
+	write_tlb_entry $r20, $r21
+	;;
 	/* Setup default processor status */
 	make $r25 = PS_WFXL_VALUE
 	;;
 	wfxl $ps = $r25
 	;;
+	/* Use as break point for debugging purpose.
+	   See Documentation/k1c/k1c.txt for more details. */
+gdb_mmu_enabled:
 	/* Clear BSS */
 	make $r22 = __bss_stop
 	make $r21 = __bss_start
