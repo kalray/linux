@@ -1,0 +1,83 @@
+MMU
+===
+
+Virtual addresses are on 41 bits for k1c when using 64bit mode.
+To differentiate kernel from user space, we use the high order bit
+(bit 40). if 1 , the higher remaining bits must also be set to one
+and it is kernel space. The same applied for 0 and it's user space
+mapping.
+
+Memory Map
+==========
+
+Currently, the memory mapping is the following:
+
++---------------------+---------------------+------+------+------------------------------+
+| Start               | End                 | Attr | Size | Name                         |
++---------------------+---------------------+------+------+------------------------------+
+| 0000 0000 0000 0000 | 0000 00FF FFFF FFFF | ---  | 1TB  | User                         |
+| 0000 00FF FFFF FFFF | FFFF FEFF FFFF FFFF | ---  | ---  | Hole between user and kernel |
+| FFFF FF00 0000 0000 | FFFF FF00 3FFF FFFF | R-X  | 1GB  | Kernel text mapping          |
+| FFFF FF00 4000 0000 | FFFF FF00 7FFF FFFF | RWX  | 1GB  | VMalloc mapping              |
++---------------------+---------------------+------+------+------------------------------+
+
+Page Table
+==========
+
+We support two and three levels for the page table and 4KB or 64KB for page size.
+
+2 page table levels
+-------------------
+
+The page table layout for a 4KB page size is:
+
+...--------------------------------------------------------+
+   48|47    40|39    32|31    24|23    16|15     8|7      0|
+...----------+-+--------------+---------------+------------+
+             | |              |               |
+             | |              |               +--->  [11:0] Offset (12 bits)
+             | |              +------------------->  [25:12] PTE offset (14 bits)
+             | +---------------------------------->  [39:26] PGD offset (14 bits)
+             +------------------------------------>  [40] 0 if user, 1 otherwise
+
+The page table layout for a 64KB page size is:
+
+...--------------------------------------------------------+
+   48|47    40|39    32|31    24|23    16|15     8|7      0|
+...----------+-+------------+-------------+----------------+
+             | |            |             |
+             | |            |             +------->  [15:0] Offset (16 bits)
+             | |            +--------------------->  [27:16] PTE offset (12 bits)
+             | +---------------------------------->  [39:28] PGD offset (12 bits)
+             +------------------------------------>  [40] 0 if user, 1 otherwise
+
+Bits 41 to 64 are signed extended.
+
+3 page table levels
+-------------------
+
+The page table layout for a 4KB page size is:
+
+...--------------------------------------------------------+
+   48|47    40|39    32|31    24|23    16|15     8|7      0|
+...----------+-+--------+----------+----------+------------+
+             | |        |          |          |
+             | |        |          |          +--->  [11:0] Offset (12 bits)
+             | |        |          +-------------->  [21:12] PTE offset (10 bits)
+             | |        +------------------------->  [31:22] PMD offset (10 bits)
+             | +---------------------------------->  [39:32] PGD offset (8 bits)
+             +------------------------------------>  [40] 0 if user, 1 otherwise
+
+The page table layout for a 64KB page size is:
+
+...--------------------------------------------------------+
+   48|47    40|39    32|31    24|23    16|15     8|7      0|
+...----------+-+--------+--------+--------+----------------+
+             | |        |        |        |
+             | |        |        |        +------->  [15:0] Offset (16 bits)
+             | |        |        +---------------->  [23:16] PTE offset (8 bits)
+             | |        +------------------------->  [31:24] PMD offset (8 bits)
+             | +---------------------------------->  [39:32] PGD offset (8 bits)
+             +------------------------------------>  [40] 0 if user, 1 otherwise
+
+Bits 41 to 64 are signed extended.
