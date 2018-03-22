@@ -7,14 +7,15 @@
  */
 
 
-#include <asm-generic/vmlinux.lds.h>
-
 #include <asm/thread_info.h>
 #include <asm/cache.h>
 #include <asm/page.h>
 
 #define BOOT_ENTRY		0x0
 #define DTB_DEFAULT_SIZE	(24 * 1024)
+
+#define LOAD_OFFSET  (PAGE_OFFSET - PHYS_OFFSET)
+#include <asm-generic/vmlinux.lds.h>
 
 OUTPUT_FORMAT("elf64-k1")
 OUTPUT_ARCH(k1c)
@@ -23,17 +24,17 @@ ENTRY(k1c_start)
 jiffies = jiffies_64;
 SECTIONS
 {
-        . = BOOT_ENTRY;
-        .boot :
-        {
+	. = BOOT_ENTRY;
+	.boot :
+	{
 		KEEP(*(.boot.startup));
-        }
+	}
 
-	. = LOAD_ADDR;
+	. = PAGE_OFFSET;
 	_start = .;
 
 	/* Exception vector must be aligned on a huge frontier */
-	.exception ALIGN(EXCEPTION_ALIGNEMENT) :
+	.exception ALIGN(EXCEPTION_ALIGNEMENT) : AT(ADDR(.exception) - LOAD_OFFSET)
 	{
 		_exception_start = ABSOLUTE(.);
 		/**
@@ -64,7 +65,7 @@ SECTIONS
 	INIT_TEXT_SECTION(PAGE_SIZE)
 	INIT_DATA_SECTION(16)
 	PERCPU_SECTION(L1_CACHE_BYTES)
-	.dtb :
+	.dtb : AT(ADDR(.dtb) - LOAD_OFFSET)
 	{
 		. = ALIGN(32);
 		__dtb_start = .;
@@ -74,7 +75,7 @@ SECTIONS
 	__init_end = .;
 
 	_stext = .;
-        .text :
+	.text : AT(ADDR(.text) - LOAD_OFFSET)
 	{
 		_text = .;
 		TEXT_TEXT
@@ -89,13 +90,12 @@ SECTIONS
 	}
 	_etext = .;
 
-	.gdb_page ALIGN(PAGE_SIZE) :
+	.gdb_page ALIGN(PAGE_SIZE) : AT(ADDR(.gdb_page) - LOAD_OFFSET)
 	{
-		_debug_start = ABSOLUTE(.);
-		_debug_phy_start = ABSOLUTE(.);
+		_debug_start = ADDR(.gdb_page) - LOAD_OFFSET;
+		_debug_start_lma = ABSOLUTE(.);
 		. += PAGE_SIZE;
 	}
-	__debug_phy_end = ABSOLUTE(.);
 
 	_sdata = .;
 	RO_DATA_SECTION(PAGE_SIZE)
@@ -112,6 +112,6 @@ SECTIONS
 	STABS_DEBUG
 	DWARF_DEBUG
 
-        /* Sections to be discarded -- must be last */
+	/* Sections to be discarded -- must be last */
 	DISCARDS
 }
