@@ -23,13 +23,14 @@
  * Prepare and save registers for entry in kernel space.
  */
 .macro prep_save_regs_for_exception
+	LOCAL _save_regs
 	/* Get a free register */
 	set $sr1 = $r48
 	;;
 	get $r48 = $sps
 	;;
-	/* Check if $sps.pm bit is set */
-	cb.odd $r48? 1f
+	/* Check if $sps.pm bit is set (ie in kernel mode) */
+	cb.odd $r48? _save_regs
 	;;
 	/* Get the current task_struct */
 	get $r48 = $sr0
@@ -42,7 +43,8 @@
 	get $r48 = $sr1
 	;;
 	/* make some place on stack to save registers */
-1:	addd $sp = $sp, -(PT_SIZE_ON_STACK)
+_save_regs:
+	addd $sp = $sp, -(PT_SIZE_ON_STACK)
 	so (PT_Q0-PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
 	;;
 	so PT_Q4[$sp] = $r4r5r6r7
