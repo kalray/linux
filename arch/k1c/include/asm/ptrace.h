@@ -10,6 +10,7 @@
 #define _ASM_K1C_PTRACE_H
 
 #include <asm/types.h>
+#include <asm/sfr_defs.h>
 
 #define GPR_COUNT	64
 
@@ -96,10 +97,8 @@ struct pt_regs {
 	uint64_t dummy;
 } __packed;
 
-#define SPS_PM_MASK	0x1	
-
 #define user_stack_pointer(regs)	((regs)->r12)
 #define instruction_pointer(regs)	((regs)->spc)
-#define user_mode(regs) 		(((regs)->sps & SPS_PM_MASK) == 0)
+#define user_mode(regs)			(((regs)->sps & K1C_MASK_PS_PM) == 0)
 
 #endif	/* _ASM_K1C_PTRACE_H */
