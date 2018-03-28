@@ -3,7 +3,7 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc.
+ * Copyright (C) 2018 Kalray Inc.
  */
 
 #ifndef _ASM_K1C_TRAPS_H
@@ -16,6 +16,7 @@
 typedef void (*trap_handler_func) (uint64_t es, uint64_t ea,
 				   struct pt_regs *regs);
 
-#define trap_cause(__es)	((__es & K1C_MASK_ES_HTC) >> K1C_SHIFT_ES_HTC)
+#define trap_cause(__es) \
+		((__es & K1C_SFR_ES_MASK_HTC) >> K1C_SFR_ES_SHIFT_HTC)
 
 #endif
