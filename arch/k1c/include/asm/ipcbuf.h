@@ -3,14 +3,13 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc.
+ * Copyright (C) 2018 Kalray Inc.
  */
 
 #ifndef _ASM_K1C_IPCBUF_H
 #define _ASM_K1C_IPCBUF_H
 
-struct ipc64_perm
-{
+struct ipc64_perm {
 	/*
 	 * FIXME AUTO: Fill ipc64_perm structure correctly
 	 */
