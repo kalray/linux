@@ -3,7 +3,7 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc.
+ * Copyright (C) 2018 Kalray Inc.
  */
 
 #ifndef _ASM_K1C_PROCESSOR_H
@@ -71,7 +71,7 @@ struct thread_struct {
  * Default implementation of macro that returns current
  * instruction pointer ("program counter").
  */
-#define current_text_addr() ({ __label__ _l; _l: &&_l;})
+#define current_text_addr() ({ __label__ _l; _l: &&_l; })
 
 #define task_pt_regs(p) \
 	((struct pt_regs *)(task_stack_page(p) + THREAD_SIZE) - 1)
