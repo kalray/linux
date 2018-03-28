@@ -3,7 +3,7 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc.
+ * Copyright (C) 2018 Kalray Inc.
  */
 
 #ifndef _ASM_K1C_PGTABLE_H
@@ -31,7 +31,7 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
 #define __swp_type(x)           (0)
 #define __swp_offset(x)         (0)
-#define __swp_entry(typ,off)    ((swp_entry_t) { ((typ) | ((off) << 7)) })
+#define __swp_entry(typ, off)   ((swp_entry_t) { ((typ) | ((off) << 7)) })
 #define __pte_to_swp_entry(pte) ((swp_entry_t) { pte_val(pte) })
 #define __swp_entry_to_pte(x)   ((pte_t) { (x).val })
 
