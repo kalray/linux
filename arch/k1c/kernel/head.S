@@ -12,18 +12,18 @@
 #include <linux/init.h>
 
 /* Enable 64bits for both user and kernel */
-#define PS_ENABLE_64BIT		(K1C_MASK_PS_P64 | K1C_MASK_PS_U64)
+#define PS_ENABLE_64BIT		(K1C_SFR_PS_MASK_P64 | K1C_SFR_PS_MASK_U64)
 /* Enable both ICache and DCache */
-#define PS_ENABLE_CACHES	(K1C_MASK_PS_DCE | K1C_MASK_PS_ICE)
+#define PS_ENABLE_CACHES	(K1C_SFR_PS_MASK_DCE | K1C_SFR_PS_MASK_ICE)
 /* Enable also hardware loops and uncached streaming */
-#define PS_DEFAULT_VALUE	(K1C_MASK_PS_HLE | K1C_MASK_PS_USE | \
+#define PS_DEFAULT_VALUE	(K1C_SFR_PS_MASK_HLE | K1C_SFR_PS_MASK_USE | \
 				 PS_ENABLE_CACHES | PS_ENABLE_64BIT | \
-				 K1C_MASK_PS_CE)
+				 K1C_SFR_PS_MASK_CE)
 /* Shift the whole value to set the bits to set using wfxl */
 #define PS_WFXL_VALUE		(PS_DEFAULT_VALUE << 32)
 
 /* Enable STOP in WS */
-#define WS_ENABLE_WU2		(K1C_MASK_WS_WU2)
+#define WS_ENABLE_WU2		(K1C_SFR_WS_MASK_WU2)
 /* We only want to clear bits in ws */
 #define WS_WFXL_VALUE		(WS_ENABLE_WU2)
 
