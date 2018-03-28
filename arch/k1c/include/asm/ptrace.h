@@ -99,6 +99,6 @@ struct pt_regs {
 
 #define user_stack_pointer(regs)	((regs)->r12)
 #define instruction_pointer(regs)	((regs)->spc)
-#define user_mode(regs)			(((regs)->sps & K1C_MASK_PS_PM) == 0)
+#define user_mode(regs)	(((regs)->sps & K1C_SFR_PS_MASK_PM) == 0)
 
 #endif	/* _ASM_K1C_PTRACE_H */
