@@ -3,7 +3,7 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc.
+ * Copyright (C) 2018 Kalray Inc.
  */
 
 #include <linux/interrupt.h>
