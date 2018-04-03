@@ -14,14 +14,21 @@
 #define EXCEPTION_STRIDE	0x400
 #define EXCEPTION_ALIGNEMENT	0x1000
 
+#if defined CONFIG_K1C_64K_PAGES
+#define PAGE_SHIFT		16
+#elif defined CONFIG_K1C_4K_PAGES
 #define PAGE_SHIFT		12
+#else
+#error we only support 4K and 64K for page size
+#endif
+
 #define PAGE_SIZE		_BITUL(PAGE_SHIFT)
 #define PAGE_MASK		(~(PAGE_SIZE - 1))
 
-#define PHYS_OFFSET		0x80000000
-#define PAGE_OFFSET		0xFFFFFF0000000000
+#define PHYS_OFFSET		CONFIG_K1C_PHYS_OFFSET
+#define PAGE_OFFSET		CONFIG_K1C_PAGE_OFFSET
 
-#define ARCH_PFN_OFFSET	(PAGE_OFFSET >> PAGE_SHIFT)
+#define ARCH_PFN_OFFSET	((unsigned long)(PHYS_OFFSET >> PAGE_SHIFT))
 
 #ifndef __ASSEMBLY__
 
@@ -32,13 +39,7 @@ typedef struct {
 	unsigned long pgd;
 } pgd_t;
 
-/* As pmd_t is specific to at least a 3 level page table we put its
- * definition in pgtable-3levels.h
- */
-
-typedef struct {
-	unsigned long pmd;
-} pmd_t;
+/* As pmd_t is for 3 level page table it is defined in pgtable-3levels.h */
 
 /* Page Table entry */
 typedef struct {
@@ -56,7 +57,7 @@ typedef struct page *pgtable_t;
  * Macros to access entry values
  */
 #define pgd_val(x)	((x).pgd)
-#define pmd_val(x)	((&x)->pmd[0])
+/* pmd_val(x) is defined in pgtable-3levels.h */
 #define pte_val(x)	((x).pte)
 #define pgprot_val(x)	((x).pgprot)
 
@@ -64,7 +65,7 @@ typedef struct page *pgtable_t;
  * Macro to create entry from value
  */
 #define __pgd(x)	((pgd_t) { (x) })
-#define __pmd(x)	((pmd_t) { (x) })
+/* __pmd(x) is defined in pgtable-3levels.h */
 #define __pte(x)	((pte_t) { (x) })
 #define __pgprot(x)	((pgprot_t) { (x) })
 
