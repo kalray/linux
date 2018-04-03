@@ -11,10 +11,19 @@
 
 #define ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE 0
 
+#define flush_cache_mm(mm)			do { } while (0)
+#define flush_cache_range(vma, start, end)	do { } while (0)
+#define flush_cache_dup_mm(mm)			do { } while (0)
+#define flush_cache_page(vma, vmaddr, pfn)	do { } while (0)
+
+#define flush_cache_vmap(start, end)		do { } while (0)
+#define flush_cache_vunmap(start, end)		do { } while (0)
+
 /*
  * FIXME AUTO: implement flush_dcache_page correctly.
  */
-#define flush_dcache_page(page)                 do { } while (0)
+#define flush_dcache_page(page)		do { } while (0)
+#define flush_icache_page(vma, pg)	do { } while (0)
 
 /*
  * FIXME AUTO: implement flush_icache_range correctly.
