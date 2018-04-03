@@ -13,7 +13,7 @@ config FIX_EARLYCON_MEM
 	def_bool y
 
 config MMU
-	def_bool n
+	def_bool y
 
 config KALLSYMS_BASE_RELATIVE
         def_bool n
@@ -50,6 +50,10 @@ config K1C
 	select TIMER_OF
 	select K1C_CORE_INTC
 
+config PGTABLE_LEVELS
+	int
+	default 3
+
 config HAVE_KPROBES
 	def_bool n
 
@@ -63,6 +67,14 @@ config POISON_INITMEM
 	  some data/code is stille using them. Enable this for debug
 	  purposes
 
+config K1C_PHYS_OFFSET
+	hex "RAM address of memory base"
+	default 0x80000000
+
+config K1C_PAGE_OFFSET
+	hex "RAM address of memory base"
+	default 0xFFFFFF0000000000
+
 config STACK_MAX_DEPTH_TO_PRINT
 	int "Maximum depth of stack to print"
 	range 1 128
@@ -74,6 +86,35 @@ config NR_CPUS
 	depends on SMP
 	help
 	  Kalray support can handle a maximum of 16 CPUs.
+
+choice
+	prompt "Page size"
+	default K1C_4K_PAGES
+	help
+	  Page size (translation granule) configuration.
+
+config K1C_4K_PAGES
+	bool "4KB"
+	help
+	  This feature
+	  enables 4KB
+	  pages
+	  support.
+
+config K1C_64K_PAGES
+	bool "64KB"
+	help
+	  This feature
+	  enables 64KB
+	  pages support
+	  (4KB by default).
+
+endchoice
+
+config K1C_PAGE_SHIFT
+	int
+	default 16 if K1C_64K_PAGES
+	default 12
 
 config CMDLINE
         string "Default kernel command string"
