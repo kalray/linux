@@ -61,6 +61,12 @@ void show_regs(struct pt_regs *regs)
 	pr_info("\n\n");
 }
 
+void start_thread(struct pt_regs *regs,
+			unsigned long pc, unsigned long sp)
+{
+	panic("%s unimplemented\n", __func__);
+}
+
 int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		unsigned long kthread_arg, struct task_struct *p,
 		unsigned long tls)
