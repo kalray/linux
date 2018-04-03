@@ -12,7 +12,21 @@
 #include <asm/types.h>
 #include <asm/segment.h>
 
-#define TASK_SIZE      0xFFFFFFFF
+/*
+ * We use the highest order bit for kernel/user split.
+ * on K1C, we have 41 bit virtual adresses
+ * Hence, user can go up to 1TB of memory
+ */
+#define TASK_SIZE      _BITULL(MMU_ADDR_BITS - 1)
+
+/*
+ * This decides where the kernel will search for a free chunk of vm
+ * space during mmap's.
+ */
+#define TASK_UNMAPPED_BASE	PAGE_ALIGN(TASK_SIZE >> 1)
+
+#define STACK_TOP		TASK_SIZE
+#define STACK_TOP_MAX		STACK_TOP
 
 extern char _exception_start;
 
@@ -77,6 +91,8 @@ struct thread_struct {
 	((struct pt_regs *)(task_stack_page(p) + THREAD_SIZE) - 1)
 
 void release_thread(struct task_struct *t);
+
+void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp);
 
 unsigned long get_wchan(struct task_struct *p);
 
