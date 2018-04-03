@@ -11,6 +11,8 @@
 #include <linux/cpu.h>
 #include <linux/of.h>
 
+unsigned long elf_hwcap __read_mostly;
+
 static int show_cpuinfo(struct seq_file *m, void *v)
 {
 	int cpu_num = *(unsigned int *)v;
