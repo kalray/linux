@@ -26,11 +26,16 @@ static void __init zone_sizes_init(void)
 {
 	unsigned long zones_size[MAX_NR_ZONES];
 
+	/* We only use the ZONE_NORMAL since our DMA can access
+	 * this zone. As we run on 64 bits we don't need to configure
+	 * the ZONE_HIGHMEM.
+	 */
 	memset(zones_size, 0, sizeof(zones_size));
 	zones_size[ZONE_NORMAL] = max_mapnr;
-	free_area_init_node(0, zones_size, min_low_pfn, NULL);
-}
 
+	/* We are UMA so we don't have different nodes */
+	free_area_init(zones_size);
+}
 
 void __init paging_init(void)
 {
@@ -39,36 +44,47 @@ void __init paging_init(void)
 
 static void __init setup_bootmem(void)
 {
-	struct memblock_region *reg;
-	phys_addr_t mem_size = 0;
-	extern char _start;
-	uintptr_t pa = (uintptr_t) &_start;
+	struct memblock_region *region;
+	phys_addr_t kernel_start, kernel_end;
+	phys_addr_t memory_start, memory_end;
+	int kernel_memory_reserved = 0;
 
 	init_mm.start_code = (unsigned long)_stext;
 	init_mm.end_code = (unsigned long)_etext;
 	init_mm.end_data = (unsigned long)_edata;
 	init_mm.brk = (unsigned long)_end;
 
-	/* Find the memory region containing the kernel */
-	for_each_memblock(memory, reg) {
-		phys_addr_t vmlinux_end = __pa(_end);
-		phys_addr_t end = reg->base + reg->size;
+	/* kernel means text + data here */
+	kernel_start = __pa(init_mm.start_code);
+	kernel_end = __pa(init_mm.brk);
+	memory_start = memory_end = 0;
 
-		if (reg->base <= vmlinux_end && vmlinux_end <= end) {
-			/*
-			 * Reserve from the start of the region to the end of
-			 * the kernel
-			 */
-			memblock_reserve(reg->base, vmlinux_end - reg->base);
-			mem_size = min(reg->size, (phys_addr_t)-PAGE_OFFSET);
+	/* Find the memory region containing the kernel */
+	for_each_memblock(memory, region) {
+		memory_start = region->base;
+		memory_end = memory_start + region->size;
+
+		pr_info("%s: Memory: 0x%lx-0x%lx\n", __func__,
+			(unsigned long)memory_start,
+			(unsigned long)memory_end);
+
+		/* Check that this memblock includes the kernel */
+		if (memory_start <= kernel_start && kernel_end <= memory_end) {
+			/* Reserve from the start to the end of the kernel. */
+			memblock_reserve(kernel_start,
+					 kernel_end - kernel_start);
+			kernel_memory_reserved = 1;
 			break;
 		}
 	}
-	BUG_ON(mem_size == 0);
+	BUG_ON(kernel_memory_reserved == 0);
 
-	set_max_mapnr(PFN_DOWN(mem_size));
-	max_low_pfn = PFN_DOWN(pa) + PFN_DOWN(mem_size);
-	min_low_pfn = ARCH_PFN_OFFSET;
+	/* min_low_pfn is the lowest PFN available in the system */
+	min_low_pfn = PFN_UP(memory_start);
+
+	/* max_low_pfn indicates the end if NORMAL zone */
+	max_low_pfn = PFN_DOWN(memblock_end_of_DRAM());
+	set_max_mapnr(max_low_pfn);
 
 	early_init_fdt_scan_reserved_mem();
 
