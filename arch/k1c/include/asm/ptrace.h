@@ -101,4 +101,7 @@ struct pt_regs {
 #define instruction_pointer(regs)	((regs)->spc)
 #define user_mode(regs)	(((regs)->sps & K1C_SFR_PS_PM_MASK) == 0)
 
+int do_syscall_trace_enter(struct pt_regs *regs, unsigned long syscall);
+void do_syscall_trace_exit(struct pt_regs *regs);
+
 #endif	/* _ASM_K1C_PTRACE_H */
