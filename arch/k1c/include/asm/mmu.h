@@ -79,24 +79,24 @@ struct k1c_tlb_format {
 } while (0)
 
 #define k1c_mmu_mmc_clean_error_flag() \
-	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_SHIFT_E)
+	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_E_SHIFT)
 
 #define k1c_mmu_select_way(way)  \
-	k1c_sfr_set_mask(K1C_SFR_MMC, K1C_SFR_MMC_MASK_SW, \
-		(way << K1C_SFR_MMC_SHIFT_SW))
+	k1c_sfr_set_mask(K1C_SFR_MMC, K1C_SFR_MMC_SW_MASK, \
+		(way << K1C_SFR_MMC_SW_SHIFT))
 
 #define k1c_mmu_select_jtlb() \
-	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_SHIFT_SB)
+	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_SB_SHIFT)
 
 #define k1c_mmu_select_ltlb() \
-	k1c_sfr_set_bit(K1C_SFR_MMC, K1C_SFR_MMC_SHIFT_SB)
+	k1c_sfr_set_bit(K1C_SFR_MMC, K1C_SFR_MMC_SB_SHIFT)
 
 static inline void k1c_mmu_writetlb(void) { asm volatile ("tlbwrite;;"); }
 static inline void k1c_mmu_readtlb(void) { asm volatile ("tlbread;;"); }
 
 static inline int k1c_mmu_mmc_error_is_set(void)
 {
-	return (K1C_SFR_MMC_MASK_E & k1c_sfr_get(K1C_SFR_MMC)) != 0;
+	return (K1C_SFR_MMC_E_MASK & k1c_sfr_get(K1C_SFR_MMC)) != 0;
 }
 
 extern void k1c_mmu_setup_initial_mapping(void);
