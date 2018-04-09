@@ -17,6 +17,6 @@ typedef void (*trap_handler_func) (uint64_t es, uint64_t ea,
 				   struct pt_regs *regs);
 
 #define trap_cause(__es) \
-		((__es & K1C_SFR_ES_MASK_HTC) >> K1C_SFR_ES_SHIFT_HTC)
+		((__es & K1C_SFR_ES_HTC_MASK) >> K1C_SFR_ES_HTC_SHIFT)
 
 #endif

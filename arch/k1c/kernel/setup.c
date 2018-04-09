@@ -49,12 +49,12 @@ static void setup_processor(void)
 	 * before entering interrupts or we will take a trap,
 	 * not exactly what we want...
 	 */
-	k1c_sfr_clear_bit(K1C_SFR_PS, K1C_SFR_PS_SHIFT_ET);
+	k1c_sfr_clear_bit(K1C_SFR_PS, K1C_SFR_PS_ET_SHIFT);
 
 	/**
 	 * Make sure nobody disabled traps before booting and reenable them
 	 */
-	k1c_sfr_clear_bit(K1C_SFR_PS, K1C_SFR_PS_SHIFT_HTD);
+	k1c_sfr_clear_bit(K1C_SFR_PS, K1C_SFR_PS_HTD_SHIFT);
 
 	k1c_init_core_irq();
 }
