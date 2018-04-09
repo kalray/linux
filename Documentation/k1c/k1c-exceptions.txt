@@ -25,3 +25,33 @@ Interrupts, and traps are serviced similarly, ie:
 entry.S file is (as for other architectures) the entry point into kernel.
 It contains all assembly routines related to Interrupts/traps/syscall.
 
+Syscall handling
+================
+
+syscall are handled differently than interrupts/exceptions. From an ABI
+POV, they are seen as simple function calls. This means that we can
+clobber any caller saved registers we want. However, syscall parameters
+are passed using registers r0 through r7. These registers must be
+preserved to avoid cloberring them before the actual syscall function.
+
+On syscall from userspace (scall instruction), the processor will put
+the syscall number in $es.sn and switch from user to kernel privilege
+mode. k1c_syscall_handler will be called in kernel mode.
+
+The following steps are then taken:
+
+- Switch to kernel stack
+- Extract syscall number
+- Check that the syscall number is not bogus
+ - If so, set syscall func to a not implemented one
+- Check if tracing is enabled
+ - If so, jump to trace_syscall_enter
+ - Save syscall arguments (r0 -> r7) on stack in pt_regs
+ - Call do_trace_syscall_enter function
+- Restore syscall arguments since they have been modified by C call
+- Call the syscall function
+- If tracing was enabled, call trace_syscall_exit
+- Return to user !
+
+The trace call is handled out of the fast path. All slow path handling
+is done in another part of code to avoid messing with the cache.
