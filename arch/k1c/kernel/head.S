@@ -14,21 +14,21 @@
 #include <linux/init.h>
 
 /* Enable 64bits for both user and kernel */
-#define PS_ENABLE_64BIT		(K1C_SFR_PS_MASK_P64 | K1C_SFR_PS_MASK_U64)
+#define PS_ENABLE_64BIT		(K1C_SFR_PS_P64_MASK | K1C_SFR_PS_U64_MASK)
 /* Enable both ICache and DCache */
-#define PS_ENABLE_CACHES	(K1C_SFR_PS_MASK_DCE | K1C_SFR_PS_MASK_ICE)
+#define PS_ENABLE_CACHES	(K1C_SFR_PS_DCE_MASK | K1C_SFR_PS_ICE_MASK)
 /* Enable MMU */
-#define PS_ENABLE_MMU		(K1C_SFR_PS_MASK_MME)
+#define PS_ENABLE_MMU		(K1C_SFR_PS_MME_MASK)
 
 /* Enable also hardware loops and uncached streaming */
-#define PS_DEFAULT_VALUE	(K1C_SFR_PS_MASK_HLE | K1C_SFR_PS_MASK_USE | \
+#define PS_DEFAULT_VALUE	(K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_USE_MASK | \
 				 PS_ENABLE_CACHES | PS_ENABLE_64BIT | \
-				 K1C_SFR_PS_MASK_CE | PS_ENABLE_MMU)
+				 K1C_SFR_PS_CE_MASK | PS_ENABLE_MMU)
 /* Shift the whole value to set the bits to set using wfxl */
 #define PS_WFXL_VALUE		(PS_DEFAULT_VALUE << 32)
 
 /* Enable STOP in WS */
-#define WS_ENABLE_WU2		(K1C_SFR_WS_MASK_WU2)
+#define WS_ENABLE_WU2		(K1C_SFR_WS_WU2_MASK)
 /* We only want to clear bits in ws */
 #define WS_WFXL_VALUE		(WS_ENABLE_WU2)
 
@@ -37,33 +37,33 @@
 #define LTLB_MAX_WAYS 15
 
 /* Clean error and selected buffer */
-#define MMC_CLEAR_ERROR (K1C_SFR_MMC_MASK_E)
-#define MMC_SET_PMJ     ((0xF << K1C_SFR_MMC_SHIFT_PMJ) << 32)
+#define MMC_CLEAR_ERROR (K1C_SFR_MMC_E_MASK)
+#define MMC_SET_PMJ     ((0xF << K1C_SFR_MMC_PMJ_SHIFT) << 32)
 
 #define MMC_SELECT_WAY(n) \
-	(((n << K1C_SFR_MMC_SHIFT_SW) << 32) | K1C_SFR_MMC_MASK_SW)
+	(((n << K1C_SFR_MMC_SW_SHIFT) << 32) | K1C_SFR_MMC_SW_MASK)
 
 #define TEH_VIRTUAL_MEMORY (\
-	(PAGE_OFFSET >> 12) << K1C_SFR_TEH_SHIFT_PN | \
-	TLB_PS_1GB << K1C_SFR_TEH_SHIFT_PS | \
-	K1C_SFR_TEH_MASK_G)
+	(PAGE_OFFSET >> 12) << K1C_SFR_TEH_PN_SHIFT | \
+	TLB_PS_1GB << K1C_SFR_TEH_PS_SHIFT | \
+	K1C_SFR_TEH_G_MASK)
 
 #define TEL_VIRTUAL_MEMORY (\
-	(PHYS_OFFSET >> 12) << K1C_SFR_TEL_SHIFT_FN | \
-	TLB_PA_NA_RWX << K1C_SFR_TEL_SHIFT_PA | \
-	TLB_CP_W_C << K1C_SFR_TEL_SHIFT_CP | \
-	TLB_ES_A_MODIFIED << K1C_SFR_TEL_SHIFT_ES)
+	(PHYS_OFFSET >> 12) << K1C_SFR_TEL_FN_SHIFT | \
+	TLB_PA_NA_RWX << K1C_SFR_TEL_PA_SHIFT | \
+	TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT | \
+	TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT)
 
 /* (TEH|TEL)_SHARED_MEMORY are mapping 0x0 to 0x0 so we don't need to set
    PN and FN */
 #define TEH_SHARED_MEMORY (\
-	TLB_PS_512K << K1C_SFR_TEH_SHIFT_PS | \
-	K1C_SFR_TEH_MASK_G)
+	TLB_PS_512K << K1C_SFR_TEH_PS_SHIFT | \
+	K1C_SFR_TEH_G_MASK)
 
 #define TEL_SHARED_MEMORY (\
-	TLB_PA_NA_RWX << K1C_SFR_TEL_SHIFT_PA | \
-	TLB_CP_W_C << K1C_SFR_TEL_SHIFT_CP | \
-	TLB_ES_A_MODIFIED << K1C_SFR_TEL_SHIFT_ES)
+	TLB_PA_NA_RWX << K1C_SFR_TEL_PA_SHIFT | \
+	TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT | \
+	TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT)
 
 /*
  * This is our entry point. When entering from bootloader,
@@ -85,22 +85,22 @@ __HEAD
 
 /* To select the JTLB we clear SB from MMC */
 .macro select_jtlb scratch_reg
-	make \scratch_reg, K1C_SFR_MMC_MASK_SB
+	make \scratch_reg, K1C_SFR_MMC_SB_MASK
 	;;
 	wfxl $mmc, \scratch_reg
 .endm
 
 /* To select the LTLB we set SB from MMC */
 .macro select_ltlb scratch_reg
-	make \scratch_reg, K1C_SFR_MMC_MASK_SB << 32
+	make \scratch_reg, K1C_SFR_MMC_SB_MASK << 32
 	;;
 	wfxl $mmc, \scratch_reg
 .endm
 
 /* Set SW of the MMC with number found in the reg register */
 .macro select_way_from_register reg scratch1 scratch2
-	slld \scratch1 = \reg, K1C_SFR_MMC_SHIFT_SW
-	make \scratch2 = K1C_SFR_MMC_MASK_SW
+	slld \scratch1 = \reg, K1C_SFR_MMC_SW_SHIFT
+	make \scratch2 = K1C_SFR_MMC_SW_MASK
 	;;
 	slld \scratch1 = \scratch1, 32
 	;;
@@ -111,8 +111,8 @@ __HEAD
 
 /* Set SW of the MMC with the immediate */
 .macro select_way_from_immediate imm scratch1 scratch2
-	make \scratch1 = (\imm << K1C_SFR_MMC_SHIFT_SW) << 32
-	make \scratch2 = K1C_SFR_MMC_MASK_SW
+	make \scratch1 = (\imm << K1C_SFR_MMC_SW_SHIFT) << 32
+	make \scratch2 = K1C_SFR_MMC_SW_MASK
 	;;
 	ord \scratch1 = \scratch1, \scratch2
 	;;
@@ -150,7 +150,7 @@ ENTRY(k1c_start)
 	set $tel = $r21	 /* tel is always equal to 0 */
 	;;
 	clear_jtlb:
-		slld $r21 = $r20, K1C_SFR_TEH_SHIFT_PN
+		slld $r21 = $r20, K1C_SFR_TEH_PN_SHIFT
 		addd $r20 = $r20, -1
 		;;
 		set $teh = $r21
