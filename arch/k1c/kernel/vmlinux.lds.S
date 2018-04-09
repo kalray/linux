@@ -65,9 +65,9 @@ SECTIONS
 	INIT_TEXT_SECTION(PAGE_SIZE)
 	INIT_DATA_SECTION(16)
 	PERCPU_SECTION(L1_CACHE_BYTES)
+	. = ALIGN(32);
 	.dtb : AT(ADDR(.dtb) - LOAD_OFFSET)
 	{
-		. = ALIGN(32);
 		__dtb_start = .;
 		. += DTB_DEFAULT_SIZE;
 		__dtb_end = .;
