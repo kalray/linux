@@ -11,10 +11,13 @@
 #include <asm/thread_info.h>
 #include <asm/asm-offsets.h>
 #include <asm/sfr_defs.h>
+#include <asm/unistd.h>
 
 #define SCRATCHPAD_SIZE		16
 
 #define PS_HWLOOP_ENABLE	(K1C_SFR_PS_HLE_MASK << 32)
+#define PS_HLE_EN_IT_EN	\
+		((K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_IE_MASK) << 32)
 #define PS_HLE_EN_ET_CLEAR	(K1C_SFR_PS_HLE_MASK << 32 | K1C_SFR_PS_ET_MASK)
 
 .altmacro
@@ -245,7 +248,151 @@ ENDPROC(k1c_interrupt_handler)
 ***********************************************************************/
 .section .exception.syscall, "ax", @progbits
 ENTRY(k1c_syscall_handler):
-	errop
+	/**
+	 * Syscalls are seen as standard func call from ABI POV
+	 * We may use all caller saved register whithout causing havoc
+	 * in the userspace. If we do not touch callee saved registers,
+	 * then we have nothing to save since it will be done by callee
+	 * func.
+	 * Note that r0 -> r11 MUST not be used since they are
+	 * containing syscall parameters !
+	 * During this function:
+	 * r36 = sr0 = current
+	 * r37 = current trace flag
+	 * r38 = syscall handler addr
+	 * These 3 registers must live across function calls.
+	 * r36 and r37 are used to speedup syscall return after actual
+	 * syscall func.
+	 */
+	get $r32 = $es
+	make $r43 = 0x0
+	;;
+	get $r36 = $sr0
+	;;
+	/* Extract syscall number */
+	extfz $r32 = $r32, 14, 3
+	make $r41 = sys_call_table
+	/* Store current user stack pointer sp of thread_info */
+	sd TASK_THREAD_USER_SP[$r36] = $sp
+	/* Clear $le on entry */
+	set $le = $r43
+	;;
+	ld $r37 = TASK_TI_FLAGS[$r36]
+	/* Reenable hardware loops and IT */
+	make $r44 = PS_HLE_EN_IT_EN
+	;;
+	/* Enable hwloop */
+	wfxl $ps, $r44
+	;;
+	/* Check for out-of-bound syscall number */
+	sbfd $r50 = $r32, __NR_syscalls
+	/* Compute syscall func addr (ie sys_call_table[$r32])*/
+	ld.xs $r38 = $r32[$r41]
+	/* True if trace syscall enable */
+	andd $r37 = $r37, _TIF_SYSCALL_TRACE
+	;;
+	/* Restore kernel stack pointer */
+	ld $sp = TASK_THREAD_KERNEL_SP[$r36]
+	/* If the syscall number is valid, directly jump to do_syscall */
+	cb.dlez $r50? invalid_scall
+	;;
+check_trace:
+	/* Make some space on stack and store volatile register */
+	sq (PT_Q36 - PT_SIZE_ON_STACK)[$sp] = $r36r37
+	addd $sp = $sp, -PT_SIZE_ON_STACK
+	/* Do we have to trace the syscall ? */
+	cb.dnez $r37? trace_syscall_enter
+	;;
+do_syscall:
+	addd $sp = $sp, -SCRATCHPAD_SIZE
+	/* Call the syscall handler */
+	icall $r38
+	;;
+	addd $sp = $sp, SCRATCHPAD_SIZE
+	/* r36 and r37 might have been clobbered by C call, get thread_info
+	 * trace flag value from stack */
+	lq $r36r37 = (PT_Q36 + SCRATCHPAD_SIZE)[$sp]
+	;;
+	/* used to store if trace system */
+	cb.dnez $r37? trace_syscall_exit
+	;;
+ret_to_user:
+	addd $sp = $sp, PT_SIZE_ON_STACK
+	;;
+	/* Restore user pointer */
+	ld $sp = TASK_THREAD_USER_SP[$r36]
+	;;
+	/* TODO: we might have to clear some registers to avoid leaking
+	 * information to user space ! callee saved regs have been
+	 * restored by called function but caller saved regs might
+	 * have been used without being cleared */
+	rfe
+	;;
+
+/* Slow paths handling */
+invalid_scall:
+	/* Out of bound syscall, set $r38 = not implemented do_syscall func */
+	make $r38 = sys_ni_syscall
+	;;
+	goto check_trace
+	;;
+
+trace_syscall_enter:
+	/* Save regs r0 -> r8 in pt_regs for trace */
+	so PT_Q0[$sp] = $r0r1r2r3
+	;;
+	so PT_Q4[$sp] = $r4r5r6r7
+	;;
+	/* Also save $r38 (syscall handler) which was computed above */
+	sd PT_R38[$sp] = $r38
+	;;
+	/* do_syscall_trace_enter expect pt_regs and syscall number
+	 * as argument */
+	copyd $r0 = $sp
+	copyd $r1 = $r32
+	addd $sp = $sp, -SCRATCHPAD_SIZE
+	;;
+	call do_syscall_trace_enter
+	;;
+	make $r41 = sys_ni_syscall
+	addd $sp = $sp, SCRATCHPAD_SIZE
+	;;
+	/* Restore r36, r37 and r38 which might have been clobbered by
+	 * do_syscall_trace_enter */
+	lo $r36r37r38r39 = PT_Q36[$sp]
+	;;
+	/* if the trace system requested to abort syscall, set $r38 to
+	 * non implemented syscall */
+	cmoved.dnez $r0? $r38 = $r41
+	;;
+	/* Restore registers since the C call might have clobbered them and
+	 we need them for the actual syscall call */
+	lo $r0r1r2r3 = PT_Q0[$sp]
+	;;
+	lo $r4r5r6r7 = PT_Q4[$sp]
+	;;
+	goto do_syscall
+	;;
+
+trace_syscall_exit:
+	/* Save r0 which was returned from do_scall previously and
+	 * will be cloberred by do_syscall_trace_exit */
+	sd PT_Q0[$sp] = $r0
+	;;
+	copyd $r0 = $sp
+	addd $sp = $sp, -SCRATCHPAD_SIZE
+	call do_syscall_trace_exit
+	;;
+	addd $sp = $sp, SCRATCHPAD_SIZE
+	;;
+	/* Restore r36 (current) which might have been
+	 * clobbered and needed for ret_to_user */
+	ld $r36 = PT_Q36[$sp]
+	;;
+	/* Restore previous r0 */
+	ld $r0 = PT_Q0[$sp]
+	;;
+	goto ret_to_user
 	;;
 ENDPROC(k1c_syscall_handler)
 
