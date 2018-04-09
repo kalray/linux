@@ -36,7 +36,7 @@ void k1c_init_core_irq(void)
 	k1c_sfr_set(K1C_SFR_ILL, 0xFFFFFFFFFFFFFFFFULL);
 	k1c_sfr_set(K1C_SFR_ILH, 0xFFFFFFFFFFFFFFFFULL);
 	/* Set core level to 0 */
-	k1c_sfr_set_mask(K1C_SFR_PS, K1C_SFR_PS_MASK_IL, 0);
+	k1c_sfr_set_mask(K1C_SFR_PS, K1C_SFR_PS_IL_MASK, 0);
 }
 
 void __init init_IRQ(void)
