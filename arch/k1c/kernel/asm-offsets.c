@@ -22,6 +22,7 @@ int foo(void)
 	 * ensures the alignment is sane.
 	 */
 	DEFINE(PT_SIZE_ON_STACK, sizeof(struct pt_regs));
+	DEFINE(TI_FLAGS_SIZE, sizeof(unsigned long));
 
 	/* When restoring registers, we do not want to restore r12
 	 * right now since this is our stack pointer. Allow to save
@@ -41,6 +42,7 @@ int foo(void)
 	OFFSET(PT_Q28, pt_regs, r28);
 	OFFSET(PT_Q32, pt_regs, r32);
 	OFFSET(PT_Q36, pt_regs, r36);
+	OFFSET(PT_R38, pt_regs, r38);
 	OFFSET(PT_Q40, pt_regs, r40);
 	OFFSET(PT_Q44, pt_regs, r44);
 	OFFSET(PT_Q48, pt_regs, r48);
