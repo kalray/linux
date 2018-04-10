@@ -84,7 +84,9 @@ static void __init setup_bootmem(void)
 
 	/* max_low_pfn indicates the end if NORMAL zone */
 	max_low_pfn = PFN_DOWN(memblock_end_of_DRAM());
-	set_max_mapnr(max_low_pfn);
+
+	/* Set the maximum number of pages in the system */
+	set_max_mapnr(max_low_pfn - min_low_pfn);
 
 	early_init_fdt_scan_reserved_mem();
 
