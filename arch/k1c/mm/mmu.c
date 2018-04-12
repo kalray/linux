@@ -19,7 +19,7 @@
 static void
 dump_tlb_entry(int dump_jtlb, int set, int way, struct k1c_tlb_format tlbf)
 {
-	pr_info("%s[s:%02d w:%02d]: PN:%09lu | FN:%09lu | PS:%lu | G:%lu | ASN:%03lu | PA:%02lu | CP:%lu | ES:%lu\n",
+	pr_info("%s[s:%02d w:%02d]: PN:%09lx | FN:%09lx | PS:%lu | G:%lu | ASN:%03lu | PA:%02lu | CP:%lu | ES:%lu\n",
 			dump_jtlb ? "JTLB" : "LTLB", set, way,
 			(unsigned long)tlbf.teh.pn,
 			(unsigned long)tlbf.tel.fn,
