@@ -37,8 +37,19 @@ static void __init zone_sizes_init(void)
 	free_area_init(zones_size);
 }
 
+/* The kernel page table has been set in the early boot by mapping
+ * 1Go of the kernel virtual memory to the DDR in LTLB[0].
+ */
 void __init paging_init(void)
 {
+	struct k1c_tlb_format tlbe = K1C_EMPTY_TLB_ENTRY;
+
+	/* The entry  LTLB[1] is not used any more and can be removed */
+	k1c_mmu_select_ltlb();
+	k1c_mmu_select_way(1);
+	k1c_mmu_set_tlb_entry(tlbe);
+	k1c_mmu_writetlb();
+
 	zone_sizes_init();
 }
 
