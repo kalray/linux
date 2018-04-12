@@ -12,6 +12,19 @@
 #include <asm/types.h>
 #include <asm/segment.h>
 
+#define ARCH_HAS_PREFETCH
+#define ARCH_HAS_PREFETCHW
+
+static inline void prefetch(const void *x)
+{
+	__builtin_prefetch(x);
+}
+
+static inline void prefetchw(const void *x)
+{
+	__builtin_prefetch(x, 1);
+}
+
 /*
  * We use the highest order bit for kernel/user split.
  * on K1C, we have 41 bit virtual adresses
