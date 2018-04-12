@@ -10,7 +10,29 @@ mapping.
 Memory Map
 ==========
 
-Currently, the memory mapping is the following:
+In Linux physical memories are arranged into banks according to the cost of an
+access in term of distance to a memory. As we are UMA architecture we only have
+one bank and thus one node.
+
+A node is divided into several kind of zone. For example if DMA can only access
+a specific area in the physical memory we will define a ZONE_DMA for this purpose.
+In our case we are considering that DMA can access all DDR so we don't have a specific
+zone for this. On 64 bit architecture all DDR can be mapped in virtual kernel space
+so there is no need for a ZONE_HIGHMEM. That means that in our case there is
+only one ZONE_NORMAL. This will be updated if DMA cannot access all memory.
+
+Currently, the memory mapping is the following for 4KB page:
+
++---------------------+---------------------+------+-------+------------------------------+
+| Start               | End                 | Attr | Size  | Name                         |
++---------------------+---------------------+------+-------+------------------------------+
+| 0000 0000 0000 0000 | 0000 007F FFFF FFFF | ---  | 512GB | User                         |
+| 0000 00FF FFFF FFFF | FFFF FEFF FFFF FFFF | ---  | ---   | Hole between user and kernel |
+| FFFF FF00 0000 0000 | FFFF FF00 3FFF FFFF | R-X  | 1GB   | Kernel text mapping          |
+| FFFF FF00 4000 0000 | FFFF FF00 7FFF FFFF | RWX  | 1GB   | VMalloc mapping              |
++---------------------+---------------------+------+-------+------------------------------+
+
+Currently, the memory mapping is the following for 64KB page:
 
 +---------------------+---------------------+------+------+------------------------------+
 | Start               | End                 | Attr | Size | Name                         |
@@ -21,15 +43,80 @@ Currently, the memory mapping is the following:
 | FFFF FF00 4000 0000 | FFFF FF00 7FFF FFFF | RWX  | 1GB  | VMalloc mapping              |
 +---------------------+---------------------+------+------+------------------------------+
 
+Enable the MMU
+==============
+
+Except the k1c_start() function which loaded at 0x0 in physical memory, all other kernel
+functions and symbols are in virtual memory. To be able to switch from physical
+addresses to virtual addresses there is different solution. We choose to setup the
+TLB at the very beginning of the boot process to be able to run both piece of code.
+For this we added two entries in the LTLB. The first one, LTLB[0], contains the
+mapping between virtual memory and DDR. Its size is 1Go. The second entry, LTLB[1],
+contains a flat mapping of the first 512Mo of the SMEM. Once those two entries
+are present we can enable the MMU. LTLB[1] will be removed during paging_init()
+because once we are really running in virtual space we don't need it anymore.
+
+Memblock
+========
+
+When the kernel starts there is no memory allocator available. One of the first
+step in the kernel is to detect the amount of DDR available by getting this
+information in the device tree and initialize the low-level "memblock" allocator.
+
+We start by reserving memory for the whole kernel. On the ISS we can see that
+512Mo of DDR are managed by the memory allocator and some physical memory is
+reserved for the kernel:
+
+setup_bootmem: Memory  : 0x80000000 - 0xa0000000
+setup_bootmem: Reserved: 0x8001f000 - 0x802d1bc0
+
+During the paging init we need to set:
+  - min_low_pfn that is the lowest PFN available in the system
+  - max_low_pfn that indicates the end if NORMAL zone
+  - max_pfn that is the number of pages in the system
+
+This setting is used for dividing memory into pages and for configuring the
+zone. See the memory map section for more information about ZONE.
+
+Zones are configured in free_area_init_core(). During start_kernel() other
+allocations are done for command line, cpu areas, PID hash table, different
+caches for VFS. This allocator is used until mem_init() is called.
+
+mem_init() is provided by the architecture. For MPPA we just call
+free_all_bootmem() that will go through all pages that are not used by the
+low level allocator and mark them as not used. So physical pages that are
+reserved for the kernel are still used and remain in physical memory. All pages
+released will now be used by the buddy allocator.
+
 Page Table
 ==========
 
 We support two and three levels for the page table and 4KB or 64KB for page size.
 
-2 page table levels
+When a process is created we need to initalize its memory structure. One of the
+entries is the top level page table called the Page Global Directory (PGD). It
+is a table of pgd_t whitin a single page. As the pgd_t is an unsigned long, that
+means that:
+  - A 4KB page will store up to 512 entries
+  - A 64KB page will store up to 8192 entries
+
+It is the same for pmd_t and pte_t. So that means that we cannot use more
+than 9 bits for the offset for a 4Ko page.
+
+Let's have a look to the different options we have about the number of levels
+in the page table.
+
+2 levels page table
 -------------------
 
-The page table layout for a 4KB page size is:
+Let's look what it means for the 2 levels page table. A 4Ko page implies an
+offset of 12 bits. As bit 40 is used to differentiate kernel and user memory
+space it left 28 bits for pgd and pte offset. If we split into 14 bits offset
+for pdg and pte  that is the minimum it means that we will need to allocate
+4 pages for each level.
+
+So the page table layout for a 4KB page size is:
+
 
 ...--------------------------------------------------------+
    48|47    40|39    32|31    24|23    16|15     8|7      0|
@@ -39,8 +126,11 @@ The page table layout for a 4KB page size is:
              | |              +------------------->  [25:12] PTE offset (14 bits)
              | +---------------------------------->  [39:26] PGD offset (14 bits)
              +------------------------------------>  [40] 0 if user, 1 otherwise
+                                              Bits 41 to 64 are signed extended
 
-The page table layout for a 64KB page size is:
+And we will need to allocate 4 pages per level entry.
+
+For a page of 64Ko we can use a layout like this:
 
 ...--------------------------------------------------------+
    48|47    40|39    32|31    24|23    16|15     8|7      0|
@@ -50,34 +140,88 @@ The page table layout for a 64KB page size is:
              | |            +--------------------->  [27:16] PTE offset (12 bits)
              | +---------------------------------->  [39:28] PGD offset (12 bits)
              +------------------------------------>  [40] 0 if user, 1 otherwise
+                                              Bits 41 to 64 are signed extended
 
-Bits 41 to 64 are signed extended.
-
-3 page table levels
+3 levels page table
 -------------------
 
-The page table layout for a 4KB page size is:
+Like the 2 level page table we can not only use one page per level because we
+have 28 bits and 3 levels. As for a 4Ko page we can use a maximum of 9 bits it
+means that 1 bit remains. One solution is to allocate 2 pages for the pte level.
+The other solution that we chose is to use 38 bits for the user memory space.
+That means that we will be able to use 512GB for the virtual address space.
+So the layout will be:
 
 ...--------------------------------------------------------+
    48|47    40|39    32|31    24|23    16|15     8|7      0|
-...----------+-+--------+----------+----------+------------+
-             | |        |          |          |
-             | |        |          |          +--->  [11:0] Offset (12 bits)
-             | |        |          +-------------->  [21:12] PTE offset (10 bits)
-             | |        +------------------------->  [31:22] PMD offset (10 bits)
-             | +---------------------------------->  [39:32] PGD offset (8 bits)
+...----------+-++---------+---------+---------+------------+
+             | ||         |         |         |
+             | ||         |         |         +--->  [11:0] Offset (12 bits)
+             | ||         |         +------------->  [20:12] PTE offset (9 bits)
+             | ||         +----------------------->  [29:21] PMD offset (9 bits)
+             | |+--------------------------------->  [38:30] PGD offset (9 bits)
+             | +---------------------------------->  [39] Always 0
              +------------------------------------>  [40] 0 if user, 1 otherwise
+                                              Bits 41 to 64 are signed extended
 
 The page table layout for a 64KB page size is:
 
 ...--------------------------------------------------------+
    48|47    40|39    32|31    24|23    16|15     8|7      0|
-...----------+-+--------+--------+--------+----------------+
-             | |        |        |        |
-             | |        |        |        +------->  [15:0] Offset (16 bits)
-             | |        |        +---------------->  [23:16] PTE offset (8 bits)
-             | |        +------------------------->  [31:24] PMD offset (8 bits)
-             | +---------------------------------->  [39:32] PGD offset (8 bits)
+...----------+-+-----+------+-------------+----------------+
+             | |     |      |             |
+             | |     |      |             +------->  [15:0] Offset (16 bits)
+             | |     |      +--------------------->  [27:16] PTE offset (12 bits)
+             | |     +---------------------------->  [33:28] PMD offset (6 bits)
+             | +---------------------------------->  [39:34] PGD offset (6 bits)
              +------------------------------------>  [40] 0 if user, 1 otherwise
+                                              Bits 41 to 64 are signed extended
 
-Bits 41 to 64 are signed extended.
+So as we can see for 4Ko page table we can not allocate one page per level. The
+other solution is to use a 4 level page table. By doing this we will be able to
+allocate one page per level.
+
+4 levels page table
+-------------------
+
+The problem with the 4 levels page table is that it will require more memory
+accesses. As the page table walk is fully software we want to reduce the number
+of load and store to memory so we will avoid to use it. Of course it's even more
+true for a 5 level page table.
+
+Conclusion:
+
+It seems that the best solution if we consider that allocation of one page
+and usage of a maximum number of entries within a page is a good thing is to
+use:
+
+  - 2 levels page table for 64KB pages
+  - 3 levels page table for 4KB pages and reduce the virtual memory space to
+    512GB for the user.
+
+Allocate and free pages for managing the page table is something that happens
+a lot of time. To improve performance we can use a specific object in the slab
+allocator for pgd.
+
+PTE format
+==========
+
+About the format of the PTE entry, as we are not forced by hardware for choices,
+we choose to follow the format described in the RiscV implementation.
+
+    +----...--+---+---+---+---+---+---+---+---+
+    | 63    8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+    +----...--+---+---+---+---+---+---+---+---+
+       PFN      D   A   G   U   X   W   R   P
+
+       where:
+        P: Present
+        R: Read
+        W: Write
+        X: Executable
+        U: User
+        G: Global
+        A: Accessed
+        D: Dirty
+        PFN: Page frame number
+
