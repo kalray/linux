@@ -9,7 +9,6 @@
 /* Memblock header depends on types.h but does not include it ! */
 #include <linux/types.h>
 #include <linux/memblock.h>
-#include <linux/bootmem.h>
 #include <linux/of_fdt.h>
 #include <linux/sched.h>
 #include <linux/init.h>
@@ -75,12 +74,16 @@ static void __init setup_bootmem(void)
 		memory_start = region->base;
 		memory_end = memory_start + region->size;
 
-		pr_info("%s: Memory: 0x%lx-0x%lx\n", __func__,
-			(unsigned long)memory_start,
-			(unsigned long)memory_end);
-
 		/* Check that this memblock includes the kernel */
 		if (memory_start <= kernel_start && kernel_end <= memory_end) {
+
+			pr_info("%s: Memory  : 0x%lx - 0x%lx\n", __func__,
+				(unsigned long)memory_start,
+				(unsigned long)memory_end);
+			pr_info("%s: Reserved: 0x%lx - 0x%lx\n", __func__,
+				(unsigned long)kernel_start,
+				(unsigned long)kernel_end);
+
 			/* Reserve from the start to the end of the kernel. */
 			memblock_reserve(kernel_start,
 					 kernel_end - kernel_start);
@@ -113,8 +116,11 @@ void __init setup_arch_memory(void)
 
 void __init mem_init(void)
 {
-	free_all_bootmem();
+	unsigned long pr;
 
+	pr = memblock_free_all();
+	pr_info("%s: %lu (%lu Mo) pages released\n",
+		__func__, pr, (pr << PAGE_SHIFT) >> 20);
 	mem_init_print_info(NULL);
 }
 
