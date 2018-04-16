@@ -9,6 +9,7 @@
 #ifndef _ASM_K1C_PROCESSOR_H
 #define _ASM_K1C_PROCESSOR_H
 
+#include <asm/mmu.h>
 #include <asm/types.h>
 #include <asm/segment.h>
 
@@ -25,12 +26,7 @@ static inline void prefetchw(const void *x)
 	__builtin_prefetch(x, 1);
 }
 
-/*
- * We use the highest order bit for kernel/user split.
- * on K1C, we have 41 bit virtual adresses
- * Hence, user can go up to 1TB of memory
- */
-#define TASK_SIZE      _BITULL(MMU_ADDR_BITS - 1)
+#define TASK_SIZE      _BITULL(MMU_USR_ADDR_BITS)
 
 /*
  * This decides where the kernel will search for a free chunk of vm
