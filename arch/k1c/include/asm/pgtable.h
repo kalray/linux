@@ -19,6 +19,8 @@
 #include <asm/pgtable-2levels.h>
 #elif CONFIG_PGTABLE_LEVELS == 3
 #include <asm/pgtable-3levels.h>
+#else
+#error "Page table levels is not configured"
 #endif  /* CONFIG_PGTABLE_LEVELS == 3 */
 
 #include <asm/mem_map.h>
@@ -226,7 +228,10 @@ static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 #define pgd_ERROR(e) \
 	pr_err("%s:%d: bad pgd %016lx.\n", __FILE__, __LINE__, pgd_val(e))
 
-#define pgd_index(addr) (((addr) >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1))
+static inline unsigned long pgd_index(unsigned long addr)
+{
+	return ((addr >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1));
+}
 
 /* Locate an entry in the page global directory */
 static inline pgd_t *pgd_offset(const struct mm_struct *mm, unsigned long addr)
