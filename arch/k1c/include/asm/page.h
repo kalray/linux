@@ -14,14 +14,7 @@
 #define EXCEPTION_STRIDE	0x400
 #define EXCEPTION_ALIGNEMENT	0x1000
 
-#if defined CONFIG_K1C_64K_PAGES
-#define PAGE_SHIFT		16
-#elif defined CONFIG_K1C_4K_PAGES
-#define PAGE_SHIFT		12
-#else
-#error we only support 4K and 64K for page size
-#endif
-
+#define PAGE_SHIFT		CONFIG_K1C_PAGE_SHIFT
 #define PAGE_SIZE		_BITUL(PAGE_SHIFT)
 #define PAGE_MASK		(~(PAGE_SIZE - 1))
 
