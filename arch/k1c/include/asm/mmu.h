@@ -12,8 +12,14 @@
 #include <asm/sfr.h>
 #include <linux/types.h>
 
-/* Bits [41:63] are not used. They are sign extended according to bit 40 */
-#define MMU_ADDR_BITS	41
+/* When 4K pages are used the user space is 512GB while it it 1TB when
+ * 16K pages are used. See Documentation/k1c/k1c-mmu.txt for details.
+ */
+#if defined(CONFIG_K1C_4K_PAGES)
+#define MMU_USR_ADDR_BITS	39
+#elif defined(CONFIG_K1C_64K_PAGES)
+#define MMU_USR_ADDR_BITS	40
+#endif
 
 /* Architecture specification */
 #define MMU_LTLB_SETS 1
