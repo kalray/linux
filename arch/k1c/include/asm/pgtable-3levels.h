@@ -11,19 +11,21 @@
 
 #include <asm-generic/pgtable-nopud.h>
 
+#if defined(CONFIG_K1C_4K_PAGES)
+#define PGDIR_SHIFT     30
+#else
+#error "3 level page table is not available with 64K page"
+#endif
+
 /* Page Middle Directory entry */
 typedef struct {
 	unsigned long pmd;
 } pmd_t;
 
-#define pmd_val(x)		((x).pmd)
+#define pmd_val(x)	((x).pmd)
 #define __pmd(x)	((pmd_t) { (x) })
 
-#define PGDIR_SHIFT     32
-
-#if defined(CONFIG_K1C_4K_PAGES)
-
-#define PMD_SHIFT       22
+#define PMD_SHIFT       21
 /* Size of region mapped by a page middle directory */
 #define PMD_SIZE        _BITUL(PMD_SHIFT)
 #define PMD_MASK        (~(PMD_SIZE - 1))
@@ -31,18 +33,23 @@ typedef struct {
 /* Number of entries in the page global directory */
 #define PTRS_PER_PMD    (PAGE_SIZE / sizeof(pmd_t))
 
-#elif defined(CONFIG_K1C_64K_PAGES)
+/**
+ * PUD
+ */
 
+/*
+ * As we manage a three level page table the call to set_pud is used to fill
+ * PGD.
+ */
+static inline void set_pud(pud_t *pudp, pud_t pmd)
+{
+	*pudp = pmd;
+}
 
-#define PMD_SHIFT       24
-/* Size of region mapped by a page middle directory */
-#define PMD_SIZE        _BITUL(PMD_SHIFT)
-#define PMD_MASK        (~(PMD_SIZE - 1))
-
-/* Number of entries in the page global directory */
-#define PTRS_PER_PMD    (PAGE_SIZE / sizeof(pmd_t))
-
-#endif
+static inline void pud_populate(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
+{
+	set_pud(pud, __pud((unsigned long)pmd));
+}
 
 /**
  * PMD
@@ -52,19 +59,36 @@ typedef struct {
 
 static inline unsigned long pud_page_vaddr(pud_t pud)
 {
-	return (unsigned long)pfn_to_virt(pud_val(pud) >> PAGE_SHIFT);
+	return pud_val(pud);
 }
 
-#define pmd_index(addr) (((addr) >> PMD_SHIFT) & (PTRS_PER_PMD - 1))
+static inline unsigned long pmd_index(unsigned long addr)
+{
+	return (((addr) >> PMD_SHIFT) & (PTRS_PER_PMD - 1));
+}
 
 static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
 {
 	return (pmd_t *)pud_page_vaddr(*pud) + pmd_index(addr);
 }
 
-static inline int pud_none(pud_t pud)		{ return 0; }
-static inline int pud_bad(pud_t pud)		{ return 0; }
-static inline int pud_present(pud_t pud)	{ return 1; }
-static inline void pud_clear(pud_t *pud)	{ }
+static inline int pud_none(pud_t pud)
+{
+	return !pud_val(pud);
+}
+
+static inline int pud_bad(pud_t pud)
+{
+	panic("%s: Not implemented", __func__);
+}
+static inline int pud_present(pud_t pud)
+{
+	return pud_val(pud) != 0UL;
+}
+
+static inline void pud_clear(pud_t *pud)
+{
+	panic("%s: Not implemented", __func__);
+}
 
 #endif	/* _ASM_K1C_PGTABLE_3LEVELS_H */
