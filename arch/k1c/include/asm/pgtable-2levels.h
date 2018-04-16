@@ -11,10 +11,10 @@
 
 #include <asm-generic/pgtable-nopmd.h>
 
-#if defined(CONFIG_K1C_4K_PAGES)
-#define PGDIR_SHIFT     26
-#elif defined(CONFIG_K1C_64K_PAGES)
+#if defined(CONFIG_K1C_64K_PAGES)
 #define PGDIR_SHIFT     28
+#else
+#error "2 level page table is not available with 4K page"
 #endif
 
 #endif	/* _ASM_K1C_PGTABLE_2LEVELS_H */
