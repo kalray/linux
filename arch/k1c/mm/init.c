@@ -19,8 +19,7 @@
 #include <asm/sections.h>
 #include <asm/page.h>
 
-pgd_t swapper_pg_dir[PAGE_SIZE/sizeof(pgd_t)];
-
+pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
 static void __init zone_sizes_init(void)
 {
@@ -42,6 +41,7 @@ static void __init zone_sizes_init(void)
  */
 void __init paging_init(void)
 {
+	int i;
 	struct k1c_tlb_format tlbe = K1C_EMPTY_TLB_ENTRY;
 
 	/* The entry  LTLB[1] is not used any more and can be removed */
@@ -49,6 +49,9 @@ void __init paging_init(void)
 	k1c_mmu_select_way(1);
 	k1c_mmu_set_tlb_entry(tlbe);
 	k1c_mmu_writetlb();
+
+	for (i = 0; i < PTRS_PER_PGD; i++)
+		swapper_pg_dir[i] = __pgd(0);
 
 	zone_sizes_init();
 }

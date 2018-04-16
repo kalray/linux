@@ -10,11 +10,16 @@
 #define _ASM_K1C_PGALLOC_H
 
 #include <linux/mm.h>
-
+#include <asm/tlb.h>
 
 static inline void check_pgt_cache(void)
 {
-	panic("%s is not implemented yet\n", __func__);
+	/*
+	 * check_pgt_cache() is called to check watermarks from counters that
+	 * computes the number of pages allocated by cached allocation functions
+	 * pmd_alloc_one_fast() and pte_alloc_one_fast().
+	 * Currently we just skip this test.
+	 */
 }
 
 /**
@@ -24,15 +29,14 @@ static inline void check_pgt_cache(void)
 static inline void
 pgd_free(struct mm_struct *mm, pgd_t *pgd)
 {
-	panic("%s is not implemented yet\n", __func__);
+	free_page((unsigned long)pgd);
 }
 
 static inline
 pgd_t *pgd_alloc(struct mm_struct *mm)
 {
-	panic("%s is not implemented yet", __func__);
+	return (pgd_t *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
 }
-
 
 /**
  * PMD
@@ -52,24 +56,17 @@ static inline void pmd_populate(struct mm_struct *mm,
 }
 
 #if CONFIG_PGTABLE_LEVELS > 2
-#define __pmd_free_tlb(tlb, pmd, addr) \
-				panic("Unimplemented __pmd_free_tlb")
+#define __pmd_free_tlb(tlb, pmd, addr) pmd_free((tlb)->mm, pmd)
+
 static inline pmd_t *pmd_alloc_one(struct mm_struct *mm, unsigned long addr)
 {
-	panic("%s is not implemented yet\n", __func__);
+	return (pmd_t *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
 }
 
 static inline void pmd_free(struct mm_struct *mm, pmd_t *pmd)
 {
-	panic("%s is not implemented yet\n", __func__);
+	free_page((unsigned long)pmd);
 }
-
-/**
- * PUD
- * If we manage a three level page PUD macro will be trivial. Let's use BUG()
- * at least for compiling.
- */
-#define pud_populate(mm, pud, pmd) BUG()
 
 #endif /* CONFIG_PGTABLE_LEVELS > 2 */
 
@@ -80,8 +77,18 @@ static inline void pmd_free(struct mm_struct *mm, pmd_t *pmd)
 static inline struct page *pte_alloc_one(struct mm_struct *mm,
 	unsigned long address)
 {
-	panic("%s is not implemented yet\n", __func__);
-	return NULL;
+	struct page *pte;
+
+	pte = alloc_pages(GFP_KERNEL, __GFP_ZERO);
+	if (!pte)
+		return NULL;
+
+	if (!pgtable_page_ctor(pte)) {
+		__free_page(pte);
+		return NULL;
+	}
+
+	return pte;
 }
 
 static inline pte_t *pte_alloc_one_kernel(struct mm_struct *mm,
@@ -103,8 +110,8 @@ static inline void pte_free(struct mm_struct *mm, pgtable_t pte)
 
 #define __pte_free_tlb(tlb, pte, buf)   \
 do {                                    \
-	pte = pte;			\
-	panic("%s is not implemented yet\n", __func__); \
+	pgtable_page_dtor(pte);         \
+	tlb_remove_page((tlb), pte);    \
 } while (0)
 
 #endif /* _ASM_K1C_PGALLOC_H */

@@ -52,6 +52,7 @@ config K1C
 
 config PGTABLE_LEVELS
 	int
+	default 2 if K1C_64K_PAGES
 	default 3
 
 config HAVE_KPROBES
