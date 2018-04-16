@@ -9,10 +9,12 @@
 #ifndef _ASM_K1C_TLBFLUSH_H
 #define _ASM_K1C_TLBFLUSH_H
 
+#include <linux/printk.h>
+
 static inline void
 flush_tlb_mm(struct mm_struct *mm)
 {
-	panic("%s is not implemented yet\n", __func__);
+	pr_info("%s is not implemented\n", __func__);
 }
 
 static inline void flush_tlb_range(struct vm_area_struct *vma,
