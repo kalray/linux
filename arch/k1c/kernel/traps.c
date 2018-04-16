@@ -3,7 +3,7 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc.
+ * Copyright (C) 2018 Kalray Inc.
  */
 
 #include <linux/kallsyms.h>
@@ -22,7 +22,7 @@
 /* 0 == entire stack */
 static unsigned long kstack_depth_to_print = CONFIG_STACK_MAX_DEPTH_TO_PRINT;
 
-static trap_handler_func trap_handler_table[TRAP_COUNT] = { NULL };
+static trap_handler_func trap_handler_table[K1C_TRAP_COUNT] = { NULL };
 
 /**
  * Trap names associated to the trap numbers
@@ -47,8 +47,23 @@ static const char * const trap_name[] = {
 	"ATOMICTOCLEAN"
 };
 
+inline int register_trap_handler(unsigned int trap_nb, trap_handler_func fn)
+{
+
+	if (trap_nb >= K1C_TRAP_COUNT || fn == NULL)
+		return -1;
+
+	trap_handler_table[trap_nb] = fn;
+	return 0;
+}
+
 void __init trap_init(void)
 {
+
+#ifdef CONFIG_MMU
+	if (register_trap_handler(K1C_TRAP_NOMAPPING, do_page_fault) < 0)
+		panic("Failed to register page fault handler\n");
+#endif
 
 }
 
@@ -156,7 +171,7 @@ void trap_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	int htc = trap_cause(es);
 
 	/* Normal traps number should and must be between 0 and 15 included */
-	if (WARN_ON(htc >= TRAP_COUNT)) {
+	if (WARN_ON(htc >= K1C_TRAP_COUNT)) {
 		pr_err("Invalid trap number !\n");
 		return;
 	}
