@@ -10,6 +10,7 @@
 #define _ASM_K1C_PGTABLE_H
 
 #include <linux/mmzone.h>
+#include <linux/mm_types.h>
 
 #include <asm/page.h>
 #include <asm/pgtable-bits.h>
@@ -21,6 +22,9 @@
 #endif  /* CONFIG_PGTABLE_LEVELS == 3 */
 
 #include <asm/mem_map.h>
+
+struct mm_struct;
+struct vm_area_struct;
 
 #define VMALLOC_START	(KERNEL_VMALLOC_MAP_BASE + PAGE_OFFSET)
 #define VMALLOC_END	(VMALLOC_START + KERNEL_VMALLOC_MAP_SIZE - 1)
