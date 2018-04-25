@@ -106,14 +106,20 @@ unsigned long get_wchan(struct task_struct *p)
 	return 0;
 }
 
-void machine_halt(void)
-{	register int status asm("r0") = 0;
+void scall_machine_exit(unsigned char value)
+{
+	register int status asm("r0") = value;
 
 	asm volatile ("scall " SCALL_NUM_EXIT "\n\t;;"
 		      : /* out */
 		      : "r"(status));
 
 	unreachable();
+}
+
+void machine_halt(void)
+{
+	scall_machine_exit(0);
 }
 
 void machine_power_off(void)
