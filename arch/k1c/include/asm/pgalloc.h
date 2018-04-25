@@ -46,13 +46,13 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 static inline void pmd_populate_kernel(struct mm_struct *mm,
 	pmd_t *pmd, pte_t *pte)
 {
-	panic("%s is not implemented yet\n", __func__);
+	panic("%s is not implemented yet", __func__);
 }
 
 static inline void pmd_populate(struct mm_struct *mm,
 	pmd_t *pmd, pgtable_t pte)
 {
-	panic("%s is not implemented yet\n", __func__);
+	panic("%s is not implemented yet", __func__);
 }
 
 #if CONFIG_PGTABLE_LEVELS > 2
@@ -79,7 +79,7 @@ static inline struct page *pte_alloc_one(struct mm_struct *mm,
 {
 	struct page *pte;
 
-	pte = alloc_pages(GFP_KERNEL, __GFP_ZERO);
+	pte = (struct page *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
 	if (!pte)
 		return NULL;
 
