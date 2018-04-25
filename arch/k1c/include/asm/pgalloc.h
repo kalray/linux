@@ -30,7 +30,7 @@ pgd_free(struct mm_struct *mm, pgd_t *pgd)
 static inline
 pgd_t *pgd_alloc(struct mm_struct *mm)
 {
-	panic("%s is not implemented yet\n", __func__);
+	panic("%s is not implemented yet", __func__);
 }
 
 
