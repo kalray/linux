@@ -59,6 +59,22 @@ config HAVE_KPROBES
 
 menu "System setup"
 
+config PANIC_SCALL
+	bool "Emit a magic syscall in panic"
+	default y
+	help
+	  In order to validate the step where the kernel goes, we need
+	  to emit an exit signal if the panic match the expected one.
+	  Enabling this option add a panic notifier.
+
+config PANIC_SYSCALL_EXPECTED
+        string "Expected panic string"
+        depends on PANIC_SCALL
+        default ""
+        help
+          Expected string by syscall panic notifier. If panic string
+          matches the expected, exit with 0, else exit with 1.
+
 config POISON_INITMEM
 	bool "Enable to poison freed initmem"
 	default y
