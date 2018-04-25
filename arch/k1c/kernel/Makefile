@@ -11,3 +11,5 @@ extra-y	:= head.o vmlinux.lds
 obj-y	:= setup.o process.o traps.o common.o time.o prom.o \
 		k1_ksyms.o delay.o irq.o cpuinfo.o ptrace.o \
 		entry.o syscall_table.o
+
+obj-$(CONFIG_PANIC_SCALL) += panic.o
