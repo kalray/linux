@@ -9,6 +9,8 @@
 #ifndef _ASM_K1C_MEM_MAP_H
 #define _ASM_K1C_MEM_MAP_H
 
+#include <asm/page.h>
+
 /**
  * K1C memory mapping defines
  * For more informations on memory mapping, please see
@@ -20,13 +22,21 @@
 /**
  * Kernel text and data mapping (1G)
  */
-#define KERNEL_TEXT_MAP_BASE	0
+#define KERNEL_TEXT_MAP_BASE	PAGE_OFFSET
 #define KERNEL_TEXT_MAP_SIZE	0x40000000
 
 /**
  * Vmalloc mapping (1G)
  */
-#define KERNEL_VMALLOC_MAP_BASE	(KERNEL_TEXT_MAP_BASE + KERNEL_TEXT_MAP_SIZE)
+#define KERNEL_VMALLOC_MAP_BASE \
+	(KERNEL_TEXT_MAP_BASE + KERNEL_TEXT_MAP_SIZE)
 #define KERNEL_VMALLOC_MAP_SIZE	0x40000000
+
+/**
+ * Device mapping
+ */
+#define KERNEL_PERIPH_MAP_BASE	\
+	(KERNEL_VMALLOC_MAP_BASE + KERNEL_VMALLOC_MAP_SIZE)
+#define KERNEL_PERIPH_MAP_SIZE	0x40000000
 
 #endif
