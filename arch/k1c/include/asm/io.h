@@ -11,6 +11,9 @@
 
 #include <linux/types.h>
 
+#define DEVICE_START_ADDR	0x800000
+#define DEVICE_END_ADDR		0x28000000
+
 extern void __iomem *ioremap(phys_addr_t offset, unsigned long size);
 extern void iounmap(volatile void __iomem *addr);
 
