@@ -18,6 +18,7 @@
 
 #include <asm/sections.h>
 #include <asm/page.h>
+#include <asm/tlb.h>
 
 pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
@@ -42,11 +43,25 @@ static void __init zone_sizes_init(void)
 void __init paging_init(void)
 {
 	int i;
-	struct k1c_tlb_format tlbe = K1C_EMPTY_TLB_ENTRY;
 
-	/* The entry  LTLB[1] is not used any more and can be removed */
+	/* SMEM + Device mapping */
+	struct k1c_tlb_format tlbe = tlb_mk_entry(
+		(void *) 0x0,
+		(void *) KERNEL_PERIPH_MAP_BASE,
+		TLB_PS_1GB,
+		TLB_G_GLOBAL,
+		TLB_PA_NA_RW,
+		TLB_CP_D_U,
+		0,
+		TLB_ES_A_MODIFIED);
+
+	/**
+	 * The entry  LTLB[1] was used during boot for smem mapping
+	 * We reuse it to map devices at their proper address.
+	 */
 	k1c_mmu_select_ltlb();
 	k1c_mmu_select_way(1);
+
 	k1c_mmu_set_tlb_entry(tlbe);
 	k1c_mmu_writetlb();
 
