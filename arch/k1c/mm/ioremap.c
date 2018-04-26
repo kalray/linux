@@ -8,6 +8,8 @@
 
 #include <linux/io.h>
 
+#include <asm/mem_map.h>
+
 /*
  * ioremap     -   map bus memory into CPU space
  * @offset:    bus address of the memory
@@ -23,9 +25,16 @@
  */
 void __iomem *ioremap(phys_addr_t offset, unsigned long size)
 {
+	/* Handle base peripherals */
+	if (offset < DEVICE_START_ADDR || offset > DEVICE_END_ADDR ||
+	    !size)
+		return NULL;
 
-	panic("%s is not implemented yet\n", __func__);
-	return NULL;
+	/**
+	 * We currently have a full mapping for all peripherals
+	 * starting from 0 to 1G
+	 */
+	return (void *) (offset + KERNEL_PERIPH_MAP_BASE);
 }
 EXPORT_SYMBOL(ioremap);
 
@@ -38,6 +47,5 @@ EXPORT_SYMBOL(ioremap);
  */
 void iounmap(volatile void __iomem *addr)
 {
-	vunmap((void *)((unsigned long)addr & PAGE_MASK));
 }
 EXPORT_SYMBOL(iounmap);
