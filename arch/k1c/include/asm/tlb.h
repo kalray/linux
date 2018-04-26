@@ -55,6 +55,21 @@
 #define TLB_PS_512K 2
 #define TLB_PS_1GB  3
 
+#define TLB_G_GLOBAL	1
+#define TLB_G_USE_ASN	0
+
+#define TLB_MK_TEH_ENTRY(_vaddr, _ps, _global, _asn) \
+	(((_ps) << K1C_SFR_TEH_PS_SHIFT) | \
+	((_global) << K1C_SFR_TEH_G_SHIFT) | \
+	((_asn) << K1C_SFR_TEH_ASN_SHIFT) | \
+	(((_vaddr) >> K1C_SFR_TEH_PN_SHIFT) << K1C_SFR_TEH_PN_SHIFT))
+
+#define TLB_MK_TEL_ENTRY(_paddr, _es, _cp, _pa) \
+	(((_es) << K1C_SFR_TEL_ES_SHIFT) | \
+	((_cp) << K1C_SFR_TEL_CP_SHIFT) | \
+	((_pa) << K1C_SFR_TEL_PA_SHIFT) | \
+	(((_paddr) >> K1C_SFR_TEL_FN_SHIFT) << K1C_SFR_TEH_PN_SHIFT))
+
 #ifndef __ASSEMBLY__
 
 struct mmu_gather;
@@ -63,10 +78,29 @@ static void tlb_flush(struct mmu_gather *tlb);
 
 #include <asm-generic/tlb.h>
 
+#include <asm/mmu.h>
+
 static inline void tlb_flush(struct mmu_gather *tlb)
 {
 	flush_tlb_mm(tlb->mm);
 }
 
+static inline struct k1c_tlb_format tlb_mk_entry(
+	void *paddr,
+	void *vaddr,
+	unsigned int ps,
+	unsigned int global,
+	unsigned int pa,
+	unsigned int cp,
+	unsigned int asn,
+	unsigned int es)
+{
+	struct k1c_tlb_format entry;
+
+	entry.teh_val = TLB_MK_TEH_ENTRY((uintptr_t) vaddr, ps, global, asn);
+	entry.tel_val = TLB_MK_TEL_ENTRY((uintptr_t) paddr, es, cp, pa);
+
+	return entry;
+}
 #endif /* __ASSEMBLY */
 #endif /* _ASM_K1C_TLB_H */
