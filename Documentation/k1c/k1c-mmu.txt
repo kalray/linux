@@ -30,6 +30,7 @@ Currently, the memory mapping is the following for 4KB page:
 | 0000 00FF FFFF FFFF | FFFF FEFF FFFF FFFF | ---  | ---   | Hole between user and kernel |
 | FFFF FF00 0000 0000 | FFFF FF00 3FFF FFFF | R-X  | 1GB   | Kernel text mapping          |
 | FFFF FF00 4000 0000 | FFFF FF00 7FFF FFFF | RWX  | 1GB   | VMalloc mapping              |
+| FFFF FF00 8000 0000 | FFFF FF00 CFFF FFFF | RW   | 1GB   | Peripherals mapping          |
 +---------------------+---------------------+------+-------+------------------------------+
 
 Currently, the memory mapping is the following for 64KB page:
@@ -41,6 +42,7 @@ Currently, the memory mapping is the following for 64KB page:
 | 0000 00FF FFFF FFFF | FFFF FEFF FFFF FFFF | ---  | ---  | Hole between user and kernel |
 | FFFF FF00 0000 0000 | FFFF FF00 3FFF FFFF | R-X  | 1GB  | Kernel text mapping          |
 | FFFF FF00 4000 0000 | FFFF FF00 7FFF FFFF | RWX  | 1GB  | VMalloc mapping              |
+| FFFF FF00 8000 0000 | FFFF FF00 CFFF FFFF | RW   | 1GB  | Peripherals mapping          |
 +---------------------+---------------------+------+------+------------------------------+
 
 Enable the MMU
@@ -55,6 +57,8 @@ mapping between virtual memory and DDR. Its size is 1Go. The second entry, LTLB[
 contains a flat mapping of the first 512Mo of the SMEM. Once those two entries
 are present we can enable the MMU. LTLB[1] will be removed during paging_init()
 because once we are really running in virtual space we don't need it anymore.
+This entry is then reused to map devices mmu entry. This mapping is used for
+ioremap.
 
 Memblock
 ========
@@ -87,6 +91,26 @@ free_all_bootmem() that will go through all pages that are not used by the
 low level allocator and mark them as not used. So physical pages that are
 reserved for the kernel are still used and remain in physical memory. All pages
 released will now be used by the buddy allocator.
+
+Peripherals
+===========
+
+Currently, peripherals are fully mapped in a single 1G page. This is not
+the final mapping since we would like to use a dynamic mapping for that.
+Moreover, PCIe mapping will be necessary dynamic and using JTLB.
+The current ioremap implementation is simply adding the peripheral virtual
+address offset to the requested io address. We do not add any mapping
+since we use the existing resident full peripheral mapping.
+
+LTLB Usage
+==========
+
+LTLB is used to add resident mapping which allows for faster MMU lookup.
+Currently, the LTLB is used to map some mandatory kernel pages.
+The current LTLB use is the following:
+
+Entry 0 - Kernel Code mapping (1G)
+Entry 1 - Peripherals mapping (1G)
 
 Page Table
 ==========
@@ -224,4 +248,3 @@ we choose to follow the format described in the RiscV implementation.
         A: Accessed
         D: Dirty
         PFN: Page frame number
-
