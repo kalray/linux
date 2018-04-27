@@ -9,6 +9,8 @@
 #ifndef _ASM_K1C_SFR_H
 #define _ASM_K1C_SFR_H
 
+#include <linux/types.h>
+
 #include <asm/sfr_defs.h>
 
 #define ES_CLASS_INTERRUPT	0x2
