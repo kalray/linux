@@ -9,7 +9,6 @@ generic-y += bugs.h
 generic-y += checksum.h
 generic-y += compat.h
 generic-y += cmpxchg-local.h
-generic-y += cmpxchg.h
 generic-y += cputime.h
 generic-y += delay.h
 generic-y += div64.h
