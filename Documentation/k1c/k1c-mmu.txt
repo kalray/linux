@@ -233,10 +233,10 @@ PTE format
 About the format of the PTE entry, as we are not forced by hardware for choices,
 we choose to follow the format described in the RiscV implementation.
 
-    +----...--+---+---+---+---+---+---+---+---+
-    | 63    8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-    +----...--+---+---+---+---+---+---+---+---+
-       PFN      D   A   G   U   X   W   R   P
+    +----...----+---------+---+---+---+---+---+---+---+---+---+
+    | 63 ... 12 | 11 .. 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+    +----...----+---------+---+---+---+---+---+---+---+---+---+
+         PFN       Unused   S   D   A   G   U   X   W   R   P
 
        where:
         P: Present
@@ -247,4 +247,5 @@ we choose to follow the format described in the RiscV implementation.
         G: Global
         A: Accessed
         D: Dirty
-        PFN: Page frame number
+        S: Reserved for software
+        PFN: Page frame number (depends on page size)
