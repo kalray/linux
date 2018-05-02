@@ -21,6 +21,10 @@
 #define PHYS_OFFSET		CONFIG_K1C_PHYS_OFFSET
 #define PAGE_OFFSET		CONFIG_K1C_PAGE_OFFSET
 
+/*
+ * PFN starts at 0 if physical address starts at 0x0. As it is not the case
+ * for the k1 we need to apply an offset to the calculated PFN.
+ */
 #define ARCH_PFN_OFFSET	((unsigned long)(PHYS_OFFSET >> PAGE_SHIFT))
 
 #ifndef __ASSEMBLY__
@@ -83,8 +87,8 @@ static inline bool pfn_valid(unsigned long pfn)
 	/* avoid <linux/mm.h> include hell */
 	extern unsigned long max_mapnr;
 
-	return ((pfn) >= ARCH_PFN_OFFSET &&
-		((pfn) - ARCH_PFN_OFFSET) < max_mapnr);
+	return ((pfn >= ARCH_PFN_OFFSET) &&
+		(pfn < (ARCH_PFN_OFFSET + max_mapnr)));
 }
 
 static inline void clear_page(void *page)
