@@ -101,17 +101,146 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define __pte_to_swp_entry(pte) ((swp_entry_t) { pte_val(pte) })
 #define __swp_entry_to_pte(x)   ((pte_t) { (x).val })
 
-/**
- * PTE
+static inline void update_mmu_cache(struct vm_area_struct *vma,
+	unsigned long address, pte_t *ptep)
+{
+	panic("%s is not yet implemented", __func__);
+}
+
+/**********************
+ * PGD definitions:
+ *   - pgd_ERROR
+ *   - pgd_index
+ *   - pgd_offset
+ *   - pgd_offset_k
  */
+#define pgd_ERROR(e) \
+	pr_err("%s:%d: bad pgd %016lx.\n", __FILE__, __LINE__, pgd_val(e))
+
+/* Take a virtual address and extract the index in the PGD */
+static inline unsigned long pgd_index(unsigned long addr)
+{
+	return ((addr >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1));
+}
+
+/* Find an entry in the page global directory */
+static inline pgd_t *pgd_offset(const struct mm_struct *mm, unsigned long addr)
+{
+	return mm->pgd + pgd_index(addr);
+}
+
+/* Locate an entry in the kernel page global directory */
+#define pgd_offset_k(addr)      pgd_offset(&init_mm, (addr))
+
+/**********************
+ * PMD definitions:
+ *   - set_pmd
+ *   - pmd_present
+ *   - pmd_none
+ *   - pmd_bad
+ *   - pmd_clear
+ *   - pmd_page
+ *
+ * Note: pmd_offset is defined in the pgtable-3levels.h
+ */
+
+static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
+{
+	*pmdp = pmd;
+}
+/* Returns 1 if entry is present */
+static inline int pmd_present(pmd_t pmd)
+{
+	return (pmd_val(pmd) & _PAGE_PRESENT);
+}
+
+/* Returns 1 if the corresponding entry has the value 0 */
+static inline int pmd_none(pmd_t pmd)
+{
+	return (pmd_val(pmd) == 0);
+}
+
+/* Used to check that a page middle directory entry is valid */
+static inline int pmd_bad(pmd_t pmd)
+{
+	return !pmd_present(pmd);
+}
+
+/* Clears the entry to prevent process to use the linear address that
+ * mapped it.
+ */
+static inline void pmd_clear(pmd_t *pmdp)
+{
+	set_pmd(pmdp, __pmd(0));
+}
+
+/* Returns the addess of the descriptor of the page table referred by the
+ * PMD entry.
+ */
+static inline struct page *pmd_page(pmd_t pmd)
+{
+	return virt_to_page(pmd_val(pmd));
+}
+
+/**********************
+ * PTE definitions:
+ *   - set_pte
+ *   - set_pte_at
+ *   - pte_clear
+ *   - pte_page
+ *   - pte_index
+ *   - pte_offset_kernel
+ *   - pte_offset_map
+ *   - pte_pfn
+ *   - pte_present
+ *   - pte_none
+ *   - pte_write
+ *   - pte_dirty
+ *   - pte_young
+ *   - pte_special
+ *   - pte_mkdirty
+ *   - pte_mkwrite
+ *   - pte_mkclean
+ *   - pte_mkyoung
+ *   - pte_mkold
+ *   - pte_mkspecial
+ *   - pte_wrprotect
+ */
+
+static inline void set_pte(pte_t *ptep, pte_t pteval)
+{
+	*ptep = pteval;
+}
+
+#define set_pte_at(mm, addr, ptep, pteval) set_pte(ptep, pteval)
+#define pte_clear(mm, addr, ptep) set_pte(ptep, __pte(0))
+
+/* Constructs a page table entry */
+static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
+{
+	return __pte((pfn << PAGE_SHIFT) | pgprot_val(prot));
+}
+
+/* Builds a page table entry by combining a page descriptor and a group of
+ * access rights.
+ */
+static inline pte_t mk_pte(struct page *page, pgprot_t prot)
+{
+	return pfn_pte(page_to_pfn(page), prot);
+}
+
+/* Modifies page access rights */
+static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
+{
+	return __pte((pte_val(pte) & _PAGE_CHG_MASK) | pgprot_val(newprot));
+}
+
 #define pte_page(x)     pfn_to_page(pte_pfn(x))
 #define pte_index(addr) (((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1))
 
-static inline unsigned long pmd_page_vaddr(pmd_t pmd);
-
 static inline pte_t *pte_offset_kernel(pmd_t *pmd, unsigned long addr)
 {
-	return (pte_t *)pmd_page_vaddr(*pmd) + pte_index(addr);
+	return (pte_t *)((unsigned long)pmd + pte_index(addr));
 }
 
 #define pte_offset_map(dir, addr)	pte_offset_kernel((dir), (addr))
@@ -186,101 +315,6 @@ static inline pte_t pte_mkspecial(pte_t pte)
 static inline pte_t pte_wrprotect(pte_t pte)
 {
 	return __pte(pte_val(pte) & ~(_PAGE_WRITE));
-}
-
-static inline void set_pte(pte_t *ptep, pte_t pteval)
-{
-	*ptep = pteval;
-}
-
-static inline void set_pte_at(struct mm_struct *mm,
-	unsigned long addr, pte_t *ptep, pte_t pteval)
-{
-	set_pte(ptep, pteval);
-}
-
-static inline void pte_clear(struct mm_struct *mm,
-	unsigned long addr, pte_t *ptep)
-{
-	set_pte_at(mm, addr, ptep, __pte(0));
-}
-
-/* Constructs a page table entry */
-static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
-{
-	return __pte((pfn << PAGE_SHIFT) | pgprot_val(prot));
-}
-
-static inline pte_t mk_pte(struct page *page, pgprot_t prot)
-{
-	return pfn_pte(page_to_pfn(page), prot);
-}
-
-/* Modify page protection bits */
-static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
-{
-	return __pte((pte_val(pte) & _PAGE_CHG_MASK) | pgprot_val(newprot));
-}
-
-/**
- * PGD
- */
-#define pgd_ERROR(e) \
-	pr_err("%s:%d: bad pgd %016lx.\n", __FILE__, __LINE__, pgd_val(e))
-
-static inline unsigned long pgd_index(unsigned long addr)
-{
-	return ((addr >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1));
-}
-
-/* Locate an entry in the page global directory */
-static inline pgd_t *pgd_offset(const struct mm_struct *mm, unsigned long addr)
-{
-	return mm->pgd + pgd_index(addr);
-}
-
-static inline int pmd_present(pmd_t pmd)
-{
-	return (pmd_val(pmd) & _PAGE_PRESENT);
-}
-
-static inline int pmd_none(pmd_t pmd)
-{
-	return (pmd_val(pmd) == 0);
-}
-
-static inline int pmd_bad(pmd_t pmd)
-{
-	return !pmd_present(pmd);
-}
-
-static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
-{
-	*pmdp = pmd;
-}
-
-static inline void pmd_clear(pmd_t *pmdp)
-{
-	set_pmd(pmdp, __pmd(0));
-}
-
-static inline struct page *pmd_page(pmd_t pmd)
-{
-	return pfn_to_page(pmd_val(pmd) >> PAGE_SHIFT);
-}
-
-static inline unsigned long pmd_page_vaddr(pmd_t pmd)
-{
-	return (unsigned long)pfn_to_virt(pmd_val(pmd) >> PAGE_SHIFT);
-}
-
-/* Locate an entry in the kernel page global directory */
-#define pgd_offset_k(addr)      pgd_offset(&init_mm, (addr))
-
-static inline void update_mmu_cache(struct vm_area_struct *vma,
-	unsigned long address, pte_t *ptep)
-{
-	panic("%s is not yet implemented\n", __func__);
 }
 
 #include <asm-generic/pgtable.h>
