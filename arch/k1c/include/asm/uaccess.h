@@ -22,11 +22,10 @@ static inline void set_fs(mm_segment_t fs)
 
 #define user_addr_max() (current->thread.addr_limit.seg)
 
+/* The current implementation of the raw_copy_from_user is a memcpy */
 static inline unsigned long
 raw_copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-	pr_warn("%s: just a memcpy from 0x%p to 0x%p of size %lu",
-	       __func__, from, to, n);
 	if (to && from)
 		memcpy(to, (__force void *)from, n);
 	return 0;
@@ -35,8 +34,6 @@ raw_copy_from_user(void *to, const void __user *from, unsigned long n)
 static inline unsigned long
 raw_copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-	pr_warn("%s: just a memcpy from 0x%p to 0x%p of size %lu",
-		__func__, from, to, n);
 	if (to && from)
 		memcpy((__force void *)to, from, n);
 	return 0;
