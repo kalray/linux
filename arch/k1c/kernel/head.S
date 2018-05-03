@@ -6,12 +6,19 @@
  * Copyright (C) 2017 Kalray Inc
  */
 #include <asm/thread_info.h>
+#include <asm/pwr_ctrl.h>
 #include <asm/sfr_defs.h>
 #include <asm/page.h>
 #include <asm/tlb.h>
 
 #include <linux/linkage.h>
 #include <linux/init.h>
+
+#ifdef CONFIG_SMP
+#define SECONDARY_START_ADDR	smp_secondary_start
+#else
+#define SECONDARY_START_ADDR	proc_power_off
+#endif
 
 /* Enable 64bits for both user and kernel */
 #define PS_ENABLE_64BIT		(K1C_SFR_PS_P64_MASK | K1C_SFR_PS_U64_MASK)
@@ -32,6 +39,20 @@
 /* We only want to clear bits in ws */
 #define WS_WFXL_VALUE		(WS_ENABLE_WU2)
 
+/* SMP stuff */
+#define RM_PID_MASK		((16) << K1C_SFR_PI_PID_SHIFT)
+
+#define PWR_CTRL_ADDR 0x940000
+
+#define PWR_CTRL_WUP_SET_OFFSET \
+	(MPPA_PWR_CTRL_VECTOR_PROC_CONTROL_OFFSET + \
+	 MPPA_PWR_CTRL_VECTOR_PROC_CONTROL_WUP_SET_OFFSET)
+
+#define PWR_CTRL_GLOBAL_CONFIG_OFFSET \
+	(MPPA_PWR_CTRL_GLOBAL_CONFIG_OFFSET + \
+	 MPPA_PWR_CTRL_GLOBAL_CONFIG_SET_OFFSET)
+
+/* MMU related defines */
 #define JTLB_MAX_SETS 63
 #define JTLB_MAX_WAYS 3
 #define LTLB_MAX_WAYS 15
@@ -122,11 +143,106 @@ __HEAD
 .section .boot.startup, "ax", @progbits
 
 ENTRY(k1c_start)
+	get $r20 = $pcr
+	;;
+	andd $r21 = $r20, RM_PID_MASK
+	;;
+	cb.deqz $r21 ? init_core
+	;;
+	call asm_rm_start_pe
+	;;
+init_core:
 	/* (Re)initialize performance counter */
 	make $r20 = 0x00000000
 	;;
 	set $pmc = $r20
 	;;
+	call asm_init_mmu
+	;;
+	/* Setup default processor status */
+	make $r25 = PS_WFXL_VALUE
+	;;
+	wfxl $ps = $r25
+	;;
+	/* Use as break point for debugging purpose.
+	   See Documentation/k1c/k1c.txt for more details. */
+gdb_mmu_enabled:
+	/* Extract processor identifier */
+	get $r24 = $pcr
+	;;
+	extfz $r24 = $r24, 15, 11
+	;;
+	/* If proc 0, then go to clear bss and do normal boot */
+	cb.deqz $r24? clear_bss
+	make $r25 = SECONDARY_START_ADDR
+	;;
+	icall $r25
+	;;
+clear_bss:
+	/* Clear BSS */
+	make $r22 = __bss_stop
+	make $r21 = __bss_start
+	;;
+	sbfd $r22 = $r21, $r22
+	make $r24 = 0
+	make $r25 = 0
+	;;
+	make $r26 = 0
+	make $r27 = 0
+	;;
+	/* Divide by 32 for hardware loop */
+	srld $r22, $r22, 5
+	;;
+	/* Clear bss with hardware loop */
+	loopdo $r22, clear_bss_done
+		;;
+		so 0[$r21] = $r24r25r26r27
+		addd $r21 = $r21, 32
+		;;
+	clear_bss_done:
+	/* Setup stack */
+	make $r40 = init_thread_union
+	make $r41 = init_task
+	;;
+	set $sr0 = $r41
+	;;
+	addd $sp = $r40, THREAD_SIZE
+	/* Here we go ! start the C stuff */
+	make $r20 = arch_low_level_start
+	;;
+	icall $r20
+	;;
+	make $r20 = proc_power_off
+	;;
+	igoto $r20
+	;;
+ENDPROC(k1c_start)
+
+/**
+ * $r20 = pcr value
+ */
+ENTRY(asm_rm_start_pe)
+	make $r26 = (PWR_CTRL_ADDR)
+	make $r27 = (1 << MPPA_PWR_CTRL_GLOBAL_CONFIG_SET_PE_EN_SHIFT)
+	;;
+	/* Set PE enable on power controller */
+	sd PWR_CTRL_GLOBAL_CONFIG_OFFSET[$r26] = $r27
+	/* PE 0 start (1 << cpu) */
+	make $r28 = 1
+	;;
+	/* Start PE0 ! */
+	sd PWR_CTRL_WUP_SET_OFFSET[$r26] = $r28
+	/* Go to idle */
+	make $r20 = proc_power_off
+	;;
+	igoto $r20
+	;;
+ENDPROC(asm_rm_start_pe)
+
+/**
+ * Reset and initialize minimal tlb entries
+ */
+ENTRY(asm_init_mmu)
 	make $r20 = MMC_SET_PMJ | MMC_CLEAR_ERROR
 	;;
 	wfxl $mmc = $r20
@@ -195,53 +311,32 @@ ENTRY(k1c_start)
 	;;
 	write_tlb_entry $r20, $r21
 	;;
-	/* Setup default processor status */
-	make $r25 = PS_WFXL_VALUE
+	ret
 	;;
-	wfxl $ps = $r25
-	;;
-	/* Use as break point for debugging purpose.
-	   See Documentation/k1c/k1c.txt for more details. */
-gdb_mmu_enabled:
-	/* Clear BSS */
-	make $r22 = __bss_stop
-	make $r21 = __bss_start
-	;;
-	sbfd $r22 = $r21, $r22
-	make $r24 = 0
-	make $r25 = 0
-	;;
-	make $r26 = 0
-	make $r27 = 0
-	;;
-	/* Divide by 32 for hardware loop */
-	srld $r22, $r22, 5
-	;;
-	/* Clear bss with hardware loop */
-	loopdo $r22, clear_bss_done
-		;;
-		so 0[$r21] = $r24r25r26r27
-		addd $r21 = $r21, 32
-		;;
-	clear_bss_done:
-	/* Setup stack */
-	make $r40 = init_thread_union
-	make $r41 = init_task
-	;;
-	set $sr0 = $r41
-	;;
-	addd $sp = $r40, THREAD_SIZE
-	/* Here we go ! start the C stuff */
-	make $r20 = arch_low_level_start
-	;;
-	icall $r20
-	;;
-	goto k1c_proc_power_off
-	;;
-ENDPROC(k1c_start)
+ENDPROC(asm_init_mmu)
 
-ENTRY(k1c_proc_power_off):
-	dinval
+/**
+ * Entry point for secondary processors
+ * $r24 has been set in caller and is the proc id
+ */
+ENTRY(smp_secondary_start)
+#ifdef CONFIG_SMP
+	make $r25 = __cpu_up_task_pointer
+	make $r26 = __cpu_up_stack_pointer
+	;;
+	ld.xs $sp = $r24[$r26]
+	;;
+	ld.xs $r25 = $r24[$r25]
+	;;
+	set $sr0 = $r25
+	make $r26 = start_kernel_secondary
+	;;
+	icall $r26
+	;;
+#endif
+ENDPROC(smp_secondary_start)
+
+ENTRY(proc_power_off)
 	make $r1 = WS_WFXL_VALUE
 	;;
 	/* Enable STOP */
@@ -251,4 +346,4 @@ ENTRY(k1c_proc_power_off):
 	;;
 	goto 1b
 	;;
-ENDPROC(k1c_proc_power_off)
+ENDPROC(proc_power_off)
