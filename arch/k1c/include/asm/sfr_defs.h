@@ -25,7 +25,7 @@
 #define K1C_SFR_EV4 20 /* Event Register 4 $ev4 $s20 */
 #define K1C_SFR_EV5 21 /* Event Register 5 $ev5 $s21 */
 #define K1C_SFR_RES0 22 /* Reserved $res0 $s22 */
-#define K1C_SFR_RES1 23 /* Reserved $res1 $s23 */
+#define K1C_SFR_AESPC 23 /* Arithmetic Exception Saved PC $aespc $s23 */
 #define K1C_SFR_PM0 24 /* Performance Monitor 0 $pm0 $s24 */
 #define K1C_SFR_PM1 25 /* Performance Monitor 1 $pm1 $s25 */
 #define K1C_SFR_PM2 26 /* Performance Monitor 2 $pm2 $s26 */
@@ -58,6 +58,11 @@
 #define K1C_SFR_WS 53 /* Wake-Up Status $ws $s53 */
 
 /* Register masks*/
+
+#define K1C_SFR_CS_AEC_MASK      0xe00000000LL /* Arithmetic Exception Code */
+#define K1C_SFR_CS_AEC_SHIFT       33
+#define K1C_SFR_CS_AEC_WFX_CLEAR 0x0LL
+#define K1C_SFR_CS_AEC_WFX_SET   0x000000000LL
 
 #define K1C_SFR_PI_ALUD_MASK      0x2 /* Size of the ALU (32 or 64 bits) */
 #define K1C_SFR_PI_ALUD_SHIFT       1
@@ -94,10 +99,8 @@
 #define K1C_SFR_PS_CE_WFX_CLEAR 0x200000LL
 #define K1C_SFR_PS_CE_WFX_SET   0x20000000000000LL
 
-#define K1C_SFR_CS_CS_MASK      0xffffffff /* Compute Status */
+#define K1C_SFR_CS_CS_MASK      0xfffffffffLL /* Compute Status */
 #define K1C_SFR_CS_CS_SHIFT       0
-#define K1C_SFR_CS_CS_WFX_CLEAR 0xffffffffLL
-#define K1C_SFR_CS_CS_WFX_SET   0xffffffff00000000LL
 
 #define K1C_SFR_PS_DCE_MASK      0x400 /* Data Cache Enable */
 #define K1C_SFR_PS_DCE_SHIFT       10
@@ -159,6 +162,11 @@
 #define K1C_SFR_CS_DZ_WFX_CLEAR 0x4LL
 #define K1C_SFR_CS_DZ_WFX_SET   0x400000000LL
 
+#define K1C_SFR_CS_DZIE_MASK      0x1000 /* IEEE 754 Divide by Zero Interrupt Enable */
+#define K1C_SFR_CS_DZIE_SHIFT       12
+#define K1C_SFR_CS_DZIE_WFX_CLEAR 0x1000LL
+#define K1C_SFR_CS_DZIE_WFX_SET   0x100000000000LL
+
 #define K1C_SFR_MMC_E_MASK      0x80000000 /* Error Flag */
 #define K1C_SFR_MMC_E_SHIFT       31
 #define K1C_SFR_MMC_E_WFX_CLEAR 0x80000000LL
@@ -219,6 +227,11 @@
 #define K1C_SFR_PS_ICE_WFX_CLEAR 0x100LL
 #define K1C_SFR_PS_ICE_WFX_SET   0x10000000000LL
 
+#define K1C_SFR_CS_ICIE_MASK      0x400 /* Integer Carry Interrupt Enable */
+#define K1C_SFR_CS_ICIE_SHIFT       10
+#define K1C_SFR_CS_ICIE_WFX_CLEAR 0x400LL
+#define K1C_SFR_CS_ICIE_WFX_SET   0x40000000000LL
+
 #define K1C_SFR_PS_IE_MASK      0x10 /* Interrupt Enable */
 #define K1C_SFR_PS_IE_SHIFT       4
 #define K1C_SFR_PS_IE_WFX_CLEAR 0x10LL
@@ -234,10 +247,20 @@
 #define K1C_SFR_CS_IN_WFX_CLEAR 0x20LL
 #define K1C_SFR_CS_IN_WFX_SET   0x2000000000LL
 
+#define K1C_SFR_CS_INIE_MASK      0x8000 /* IEEE 754 Inexact Interrupt Enable */
+#define K1C_SFR_CS_INIE_SHIFT       15
+#define K1C_SFR_CS_INIE_WFX_CLEAR 0x8000LL
+#define K1C_SFR_CS_INIE_WFX_SET   0x800000000000LL
+
 #define K1C_SFR_CS_IO_MASK      0x2 /* IEEE 754 Invalid Operation */
 #define K1C_SFR_CS_IO_SHIFT       1
 #define K1C_SFR_CS_IO_WFX_CLEAR 0x2LL
 #define K1C_SFR_CS_IO_WFX_SET   0x200000000LL
+
+#define K1C_SFR_CS_IOIE_MASK      0x800 /* IEEE 754 Invalid Operation Interrupt Enable */
+#define K1C_SFR_CS_IOIE_SHIFT       11
+#define K1C_SFR_CS_IOIE_WFX_CLEAR 0x800LL
+#define K1C_SFR_CS_IOIE_WFX_SET   0x80000000000LL
 
 #define K1C_SFR_ES_ITI_MASK      0x3ff000 /* InTerrupt Info */
 #define K1C_SFR_ES_ITI_SHIFT       12
@@ -293,6 +316,11 @@
 #define K1C_SFR_CS_OV_SHIFT       3
 #define K1C_SFR_CS_OV_WFX_CLEAR 0x8LL
 #define K1C_SFR_CS_OV_WFX_SET   0x800000000LL
+
+#define K1C_SFR_CS_OVIE_MASK      0x2000 /* IEEE 754 Overflow Interrupt Enable */
+#define K1C_SFR_CS_OVIE_SHIFT       13
+#define K1C_SFR_CS_OVIE_WFX_CLEAR 0x2000LL
+#define K1C_SFR_CS_OVIE_WFX_SET   0x200000000000LL
 
 #define K1C_SFR_PS_P64_MASK      0x20000 /* Privilege mode set to 64 bits. */
 #define K1C_SFR_PS_P64_SHIFT       17
@@ -454,6 +482,11 @@
 #define K1C_SFR_MMC_SNE_WFX_CLEAR 0x4000LL
 #define K1C_SFR_MMC_SNE_WFX_SET   0x400000000000LL
 
+#define K1C_SFR_CS_SPCV_MASK      0x100000000LL /* SPC Valid */
+#define K1C_SFR_CS_SPCV_SHIFT       32
+#define K1C_SFR_CS_SPCV_WFX_CLEAR 0x0LL
+#define K1C_SFR_CS_SPCV_WFX_SET   0x000000000LL
+
 #define K1C_SFR_MMC_SPE_MASK      0x8000 /* Speculative PROTECTION Enable */
 #define K1C_SFR_MMC_SPE_SHIFT       15
 #define K1C_SFR_MMC_SPE_WFX_CLEAR 0x8000LL
@@ -585,6 +618,11 @@
 #define K1C_SFR_CS_UN_SHIFT       4
 #define K1C_SFR_CS_UN_WFX_CLEAR 0x10LL
 #define K1C_SFR_CS_UN_WFX_SET   0x1000000000LL
+
+#define K1C_SFR_CS_UNIE_MASK      0x4000 /* IEEE 754 Underflow Interrupt Enable */
+#define K1C_SFR_CS_UNIE_SHIFT       14
+#define K1C_SFR_CS_UNIE_WFX_CLEAR 0x4000LL
+#define K1C_SFR_CS_UNIE_WFX_SET   0x400000000000LL
 
 #define K1C_SFR_PS_USE_MASK      0x200 /* Uncached Streaming Enable */
 #define K1C_SFR_PS_USE_SHIFT       9
