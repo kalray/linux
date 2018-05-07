@@ -28,7 +28,8 @@ head-y	:= arch/k1c/kernel/head.o
 libs-y 	+= $(LIBGCC)
 core-y += arch/k1c/kernel/ \
           arch/k1c/mm/ \
-          arch/k1c/lib/
+          arch/k1c/lib/ \
+          arch/k1c/platform/
 # Final targets
 all: vmlinux
 
