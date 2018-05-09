@@ -101,12 +101,6 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define __pte_to_swp_entry(pte) ((swp_entry_t) { pte_val(pte) })
 #define __swp_entry_to_pte(x)   ((pte_t) { (x).val })
 
-static inline void update_mmu_cache(struct vm_area_struct *vma,
-	unsigned long address, pte_t *ptep)
-{
-	panic("%s is not yet implemented", __func__);
-}
-
 /**********************
  * PGD definitions:
  *   - pgd_ERROR
