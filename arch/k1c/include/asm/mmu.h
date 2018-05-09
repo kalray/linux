@@ -109,6 +109,20 @@ static inline int k1c_mmu_mmc_error_is_set(void)
 	return (K1C_SFR_MMC_E_MASK & k1c_sfr_get(K1C_SFR_MMC)) != 0;
 }
 
+#define k1c_mmu_add_jtlb_entry(way, entry) do { \
+	k1c_mmu_select_jtlb();        \
+	k1c_mmu_select_way(way);      \
+	k1c_mmu_set_tlb_entry(entry); \
+	k1c_mmu_writetlb();           \
+} while (0)
+
+#define k1c_mmu_add_ltlb_entry(way, entry) do { \
+	k1c_mmu_select_ltlb();        \
+	k1c_mmu_select_way(way);      \
+	k1c_mmu_set_tlb_entry(entry); \
+	k1c_mmu_writetlb();           \
+} while (0)
+
 extern void k1c_mmu_setup_initial_mapping(void);
 extern void k1c_mmu_dump_ltlb(void);
 extern void k1c_mmu_dump_jtlb(void);

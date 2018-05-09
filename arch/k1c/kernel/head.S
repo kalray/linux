@@ -9,7 +9,7 @@
 #include <asm/pwr_ctrl.h>
 #include <asm/sfr_defs.h>
 #include <asm/page.h>
-#include <asm/tlb.h>
+#include <asm/tlb_defs.h>
 
 #include <linux/linkage.h>
 #include <linux/init.h>
