@@ -36,8 +36,6 @@ static void cleanup_jtlb(void)
 	struct k1c_tlb_format tlbe = K1C_EMPTY_TLB_ENTRY;
 	int set, way;
 
-	k1c_mmu_select_jtlb();
-
 	for (set = 0; set < MMU_JTLB_SETS; set++) {
 		tlbe.teh.pn = set;
 		for (way = 0; way < MMU_JTLB_WAYS; way++) {
@@ -46,9 +44,7 @@ static void cleanup_jtlb(void)
 			 * With 4K pages the set is the value of the 6 lower
 			 * signigicant bits of the page number.
 			 */
-			k1c_mmu_select_way(way);
-			k1c_mmu_set_tlb_entry(tlbe);
-			k1c_mmu_writetlb();
+			k1c_mmu_add_jtlb_entry(way, tlbe);
 
 			if (k1c_mmu_mmc_error_is_set())
 				panic("Failed to initialize JTLB[s:%02d w:%d]",
