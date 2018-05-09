@@ -18,7 +18,7 @@
 
 #include <asm/sections.h>
 #include <asm/page.h>
-#include <asm/tlb.h>
+#include <asm/tlb_defs.h>
 
 pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
@@ -59,11 +59,7 @@ void __init paging_init(void)
 	 * The entry  LTLB[1] was used during boot for smem mapping
 	 * We reuse it to map devices at their proper address.
 	 */
-	k1c_mmu_select_ltlb();
-	k1c_mmu_select_way(1);
-
-	k1c_mmu_set_tlb_entry(tlbe);
-	k1c_mmu_writetlb();
+	k1c_mmu_add_ltlb_entry(1, tlbe);
 
 	for (i = 0; i < PTRS_PER_PGD; i++)
 		swapper_pg_dir[i] = __pgd(0);

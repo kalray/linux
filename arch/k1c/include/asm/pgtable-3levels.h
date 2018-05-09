@@ -74,7 +74,7 @@ static inline int pud_none(pud_t pud)
 
 static inline int pud_bad(pud_t pud)
 {
-	panic("%s: Not implemented", __func__);
+	return !pud_val(pud);
 }
 static inline int pud_present(pud_t pud)
 {
