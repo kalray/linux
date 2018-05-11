@@ -10,4 +10,4 @@ CONFIG_MESSAGE_LOGLEVEL_DEFAULT=7
 CONFIG_PANIC_TIMEOUT=-1
 CONFIG_BLK_DEV_INITRD=y
 CONFIG_PANIC_SYSCALL=y
-CONFIG_PANIC_SYSCALL_EXPECTED="flush_tlb_page is not implemented"
+CONFIG_PANIC_SYSCALL_EXPECTED="No working init found.  Try passing init= option to kernel. See Linux Documentation/admin-guide/init.rst for guidance."
