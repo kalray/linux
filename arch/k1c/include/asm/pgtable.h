@@ -145,7 +145,23 @@ static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 /* Returns 1 if entry is present */
 static inline int pmd_present(pmd_t pmd)
 {
-	return (pmd_val(pmd) & _PAGE_PRESENT);
+	/* All kernel pages are mapped (see LTLB[0]) so we don't need to check
+	 * if page is present if value is in the range of the mapping.
+	 */
+	unsigned long pmdv = pmd_val(pmd);
+
+	if (pmdv == 0)
+		return 0;
+
+	/* Currently 1G is mapped */
+	if ((pmdv >= CONFIG_K1C_PAGE_OFFSET) &&
+	    (pmdv < (CONFIG_K1C_PAGE_OFFSET + 0x40000000)))
+		return 1;
+
+	panic("%s: First time we pass here with pmd value not mapped. Check what should be returned\n",
+		__func__);
+
+	return 0;
 }
 
 /* Returns 1 if the corresponding entry has the value 0 */
