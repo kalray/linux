@@ -10,12 +10,7 @@
 #define _ASM_K1C_TLBFLUSH_H
 
 #include <linux/printk.h>
-
-static inline void
-flush_tlb_mm(struct mm_struct *mm)
-{
-	pr_info("%s is not implemented", __func__);
-}
+#include <linux/mm_types.h>
 
 static inline void flush_tlb_range(struct vm_area_struct *vma,
 		unsigned long start, unsigned long end)
@@ -30,8 +25,21 @@ static inline void flush_tlb_kernel_range(unsigned long start,
 	panic("%s is not implemented", __func__);
 }
 
-#define flush_tlb_all() panic("flush_tlb_all is not implemented")
-#define flush_tlb_page(vma, addr) panic("flush_tlb_page is not implemented")
+extern void local_flush_tlb_page(struct vm_area_struct *vma,
+				 unsigned long addr);
+
+extern void local_flush_tlb_all(void);
+extern void local_flush_tlb_mm(struct mm_struct *mm);
+
+#ifdef CONFIG_SMP
+#define flush_tlb_page() panic("flush_tlb_all is not implemented for SMP")
+#define flush_tlb_all()  panic("flush_tlb_all is not implemented for SMP")
+#define flush_tlb_mm()   panic("flush_tlb_mm is not implemented for SMP")
+#else
+#define flush_tlb_page local_flush_tlb_page
+#define flush_tlb_all  local_flush_tlb_all
+#define flush_tlb_mm   local_flush_tlb_mm
+#endif
 
 #include <linux/sched.h>
 #include <asm/tlb_defs.h>
@@ -58,6 +66,9 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 		panic("%s: pfn %lx is not valid\n",
 		      __func__, (unsigned long)pfn);
 
+	/* No need to add the TLB entry until the process that owns the memory
+	 * is running.
+	 */
 	if (vma && (current->active_mm != vma->vm_mm))
 		return;
 
@@ -69,7 +80,10 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 	else
 		pa = TLB_PA_NA_RWX;
 
-	/* ASN is not currently implemented */
+	/* ASN is not currently supported. So it must be set to the value
+	 * that is in MMC (0 in our case) because non global entries must have
+	 * their ASN field matching MMC.ASN.
+	 */
 	tlbe = tlb_mk_entry(
 		(void *)pfn_to_phys(pfn),
 		(void *)address,
