@@ -236,11 +236,15 @@ static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 }
 
 #define pte_page(x)     pfn_to_page(pte_pfn(x))
-#define pte_index(addr) (((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1))
+
+static inline unsigned long pte_index(unsigned long addr)
+{
+	return ((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1);
+}
 
 static inline pte_t *pte_offset_kernel(pmd_t *pmd, unsigned long addr)
 {
-	return (pte_t *)((unsigned long)pmd + pte_index(addr));
+	return (pte_t *)pmd_val(*pmd) + pte_index(addr);
 }
 
 #define pte_offset_map(dir, addr)	pte_offset_kernel((dir), (addr))
