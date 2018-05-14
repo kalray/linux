@@ -414,9 +414,10 @@ panic_str_label:
  * specified by the switch_to caller (or where set by copy_thread).
  */
 ENTRY(ret_from_kernel_thread)
-	make $r34 = schedule_tail
+	addd $sp = $sp, -SCRATCHPAD_SIZE
+	call schedule_tail
 	;;
-	icall $r34
+	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
 	/* Call fn(arg) */
 	copyd $r0 = $r16
@@ -501,8 +502,10 @@ ENTRY(work_pending)
 	cb.deqz $r2? 1f
 	andd $r4 = $r1, _TIF_NEED_RESCHED
 	;;
+	addd $sp = $sp, -SCRATCHPAD_SIZE
 	call schedule
 	;;
+	addd $sp = $sp, SCRATCHPAD_SIZE
 	ret
 	;;
 1:	make $r0 = notify_panic_str_label
