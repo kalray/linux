@@ -57,19 +57,14 @@ static inline void pud_populate(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
 #define pmd_ERROR(e) \
 	pr_err("%s:%d: bad pmd %016lx.\n", __FILE__, __LINE__, pmd_val(e))
 
-static inline unsigned long pud_page_vaddr(pud_t pud)
-{
-	return pud_val(pud);
-}
-
 static inline unsigned long pmd_index(unsigned long addr)
 {
-	return (((addr) >> PMD_SHIFT) & (PTRS_PER_PMD - 1));
+	return ((addr) >> PMD_SHIFT) & (PTRS_PER_PMD - 1);
 }
 
 static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
 {
-	return (pmd_t *)pud_page_vaddr(*pud) + pmd_index(addr);
+	return (pmd_t *)pud_val(*pud) + pmd_index(addr);
 }
 
 static inline int pud_none(pud_t pud)
