@@ -91,6 +91,10 @@ struct k1c_tlb_format {
 	k1c_sfr_set_mask(K1C_SFR_MMC, K1C_SFR_MMC_SW_MASK, \
 		(way << K1C_SFR_MMC_SW_SHIFT))
 
+#define k1c_mmu_select_set(set)  \
+	k1c_sfr_set_mask(K1C_SFR_MMC, K1C_SFR_MMC_SS_MASK, \
+		(set << K1C_SFR_MMC_SS_SHIFT))
+
 #define k1c_mmu_select_jtlb() \
 	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_SB_SHIFT)
 
