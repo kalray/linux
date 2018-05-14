@@ -51,7 +51,8 @@ static void cleanup_jtlb(void)
 			k1c_mmu_writetlb();
 
 			if (k1c_mmu_mmc_error_is_set())
-				panic("Failed to initialize the JTLB");
+				panic("Failed to initialize JTLB[s:%02d w:%d]",
+				      set, way);
 		}
 	}
 
@@ -66,6 +67,7 @@ void k1c_mmu_dump_ltlb(void)
 	k1c_mmu_select_ltlb();
 
 	/* There is only one set on the ltlb */
+	k1c_mmu_select_set(0);
 	for (way = 0; way < MMU_LTLB_WAYS; way++) {
 		k1c_mmu_select_way(way);
 		k1c_mmu_readtlb();
@@ -86,7 +88,7 @@ void k1c_mmu_dump_jtlb(void)
 	k1c_mmu_select_jtlb();
 
 	for (set = 0; set < MMU_JTLB_SETS; set++) {
-		tlbe.teh.pn = set;
+		k1c_mmu_select_set(set);
 		for (way = 0; way < MMU_JTLB_WAYS; way++) {
 			k1c_mmu_select_way(way);
 			k1c_mmu_readtlb();
