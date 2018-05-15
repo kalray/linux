@@ -107,6 +107,9 @@ unsigned long get_wchan(struct task_struct *p);
 
 extern void ret_from_kernel_thread(void);
 
+/* User return function */
+extern void ret_from_fork(void);
+
 static inline void wait_for_interrupt(void)
 {
 	long ilr_val = 0xFFFFFFFFULL;
