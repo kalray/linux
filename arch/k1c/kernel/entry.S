@@ -103,6 +103,8 @@ _save_regs:
 
 /**
  * Restore registers after exception
+ * When entering this macro, $sp must be located right before regs
+ * storage
  */
 .macro restore_regs_after_exception sps_reg sr0_reg
 	LOCAL _restore_regs
@@ -434,6 +436,47 @@ ENTRY(ret_from_kernel_thread)
 	icall	$r1
 	;;
 ENDPROC(ret_from_kernel_thread)
+
+/**
+ * Return from fork.
+ * start_thread will set return stack and and pc. Then copy_thread will
+ * take care of the copying logic.
+ * $r15 will then contains 0 if tracing disabled (set by copy_thread)
+ * The mechanism is almost the same as for ret_from_kernel_thread.
+ */
+ENTRY(ret_from_fork)
+	addd $sp = $sp, -SCRATCHPAD_SIZE
+	call schedule_tail
+	;;
+	/* $r15 contains 0 if tracing disable */
+	cb.deqz $r15? ret_from_kernel
+	;;
+	copyd $r0 = $sp
+	call do_syscall_trace_exit
+	;;
+ret_from_kernel:
+	addd $sp = $sp, SCRATCHPAD_SIZE
+	;;
+	get $r11 = $sr0
+	/* Load stack pointer set by start_thread from registers */
+	ld $r18 = PT_R12[$sp]
+	/* Compute unwound kernel stack pointer */
+	addd $r15 = $sp, -PT_SIZE_ON_STACK
+	;;
+	get $r10 = $sps
+	/* restore_regs_after_exception expect the user stack pointer
+	 * to be in TASK_THREAD_USER_SP[task] so store the one
+	 * we got from start_thread */
+	sd TASK_THREAD_USER_SP[$r11] = $r18
+	;;
+	/* Save unwound kernel stack pointer in thread_info */
+	sd TASK_THREAD_KERNEL_SP[$r11] = $r15
+	;;
+	restore_regs_after_exception $r10 $r11
+	;;
+	rfe
+	;;
+ENDPROC(ret_from_fork)
 
 /*
  * The callee-saved registers must be saved and restored.
