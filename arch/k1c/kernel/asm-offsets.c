@@ -28,6 +28,7 @@ int foo(void)
 	 * right now since this is our stack pointer. Allow to save
 	 * only $r13 by using this offset
 	 */
+	OFFSET(PT_R12, pt_regs, r12);
 	OFFSET(PT_R13, pt_regs, r13);
 	OFFSET(PT_R14R15, pt_regs, r14);
 
