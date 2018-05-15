@@ -7,10 +7,10 @@
  */
 
 #include <linux/sched.h>
+#include <linux/ptrace.h>
 #include <linux/sched/task_stack.h>
 
 #include <asm/ptrace.h>
-
 #include <asm/processor.h>
 
 #define SCALL_NUM_EXIT	"0xfff"
@@ -61,31 +61,57 @@ void show_regs(struct pt_regs *regs)
 	pr_info("\n\n");
 }
 
+/**
+ * Prepare a thread to return to userspace
+ */
 void start_thread(struct pt_regs *regs,
 			unsigned long pc, unsigned long sp)
 {
-	panic("%s unimplemented\n", __func__);
+	regs->spc = pc;
+	regs->r12 = sp;
+	regs->sps = k1c_sfr_get(K1C_SFR_PS);
+
+	/* Clear user mode */
+	regs->sps &= ~K1C_SFR_PS_PM_MASK;
 }
 
 int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		unsigned long kthread_arg, struct task_struct *p,
 		unsigned long tls)
 {
-	struct pt_regs *childregs = task_pt_regs(p);
+	struct pt_regs *regs, *childregs = task_pt_regs(p);
 
+	/* p->thread holds context to be restored by __switch_to() */
 	if (unlikely(p->flags & PF_KTHREAD)) {
 		/* Kernel thread */
 		memset(childregs, 0, sizeof(struct pt_regs));
 
-		p->thread.ra = (unsigned long) ret_from_kernel_thread;
 		p->thread.r15 = usp; /* fn */
 		p->thread.r16 = kthread_arg;
+		p->thread.ra = (unsigned long) ret_from_kernel_thread;
 	} else {
-		/* User thread */
-		panic("%s unimplemented for user thread\n", __func__);
+		regs = current_pt_regs();
+
+		/* Copy current process registers */
+		*childregs = *regs;
+
+		/* Store tracing status in r15 to avoid computing it
+		 * in assembly
+		 */
+		p->thread.r15 = task_thread_info(p)->flags & _TIF_SYSCALL_TRACE;
+		p->thread.ra = (unsigned long) ret_from_fork;
+
+		childregs->r0 = 0; /* Return value of fork() */
+		/* Set stack pointer if any */
+		if (usp)
+			childregs->r12 = usp;
+
+		/* Set a new TLS ?  */
+		if (clone_flags & CLONE_SETTLS)
+			childregs->r13 = tls;
 	}
 
-	p->thread.kernel_sp = (unsigned long) childregs; /* kernel sp */
+	p->thread.kernel_sp = (unsigned long) childregs;
 
 	return 0;
 }
