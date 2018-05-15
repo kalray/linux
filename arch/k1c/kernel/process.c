@@ -123,7 +123,7 @@ void release_thread(struct task_struct *dead_task)
 
 void flush_thread(void)
 {
-	panic("%s unimplemented\n", __func__);
+	panic("%s unimplemented", __func__);
 }
 
 unsigned long get_wchan(struct task_struct *p)
