@@ -12,33 +12,29 @@
 #include <linux/printk.h>
 #include <linux/mm_types.h>
 
-static inline void flush_tlb_range(struct vm_area_struct *vma,
-		unsigned long start, unsigned long end)
-{
-	panic("%s is not implemented", __func__);
-}
-
-/* Flush a range of kernel pages */
-static inline void flush_tlb_kernel_range(unsigned long start,
-	unsigned long end)
-{
-	panic("%s is not implemented", __func__);
-}
-
 extern void local_flush_tlb_page(struct vm_area_struct *vma,
 				 unsigned long addr);
-
 extern void local_flush_tlb_all(void);
 extern void local_flush_tlb_mm(struct mm_struct *mm);
+extern void local_flush_tlb_range(struct vm_area_struct *vma,
+				  unsigned long start,
+				  unsigned long end);
+extern void local_flush_tlb_kernel_range(unsigned long start,
+					 unsigned long end);
 
 #ifdef CONFIG_SMP
-#define flush_tlb_page() panic("flush_tlb_all is not implemented for SMP")
-#define flush_tlb_all()  panic("flush_tlb_all is not implemented for SMP")
-#define flush_tlb_mm()   panic("flush_tlb_mm is not implemented for SMP")
+#define flush_tlb_page()  panic("flush_tlb_all is not implemented for SMP")
+#define flush_tlb_all()   panic("flush_tlb_all is not implemented for SMP")
+#define flush_tlb_mm()    panic("flush_tlb_mm is not implemented for SMP")
+#define flush_tlb_range() panic("flush_tlb_range is not implemented for SMP")
+#define flush_tlb_kernel_range() \
+	panic("flush_tlb_kernel_range is not implemented for SMP")
 #else
-#define flush_tlb_page local_flush_tlb_page
-#define flush_tlb_all  local_flush_tlb_all
-#define flush_tlb_mm   local_flush_tlb_mm
+#define flush_tlb_page         local_flush_tlb_page
+#define flush_tlb_all          local_flush_tlb_all
+#define flush_tlb_mm           local_flush_tlb_mm
+#define flush_tlb_range        local_flush_tlb_range
+#define flush_tlb_kernel_range local_flush_tlb_kernel_range
 #endif
 
 #include <linux/sched.h>
