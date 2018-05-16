@@ -28,6 +28,12 @@ static inline void k1c_clear_jtlb_entry(unsigned long addr)
 	}
 }
 
+void local_flush_tlb_mm(struct mm_struct *mm)
+{
+	/* TODO: cleanup only mm */
+	local_flush_tlb_all();
+}
+
 void local_flush_tlb_page(struct vm_area_struct *vma,
 			  unsigned long addr)
 {
@@ -36,12 +42,6 @@ void local_flush_tlb_page(struct vm_area_struct *vma,
 	local_irq_save(flags);
 	k1c_clear_jtlb_entry(addr);
 	local_irq_restore(flags);
-}
-
-void flush_tlb_mm(struct mm_struct *mm)
-{
-	/* TODO: cleanup only mm */
-	local_flush_tlb_all();
 }
 
 void local_flush_tlb_all(void)
@@ -55,4 +55,19 @@ void local_flush_tlb_all(void)
 		k1c_clear_jtlb_entry(set);
 
 	local_irq_restore(flags);
+}
+
+void local_flush_tlb_range(struct vm_area_struct *vma,
+			   unsigned long start,
+			   unsigned long end)
+{
+	unsigned long addr;
+
+	for (addr = start; addr < end; addr += PAGE_SIZE)
+		local_flush_tlb_page(vma, addr);
+}
+
+void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
+{
+	panic("%s: not implemented", __func__);
 }
