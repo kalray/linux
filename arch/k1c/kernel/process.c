@@ -123,7 +123,10 @@ void release_thread(struct task_struct *dead_task)
 
 void flush_thread(void)
 {
-	panic("%s unimplemented", __func__);
+	/* This function should clear the values of the floating point
+	 * registers and debug registers saved in the TSS segment. For
+	 * Coolidge we do nothing.
+	 */
 }
 
 unsigned long get_wchan(struct task_struct *p)
