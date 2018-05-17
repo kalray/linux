@@ -105,7 +105,7 @@ void k1c_mmu_setup_initial_mapping(void)
 
 	k1c_mmu_mmc_clean_error_flag();
 
-	supported_psize = MMC_PMJ_4K | MMC_PMJ_64K | MMC_PMJ_512K | MMC_PMJ_1G;
+	supported_psize = MMC_PMJ_4K | MMC_PMJ_64K | MMC_PMJ_2M | MMC_PMJ_512M;
 
 	k1c_sfr_set_mask(K1C_SFR_MMC, K1C_SFR_MMC_PMJ_MASK,
 		(supported_psize << K1C_SFR_MMC_PMJ_SHIFT));
