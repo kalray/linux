@@ -52,8 +52,8 @@
 /* TLB: Page Size */
 #define TLB_PS_4K   0
 #define TLB_PS_64K  1
-#define TLB_PS_512K 2
-#define TLB_PS_1GB  3
+#define TLB_PS_2M   2
+#define TLB_PS_512M 3
 
 #define TLB_G_GLOBAL	1
 #define TLB_G_USE_ASN	0
