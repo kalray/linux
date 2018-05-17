@@ -48,7 +48,7 @@ void __init paging_init(void)
 	struct k1c_tlb_format tlbe = tlb_mk_entry(
 		(void *) 0x0,
 		(void *) KERNEL_PERIPH_MAP_BASE,
-		TLB_PS_1GB,
+		TLB_PS_512M,
 		TLB_G_GLOBAL,
 		TLB_PA_NA_RW,
 		TLB_CP_D_U,
