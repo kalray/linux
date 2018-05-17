@@ -37,8 +37,8 @@
 /* MMC: Page size Mask in JTLB */
 #define MMC_PMJ_4K   1
 #define MMC_PMJ_64K  2
-#define MMC_PMJ_512K 4
-#define MMC_PMJ_1G   8
+#define MMC_PMJ_2M   4
+#define MMC_PMJ_512M 8
 
 typedef struct mm_context {
 	 unsigned long end_brk;
