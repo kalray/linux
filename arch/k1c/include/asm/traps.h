@@ -37,7 +37,9 @@ typedef void (*trap_handler_func) (uint64_t es, uint64_t ea,
 		((__es & K1C_SFR_ES_HTC_MASK) >> K1C_SFR_ES_HTC_SHIFT)
 
 #ifdef CONFIG_MMU
-extern void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs);
+extern void k1c_trap_nomapping(uint64_t es, uint64_t ea, struct pt_regs *regs);
+extern void k1c_trap_writetoclean(uint64_t es, uint64_t ea,
+				  struct pt_regs *regs);
 #endif
 
 #endif
