@@ -47,22 +47,21 @@ static const char * const trap_name[] = {
 	"ATOMICTOCLEAN"
 };
 
-inline int register_trap_handler(unsigned int trap_nb, trap_handler_func fn)
+inline void register_trap_handler(unsigned int trap_nb, trap_handler_func fn)
 {
 
 	if (trap_nb >= K1C_TRAP_COUNT || fn == NULL)
-		return -1;
+		panic("Failed to register handler #%d\n", trap_nb);
 
 	trap_handler_table[trap_nb] = fn;
-	return 0;
 }
 
 void __init trap_init(void)
 {
 
 #ifdef CONFIG_MMU
-	if (register_trap_handler(K1C_TRAP_NOMAPPING, do_page_fault) < 0)
-		panic("Failed to register page fault handler\n");
+	register_trap_handler(K1C_TRAP_NOMAPPING, k1c_trap_nomapping);
+	register_trap_handler(K1C_TRAP_WRITETOCLEAN, k1c_trap_writetoclean);
 #endif
 
 }
