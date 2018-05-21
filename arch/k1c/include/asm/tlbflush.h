@@ -76,9 +76,14 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 	else
 		pa = TLB_PA_NA_RWX;
 
-	/* ASN is not currently supported. So it must be set to the value
+	/* TODO: ASN is not currently supported. So it must be set to the value
 	 * that is in MMC (0 in our case) because non global entries must have
 	 * their ASN field matching MMC.ASN.
+	 * TODO: Need to check how copy on write can be implemented. We should
+	 * probably use TLB_ES_PRESENT and manage the trap WRITETOCLEAN to find
+	 * when a page frame is written and must be duplicated. Currently we
+	 * are setting the entry as A-Modified to prevent the WRITETOCLEAN and
+	 * the ATOMICTOCLEAN.
 	 */
 	tlbe = tlb_mk_entry(
 		(void *)pfn_to_phys(pfn),
@@ -88,9 +93,13 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 		pa,
 		TLB_CP_D_U,
 		0, /* ASN */
-		TLB_ES_PRESENT);
+		TLB_ES_A_MODIFIED);
 
-	/* Currently we are only using the way 0 */
+	/* TODO: Currently the first implementation is only using the way 0 and
+	 * so we just replace an entry if there is already one. The next step
+	 * is to use the 4 ways and have an algorithm for replacement when all
+	 * ways are used.
+	 */
 	k1c_mmu_add_jtlb_entry(0, tlbe);
 
 	if (k1c_mmu_mmc_error_is_set())
