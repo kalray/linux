@@ -148,7 +148,7 @@ void scall_machine_exit(unsigned char value)
 
 void machine_halt(void)
 {
-	scall_machine_exit(0);
+	scall_machine_exit(1);
 }
 
 void machine_power_off(void)
