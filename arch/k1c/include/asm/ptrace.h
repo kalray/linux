@@ -13,10 +13,25 @@
 #include <asm/sfr_defs.h>
 
 #define GPR_COUNT	64
+#define SFR_COUNT	8
+
+/**
+ * When updating pt_regs structure, you need to update this size.
+ * This is the expected size of the pt_regs struct.
+ * It ensure the structure layout from gcc is the same as the one we
+ * expect in order to do packed load (load/store octuple) in assembly.
+ * It let us to be free of any __packed attribute which might greatly
+ * reduce code performance.
+ * Conclusion: never put sizeof(pt_regs) in here or we loose this check
+ * (build time check done in asm-offsets.c)
+ */
+#define PT_REGS_STRUCT_EXPECTED_SIZE \
+			((GPR_COUNT + SFR_COUNT) * sizeof(uint64_t))
 
 /**
  * Saved register structure. Note that we should save only the necessary
  * registers.
+ * When you modify it, please read carefully the comment above.
  */
 struct pt_regs {
 	/* GPR */
@@ -95,7 +110,11 @@ struct pt_regs {
 	uint64_t le;
 	uint64_t ls;
 	uint64_t dummy;
-} __packed;
+	/**
+	 * If you add some fields, please read carefully the comment for
+	 * PT_REGS_STRUCT_EXPECTED_SIZE.
+	 */
+};
 
 #define user_stack_pointer(regs)	((regs)->r12)
 #define instruction_pointer(regs)	((regs)->spc)
