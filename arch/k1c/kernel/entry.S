@@ -117,8 +117,11 @@ _save_regs:
 	andd $r5 = $r1, _TIF_WORK_MASK
 	copyd $r0 = \sr0_reg
 	;;
-	/* If not, directly return */
-	cb.dnez $r5? _restore_regs
+	/**
+	 * If we do not have work pending (ie $r5 == 0)then we can
+	 * directly jump to _restore_regs without calling work_pending
+	 */
+	cb.deqz $r5? _restore_regs
 	;;
 	call work_pending
 	;;
@@ -404,10 +407,6 @@ ENDPROC(k1c_syscall_handler)
 *                      Context switch
 ***********************************************************************/
 
-.section ".rodata"
-panic_str_label:
-	.string "Unimplemented return to user from kernel thread"
-
 .text
 /*
  * When entering in ret_from_kernel_thread, r15 and r16 where set by
@@ -419,21 +418,12 @@ ENTRY(ret_from_kernel_thread)
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	call schedule_tail
 	;;
-	addd $sp = $sp, SCRATCHPAD_SIZE
-	;;
 	/* Call fn(arg) */
 	copyd $r0 = $r16
 	;;
 	icall $r15
 	;;
-	/*
-	 * Not sure yet what we should done when returning from fn.
-	 * Better be safe than sorry and put some safety barrier !
-	 */
-	make 	$r0 = panic_str_label
-	make	$r1 = panic
-	;;
-	icall	$r1
+	goto ret_from_kernel
 	;;
 ENDPROC(ret_from_kernel_thread)
 
