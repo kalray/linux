@@ -18,7 +18,6 @@ OBJCOPYFLAGS := -O binary -R .comment -R .note -R .bootloader -S
 LIBGCC	:= $(shell $(CC) -m64 $(KBUILD_CFLAGS) --print-libgcc-file-name)
 
 KBUILD_CFLAGS += -Wall -Werror -m64 -nostdlib -fno-builtin
-KBUILD_CFLAGS += $(call cc-option,-fstrict-align)
 KBUILD_CFLAGS += $(call cc-option,-ffarcall)
 
 KBUILD_AFLAGS += -Wall -Werror -m64 -nostdlib -fno-builtin
