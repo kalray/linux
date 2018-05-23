@@ -10,6 +10,7 @@
 #include <linux/kbuild.h>
 #include <linux/stddef.h>
 #include <linux/sched.h>
+#include <linux/bug.h>
 
 #include <asm/processor.h>
 #include <asm/ptrace.h>
@@ -17,6 +18,8 @@
 
 int foo(void)
 {
+	BUILD_BUG_ON(sizeof(struct pt_regs) != PT_REGS_STRUCT_EXPECTED_SIZE);
+
 	/*
 	 * We allocate a pt_regs on the stack when entering the kernel.  This
 	 * ensures the alignment is sane.
