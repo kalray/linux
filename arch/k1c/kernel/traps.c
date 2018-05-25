@@ -16,8 +16,8 @@
 #include <asm/ptrace.h>
 #include <asm/traps.h>
 
-#define STACK_SLOT_PER_LINE		8
-#define STACK_MAX_SLOT_PRINT		(STACK_SLOT_PER_LINE * 4)
+#define STACK_SLOT_PER_LINE		4
+#define STACK_MAX_SLOT_PRINT		(STACK_SLOT_PER_LINE * 8)
 
 /* 0 == entire stack */
 static unsigned long kstack_depth_to_print = CONFIG_STACK_MAX_DEPTH_TO_PRINT;
@@ -87,11 +87,11 @@ void show_trace(unsigned long *sp)
 			break;
 
 		/**
-		 * We need to go one word before the value pointed by sp
+		 * We need to go one double before the value pointed by sp
 		 * otherwise if called from the end of a function, we
 		 * will display the next symbol name
 		 */
-		addr = *(sp) - 4;
+		addr = *(sp) - 8;
 		if (__kernel_text_address(addr)) {
 			print_ip_sym(addr);
 			depth_to_print++;
@@ -120,32 +120,36 @@ void show_stack(struct task_struct *task, unsigned long *sp)
 
 	stack = sp;
 
-	/* display task informations */
-	pr_info("\nProcess %s (pid: %ld, threadinfo=%p, task=%p"
+
+	if (task) {
+		/* display task information */
+		pr_info("\nProcess %s (pid: %ld, threadinfo=%p, task=%p"
 #ifdef CONFIG_SMP
-	       " ,cpu: %d"
+		       " ,cpu: %d"
 #endif
-	       ")\nSP = <%08lx>\nStack:\t",
-	       task->comm, (long)task->pid, current_thread_info(), task,
+		       ")\nSP = <%016lx>\nStack:\t",
+		       task->comm, (long)task->pid, current_thread_info(), task,
 #ifdef CONFIG_SMP
-	       smp_processor_id(),
+		       smp_processor_id(),
 #endif
-	       (unsigned long)sp);
+		       (unsigned long)sp);
+	}
 
 	/**
 	 * Display the stack until we reach the required number of lines
 	 * or until we hit the stack bottom
 	 */
+	printk(KERN_DEFAULT "Stack:\n");
 	for (i = 0; i < STACK_MAX_SLOT_PRINT; i++) {
 		if (kstack_end(sp))
 			break;
 
 		if (i && (i % STACK_SLOT_PER_LINE) == 0)
-			pr_info("\n\t");
+			pr_cont("\n\t");
 
-		pr_info("%08lx ", *sp++);
+		pr_cont("%016lx ", *sp++);
 	}
-	pr_info("\n");
+	pr_cont("\n");
 
 	show_trace(stack);
 }
@@ -154,7 +158,7 @@ static void default_trap_handler(uint64_t es, uint64_t ea,
 				 struct pt_regs *regs)
 {
 	show_regs(regs);
-	panic("ERROR: TRAP %s received at 0x%.8llx\n",
+	panic("ERROR: TRAP %s received at 0x%.16llx\n",
 	      trap_name[trap_cause(es)], regs->spc);
 }
 /**
