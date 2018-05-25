@@ -142,7 +142,7 @@
 #define K1C_SFR_MES_DSE_WFX_CLEAR 0x10LL
 #define K1C_SFR_MES_DSE_WFX_SET   0x1000000000LL
 
-#define K1C_SFR_PS_DSEM_MASK      0x100000 /* Data Simple ecc Exception Mode */
+#define K1C_SFR_PS_DSEM_MASK      0x100000 /* Data Simple ECC Exception Mode */
 #define K1C_SFR_PS_DSEM_SHIFT       20
 #define K1C_SFR_PS_DSEM_WFX_CLEAR 0x100000LL
 #define K1C_SFR_PS_DSEM_WFX_SET   0x10000000000000LL
