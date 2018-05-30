@@ -18,13 +18,13 @@
 #define K1C_SFR_LC 13 /* Loop Counter $lc $s13 */
 #define K1C_SFR_EA 14 /* Excepting Address $ea $s14 */
 #define K1C_SFR_EV 15 /* Exception Vector $ev $s15 */
-#define K1C_SFR_EV0 16 /* Event Register 0 $ev0 $s16 */
-#define K1C_SFR_EV1 17 /* Event Register 1 $ev1 $s17 */
-#define K1C_SFR_EV2 18 /* Event Register 2 $ev2 $s18 */
-#define K1C_SFR_EV3 19 /* Event Register 3 $ev3 $s19 */
+#define K1C_SFR_RES0 16 /* Reserved $res0 $s16 */
+#define K1C_SFR_RES1 17 /* Reserved $res1 $s17 */
+#define K1C_SFR_RES2 18 /* Reserved $res2 $s18 */
+#define K1C_SFR_RES3 19 /* Reserved $res3 $s19 */
 #define K1C_SFR_EV4 20 /* Event Register 4 $ev4 $s20 */
-#define K1C_SFR_EV5 21 /* Event Register 5 $ev5 $s21 */
-#define K1C_SFR_RES0 22 /* Reserved $res0 $s22 */
+#define K1C_SFR_MEN 21 /* Misc External Notifications $men $s21 */
+#define K1C_SFR_PMSA 22 /* Performance Monitor Saved Address $pmsa $s22 */
 #define K1C_SFR_AESPC 23 /* Arithmetic Exception Saved PC $aespc $s23 */
 #define K1C_SFR_PM0 24 /* Performance Monitor 0 $pm0 $s24 */
 #define K1C_SFR_PM1 25 /* Performance Monitor 1 $pm1 $s25 */
@@ -89,11 +89,6 @@
 #define K1C_SFR_CS_CC_WFX_CLEAR 0xffff0000LL
 #define K1C_SFR_CS_CC_WFX_SET   0xffff000000000000LL
 
-#define K1C_SFR_TC_CDR_MASK      0xffff /* Clock Division Ratio */
-#define K1C_SFR_TC_CDR_SHIFT       0
-#define K1C_SFR_TC_CDR_WFX_CLEAR 0xffffLL
-#define K1C_SFR_TC_CDR_WFX_SET   0xffff00000000LL
-
 #define K1C_SFR_PS_CE_MASK      0x200000 /* l1 Coherency Enable */
 #define K1C_SFR_PS_CE_SHIFT       21
 #define K1C_SFR_PS_CE_WFX_CLEAR 0x200000LL
@@ -132,11 +127,6 @@
 #define K1C_SFR_PS_DM_WFX_CLEAR 0x2LL
 #define K1C_SFR_PS_DM_WFX_SET   0x200000000LL
 
-#define K1C_SFR_PMC_DMC_MASK      0x40000 /* Disengage Monitor Clock */
-#define K1C_SFR_PMC_DMC_SHIFT       18
-#define K1C_SFR_PMC_DMC_WFX_CLEAR 0x40000LL
-#define K1C_SFR_PMC_DMC_WFX_SET   0x4000000000000LL
-
 #define K1C_SFR_MES_DSE_MASK      0x10 /* Data Simple Ecc */
 #define K1C_SFR_MES_DSE_SHIFT       4
 #define K1C_SFR_MES_DSE_WFX_CLEAR 0x10LL
@@ -151,11 +141,6 @@
 #define K1C_SFR_MES_DSYE_SHIFT       9
 #define K1C_SFR_MES_DSYE_WFX_CLEAR 0x200LL
 #define K1C_SFR_MES_DSYE_WFX_SET   0x20000000000LL
-
-#define K1C_SFR_TC_DTC_MASK      0x800000 /* Disengage Timer Clock */
-#define K1C_SFR_TC_DTC_SHIFT       23
-#define K1C_SFR_TC_DTC_WFX_CLEAR 0x800000LL
-#define K1C_SFR_TC_DTC_WFX_SET   0x80000000000000LL
 
 #define K1C_SFR_CS_DZ_MASK      0x4 /* IEEE 754 Divide by Zero */
 #define K1C_SFR_CS_DZ_SHIFT       2
@@ -362,40 +347,48 @@
 #define K1C_SFR_PS_PM_WFX_CLEAR 0x1LL
 #define K1C_SFR_PS_PM_WFX_SET   0x100000000LL
 
-#define K1C_SFR_PMC_PM01_MASK      0x10000 /* PM0 and PM1 Chaining */
-#define K1C_SFR_PMC_PM01_SHIFT       16
-#define K1C_SFR_PMC_PM01_WFX_CLEAR 0x10000LL
-#define K1C_SFR_PMC_PM01_WFX_SET   0x1000000000000LL
-
-#define K1C_SFR_PMC_PM0C_MASK      0xf /* PM0 Configuration */
+#define K1C_SFR_PMC_PM0C_MASK      0x3f /* PM0 Configuration */
 #define K1C_SFR_PMC_PM0C_SHIFT       0
-#define K1C_SFR_PMC_PM0C_WFX_CLEAR 0xfLL
-#define K1C_SFR_PMC_PM0C_WFX_SET   0xf00000000LL
+#define K1C_SFR_PMC_PM0C_WFX_CLEAR 0x3fLL
+#define K1C_SFR_PMC_PM0C_WFX_SET   0x3f00000000LL
 
-#define K1C_SFR_PMC_PM1C_MASK      0xf0 /* PM1 Configuration */
-#define K1C_SFR_PMC_PM1C_SHIFT       4
-#define K1C_SFR_PMC_PM1C_WFX_CLEAR 0xf0LL
-#define K1C_SFR_PMC_PM1C_WFX_SET   0xf000000000LL
+#define K1C_SFR_PMC_PM0IE_MASK      0x100000000LL /* PM0 Interrupt Enable */
+#define K1C_SFR_PMC_PM0IE_SHIFT       32
+#define K1C_SFR_PMC_PM0IE_WFX_CLEAR 0x0LL
+#define K1C_SFR_PMC_PM0IE_WFX_SET   0x000000000LL
 
-#define K1C_SFR_PMC_PM23_MASK      0x20000 /* PM2 and PM3 Chaining */
-#define K1C_SFR_PMC_PM23_SHIFT       17
-#define K1C_SFR_PMC_PM23_WFX_CLEAR 0x20000LL
-#define K1C_SFR_PMC_PM23_WFX_SET   0x2000000000000LL
+#define K1C_SFR_PMC_PM1C_MASK      0x1f80 /* PM1 Configuration */
+#define K1C_SFR_PMC_PM1C_SHIFT       7
+#define K1C_SFR_PMC_PM1C_WFX_CLEAR 0x1f80LL
+#define K1C_SFR_PMC_PM1C_WFX_SET   0x1f8000000000LL
 
-#define K1C_SFR_PMC_PM2C_MASK      0xf00 /* PM2 Configuration */
-#define K1C_SFR_PMC_PM2C_SHIFT       8
-#define K1C_SFR_PMC_PM2C_WFX_CLEAR 0xf00LL
-#define K1C_SFR_PMC_PM2C_WFX_SET   0xf0000000000LL
+#define K1C_SFR_PMC_PM1IE_MASK      0x200000000LL /* PM1 Interrupt Enable */
+#define K1C_SFR_PMC_PM1IE_SHIFT       33
+#define K1C_SFR_PMC_PM1IE_WFX_CLEAR 0x0LL
+#define K1C_SFR_PMC_PM1IE_WFX_SET   0x000000000LL
 
-#define K1C_SFR_PMC_PM3C_MASK      0xf000 /* PM3 Configuration */
-#define K1C_SFR_PMC_PM3C_SHIFT       12
-#define K1C_SFR_PMC_PM3C_WFX_CLEAR 0xf000LL
-#define K1C_SFR_PMC_PM3C_WFX_SET   0xf00000000000LL
+#define K1C_SFR_PMC_PM2C_MASK      0xfc000 /* PM2 Configuration */
+#define K1C_SFR_PMC_PM2C_SHIFT       14
+#define K1C_SFR_PMC_PM2C_WFX_CLEAR 0xfc000LL
+#define K1C_SFR_PMC_PM2C_WFX_SET   0xfc00000000000LL
 
-#define K1C_SFR_PMC_PMC_MASK      0xffffffff /* Performance Monitor Control */
+#define K1C_SFR_PMC_PM2IE_MASK      0x400000000LL /* PM2 Interrupt Enable */
+#define K1C_SFR_PMC_PM2IE_SHIFT       34
+#define K1C_SFR_PMC_PM2IE_WFX_CLEAR 0x0LL
+#define K1C_SFR_PMC_PM2IE_WFX_SET   0x000000000LL
+
+#define K1C_SFR_PMC_PM3C_MASK      0x7e00000 /* PM3 Configuration */
+#define K1C_SFR_PMC_PM3C_SHIFT       21
+#define K1C_SFR_PMC_PM3C_WFX_CLEAR 0x7e00000LL
+#define K1C_SFR_PMC_PM3C_WFX_SET   0x7e0000000000000LL
+
+#define K1C_SFR_PMC_PM3IE_MASK      0x800000000LL /* PM3 Interrupt Enable */
+#define K1C_SFR_PMC_PM3IE_SHIFT       35
+#define K1C_SFR_PMC_PM3IE_WFX_CLEAR 0x0LL
+#define K1C_SFR_PMC_PM3IE_WFX_SET   0x000000000LL
+
+#define K1C_SFR_PMC_PMC_MASK      0x3fffffffffLL /* Performance Monitor Control */
 #define K1C_SFR_PMC_PMC_SHIFT       0
-#define K1C_SFR_PMC_PMC_WFX_CLEAR 0xffffffffLL
-#define K1C_SFR_PMC_PMC_WFX_SET   0xffffffff00000000LL
 
 #define K1C_SFR_MMC_PMJ_MASK      0x3c00 /* Page size Mask in JTLB */
 #define K1C_SFR_MMC_PMJ_SHIFT       10
@@ -442,6 +435,16 @@
 #define K1C_SFR_MMC_S_WFX_CLEAR 0x200LL
 #define K1C_SFR_MMC_S_WFX_SET   0x20000000000LL
 
+#define K1C_SFR_PMC_SAT_MASK      0x3000000000LL /* Saved Address Type */
+#define K1C_SFR_PMC_SAT_SHIFT       36
+#define K1C_SFR_PMC_SAT_WFX_CLEAR 0x0LL
+#define K1C_SFR_PMC_SAT_WFX_SET   0x000000000LL
+
+#define K1C_SFR_PMC_SAV_MASK      0x40000000 /* Saved Address Valid */
+#define K1C_SFR_PMC_SAV_SHIFT       30
+#define K1C_SFR_PMC_SAV_WFX_CLEAR 0x40000000LL
+#define K1C_SFR_PMC_SAV_WFX_SET   0x4000000000000000LL
+
 #define K1C_SFR_MMC_SB_MASK      0x10000000 /* Select Buffer */
 #define K1C_SFR_MMC_SB_SHIFT       28
 #define K1C_SFR_MMC_SB_WFX_CLEAR 0x10000000LL
@@ -452,20 +455,20 @@
 #define K1C_SFR_PI_SHDCE_WFX_CLEAR 0x10LL
 #define K1C_SFR_PI_SHDCE_WFX_SET   0x1000000000LL
 
-#define K1C_SFR_PMC_SMD_MASK      0x100000 /* Stop Monitors in Debug */
-#define K1C_SFR_PMC_SMD_SHIFT       20
-#define K1C_SFR_PMC_SMD_WFX_CLEAR 0x100000LL
-#define K1C_SFR_PMC_SMD_WFX_SET   0x10000000000000LL
+#define K1C_SFR_PMC_SMD_MASK      0x20000000 /* Stop Monitors in Debug */
+#define K1C_SFR_PMC_SMD_SHIFT       29
+#define K1C_SFR_PMC_SMD_WFX_CLEAR 0x20000000LL
+#define K1C_SFR_PMC_SMD_WFX_SET   0x2000000000000000LL
 
 #define K1C_SFR_PS_SME_MASK      0x40000 /* Step Mode Enabled */
 #define K1C_SFR_PS_SME_SHIFT       18
 #define K1C_SFR_PS_SME_WFX_CLEAR 0x40000LL
 #define K1C_SFR_PS_SME_WFX_SET   0x4000000000000LL
 
-#define K1C_SFR_PMC_SMP_MASK      0x80000 /* Stop Monitors in Privilege */
-#define K1C_SFR_PMC_SMP_SHIFT       19
-#define K1C_SFR_PMC_SMP_WFX_CLEAR 0x80000LL
-#define K1C_SFR_PMC_SMP_WFX_SET   0x8000000000000LL
+#define K1C_SFR_PMC_SMP_MASK      0x10000000 /* Stop Monitors in Privilege */
+#define K1C_SFR_PMC_SMP_SHIFT       28
+#define K1C_SFR_PMC_SMP_WFX_CLEAR 0x10000000LL
+#define K1C_SFR_PMC_SMP_WFX_SET   0x1000000000000000LL
 
 #define K1C_SFR_PS_SMR_MASK      0x80000 /* Step Mode Ready */
 #define K1C_SFR_PS_SMR_SHIFT       19
@@ -507,12 +510,17 @@
 #define K1C_SFR_SSPS_SSPS_WFX_CLEAR 0xffffffffLL
 #define K1C_SFR_SSPS_SSPS_WFX_SET   0xffffffff00000000LL
 
-#define K1C_SFR_TC_STD_MASK      0x20000000 /* Stop Timers if Debug */
+#define K1C_SFR_TC_STD_MASK      0x20000000 /* Stop Timers in Debug */
 #define K1C_SFR_TC_STD_SHIFT       29
 #define K1C_SFR_TC_STD_WFX_CLEAR 0x20000000LL
 #define K1C_SFR_TC_STD_WFX_SET   0x2000000000000000LL
 
-#define K1C_SFR_TC_STP_MASK      0x10000000 /* Stop Timers if Privilege */
+#define K1C_SFR_TC_STI_MASK      0x800000 /* Stop Timers in Idle */
+#define K1C_SFR_TC_STI_SHIFT       23
+#define K1C_SFR_TC_STI_WFX_CLEAR 0x800000LL
+#define K1C_SFR_TC_STI_WFX_SET   0x80000000000000LL
+
+#define K1C_SFR_TC_STP_MASK      0x10000000 /* Stop Timers in Privilege */
 #define K1C_SFR_TC_STP_SHIFT       28
 #define K1C_SFR_TC_STP_WFX_CLEAR 0x10000000LL
 #define K1C_SFR_TC_STP_WFX_SET   0x1000000000000000LL
@@ -556,11 +564,6 @@
 #define K1C_SFR_TC_TC_SHIFT       0
 #define K1C_SFR_TC_TC_WFX_CLEAR 0xffffffffLL
 #define K1C_SFR_TC_TC_WFX_SET   0xffffffff00000000LL
-
-#define K1C_SFR_TC_TCE_MASK      0x400000 /* Timer Chaining Enable */
-#define K1C_SFR_TC_TCE_SHIFT       22
-#define K1C_SFR_TC_TCE_WFX_CLEAR 0x400000LL
-#define K1C_SFR_TC_TCE_WFX_SET   0x40000000000000LL
 
 #define K1C_SFR_TEH_TEH_MASK      0xffffffffffffffffLL /* TLB Entry High */
 #define K1C_SFR_TEH_TEH_SHIFT       0
@@ -629,10 +632,10 @@
 #define K1C_SFR_PS_USE_WFX_CLEAR 0x200LL
 #define K1C_SFR_PS_USE_WFX_SET   0x20000000000LL
 
-#define K1C_SFR_TC_WDE_MASK      0x1000000 /* Watchdog Decounting Enable */
-#define K1C_SFR_TC_WDE_SHIFT       24
-#define K1C_SFR_TC_WDE_WFX_CLEAR 0x1000000LL
-#define K1C_SFR_TC_WDE_WFX_SET   0x100000000000000LL
+#define K1C_SFR_TC_WCE_MASK      0x1000000 /* Watchdog Counting Enable */
+#define K1C_SFR_TC_WCE_SHIFT       24
+#define K1C_SFR_TC_WCE_WFX_CLEAR 0x1000000LL
+#define K1C_SFR_TC_WCE_WFX_SET   0x100000000000000LL
 
 #define K1C_SFR_TC_WIE_MASK      0x2000000 /* Watchdog Interrupt Enable */
 #define K1C_SFR_TC_WIE_SHIFT       25
