@@ -17,10 +17,10 @@ OBJCOPYFLAGS := -O binary -R .comment -R .note -R .bootloader -S
 # Link with libgcc to get __div* builtins.
 LIBGCC	:= $(shell $(CC) -m64 $(KBUILD_CFLAGS) --print-libgcc-file-name)
 
-KBUILD_CFLAGS += -Wall -Werror -m64 -nostdlib -fno-builtin
-KBUILD_CFLAGS += $(call cc-option,-ffarcall)
+DEFAULT_OPTS := -Wall -Werror -m64 -nostdlib -fno-builtin
+KBUILD_CFLAGS += $(DEFAULT_OPTS)
+KBUILD_AFLAGS += $(DEFAULT_OPTS)
 
-KBUILD_AFLAGS += -Wall -Werror -m64 -nostdlib -fno-builtin
 KBUILD_LDFLAGS += -m elf64k1
 
 head-y	:= arch/k1c/kernel/head.o
