@@ -126,6 +126,7 @@ static void __init setup_bootmem(void)
 void __init setup_arch_memory(void)
 {
 	setup_bootmem();
+	k1c_mmu_setup_initial_mapping();
 	paging_init();
 }
 
