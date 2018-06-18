@@ -13,9 +13,9 @@
  *   GNU General Public License for more details.
  */
 
-#include <linux/linkage.h>
 #include <linux/syscalls.h>
-#include <asm-generic/syscalls.h>
+
+#include <asm/syscalls.h>
 
 #undef __SYSCALL
 #define __SYSCALL(nr, call)	[nr] = (call),
