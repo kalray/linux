@@ -279,16 +279,18 @@ ENTRY(k1c_syscall_handler):
 	make $r41 = sys_call_table
 	/* Store current user stack pointer sp of thread_info */
 	sd TASK_THREAD_USER_SP[$r36] = $sp
-	/* Clear $le on entry */
-	set $le = $r43
+	/* Get regs to save on stack */
+	get $r60 = $lc
 	;;
 	ld $r37 = TASK_TI_FLAGS[$r36]
 	/* Reenable hardware loops and IT */
 	make $r44 = PS_HLE_EN_IT_EN
+	get $r40 = $cs
 	;;
 	/* Enable hwloop */
 	wfxl $ps, $r44
 	;;
+	get $r41 = $ra
 	/* Check for out-of-bound syscall number */
 	sbfd $r50 = $r32, __NR_syscalls
 	/* Compute syscall func addr (ie sys_call_table[$r32])*/
@@ -302,9 +304,20 @@ ENTRY(k1c_syscall_handler):
 	cb.dlez $r50? invalid_scall
 	;;
 check_trace:
-	/* Make some space on stack and store volatile register */
-	sq (PT_Q36 - PT_SIZE_ON_STACK)[$sp] = $r36r37
+	/* Save callee saved */
 	addd $sp = $sp, -PT_SIZE_ON_STACK
+	/* store volatile register */
+	sq (PT_Q36 - PT_SIZE_ON_STACK)[$sp] = $r36r37
+	get $r61 = $le
+	;;
+	sq PT_CS_RA[$sp] = $r40r41
+	get $r62 = $ls
+	;;
+	/* Save hw loop stuff */
+	so PT_LC_LE_LS_DUMMY[$sp] = $r60r61r62r63
+	/* Clear $le on entry */
+	set $le = $r43
+	;;
 	/* Do we have to trace the syscall ? */
 	cb.dnez $r37? trace_syscall_enter
 	;;
@@ -322,10 +335,22 @@ do_syscall:
 	cb.dnez $r37? trace_syscall_exit
 	;;
 ret_to_user:
+	/* Restore cs and ra */
+	lq $r40r41 = PT_CS_RA[$sp];
+	;;
+	lo $r60r61r62r63 = PT_LC_LE_LS_DUMMY[$sp]
+	set $ra = $r41
+	;;
 	addd $sp = $sp, PT_SIZE_ON_STACK
+	set $cs = $r40
 	;;
 	/* Restore user pointer */
 	ld $sp = TASK_THREAD_USER_SP[$r36]
+	set $lc = $r60
+	;;
+	set $le = $r61
+	;;
+	set $ls = $r62
 	;;
 	/* TODO: we might have to clear some registers to avoid leaking
 	 * information to user space ! callee saved regs have been
