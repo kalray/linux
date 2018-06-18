@@ -45,6 +45,7 @@ generic-y += sockios.h
 generic-y += shmparam.h
 generic-y += stat.h
 generic-y += statfs.h
+generic-y += syscalls.h
 generic-y += swab.h
 generic-y += topology.h
 generic-y += trace_clock.h
