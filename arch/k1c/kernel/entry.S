@@ -22,6 +22,12 @@
 
 .altmacro
 
+#ifdef CONFIG_DEBUG_EXCEPTION_STACK
+.section .rodata
+stack_error_panic_str_label:
+	.string "Stack has been messed up !"
+#endif
+
 /**
  * Prepare and save registers for entry in kernel space.
  */
@@ -99,6 +105,12 @@ _save_regs:
 	;;
 	so PT_LC_LE_LS_DUMMY[$sp] = $r4r5r6r7
 	;;
+#ifdef CONFIG_DEBUG_EXCEPTION_STACK
+	addd $sp = $sp, -REG_SIZE
+	;;
+	sd 0[$sp] = $sp
+	;;
+#endif
 .endm
 
 /**
@@ -108,6 +120,23 @@ _save_regs:
  */
 .macro restore_regs_after_exception sps_reg sr0_reg
 	LOCAL _restore_regs
+#ifdef CONFIG_DEBUG_EXCEPTION_STACK
+	LOCAL _check_ok
+	ld $r1 = 0[$sp]
+	;;
+	sbfd $r1 = $r1, $sp
+	;;
+	cb.deqz $r1, _check_ok
+	;;
+	make $r2 = panic
+	make $r0 = stack_error_panic_str_label
+	;;
+	icall $r2
+	;;
+_check_ok:
+	addd $sp = $sp, REG_SIZE
+	;;
+#endif
 	/* Are we returning to userspace ? */
 	cb.odd \sps_reg? _restore_regs
 	;;
