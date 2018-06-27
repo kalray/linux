@@ -97,6 +97,17 @@ config STACK_MAX_DEPTH_TO_PRINT
 	range 1 128
 	default "24"
 
+config DEBUG_EXCEPTION_STACK
+	bool "Enable exception stack debugging"
+	default n
+	help
+	  Enable stack check debugging when entering/exiting
+	  exception handlers.
+	  This can be particularly helpful after modifying stack
+	  handling to see if stack when exiting is the same as the one
+	  when entering exception handler.
+
+
 config NR_CPUS
 	int "Maximum number of CPUs"
 	range 2 16
