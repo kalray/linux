@@ -3,9 +3,10 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc.
+ * Copyright (C) 2018 Kalray Inc.
  */
 
+#include <linux/preempt.h>
 #include <linux/thread_info.h>
 #include <linux/kbuild.h>
 #include <linux/stddef.h>
@@ -19,6 +20,10 @@
 int foo(void)
 {
 	BUILD_BUG_ON(sizeof(struct pt_regs) != PT_REGS_STRUCT_EXPECTED_SIZE);
+
+#ifdef CONFIG_DEBUG_EXCEPTION_STACK
+	DEFINE(REG_SIZE, sizeof(uint64_t));
+#endif
 
 	/*
 	 * We allocate a pt_regs on the stack when entering the kernel.  This
