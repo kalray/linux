@@ -162,7 +162,7 @@ static inline int test_and_clear_bit(int nr, volatile unsigned long *addr)
 	do {								\
 		__old = __ret;						\
 		__new = __old op mod(BIT_MASK(nr));			\
-		__ret = cmpxchg(addr, __old, __new);			\
+		__ret = cmpxchg(&addr[BIT_WORD(nr)], __old, __new);	\
 	} while (__ret != __old);					\
 })
 
