@@ -3,7 +3,7 @@
  * License. See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc
+ * Copyright (C) 2018 Kalray Inc
  */
 
 #include <linux/linkage.h>
@@ -18,7 +18,7 @@
 #define PS_HWLOOP_ENABLE	(K1C_SFR_PS_HLE_MASK << 32)
 #define PS_HLE_EN_IT_EN	\
 		((K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_IE_MASK) << 32)
-#define PS_HLE_EN_ET_CLEAR	(K1C_SFR_PS_HLE_MASK << 32 | K1C_SFR_PS_ET_MASK)
+#define PS_HLE_EN		(K1C_SFR_PS_HLE_MASK << 32)
 
 .altmacro
 
@@ -193,7 +193,7 @@ ENTRY(k1c_trap_handler):
 	prep_save_regs_for_exception
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
-	make $r8 = PS_HLE_EN_ET_CLEAR
+	make $r8 = PS_HLE_EN
 	copyd $r2 = $sp
 	get $r1 = $ea
 	;;
