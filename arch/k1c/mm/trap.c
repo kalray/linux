@@ -36,6 +36,8 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	BUG_ON(unlikely(!tsk));
 
 	mm = tsk->mm;
+	if (!mm)
+		panic("no mapping with task->mm NULL !");
 
 	if (ea >= VMALLOC_START && ea <= VMALLOC_END && !user_mode(regs))
 		panic("%s: vmalloc is not yet implemented", __func__);
