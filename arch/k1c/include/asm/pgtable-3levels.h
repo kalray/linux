@@ -9,6 +9,7 @@
 #ifndef _ASM_K1C_PGTABLE_3LEVELS_H
 #define _ASM_K1C_PGTABLE_3LEVELS_H
 
+#define __ARCH_USE_5LEVEL_HACK
 #include <asm-generic/pgtable-nopud.h>
 
 #if defined(CONFIG_K1C_4K_PAGES)
