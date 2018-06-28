@@ -25,7 +25,6 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	struct vm_area_struct *vma;
 	unsigned int flags;
 	pgd_t *pgd = NULL;
-	p4d_t *p4d = NULL;
 	pud_t *pud = NULL;
 	pmd_t *pmd = NULL;
 	pte_t *pte = NULL;
@@ -42,14 +41,9 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	if (ea >= VMALLOC_START && ea <= VMALLOC_END && !user_mode(regs))
 		panic("%s: vmalloc is not yet implemented", __func__);
 
-	/* As we are using 3 or 2 level page table we don't need to check
-	 * if pgd is valid. The value will be pass directly to p4d and then
-	 * to pud. That means that we only need to test the value at the pud
-	 * level. In fact p4d_offset and pud_offset are used as converters.
-	 */
+	/* PUD has been folded */
 	pgd = pgd_offset(mm, ea);
-	p4d = p4d_offset(pgd, ea);
-	pud = pud_offset(p4d, ea);
+	pud = pud_offset(pgd, ea);
 	if (pud_none(*pud))
 		goto do_something;
 
