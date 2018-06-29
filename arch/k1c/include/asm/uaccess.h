@@ -10,7 +10,7 @@
 #define _ASM_K1C_UACCESS_H
 
 #include <linux/sched.h>
-#include <linux/printk.h>
+#include <linux/types.h>
 
 #define get_ds()	(KERNEL_DS)
 #define get_fs()	(current->thread.addr_limit)
@@ -22,22 +22,19 @@ static inline void set_fs(mm_segment_t fs)
 
 #define user_addr_max() (current->thread.addr_limit.seg)
 
-/* The current implementation of the raw_copy_from_user is a memcpy */
-static inline unsigned long
-raw_copy_from_user(void *to, const void __user *from, unsigned long n)
-{
-	if (to && from)
-		memcpy(to, (__force void *)from, n);
-	return 0;
-}
+/**
+ * Assembly defined function (usercopy.S)
+ */
+extern unsigned long
+raw_copy_from_user(void *to, const void __user *from, unsigned long n);
 
-static inline unsigned long
-raw_copy_to_user(void __user *to, const void *from, unsigned long n)
-{
-	if (to && from)
-		memcpy((__force void *)to, from, n);
-	return 0;
-}
+extern unsigned long
+raw_copy_to_user(void __user *to, const void *from, unsigned long n);
+
+extern unsigned long
+asm_clear_user(void __user *to, unsigned long n);
+
+#define __clear_user asm_clear_user
 
 #include <asm-generic/uaccess.h>
 
