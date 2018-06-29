@@ -68,7 +68,7 @@
 	(((_es) << K1C_SFR_TEL_ES_SHIFT) | \
 	((_cp) << K1C_SFR_TEL_CP_SHIFT) | \
 	((_pa) << K1C_SFR_TEL_PA_SHIFT) | \
-	(((_paddr) >> K1C_SFR_TEL_FN_SHIFT) << K1C_SFR_TEH_PN_SHIFT))
+	(((_paddr) >> K1C_SFR_TEL_FN_SHIFT) << K1C_SFR_TEL_FN_SHIFT))
 
 #ifndef __ASSEMBLY__
 #include <asm/mmu.h>
