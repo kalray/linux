@@ -7,6 +7,7 @@
  */
 
 #include <linux/types.h>
+#include <linux/uaccess.h>
 #include <linux/kernel.h> // only needed to panic
 #include <linux/printk.h>
 #include <linux/sched.h>
@@ -32,11 +33,14 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	int fault;
 
 	tsk = current;
-	BUG_ON(unlikely(!tsk));
-
 	mm = tsk->mm;
-	if (!mm)
-		panic("no mapping with task->mm NULL !");
+
+	/*
+	 * If we're in an interrupt or have no user
+	 * context, we must not take the fault..
+	 */
+	if (unlikely(faulthandler_disabled() || !mm))
+		goto no_context;
 
 	if (ea >= VMALLOC_START && ea <= VMALLOC_END && !user_mode(regs))
 		panic("%s: vmalloc is not yet implemented", __func__);
@@ -76,6 +80,23 @@ good_area:
 
 	fault = handle_mm_fault(vma, ea, flags);
 	/* TODO: check what must be done according to the value of fault */
+	return;
+
+no_context:
+	/* Are we prepared to handle this kernel fault?
+	 *
+	 * (The kernel has valid exception-points in the source
+	 *  when it accesses user-memory. When it fails in one
+	 *  of those points, we find it in a table and do a jump
+	 *  to some fixup code that loads an appropriate error
+	 *  code)
+	 */
+	if (fixup_exception(regs))
+		return;
+
+	panic("Unable to handle kernel %s at virtual address %016llx\n",
+		 (ea < PAGE_SIZE) ? "NULL pointer dereference" :
+		 "paging request", ea);
 }
 
 void k1c_trap_nomapping(uint64_t es, uint64_t ea, struct pt_regs *regs)
