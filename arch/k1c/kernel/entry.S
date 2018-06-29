@@ -64,6 +64,7 @@ _save_regs:
 	;;
 	so PT_Q16[$sp] = $r16r17r18r19
 	make $r10 = 0x0
+	get $r5 = $le
 	;;
 	so PT_Q20[$sp] = $r20r21r22r23
 	/* Since we are going to enable hardware loop, we must be careful
@@ -92,7 +93,6 @@ _save_regs:
 	get $r48 = $sr1
 	;;
 	so PT_Q48[$sp] = $r48r49r50r51
-	get $r5 = $le
 	;;
 	so PT_Q52[$sp] = $r52r53r54r55
 	get $r6 = $ls
