@@ -22,6 +22,8 @@ MAX_CPUS = 4096
 def get_current_cpu():
     if utils.get_gdbserver_type() == utils.GDBSERVER_QEMU:
         return gdb.selected_thread().num - 1
+    if utils.get_gdbserver_type() == utils.GDBSERVER_K1_GDB:
+        return gdb.selected_thread().num - 2
     elif utils.get_gdbserver_type() == utils.GDBSERVER_KGDB:
         tid = gdb.selected_thread().ptid[2]
         if tid > (0x100000000 - MAX_CPUS - 2):
