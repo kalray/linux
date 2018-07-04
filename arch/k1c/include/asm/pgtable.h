@@ -93,7 +93,8 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
  * ZERO_PAGE is a global shared page that is always zero: used
  * for zero-mapped memory areas etc..
  */
-#define ZERO_PAGE(vaddr)       (virt_to_page(0))
+extern struct page *empty_zero_page;
+#define ZERO_PAGE(vaddr)       (empty_zero_page)
 
 #define __swp_type(x)           (0)
 #define __swp_offset(x)         (0)

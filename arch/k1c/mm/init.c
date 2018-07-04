@@ -22,6 +22,13 @@
 
 pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
+/*
+ * empty_zero_page is a special page that is used for zero-initialized data and
+ * COW.
+ */
+struct page *empty_zero_page;
+EXPORT_SYMBOL(empty_zero_page);
+
 static void __init zone_sizes_init(void)
 {
 	unsigned long zones_size[MAX_NR_ZONES];
@@ -138,6 +145,11 @@ void __init mem_init(void)
 	pr_info("%s: %lu (%lu Mo) pages released\n",
 		__func__, pr, (pr << PAGE_SHIFT) >> 20);
 	mem_init_print_info(NULL);
+
+	/* allocate the zero page */
+	empty_zero_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+	if (!empty_zero_page)
+		panic("Failed to allocate the empty_zero_page");
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
