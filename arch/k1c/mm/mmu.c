@@ -17,9 +17,11 @@
 #define DUMP_JTLB 1
 
 static void
-dump_tlb_entry(int dump_jtlb, int set, int way, struct k1c_tlb_format tlbf)
+dump_tlb_entry(int dump_all, int dump_jtlb, int set, int way,
+	       struct k1c_tlb_format tlbf)
 {
-	pr_info("%s[s:%02d w:%02d]: PN:%09lx | FN:%09lx | PS:%lu | G:%lu | ASN:%03lu | PA:%02lu | CP:%lu | ES:%lu\n",
+	if (dump_all || tlbf.tel.es != 0)
+		pr_info("%s[s:%02d w:%02d]: PN:%09lx | FN:%09lx | PS:%lu | G:%lu | ASN:%03lu | PA:%02lu | CP:%lu | ES:%lu\n",
 			dump_jtlb ? "JTLB" : "LTLB", set, way,
 			(unsigned long)tlbf.teh.pn,
 			(unsigned long)tlbf.tel.fn,
@@ -55,7 +57,7 @@ static void cleanup_jtlb(void)
 	pr_info("JTLB has been cleaned\n");
 }
 
-void k1c_mmu_dump_ltlb(void)
+void k1c_mmu_dump_ltlb(int dump_all)
 {
 	struct k1c_tlb_format tlbe;
 	int way;
@@ -72,11 +74,11 @@ void k1c_mmu_dump_ltlb(void)
 			panic("Failed to read LTLB[s:0, w:%d]\n", way);
 
 		k1c_mmu_get_tlb_entry(tlbe);
-		dump_tlb_entry(DUMP_LTLB, 0, way, tlbe);
+		dump_tlb_entry(dump_all, DUMP_LTLB, 0, way, tlbe);
 	}
 }
 
-void k1c_mmu_dump_jtlb(void)
+void k1c_mmu_dump_jtlb(int dump_all)
 {
 	struct k1c_tlb_format tlbe;
 	int set, way;
@@ -94,7 +96,7 @@ void k1c_mmu_dump_jtlb(void)
 					set, way);
 
 			k1c_mmu_get_tlb_entry(tlbe);
-			dump_tlb_entry(DUMP_JTLB, set, way, tlbe);
+			dump_tlb_entry(dump_all, DUMP_JTLB, set, way, tlbe);
 		}
 	}
 }
@@ -113,8 +115,8 @@ void k1c_mmu_setup_initial_mapping(void)
 	cleanup_jtlb();
 
 #ifdef K1C_MMU_DEBUG
-	k1c_mmu_dump_jtlb();
-	k1c_mmu_dump_ltlb();
+	k1c_mmu_dump_jtlb(1);
+	k1c_mmu_dump_ltlb(1);
 #endif
 
 }
