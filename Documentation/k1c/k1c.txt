@@ -50,7 +50,7 @@ of the LTLB.
 
 The first entry will map the first 1G of virtual address space to the first
 1G of DDR:
-  - TLB[0]: 0xffffff0000000000 -> 0x80000000 (size 1Go)
+  - TLB[0]: 0xffffff0000000000 -> 0x100000000 (size 512Mo)
 
 The second entry will be a flat mapping of the first 512 Ko of the SMEM. It
 is required to have this flat mapping because there is still code located at
