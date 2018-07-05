@@ -124,7 +124,7 @@ static inline int k1c_mmu_mmc_error_is_set(void)
 } while (0)
 
 extern void k1c_mmu_setup_initial_mapping(void);
-extern void k1c_mmu_dump_ltlb(void);
-extern void k1c_mmu_dump_jtlb(void);
+extern void k1c_mmu_dump_ltlb(int dump_all);
+extern void k1c_mmu_dump_jtlb(int dump_all);
 
 #endif	/* _ASM_K1C_MMU_H */
