@@ -86,7 +86,7 @@ config POISON_INITMEM
 
 config K1C_PHYS_OFFSET
 	hex "RAM address of memory base"
-	default 0x80000000
+	default 0x100000000
 
 config K1C_PAGE_OFFSET
 	hex "RAM address of memory base"
