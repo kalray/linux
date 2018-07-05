@@ -54,7 +54,7 @@ addresses to virtual addresses there is different solution. We choose to setup t
 TLB at the very beginning of the boot process to be able to run both piece of code.
 For this we added two entries in the LTLB. The first one, LTLB[0], contains the
 mapping between virtual memory and DDR. Its size is 1Go. The second entry, LTLB[1],
-contains a flat mapping of the first 512Mo of the SMEM. Once those two entries
+contains a flat mapping of the first 512Ko of the SMEM. Once those two entries
 are present we can enable the MMU. LTLB[1] will be removed during paging_init()
 because once we are really running in virtual space we don't need it anymore.
 This entry is then reused to map devices mmu entry. This mapping is used for
@@ -71,8 +71,8 @@ We start by reserving memory for the whole kernel. On the ISS we can see that
 512Mo of DDR are managed by the memory allocator and some physical memory is
 reserved for the kernel:
 
-setup_bootmem: Memory  : 0x80000000 - 0xa0000000
-setup_bootmem: Reserved: 0x8001f000 - 0x802d1bc0
+setup_bootmem: Memory  : 0x100000000 - 0x120000000
+setup_bootmem: Reserved: 0x10001f000 - 0x1002d1bc0
 
 During the paging init we need to set:
   - min_low_pfn that is the lowest PFN available in the system
