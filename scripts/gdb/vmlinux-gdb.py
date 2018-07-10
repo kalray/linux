@@ -40,3 +40,4 @@ else:
     import linux.clk
     import linux.genpd
     import linux.device
+    import arch.k1c.page_table_walk
