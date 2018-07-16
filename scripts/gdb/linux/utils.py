@@ -158,7 +158,7 @@ def is_target_arch(arch):
 
 GDBSERVER_QEMU = 0
 GDBSERVER_KGDB = 1
-GDBSERVER_K1_GDB = 2
+GDBSERVER_KVX_GDB = 2
 gdbserver_type = None
 
 
@@ -181,10 +181,10 @@ def get_gdbserver_type():
         except gdb.error:
             return False
 
-    def probe_k1gdb():
+    def probe_kvxgdb():
         try:
             architecture = gdb.execute("show architecture", to_string=True)
-            return "k1" in architecture
+            return "kvx" in architecture
         except:
             return False
 
@@ -194,8 +194,8 @@ def get_gdbserver_type():
             gdbserver_type = GDBSERVER_QEMU
         elif probe_kgdb():
             gdbserver_type = GDBSERVER_KGDB
-        elif probe_k1gdb():
-            gdbserver_type = GDBSERVER_K1_GDB
+        elif probe_kvxgdb():
+            gdbserver_type = GDBSERVER_KVX_GDB
         if gdbserver_type is not None and hasattr(gdb, 'events'):
             gdb.events.exited.connect(exit_handler)
     return gdbserver_type
