@@ -12,6 +12,8 @@
 
 #include <asm/ptrace.h>
 #include <asm/processor.h>
+#include <asm/ptrace.h>
+#include <asm/uaccess.h>
 
 #define SCALL_NUM_EXIT	"0xfff"
 
@@ -73,6 +75,8 @@ void start_thread(struct pt_regs *regs,
 
 	/* Clear user mode */
 	regs->sps &= ~K1C_SFR_PS_PM_MASK;
+
+	set_fs(USER_DS);
 }
 
 int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
