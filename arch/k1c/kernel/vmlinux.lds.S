@@ -85,6 +85,7 @@ SECTIONS
 		KPROBES_TEXT
 		ENTRY_TEXT
 		IRQENTRY_TEXT
+		*(.fixup)
 		_etext = .;
 	}
 	_etext = .;
