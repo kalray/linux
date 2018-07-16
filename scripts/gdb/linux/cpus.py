@@ -175,6 +175,11 @@ def get_current_task(cpu):
          else:
              raise gdb.GdbError("Sorry, obtaining the current task is not allowed "
                                 "while running in userspace(EL0)")
+    elif utils.is_target_arch("kvx"):
+         if cpu != -1:
+              raise gdb.GdbError("Only current cpu is supported for lx_current")
+         var_ptr = gdb.parse_and_eval("(struct task_struct *) $sr0")
+         return var_ptr.dereference()
     else:
         raise gdb.GdbError("Sorry, obtaining the current task is not yet "
                            "supported with this arch")
@@ -190,6 +195,5 @@ number. If CPU is omitted, the CPU of the current context is used."""
 
     def invoke(self, cpu=-1):
         return get_current_task(cpu)
-
 
 LxCurrentFunc()
