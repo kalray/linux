@@ -579,20 +579,26 @@ notify_panic_str_label:
 
 .text
 /**
+ * Check if there is work pending and call schedule if so.
+ * This function is only called from restore_regs_after_exception
+ * just before returning to user. It means we can use whatever
+ * callee-saved register we might want to use.
  * $r0 = current_task
  * $r1 = current task flags
  */
 ENTRY(work_pending)
 	andd $r2 = $r1, _TIF_NEED_RESCHED
+	get $r31 = $ra
 	;;
 	/* Do we have to call schedule ? */
 	cb.deqz $r2? 1f
-	andd $r4 = $r1, _TIF_NEED_RESCHED
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	call schedule
 	;;
+	set $ra = $r31
 	addd $sp = $sp, SCRATCHPAD_SIZE
+	;;
 	ret
 	;;
 1:	make $r0 = notify_panic_str_label
