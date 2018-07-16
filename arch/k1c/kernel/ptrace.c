@@ -16,6 +16,7 @@
 #include <linux/audit.h>
 #include <linux/tracehook.h>
 #include <linux/thread_info.h>
+#include <linux/context_tracking.h>
 
 void ptrace_disable(struct task_struct *child)
 {
@@ -36,6 +37,9 @@ int do_syscall_trace_enter(struct pt_regs *regs, unsigned long syscall)
 {
 	int ret = 0;
 
+#ifdef CONFIG_CONTEXT_TRACKING
+	context_tracking_user_exit();
+#endif
 	if (test_thread_flag(TIF_SYSCALL_TRACE))
 		ret = tracehook_report_syscall_entry(regs);
 
@@ -50,4 +54,8 @@ void do_syscall_trace_exit(struct pt_regs *regs)
 		tracehook_report_syscall_exit(regs, 0);
 
 	audit_syscall_exit(regs);
+
+#ifdef CONFIG_CONTEXT_TRACKING
+	context_tracking_user_enter();
+#endif
 }
