@@ -9,9 +9,6 @@
 #ifndef _ASM_K1C_SEGMENT_H
 #define _ASM_K1C_SEGMENT_H
 
-typedef struct {
-	unsigned long seg;
-} mm_segment_t;
-
+typedef unsigned long mm_segment_t;
 
 #endif	/* _ASM_K1C_SEGMENT_H */
