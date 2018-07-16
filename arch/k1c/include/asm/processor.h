@@ -83,8 +83,9 @@ struct thread_struct {
 	uint64_t r31;
 } __packed;
 
-#define INIT_THREAD  {                          \
-	.kernel_sp = sizeof(init_stack) + (unsigned long) &init_stack, \
+#define INIT_THREAD  {							\
+	.kernel_sp = sizeof(init_stack) + (unsigned long) &init_stack,	\
+	.addr_limit = KERNEL_DS,					\
 }
 
 #define KSTK_ESP(tsk)   (task_pt_regs(tsk)->r12)
