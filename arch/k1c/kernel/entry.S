@@ -16,8 +16,9 @@
 #define SCRATCHPAD_SIZE		16
 
 #define PS_HWLOOP_ENABLE	(K1C_SFR_PS_HLE_MASK << 32)
-#define PS_HLE_EN_IT_EN	\
-		((K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_IE_MASK) << 32)
+#define PS_HLE_EN_IT_EN_ET_CLEAR	\
+		(((K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_IE_MASK) << 32) | \
+		K1C_SFR_PS_ET_MASK)
 #define PS_HLE_EN		(K1C_SFR_PS_HLE_MASK << 32)
 
 .altmacro
@@ -299,7 +300,6 @@ ENTRY(k1c_syscall_handler):
 	 * syscall func.
 	 */
 	get $r32 = $es
-	make $r43 = 0x0
 	;;
 	get $r36 = $sr0
 	;;
@@ -309,23 +309,18 @@ ENTRY(k1c_syscall_handler):
 	/* Store current user stack pointer sp of thread_info */
 	sd TASK_THREAD_USER_SP[$r36] = $sp
 	/* Get regs to save on stack */
-	get $r60 = $lc
+	get $r40 = $ra
 	;;
 	ld $r37 = TASK_TI_FLAGS[$r36]
-	/* Reenable hardware loops and IT */
-	make $r44 = PS_HLE_EN_IT_EN
-	get $r40 = $cs
+	get $r42 = $sps
 	;;
-	/* Enable hwloop */
-	wfxl $ps, $r44
-	;;
-	get $r41 = $ra
 	/* Check for out-of-bound syscall number */
 	sbfd $r50 = $r32, __NR_syscalls
 	/* Compute syscall func addr (ie sys_call_table[$r32])*/
 	ld.xs $r38 = $r32[$r41]
 	/* True if trace syscall enable */
 	andd $r37 = $r37, _TIF_SYSCALL_TRACE
+	get $r41 = $cs
 	;;
 	/* Restore kernel stack pointer */
 	ld $sp = TASK_THREAD_KERNEL_SP[$r36]
@@ -333,19 +328,31 @@ ENTRY(k1c_syscall_handler):
 	cb.dlez $r50? invalid_scall
 	;;
 check_trace:
-	/* Save callee saved */
+	/* Prepare space on stack */
 	addd $sp = $sp, -PT_SIZE_ON_STACK
-	/* store volatile register */
-	sq (PT_Q36 - PT_SIZE_ON_STACK)[$sp] = $r36r37
+	get $r43 = $spc
+	;;
+	/* store volatile register which will be need after C call */
+	sq PT_Q36[$sp] = $r36r37
+	get $r60 = $lc
+	;;
+	so PT_SPC_SPS_CS_RA[$sp] = $r40r41r42r43
 	get $r61 = $le
 	;;
-	sq PT_CS_RA[$sp] = $r40r41
+	/* Reenable hardware loops and IT */
+	make $r44 = PS_HLE_EN_IT_EN_ET_CLEAR
 	get $r62 = $ls
+	make $r43 = 0x0
 	;;
-	/* Save hw loop stuff */
-	so PT_LC_LE_LS_DUMMY[$sp] = $r60r61r62r63
 	/* Clear $le on entry */
 	set $le = $r43
+	/* Save hw loop stuff */
+	so PT_LC_LE_LS_DUMMY[$sp] = $r60r61r62r63
+	;;
+	/* Enable hwloop and interrupts
+	 * Note that we have to reenable interrupts after saving context
+	 * to avoid losing registers content */
+	wfxl $ps, $r44
 	;;
 	/* Do we have to trace the syscall ? */
 	cb.dnez $r37? trace_syscall_enter
@@ -364,17 +371,21 @@ do_syscall:
 	cb.dnez $r37? trace_syscall_exit
 	;;
 ret_to_user:
-	/* Restore cs and ra */
-	lq $r40r41 = PT_CS_RA[$sp];
+	/* Restore registers */
+	lo $r40r41r42r43 = PT_SPC_SPS_CS_RA[$sp];
 	;;
 	lo $r60r61r62r63 = PT_LC_LE_LS_DUMMY[$sp]
-	set $ra = $r41
+	set $ra = $r40
 	;;
 	addd $sp = $sp, PT_SIZE_ON_STACK
-	set $cs = $r40
+	set $cs = $r41
 	;;
 	/* Restore user pointer */
 	ld $sp = TASK_THREAD_USER_SP[$r36]
+	set $sps = $r42
+	;;
+	set $spc = $r43
+	;;
 	set $lc = $r60
 	;;
 	set $le = $r61
