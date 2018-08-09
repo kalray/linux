@@ -1,0 +1,53 @@
+/*
+ * gdb helper commands and functions for Linux kernel debugging
+ *
+ *  Kernel constants derived from include files.
+ *
+ * Copyright (c) 2016 Linaro Ltd
+ *
+ * Authors:
+ *  Kieran Bingham <kieran.bingham@linaro.org>
+ *
+ * This work is licensed under the terms of the GNU GPL version 2.
+ *
+ */
+
+#include <asm/tlb_defs.h>
+
+#define LX_VALUE(x) LX_##x = x
+
+/* The build system will take care of deleting everything above this marker */
+<!-- end-c-headers -->
+
+LX_VALUE(TLB_ES_INVALID)
+LX_VALUE(TLB_ES_PRESENT)
+LX_VALUE(TLB_ES_MODIFIED)
+LX_VALUE(TLB_ES_A_MODIFIED)
+
+LX_VALUE(TLB_CP_D_U)
+LX_VALUE(TLB_CP_U_U)
+LX_VALUE(TLB_CP_W_C)
+LX_VALUE(TLB_CP_U_C)
+
+LX_VALUE(TLB_PA_NA_NA)
+LX_VALUE(TLB_PA_NA_R)
+LX_VALUE(TLB_PA_NA_RW)
+LX_VALUE(TLB_PA_NA_RX)
+LX_VALUE(TLB_PA_NA_RWX)
+LX_VALUE(TLB_PA_R_R)
+LX_VALUE(TLB_PA_R_RW)
+LX_VALUE(TLB_PA_R_RX)
+LX_VALUE(TLB_PA_R_RWX)
+LX_VALUE(TLB_PA_RW_RW)
+LX_VALUE(TLB_PA_RW_RWX)
+LX_VALUE(TLB_PA_RX_RX)
+LX_VALUE(TLB_PA_RX_RWX)
+LX_VALUE(TLB_PA_RWX_RWX)
+
+LX_VALUE(TLB_PS_4K)
+LX_VALUE(TLB_PS_64K)
+LX_VALUE(TLB_PS_2M)
+LX_VALUE(TLB_PS_512M)
+
+LX_VALUE(TLB_G_GLOBAL)
+LX_VALUE(TLB_G_USE_ASN)
