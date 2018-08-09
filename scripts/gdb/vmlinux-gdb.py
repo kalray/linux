@@ -36,3 +36,5 @@ else:
     import linux.timerlist
     import linux.clk
     import arch.k1c.page_table_walk
+    import arch.k1c.mmu
+    import arch.k1c.constants
