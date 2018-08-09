@@ -76,22 +76,6 @@
 	TLB_MK_TEL_ENTRY(0, TLB_ES_A_MODIFIED,\
 	TLB_CP_W_C, TLB_PA_NA_RWX)
 
-/*
- * This is our entry point. When entering from bootloader,
- * the following registers are set:
- * $r0 is a magic "K1LI" 0x494C314B
- * $r1 is a pointer to the command line (or 0 if no command line)
- * $r2 Device tree pointer
- *
- * WARNING WARNING WARNING
- * ! DO NOT CLOBBER THEM !
- * WARNING WARNING WARNING
- *
- * Try to use register above $r20 to ease parameter adding in future
- */
-
-__HEAD
-
 .altmacro
 
 /* To select the JTLB we clear SB from MMC */
@@ -138,6 +122,22 @@ __HEAD
 	;;
 	tlbwrite
 .endm
+
+/*
+ * This is our entry point. When entering from bootloader,
+ * the following registers are set:
+ * $r0 is a magic "K1LI" 0x494C314B
+ * $r1 is a pointer to the command line (or 0 if no command line)
+ * $r2 Device tree pointer
+ *
+ * WARNING WARNING WARNING
+ * ! DO NOT CLOBBER THEM !
+ * WARNING WARNING WARNING
+ *
+ * Try to use register above $r20 to ease parameter adding in future
+ */
+
+__HEAD
 
 .align 8
 .section .boot.startup, "ax", @progbits
