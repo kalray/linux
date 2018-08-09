@@ -20,6 +20,7 @@
 		(((K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_IE_MASK) << 32) | \
 		K1C_SFR_PS_ET_MASK)
 #define PS_HLE_EN		(K1C_SFR_PS_HLE_MASK << 32)
+#define PS_IT_DIS		K1C_SFR_PS_IE_MASK
 
 .altmacro
 
@@ -382,15 +383,24 @@ ret_to_user:
 	;;
 	/* Restore user pointer */
 	ld $sp = TASK_THREAD_USER_SP[$r36]
-	set $sps = $r42
-	;;
-	set $spc = $r43
-	;;
 	set $lc = $r60
 	;;
 	set $le = $r61
+	make $r60 = K1C_SFR_PS_IE_MASK
 	;;
 	set $ls = $r62
+	;;
+	/* Disable interrupt before restoring critical registers or else
+	 * our restored SFRs will be clobbered
+	 * ie: if an interrupt happens right after "set $spc = $r43"
+	 * Then spc will be cloberred when restoring it in the upper
+	 * routine (it or trap).
+	 */
+	wfxl $ps, $r60
+	;;
+	set $sps = $r42
+	;;
+	set $spc = $r43
 	;;
 	/* TODO: we might have to clear some registers to avoid leaking
 	 * information to user space ! callee saved regs have been
