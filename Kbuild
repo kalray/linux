@@ -66,6 +66,7 @@ extra-$(CONFIG_GDB_SCRIPTS) += build_constants_py
 
 build_constants_py: $(timeconst-file) $(bounds-file)
 	@$(MAKE) $(build)=scripts/gdb/linux $@
+	@$(MAKE) $(build)=scripts/gdb/arch/k1c $@
 
 # Keep these three files during make clean
 no-clean-files := $(bounds-file) $(offsets-file) $(timeconst-file)

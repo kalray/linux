@@ -32,3 +32,5 @@ else:
     import linux.proc
     import linux.constants
     import arch.k1c.page_table_walk
+    import arch.k1c.mmu
+    import arch.k1c.constants
