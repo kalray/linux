@@ -91,7 +91,7 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 		(PAGE_SIZE == 0x1000) ? TLB_PS_4K : TLB_PS_64K,
 		(pte_val & _PAGE_GLOBAL) ? TLB_G_GLOBAL : !TLB_G_GLOBAL,
 		pa,
-		TLB_CP_D_U,
+		TLB_CP_W_C,
 		0, /* ASN */
 		TLB_ES_A_MODIFIED);
 
