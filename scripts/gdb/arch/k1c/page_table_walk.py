@@ -1,5 +1,30 @@
 import gdb
 import re
+import ctypes
+from arch.k1c import constants
+#
+# PTE format:
+# | 63   8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0
+#   PFN      D   A   G   U   X   W   R   V
+#
+
+class pte_bits(ctypes.LittleEndianStructure):
+    _fields_ = [
+            ("P", ctypes.c_uint8, 1),
+            ("R", ctypes.c_uint8, 1),
+            ("W", ctypes.c_uint8, 1),
+            ("X", ctypes.c_uint8, 1),
+            ("U", ctypes.c_uint8, 1),
+            ("G", ctypes.c_uint8, 1),
+            ("A", ctypes.c_uint8, 1),
+            ("D", ctypes.c_uint8, 1),
+            ("res", ctypes.c_uint8, 4),
+            ("pfn", ctypes.c_uint64, 52),
+        ]
+
+class Pte(ctypes.Union):
+    _fields_ = [("bf", pte_bits),
+                ("value", ctypes.c_uint64)]
 
 PTRSIZE = 8
 
@@ -29,19 +54,36 @@ def do_lookup(base):
 
     return res
 
+def get_pte_bits(pte_entry):
+    """Decode a pte_entry using bits defined in pgtable-bits
+       It returns a string describing the pte entry
+    """
+    pte_val = Pte()
+    pte_val.value = pte_entry
+    pte_str = "\t\tPFN: 0x{:016x}, bits: ".format(pte_val.bf.pfn << constants.LX_PAGE_SHIFT)
+
+    for field in pte_val.bf._fields_:
+        if field[0] == "res":
+            break
+        if long(getattr(pte_val.bf, field[0])) != 0:
+            pte_str += field[0]
+
+    pte_str += "\n"
+    return pte_str
+
+
 class LxPageTableWalk(gdb.Command):
     """Looks for entries in the page table. The base address of the PGD is
        the argument.
     """
 
     def __init__(self):
-        super(LxPageTableWalk, self).__init__("lx-page-table-walk", gdb.COMMAND_USER)
+        super(LxPageTableWalk, self).__init__("lx-k1c-page-table-walk", gdb.COMMAND_DATA)
 
     def invoke(self, argument, from_tty):
         argv = gdb.string_to_argv(argument)
         if len(argv) != 1:
-            print "The address of PGD is not provided"
-            return
+            raise gdb.GdbError("PGD address is not provided.")
 
         # We suppose that an hexa is given as parameter
         m = extract_hexa(argv[0].lower())
@@ -60,25 +102,25 @@ class LxPageTableWalk(gdb.Command):
                 try:
                     gdb_output = gdb.execute("p/x {}".format(argv[0]), True, True)
                 except:
-                    print "Failed to find a working base for PGD"
-                    return
+                    raise gdb.GdbError("Failed to find a working base for PGD.")
                 m = extract_hexa(gdb_output)
 
         pgd = m[0]
-        print "> Looking for PGD base 0x{:016x}".format(pgd)
+        print "> Looking for PGD base 0x{:016x}\n".format(pgd)
 
         for pgd_pair in do_lookup(pgd):
-            print "[{}] -> Entry[0x{:016x}]".format(
+            gdb.write("[{}] -> Entry[0x{:016x}]\n".format(
                     (pgd_pair[0] - pgd)/PTRSIZE,
-                    pgd_pair[1])
-            print "\t> Looking for PMD base 0x{:016x}".format(pgd_pair[1])
+                    pgd_pair[1]))
+            gdb.write("\t> Looking for PMD base 0x{:016x}\n".format(pgd_pair[1]))
             for pmd_pair in do_lookup(pgd_pair[1]):
-                print "\t[{}] -> Entry[0x{:016x}]".format(
+                gdb.write("\t[{}] -> Entry[0x{:016x}]\n".format(
                         (pmd_pair[0] - pgd_pair[1])/8,
-                        pmd_pair[1])
-                print "\t\t> Looking for PTE base 0x{:016x}".format(pmd_pair[1])
+                        pmd_pair[1]))
+                gdb.write("\t\t> Looking for PTE base 0x{:016x}\n".format(pmd_pair[1]))
                 for pte_pair in do_lookup(pmd_pair[1]):
-                    print "\t\t[{}] -> PTE [0x{:016x}]".format(
-                            (pte_pair[0] - pmd_pair[1])/8, pte_pair[1])
+                    gdb.write("\t\t[{}] -> PTE [0x{:016x}]\n".format(
+                            (pte_pair[0] - pmd_pair[1])/8, pte_pair[1]))
+                    gdb.write(get_pte_bits(pte_pair[1]))
 
 LxPageTableWalk()
