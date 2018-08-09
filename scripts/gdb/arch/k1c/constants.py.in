@@ -13,6 +13,7 @@
  */
 
 #include <asm/tlb_defs.h>
+#include <asm/page.h>
 
 #define LX_VALUE(x) LX_##x = x
 
@@ -51,3 +52,6 @@ LX_VALUE(TLB_PS_512M)
 
 LX_VALUE(TLB_G_GLOBAL)
 LX_VALUE(TLB_G_USE_ASN)
+
+/* asm/page.h */
+LX_VALUE(PAGE_SHIFT)
