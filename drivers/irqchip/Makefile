@@ -71,6 +71,7 @@ obj-$(CONFIG_KEYSTONE_IRQ)		+= irq-keystone.o
 obj-$(CONFIG_MIPS_GIC)			+= irq-mips-gic.o
 obj-$(CONFIG_K1C_CORE_INTC)		+= irq-k1c-core-intc.o
 obj-$(CONFIG_K1C_APIC_GIC)		+= irq-k1c-apic-gic.o
+obj-$(CONFIG_K1C_APIC_MAILBOX)		+= irq-k1c-apic-mailbox.o
 obj-$(CONFIG_ARCH_MEDIATEK)		+= irq-mtk-sysirq.o irq-mtk-cirq.o
 obj-$(CONFIG_ARCH_DIGICOLOR)		+= irq-digicolor.o
 obj-$(CONFIG_ARCH_SA1100)		+= irq-sa11x0.o
