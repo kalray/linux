@@ -346,6 +346,14 @@ config K1C_APIC_GIC
 	select IRQ_DOMAIN
 	select IRQ_DOMAIN_HIERARCHY
 
+config K1C_APIC_MAILBOX
+	bool
+	depends on K1C
+	select GENERIC_IRQ_IPI
+	select GENERIC_MSI_IRQ_DOMAIN
+	select IRQ_DOMAIN
+	select IRQ_DOMAIN_HIERARCHY
+
 config INGENIC_IRQ
 	bool
 	depends on MACH_INGENIC
