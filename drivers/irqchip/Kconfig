@@ -340,6 +340,12 @@ config K1C_CORE_INTC
 	depends on K1C
 	select IRQ_DOMAIN
 
+config K1C_APIC_GIC
+	bool
+	depends on K1C
+	select IRQ_DOMAIN
+	select IRQ_DOMAIN_HIERARCHY
+
 config INGENIC_IRQ
 	bool
 	depends on MACH_INGENIC
