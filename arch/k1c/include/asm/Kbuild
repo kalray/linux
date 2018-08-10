@@ -29,6 +29,7 @@ generic-y += local.h
 generic-y += mm-arch-hooks.h
 generic-y += mmiowb.h
 generic-y += module.h
+generic-y += msi.h
 generic-y += mutex.h
 generic-y += param.h
 generic-y += pci.h
