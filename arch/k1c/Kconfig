@@ -49,6 +49,7 @@ config K1C
 	select GENERIC_CLOCKEVENTS
 	select TIMER_OF
 	select K1C_CORE_INTC
+	select K1C_APIC_GIC
 	select ARCH_WANT_FRAME_POINTERS
 
 config PGTABLE_LEVELS
