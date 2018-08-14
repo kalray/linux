@@ -249,3 +249,18 @@ we choose to follow the format described in the RiscV implementation.
         D: Dirty
         S: Reserved for software
         PFN: Page frame number (depends on page size)
+
+Fast TLB refill
+===============
+
+K1C core does not feature a hardware page walker. This work must be done
+by the core in software. In order to optimize TLB refill, a special fast
+path is taken when entering in kernel space.
+In order to speed up the process, the following actions are taken:
+1 - save some registers in a per process scratchpad
+2 - If the trap is a nomapping then try the fastpath
+3 - Save some more registers for this fastpath
+4 - Try to walk the page table
+  4.1 - If entry is not present, take the slowpath
+5 - Refill the tlb properly
+6 - Exit by restoring only a few registers
