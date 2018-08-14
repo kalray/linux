@@ -81,5 +81,8 @@ int foo(void)
 	OFFSET(TASK_THREAD_Q24, task_struct, thread.r24);
 	OFFSET(TASK_THREAD_Q28, task_struct, thread.r28);
 
+	/* Save area offset */
+	OFFSET(TASK_THREAD_SAVE_AREA, task_struct, thread.save_area);
+
 	return 0;
 }
