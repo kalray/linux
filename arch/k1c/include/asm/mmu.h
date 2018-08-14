@@ -28,6 +28,10 @@
 #define MMU_JTLB_SETS 64
 #define MMU_JTLB_WAYS 4
 
+/* Set is determined using the 6 lsb of virtual page */
+#define MMU_JTLB_SET_MASK 0x3F
+#define MMU_JTLB_WAY_MASK 0x3
+
 /* MMC: Protection Trap Cause */
 #define MMC_PTC_RESERVED 0
 #define MMC_PTC_READ     1
@@ -126,5 +130,9 @@ static inline int k1c_mmu_mmc_error_is_set(void)
 extern void k1c_mmu_setup_initial_mapping(void);
 extern void k1c_mmu_dump_ltlb(int dump_all);
 extern void k1c_mmu_dump_jtlb(int dump_all);
+
+struct mm_struct;
+
+int do_tlb_refill(uint64_t ea, struct mm_struct *mm);
 
 #endif	/* _ASM_K1C_MMU_H */

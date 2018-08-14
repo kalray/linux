@@ -41,7 +41,7 @@ extern char _exception_start;
 
 #define cpu_relax()         barrier()
 
-#define SAVE_AREA_SIZE	4
+#define SAVE_AREA_SIZE	9
 
 struct thread_struct {
 	uint64_t user_sp;
