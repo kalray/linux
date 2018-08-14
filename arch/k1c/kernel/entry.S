@@ -31,30 +31,44 @@ stack_error_panic_str_label:
 #endif
 
 /**
+ * Save quad registers
+ * After call, the quad is saved in task_struct.thread.save_area
+ */
+.macro save_quad_regs quad
+	set $sr1 = $r0
+	;;
+	/* Get task_struct */
+	get $r0 = $sr0
+	;;
+	/* Save registers in save_area */
+	so TASK_THREAD_SAVE_AREA[$r0] = \quad
+	/* Restore $r0 */
+	get $r0 = $sr1
+.endm
+
+/**
  * Prepare and save registers for entry in kernel space.
  */
-.macro prep_save_regs_for_exception
+.macro save_regs_for_exception scratch_reg1 scratch_reg2 saved_quad
 	LOCAL _save_regs
-	/* Get a free register */
-	set $sr1 = $r48
+	get \scratch_reg1 = $sps
 	;;
-	get $r48 = $sps
+	get \scratch_reg2 = $sr0
 	;;
 	/* Check if $sps.pm bit is set (ie in kernel mode) */
-	cb.odd $r48? _save_regs
-	;;
-	/* Get the current task_struct */
-	get $r48 = $sr0
+	cb.odd \scratch_reg1? _save_regs
 	;;
 	/* Store current pointer to user pointer sp of thread_info */
-	sd TASK_THREAD_USER_SP[$r48] = $sp
+	sd TASK_THREAD_USER_SP[\scratch_reg2] = $sp
 	;;
 	/* restore sp from kernel stack pointer and r48 from sr1 */
-	ld $sp = TASK_THREAD_KERNEL_SP[$r48]
-	get $r48 = $sr1
+	ld $sp = TASK_THREAD_KERNEL_SP[\scratch_reg2]
 	;;
-	/* make some place on stack to save registers */
 _save_regs:
+	/* Reload the saved quad registers to save correct values */
+	lo \saved_quad = TASK_THREAD_SAVE_AREA[\scratch_reg2]
+	;;
+	/* make some room on stack to save registers */
 	addd $sp = $sp, -(PT_SIZE_ON_STACK)
 	so (PT_Q0-PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
 	;;
@@ -90,9 +104,6 @@ _save_regs:
 	get $r4 = $lc
 	;;
 	so PT_Q44[$sp] = $r44r45r46r47
-	/* $r48 was cloberred during kernel->user stack switch
-	 * restore it from sr1 before storing it */
-	get $r48 = $sr1
 	;;
 	so PT_Q48[$sp] = $r48r49r50r51
 	;;
@@ -221,7 +232,9 @@ _restore_regs:
 ***********************************************************************/
 .section .exception.trap, "ax", @progbits
 ENTRY(k1c_trap_handler):
-	prep_save_regs_for_exception
+	save_quad_regs $r60r61r62r63
+	;;
+	save_regs_for_exception $r60 $r61 $r60r61r62r63
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HLE_EN
@@ -252,7 +265,9 @@ ENDPROC(k1c_trap_handler)
 ***********************************************************************/
 .section .exception.interrupt, "ax", @progbits
 ENTRY(k1c_interrupt_handler):
-	prep_save_regs_for_exception
+	save_quad_regs $r60r61r62r63
+	;;
+	save_regs_for_exception $r60 $r61 $r60r61r62r63
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HWLOOP_ENABLE
