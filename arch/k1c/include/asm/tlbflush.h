@@ -41,6 +41,8 @@ extern void local_flush_tlb_kernel_range(unsigned long start,
 #include <asm/tlb_defs.h>
 #include <asm/pgtable.h>
 
+extern DEFINE_PER_CPU_ALIGNED(uint8_t[MMU_JTLB_SETS], jtlb_current_set_way);
+
 static inline void update_mmu_cache(struct vm_area_struct *vma,
 	unsigned long address, pte_t *ptep)
 {
@@ -48,6 +50,7 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 	unsigned long pte_val;
 	unsigned int pa;
 	struct k1c_tlb_format tlbe;
+	unsigned int set, way;
 
 	if (unlikely(ptep == NULL))
 		panic("pte should not be NULL\n");
@@ -95,12 +98,14 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 		0, /* ASN */
 		TLB_ES_A_MODIFIED);
 
-	/* TODO: Currently the first implementation is only using the way 0 and
-	 * so we just replace an entry if there is already one. The next step
-	 * is to use the 4 ways and have an algorithm for replacement when all
-	 * ways are used.
-	 */
-	k1c_mmu_add_jtlb_entry(0, tlbe);
+	/* Compute way to use to store the new translation */
+	set = (address >> PAGE_SHIFT) & MMU_JTLB_SET_MASK;
+	way = get_cpu_var(jtlb_current_set_way)[set]++;
+	put_cpu_var(jtlb_current_set_way);
+
+	way &= MMU_JTLB_WAY_MASK;
+
+	k1c_mmu_add_jtlb_entry(way, tlbe);
 
 	if (k1c_mmu_mmc_error_is_set())
 		panic("Failed to write entry to the JTLB");
