@@ -10,7 +10,12 @@
 
 #include <asm/thread_info.h>
 #include <asm/asm-offsets.h>
+#include <asm/cache.h>
+#include <asm/page.h>
+#include <asm/pgtable-bits.h>
 #include <asm/sfr_defs.h>
+#include <asm/tlb_defs.h>
+#include <asm/traps.h>
 #include <asm/unistd.h>
 
 #define SCRATCHPAD_SIZE		16
@@ -22,7 +27,13 @@
 #define PS_HLE_EN		(K1C_SFR_PS_HLE_MASK << 32)
 #define PS_IT_DIS		K1C_SFR_PS_IE_MASK
 
+#define MMC_SEL_JTLB_CLEAR_WAY	(K1C_SFR_MMC_SB_MASK | K1C_SFR_MMC_SW_MASK)
+
 .altmacro
+
+#define TEL_DEFAULT_VALUE(__pa)  ((__pa << K1C_SFR_TEL_PA_SHIFT) | \
+			(TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT) | \
+			(TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT))
 
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 .section .rodata
@@ -33,50 +44,51 @@ stack_error_panic_str_label:
 /**
  * Save quad registers
  * After call, the quad is saved in task_struct.thread.save_area
+ * morevoer sr_swap_reg contains the value of sr0
  */
-.macro save_quad_regs quad
-	set $sr1 = $r0
+.macro save_quad_regs quad sr_swap_reg
+	set $sr1 = \sr_swap_reg
 	;;
 	/* Get task_struct */
-	get $r0 = $sr0
+	get \sr_swap_reg = $sr0
 	;;
 	/* Save registers in save_area */
-	so TASK_THREAD_SAVE_AREA[$r0] = \quad
-	/* Restore $r0 */
-	get $r0 = $sr1
+	so TASK_THREAD_SAVE_AREA[\sr_swap_reg] = \quad
 .endm
 
 /**
  * Prepare and save registers for entry in kernel space.
+ * sr_swap_reg is the register that has been cloberred right on entry
+ * using save_quad_regs. It contains sr0 value but must be restored
+ * scratch_reg is a free register to do stack checking
  */
-.macro save_regs_for_exception scratch_reg1 scratch_reg2 saved_quad
+.macro save_regs_for_exception sr_swap_reg scratch_reg task_reg saved_quad
 	LOCAL _save_regs
-	get \scratch_reg1 = $sps
-	;;
-	get \scratch_reg2 = $sr0
+	get \scratch_reg = $sps
 	;;
 	/* Check if $sps.pm bit is set (ie in kernel mode) */
-	cb.odd \scratch_reg1? _save_regs
+	cb.odd \scratch_reg? _save_regs
 	;;
 	/* Store current pointer to user pointer sp of thread_info */
-	sd TASK_THREAD_USER_SP[\scratch_reg2] = $sp
+	sd TASK_THREAD_USER_SP[\task_reg] = $sp
 	;;
 	/* restore sp from kernel stack pointer and r48 from sr1 */
-	ld $sp = TASK_THREAD_KERNEL_SP[\scratch_reg2]
+	ld $sp = TASK_THREAD_KERNEL_SP[\task_reg]
 	;;
 _save_regs:
 	/* Reload the saved quad registers to save correct values */
-	lo \saved_quad = TASK_THREAD_SAVE_AREA[\scratch_reg2]
+	lo \saved_quad = TASK_THREAD_SAVE_AREA[\task_reg]
 	;;
 	/* make some room on stack to save registers */
 	addd $sp = $sp, -(PT_SIZE_ON_STACK)
-	so (PT_Q0-PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
+	so (PT_Q4-PT_SIZE_ON_STACK)[$sp] = $r4r5r6r7
 	;;
-	so PT_Q4[$sp] = $r4r5r6r7
-	;;
+	get \sr_swap_reg = $sr1
 	so PT_Q8[$sp] = $r8r9r10r11
 	;;
 	so PT_Q12[$sp] = $r12r13r14r15
+	;;
+	so PT_Q0[$sp] = $r0r1r2r3
 	;;
 	so PT_Q16[$sp] = $r16r17r18r19
 	make $r10 = 0x0
@@ -227,14 +239,162 @@ _restore_regs:
 	get $r53 = $sr2
 .endm
 
+/**
+ * Fast TLB refill routine
+ * Cache replacement policy using a simple round-robbin at the moment
+ * $r0 = $ea
+ * $r1 = task mm value
+ * Return 1 if refill was successful or 0 if not.
+ * !!! r2 contains sr0 value and must not be clobbered !!!
+ */
+.macro macro_tlb_refill
+	LOCAL _err_out, _out, _page_readable, _write_entry, _no_rights
+	/* extract PGD offset */
+	extfz $r3 = $r0, (ASM_PGDIR_SHIFT + 8), ASM_PGDIR_SHIFT
+	/* is mm NULL ? */
+	cb.deqz $r1? _err_out
+	;;
+	get $r7 = $pcr
+	/* Load pgd base address into $r1 */
+	ld $r1 = MM_PGD[$r1]
+	;;
+	/* Extract processor ID to compute cpu_offset*/
+	extfz $r7 = $r7, 15, 11
+	/* Load PGD entry offset */
+	ld.xs $r1 = $r3[$r1]
+	/* Load per_cpu_offset */
+#if defined(CONFIG_SMP)
+	make $r5 = __per_cpu_offset
+#endif
+	;;
+	/* extract PMD offset*/
+	extfz $r3 = $r0, (ASM_PMD_SHIFT + 8), ASM_PMD_SHIFT
+	/* Extract virt page from ea */
+	andd $r4 = $r0, (~(PAGE_SIZE - 1))
+	/* If pgd entry is null -> out */
+	cb.deqz $r1? _err_out
+#if defined(CONFIG_SMP)
+	/* Load cpu offset */
+	ld.xs $r7 = $r7[$r5]
+#else
+	/* Force cpu offset to 0 */
+	make $r7 = 0
+#endif
+	;;
+	/* extract TLB set from ea (6 last bits of virtual address) */
+	extfz $r5 = $r4, PAGE_SHIFT + 5, PAGE_SHIFT
+	/* Load PMD entry offset */
+	ld.xs $r1 = $r3[$r1]
+	/* Add cpu offset to jtlb_current_set_way */
+	addd $r7 = $r7, jtlb_current_set_way
+	;;
+	/* extract PTE offset */
+	extfz $r3 = $r0, (PAGE_SHIFT + 8), PAGE_SHIFT
+	/* If pmd entry is null -> out */
+	cb.deqz $r1? _err_out
+	/* Load current way to use for current set */
+	lbz $r0 = $r5[$r7]
+	/* Clear way and select JTLB */
+	make $r6 = MMC_SEL_JTLB_CLEAR_WAY
+	;;
+	/* Keep only the two LSB */
+	andd $r0 = $r0, 0x3
+	/* Load PTE entry */
+	ld.xs $r1 = $r3[$r1]
+	;;
+	/* Set the TLB way in $mmc value */
+	insf $r6 = $r0, K1C_SFR_MMC_SW_SHIFT + 3, K1C_SFR_MMC_SW_SHIFT
+	/* If bit 0 of pte entry is 0, then entry is not present */
+	cb.even $r1? _err_out
+	/* Is page writable ? */
+	andd $r3 = $r1, _PAGE_WRITE
+	;;
+	/* Increment way value, note that we do not care about overflow since
+	 * we only use the two lower byte */
+	addd $r0 = $r0, 1
+	/* Prepare MMC */
+	wfxl $mmc, $r6
+	;;
+	/* Store new way */
+	sb $r5[$r7] = $r0
+	/* Clear low bits of phys addr (pte entry) for tel writing */
+	andd $r1 = $r1, (~(PAGE_SIZE - 1))
+	/* Not writable ? Check readable */
+	cb.deqz $r3? _page_readable
+	/* Is page readable ? */
+	andd $r3 = $r1, _PAGE_READ
+	andd $r0 = $r1, _PAGE_EXEC
+	;;
+	/* If we are here, page is writable */
+	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_RWX_RWX)
+	/* if Page is executable goto write_entry */
+	cb.dnez $r0, _write_entry
+	;;
+	/* not executable, remove X */
+	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_RW_RWX)
+	goto _write_entry
+	;;
+_page_readable:
+	/* Not readable ? */
+	cb.deqz $r3? _no_rights
+	;;
+	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_RX_RWX)
+	/* if Page is executable goto write_entry */
+	cb.dnez $r0, _write_entry
+	;;
+	/* not executable, remove X */
+	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_R_RWX)
+	goto _write_entry
+	;;
+_no_rights:
+	/* Default value for entry */
+	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_NA_NA)
+	;;
+_write_entry:
+	/* Prepare tel */
+	ord $r6 = $r1, $r6
+	;;
+	/* Prepare teh */
+	ord $r4 = $r4, ((ASM_TLB_PS << K1C_SFR_TEH_PS_SHIFT) | \
+			(TLB_G_GLOBAL << K1C_SFR_TEH_G_SHIFT))
+	;;
+	set $tel = $r6
+	;;
+	set $teh = $r4
+	make $r0 = 1
+	;;
+	tlbwrite
+	;;
+	goto _out
+	;;
+_err_out:
+	make $r0 = 0
+	;;
+_out:
+.endm
+
 /***********************************************************************
 *                      Traps handling
 ***********************************************************************/
 .section .exception.trap, "ax", @progbits
 ENTRY(k1c_trap_handler):
-	save_quad_regs $r60r61r62r63
+	save_quad_regs $r0r1r2r3 $r0
+	get $r3 = $es
 	;;
-	save_regs_for_exception $r60 $r61 $r60r61r62r63
+	extfz $r3 = $r3, 7, 3 /* Hardware trap cause  */
+	copyd $r2 = $r0
+	;;
+	/* Is this a nomapping trap ? */
+	compd.eq $r3 = $r3, K1C_TRAP_NOMAPPING
+	get $r0 = $ea
+	;;
+	/* Load mm addr */
+	ld $r1 = TASK_MM[$r2]
+	/* if nomapping trap, try fast_refill */
+	cb.odd $r3? fast_refill
+	;;
+slow_path:
+	save_regs_for_exception $r0 $r1 $r2 $r0r1r2r3
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HLE_EN
@@ -258,6 +418,24 @@ ENTRY(k1c_trap_handler):
 	;;
 	rfe
 	;;
+fast_refill:
+	/* Save more registers to be comfy */
+	so (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2] = $r4r5r6r7
+	macro_tlb_refill
+	;;
+	/* Was TLB refill successful ? */
+	cb.deqz $r0? slow_path
+	/* Retore additionnal registers */
+	lo $r4r5r6r7 = (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2]
+	;;
+	/* Restore registers */
+	lo $r0r1r2r3 = TASK_THREAD_SAVE_AREA[$r2]
+	;;
+	/* $r0 was swapped with sr1 at start of exception */
+	get $r0 = $sr1
+	;;
+	rfe
+	;;
 ENDPROC(k1c_trap_handler)
 
 /***********************************************************************
@@ -265,9 +443,9 @@ ENDPROC(k1c_trap_handler)
 ***********************************************************************/
 .section .exception.interrupt, "ax", @progbits
 ENTRY(k1c_interrupt_handler):
-	save_quad_regs $r60r61r62r63
+	save_quad_regs $r0r1r2r3 $r0
 	;;
-	save_regs_for_exception $r60 $r61 $r60r61r62r63
+	save_regs_for_exception $r0 $r1 $r0 $r0r1r2r3
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HWLOOP_ENABLE
@@ -642,3 +820,17 @@ ENTRY(work_pending)
 	call panic
 	;;
 ENDPROC(work_pending)
+
+/***********************************************************************
+*            Common return from exceptions (trap/interrupts)
+***********************************************************************/
+
+.pushsection .text
+.align L1_CACHE_BYTES
+/* Wrapper for tlb refill macro */
+ENTRY(do_tlb_refill)
+	macro_tlb_refill
+	ret
+	;;
+ENDPROC(do_tlb_refill)
+.popsection
