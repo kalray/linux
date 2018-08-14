@@ -6,6 +6,9 @@
  * Copyright (C) 2018 Kalray Inc.
  */
 
-#define __ARCH_WANT_SYS_CLONE
+#define __ARCH_WANT_RENAMEAT
+#define __ARCH_WANT_NEW_STAT
+#define __ARCH_WANT_SET_GET_RLIMIT
+#define __ARCH_WANT_SYS_CLONE3
 
-#include <uapi/asm/unistd.h>
+#include <asm-generic/unistd.h>
