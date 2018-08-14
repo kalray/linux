@@ -13,11 +13,14 @@
 #include <linux/sched.h>
 #include <linux/mm.h>
 
+#include <asm/mmu.h>
 #include <asm/ptrace.h>
 #include <asm/pgtable.h>
 #include <asm/sfr_defs.h>
 #include <asm/current.h>
 #include <asm/tlbflush.h>
+
+DEFINE_PER_CPU_ALIGNED(uint8_t [MMU_JTLB_SETS], jtlb_current_set_way);
 
 static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
@@ -25,10 +28,6 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	struct mm_struct *mm;
 	struct vm_area_struct *vma;
 	unsigned int flags;
-	pgd_t *pgd = NULL;
-	pud_t *pud = NULL;
-	pmd_t *pmd = NULL;
-	pte_t *pte = NULL;
 	int fault;
 
 	tsk = current;
@@ -44,23 +43,13 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	if (ea >= VMALLOC_START && ea <= VMALLOC_END && !user_mode(regs))
 		panic("%s: vmalloc is not yet implemented", __func__);
 
-	/* PUD has been folded */
-	pgd = pgd_offset(mm, ea);
-	pud = pud_offset(pgd, ea);
-	if (pud_none(*pud))
-		goto do_something;
-
-	pmd = pmd_offset(pud, ea);
-	if (pmd_none(*pmd))
-		goto do_something;
-
-	pte = pte_offset_kernel(pmd, ea);
-	if (pte_present(*pte)) {
-		update_mmu_cache(NULL, ea, pte);
+	/* I'm not even sure we should keep that here.
+	 * This will probably be called after the new mapping has been
+	 * added
+	 */
+	if (do_tlb_refill(ea, mm))
 		return;
-	}
 
-do_something:
 	vma = find_vma(mm, ea);
 	if (!vma)
 		BUG();
