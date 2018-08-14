@@ -41,10 +41,12 @@ extern char _exception_start;
 
 #define cpu_relax()         barrier()
 
+#define SAVE_AREA_SIZE	4
 
 struct thread_struct {
 	uint64_t user_sp;
-	mm_segment_t addr_limit;	/* Addr limit */
+	mm_segment_t addr_limit;		/* Addr limit */
+	uint64_t save_area[SAVE_AREA_SIZE];	/* regs save area */
 
 /**
  * According to k1c ABI, we have 18 callee-saved which are the following:
