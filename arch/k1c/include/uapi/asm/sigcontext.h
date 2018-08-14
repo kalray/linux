@@ -6,6 +6,14 @@
  * Copyright (C) 2018 Kalray Inc.
  */
 
-#define __ARCH_WANT_SYS_CLONE
+#ifndef _UAPI_ASM_K1C_SIGCONTEXT_H
+#define _UAPI_ASM_K1C_SIGCONTEXT_H
 
-#include <uapi/asm/unistd.h>
+struct sigcontext {
+	/*
+	 * FIXME AUTO: Fill sigcontext structure correctly
+	 */
+	unsigned long dummy;
+};
+
+#endif	/* _UAPI_ASM_K1C_SIGCONTEXT_H */
