@@ -30,6 +30,8 @@
 
 #define K1C_TRAP_COUNT          0x10
 
+#ifndef __ASSEMBLY__
+
 typedef void (*trap_handler_func) (uint64_t es, uint64_t ea,
 				   struct pt_regs *regs);
 
@@ -41,5 +43,7 @@ extern void k1c_trap_nomapping(uint64_t es, uint64_t ea, struct pt_regs *regs);
 extern void k1c_trap_writetoclean(uint64_t es, uint64_t ea,
 				  struct pt_regs *regs);
 #endif
+
+#endif /* __ASSEMBLY__ */
 
 #endif

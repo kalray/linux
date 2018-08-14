@@ -9,6 +9,8 @@
 #ifndef _ASM_K1C_SFR_H
 #define _ASM_K1C_SFR_H
 
+#ifndef __ASSEMBLY__
+
 #include <linux/types.h>
 
 #include <asm/sfr_defs.h>
@@ -64,5 +66,6 @@ k1c_sfr_clear_bit(unsigned char sfr, unsigned char bit)
 #define k1c_sfr_set(_sfr, _val)	__builtin_k1_set(_sfr, _val)
 #define k1c_sfr_get(_sfr)	__builtin_k1_get(_sfr)
 
+#endif
 
 #endif	/* _ASM_K1C_SFR_DEFS_H */
