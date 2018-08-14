@@ -6,8 +6,8 @@
  * Copyright (C) 2018 Kalray Inc.
  */
 
-#ifndef _ASM_K1C_SIGCONTEXT_H
-#define _ASM_K1C_SIGCONTEXT_H
+#ifndef _UAPI_ASM_K1C_SIGCONTEXT_H
+#define _UAPI_ASM_K1C_SIGCONTEXT_H
 
 struct sigcontext {
 	/*
@@ -16,4 +16,4 @@ struct sigcontext {
 	unsigned long dummy;
 };
 
-#endif	/* _ASM_K1C_SIGCONTEXT_H */
+#endif	/* _UAPI_ASM_K1C_SIGCONTEXT_H */
