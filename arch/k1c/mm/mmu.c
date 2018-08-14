@@ -6,9 +6,11 @@
  * Copyright (C) 2018 Kalray Inc.
  */
 
+#include <linux/cache.h>
 #include <linux/types.h>
 #include <linux/irqflags.h>
 #include <linux/printk.h>
+#include <linux/percpu.h>
 #include <linux/kernel.h>
 
 #include <asm/mmu.h>
