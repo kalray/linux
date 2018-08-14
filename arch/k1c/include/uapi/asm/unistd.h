@@ -6,14 +6,7 @@
  * Copyright (C) 2018 Kalray Inc.
  */
 
-#ifndef _ASM_K1C_SIGCONTEXT_H
-#define _ASM_K1C_SIGCONTEXT_H
+#define __ARCH_WANT_RENAMEAT
+#define __ARCH_WANT_NEW_STAT
 
-struct sigcontext {
-	/*
-	 * FIXME AUTO: Fill sigcontext structure correctly
-	 */
-	unsigned long dummy;
-};
-
-#endif	/* _ASM_K1C_SIGCONTEXT_H */
+#include <asm-generic/unistd.h>
