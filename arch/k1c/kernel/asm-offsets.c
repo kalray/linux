@@ -16,6 +16,9 @@
 #include <asm/processor.h>
 #include <asm/ptrace.h>
 #include <asm/page.h>
+#include <asm/pgtable.h>
+#include <asm/ptrace.h>
+#include <asm/tlb_defs.h>
 
 int foo(void)
 {
@@ -31,6 +34,7 @@ int foo(void)
 	 */
 	DEFINE(PT_SIZE_ON_STACK, sizeof(struct pt_regs));
 	DEFINE(TI_FLAGS_SIZE, sizeof(unsigned long));
+	DEFINE(QUAD_REG_SIZE, 4 * sizeof(uint64_t));
 
 	/* When restoring registers, we do not want to restore r12
 	 * right now since this is our stack pointer. Allow to save
@@ -83,6 +87,23 @@ int foo(void)
 
 	/* Save area offset */
 	OFFSET(TASK_THREAD_SAVE_AREA, task_struct, thread.save_area);
+
+	/* Fast tlb refill defines */
+	OFFSET(TASK_MM, task_struct, mm);
+	OFFSET(MM_PGD, mm_struct, pgd);
+
+	DEFINE(ASM_PGDIR_SHIFT, PGDIR_SHIFT);
+	DEFINE(ASM_PMD_SHIFT, PMD_SHIFT);
+
+	DEFINE(ASM_PTRS_PER_PGD, PTRS_PER_PGD);
+	DEFINE(ASM_PTRS_PER_PMD, PTRS_PER_PMD);
+	DEFINE(ASM_PTRS_PER_PTE, PTRS_PER_PTE);
+
+#if defined(CONFIG_K1C_4K_PAGES)
+	DEFINE(ASM_TLB_PS, TLB_PS_4K);
+#elif defined(CONFIG_K1C_64K_PAGES)
+	DEFINE(ASM_TLB_PS, TLB_PS_64K);
+#endif
 
 	return 0;
 }
