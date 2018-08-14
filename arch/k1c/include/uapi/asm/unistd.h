@@ -3,12 +3,11 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc.
+ * Copyright (C) 2018 Kalray Inc.
  */
 
-#ifndef _UAPI_ASM_K1C_IOCTLS_H
-#define _UAPI_ASM_K1C_IOCTLS_H
+#define __ARCH_WANT_RENAMEAT
+#define __ARCH_WANT_NEW_STAT
+#define __ARCH_WANT_SET_GET_RLIMIT
 
-#include <asm-generic/ioctls.h>
-
-#endif	/* _ASM_K1C_TYPES_H */
+#include <asm-generic/unistd.h>

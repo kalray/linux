@@ -8,4 +8,4 @@
 
 #define __ARCH_WANT_SYS_CLONE
 
-#include <asm-generic/unistd.h>
+#include <uapi/asm/unistd.h>
