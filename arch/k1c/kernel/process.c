@@ -70,7 +70,7 @@ void start_thread(struct pt_regs *regs,
 			unsigned long pc, unsigned long sp)
 {
 	regs->spc = pc;
-	regs->r12 = sp;
+	regs->sp = sp;
 	regs->sps = k1c_sfr_get(K1C_SFR_PS);
 
 	/* Clear user mode */
@@ -108,7 +108,7 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		childregs->r0 = 0; /* Return value of fork() */
 		/* Set stack pointer if any */
 		if (usp)
-			childregs->r12 = usp;
+			childregs->sp = usp;
 
 		/* Set a new TLS ?  */
 		if (clone_flags & CLONE_SETTLS)
