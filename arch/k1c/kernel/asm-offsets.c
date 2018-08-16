@@ -24,9 +24,17 @@ int foo(void)
 {
 	BUILD_BUG_ON(sizeof(struct pt_regs) != PT_REGS_STRUCT_EXPECTED_SIZE);
 
+	/**
+	 * Check that user_pt_regs size matches the beginning of pt_regs
+	 */
+	BUILD_BUG_ON((offsetof(struct user_pt_regs, cs) + sizeof(uint64_t)) !=
+		     sizeof(struct user_pt_regs));
+
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	DEFINE(REG_SIZE, sizeof(uint64_t));
 #endif
+
+	DEFINE(QUAD_SIZE, 4 * sizeof(uint64_t));
 
 	/*
 	 * We allocate a pt_regs on the stack when entering the kernel.  This
@@ -62,8 +70,9 @@ int foo(void)
 	OFFSET(PT_Q52, pt_regs, r52);
 	OFFSET(PT_Q56, pt_regs, r56);
 	OFFSET(PT_Q60, pt_regs, r60);
-	OFFSET(PT_SPC_SPS_CS_RA, pt_regs, spc);
-	OFFSET(PT_LC_LE_LS_DUMMY, pt_regs, lc);
+	OFFSET(PT_CS_SPC_SPS_ES, pt_regs, cs);
+	OFFSET(PT_LC_LE_LS_RA, pt_regs, lc);
+	OFFSET(PT_ORIG_R0, pt_regs, orig_r0);
 
 	/*
 	 * Flags in thread info

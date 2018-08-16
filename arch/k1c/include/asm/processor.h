@@ -90,7 +90,7 @@ struct thread_struct {
 	.addr_limit = KERNEL_DS,					\
 }
 
-#define KSTK_ESP(tsk)   (task_pt_regs(tsk)->r12)
+#define KSTK_ESP(tsk)   (task_pt_regs(tsk)->sp)
 #define KSTK_EIP(tsk)   (task_pt_regs(tsk)->spc)
 
 /*
