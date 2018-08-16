@@ -101,21 +101,22 @@ _save_regs:
 	set $le = $r10
 	;;
 	so PT_Q24[$sp] = $r24r25r26r27
-	get $r0 = $spc
+	get $r0 = $cs
 	;;
 	so PT_Q28[$sp] = $r28r29r30r31
-	get $r1 = $sps
+	get $r1 = $spc
 	;;
 	so PT_Q32[$sp] = $r32r33r34r35
-	get $r2 = $cs
+	get $r2 = $sps
 	;;
 	so PT_Q36[$sp] = $r36r37r38r39
-	get $r3 = $ra
+	get $r3 = $es
 	;;
 	so PT_Q40[$sp] = $r40r41r42r43
-	get $r4 = $lc
+	get $r7 = $ra
 	;;
 	so PT_Q44[$sp] = $r44r45r46r47
+	get $r4 = $lc
 	;;
 	so PT_Q48[$sp] = $r48r49r50r51
 	;;
@@ -126,9 +127,9 @@ _save_regs:
 	;;
 	so PT_Q60[$sp] = $r60r61r62r63
 	;;
-	so PT_SPC_SPS_CS_RA[$sp] = $r0r1r2r3
+	so PT_CS_SPC_SPS_ES[$sp] = $r0r1r2r3
 	;;
-	so PT_LC_LE_LS_DUMMY[$sp] = $r4r5r6r7
+	so PT_LC_LE_LS_RA[$sp] = $r4r5r6r7
 	;;
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	addd $sp = $sp, -REG_SIZE
@@ -164,15 +165,15 @@ _check_ok:
 #endif
 	/* Are we returning to userspace ? */
 	cb.odd \sps_reg? _restore_regs
-	;;
 	ld $r1 = TASK_TI_FLAGS[\sr0_reg]
 	;;
 	/* Do we have work pending ? */
 	andd $r5 = $r1, _TIF_WORK_MASK
-	copyd $r0 = \sr0_reg
+	/* Argument 0 for work_pending */
+	copyd $r0 = $sp
 	;;
 	/**
-	 * If we do not have work pending (ie $r5 == 0)then we can
+	 * If we do not have work pending (ie $r5 == 0) then we can
 	 * directly jump to _restore_regs without calling work_pending
 	 */
 	cb.deqz $r5? _restore_regs
@@ -180,9 +181,9 @@ _check_ok:
 	call work_pending
 	;;
 _restore_regs:
-	lo $r0r1r2r3 = PT_SPC_SPS_CS_RA[$sp]
+	lo $r0r1r2r3 = PT_CS_SPC_SPS_ES[$sp]
 	;;
-	lo $r4r5r6r7 = PT_LC_LE_LS_DUMMY[$sp]
+	lo $r4r5r6r7 = PT_LC_LE_LS_RA[$sp]
 	;;
 	lo $r60r61r62r63 = PT_Q60[$sp]
 	;;
@@ -204,16 +205,16 @@ _restore_regs:
 	set $ls = $r6
 	;;
 	lo $r28r29r30r31 = PT_Q28[$sp]
-	set $ra = $r3
+	set $ra = $r7
 	;;
 	lo $r24r25r26r27 = PT_Q24[$sp]
-	set $cs = $r2
+	set $cs = $r0
 	;;
 	lo $r20r21r22r23 = PT_Q20[$sp]
-	set $sps = $r1
+	set $spc = $r1
 	;;
 	lo $r16r17r18r19 = PT_Q16[$sp]
-	set $spc = $r0
+	set $sps = $r2
 	;;
 	lq $r14r15 = PT_R14R15[$sp]
 	;;
@@ -489,32 +490,33 @@ ENTRY(k1c_syscall_handler):
 	 * r36 = sr0 = current
 	 * r37 = current trace flag
 	 * r38 = syscall handler addr
+	 * r39 = current task flags
 	 * These 3 registers must live across function calls.
-	 * r36 and r37 are used to speedup syscall return after actual
+	 * r36, r37 and r38 are used to speedup syscall return after actual
 	 * syscall func.
 	 */
-	get $r32 = $es
+	get $r43 = $es
 	;;
 	get $r36 = $sr0
 	;;
 	/* Extract syscall number */
-	extfz $r32 = $r32, 14, 3
-	make $r41 = sys_call_table
+	extfz $r32 = $r43, 14, 3
+	make $r42 = sys_call_table
 	/* Store current user stack pointer sp of thread_info */
 	sd TASK_THREAD_USER_SP[$r36] = $sp
 	/* Get regs to save on stack */
-	get $r40 = $ra
+	get $r63 = $ra
 	;;
-	ld $r37 = TASK_TI_FLAGS[$r36]
-	get $r42 = $sps
+	ld $r39 = TASK_TI_FLAGS[$r36]
+	get $r41 = $spc
 	;;
 	/* Check for out-of-bound syscall number */
 	sbfd $r50 = $r32, __NR_syscalls
 	/* Compute syscall func addr (ie sys_call_table[$r32])*/
-	ld.xs $r38 = $r32[$r41]
+	ld.xs $r38 = $r32[$r42]
 	/* True if trace syscall enable */
-	andd $r37 = $r37, _TIF_SYSCALL_TRACE
-	get $r41 = $cs
+	andd $r37 = $r39, _TIF_SYSCALL_TRACE
+	get $r42 = $sps
 	;;
 	/* Restore kernel stack pointer */
 	ld $sp = TASK_THREAD_KERNEL_SP[$r36]
@@ -524,24 +526,28 @@ ENTRY(k1c_syscall_handler):
 check_trace:
 	/* Prepare space on stack */
 	addd $sp = $sp, -PT_SIZE_ON_STACK
-	get $r43 = $spc
+	get $r40 = $cs
+	/* Save regs r0 -> r3 in pt_regs for restart & trace if needed */
+	so PT_Q0[$sp] = $r0r1r2r3
 	;;
-	/* store volatile register which will be need after C call */
-	sq PT_Q36[$sp] = $r36r37
+	/* store volatile register which will be needed after C call */
+	so PT_Q36[$sp] = $r36r37r38r39
 	get $r60 = $lc
 	;;
-	so PT_SPC_SPS_CS_RA[$sp] = $r40r41r42r43
+	so PT_CS_SPC_SPS_ES[$sp] = $r40r41r42r43
 	get $r61 = $le
 	;;
 	/* Reenable hardware loops and IT */
 	make $r44 = PS_HLE_EN_IT_EN_ET_CLEAR
 	get $r62 = $ls
 	make $r43 = 0x0
+	/* Save regs r4 -> r7 in pt_regs for restart & trace if needed */
+	so PT_Q4[$sp] = $r4r5r6r7
 	;;
 	/* Clear $le on entry */
 	set $le = $r43
 	/* Save hw loop stuff */
-	so PT_LC_LE_LS_DUMMY[$sp] = $r60r61r62r63
+	so PT_LC_LE_LS_RA[$sp] = $r60r61r62r63
 	;;
 	/* Enable hwloop and interrupts
 	 * Note that we have to reenable interrupts after saving context
@@ -550,6 +556,8 @@ check_trace:
 	;;
 	/* Do we have to trace the syscall ? */
 	cb.dnez $r37? trace_syscall_enter
+	/* Stroe original r0 value */
+	sd PT_ORIG_R0[$sp] = $r0
 	;;
 do_syscall:
 	addd $sp = $sp, -SCRATCHPAD_SIZE
@@ -559,28 +567,48 @@ do_syscall:
 	addd $sp = $sp, SCRATCHPAD_SIZE
 	/* r36 and r37 might have been clobbered by C call, get thread_info
 	 * trace flag value from stack */
-	lq $r36r37 = (PT_Q36 + SCRATCHPAD_SIZE)[$sp]
+	lo $r36r37r38r39 = (PT_Q36 + SCRATCHPAD_SIZE)[$sp]
 	;;
+	/* Save r0 which was returned from do_scall previously and
+	 * will be cloberred by work_pending(and potentially
+	 * do_syscall_trace_exit if tracing is enabled)
+	 * If do_signal is called and that syscall is restarted,
+	 * it will be modified by handle_restart to restore original
+	 * r0 value
+	 */
+	sd PT_Q0[$sp] = $r0
 	/* used to store if trace system */
 	cb.dnez $r37? trace_syscall_exit
+	/* Do we have work pending ? */
+	andd $r2 = $r39, _TIF_WORK_MASK
+	;;
+	/* If no work pending, directly jump to ret_to_user */
+	cb.deqz $r2? ret_to_user
+	;;
+	copyd $r0 = $sp
+	call work_pending
 	;;
 ret_to_user:
 	/* Restore registers */
-	lo $r40r41r42r43 = PT_SPC_SPS_CS_RA[$sp];
+	lo $r60r61r62r63 = PT_LC_LE_LS_RA[$sp]
 	;;
-	lo $r60r61r62r63 = PT_LC_LE_LS_DUMMY[$sp]
-	set $ra = $r40
+	lo $r40r41r42r43 = PT_CS_SPC_SPS_ES[$sp];
+	set $ra = $r63
 	;;
-	addd $sp = $sp, PT_SIZE_ON_STACK
-	set $cs = $r41
+	/* Restore syscall arguments since they might be needed for
+	 * syscall restart
+	 */
+	lo $r0r1r2r3 = PT_Q0[$sp]
+	set $cs = $r40
 	;;
-	/* Restore user pointer */
-	ld $sp = TASK_THREAD_USER_SP[$r36]
 	set $lc = $r60
+	addd $sp = $sp, PT_SIZE_ON_STACK
 	;;
 	set $le = $r61
 	make $r60 = K1C_SFR_PS_IE_MASK
 	;;
+	/* Restore user pointer */
+	ld $sp = TASK_THREAD_USER_SP[$r36]
 	set $ls = $r62
 	;;
 	/* Disable interrupt before restoring critical registers or else
@@ -593,7 +621,7 @@ ret_to_user:
 	;;
 	set $sps = $r42
 	;;
-	set $spc = $r43
+	set $spc = $r41
 	;;
 	/* TODO: we might have to clear some registers to avoid leaking
 	 * information to user space ! callee saved regs have been
@@ -611,11 +639,6 @@ invalid_scall:
 	;;
 
 trace_syscall_enter:
-	/* Save regs r0 -> r8 in pt_regs for trace */
-	so PT_Q0[$sp] = $r0r1r2r3
-	;;
-	so PT_Q4[$sp] = $r4r5r6r7
-	;;
 	/* Also save $r38 (syscall handler) which was computed above */
 	sd PT_R38[$sp] = $r38
 	;;
@@ -638,32 +661,25 @@ trace_syscall_enter:
 	 * non implemented syscall */
 	cmoved.dnez $r0? $r38 = $r41
 	;;
-	/* Restore registers since the C call might have clobbered them and
-	 we need them for the actual syscall call */
+	/* Restore registers since the do_syscall_trace_enter call might
+	 * have clobbered them and we need them for the actual syscall
+	 * call */
 	lo $r0r1r2r3 = PT_Q0[$sp]
 	;;
 	lo $r4r5r6r7 = PT_Q4[$sp]
 	;;
 	goto do_syscall
 	;;
-
 trace_syscall_exit:
-	/* Save r0 which was returned from do_scall previously and
-	 * will be cloberred by do_syscall_trace_exit */
-	sd PT_Q0[$sp] = $r0
-	;;
 	copyd $r0 = $sp
 	addd $sp = $sp, -SCRATCHPAD_SIZE
 	call do_syscall_trace_exit
 	;;
 	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
-	/* Restore r36 (current) which might have been
-	 * clobbered and needed for ret_to_user */
-	ld $r36 = PT_Q36[$sp]
-	;;
-	/* Restore previous r0 */
-	ld $r0 = PT_Q0[$sp]
+	/* Restore r36, r37 and r38 which might have been clobbered by
+	 * do_syscall_trace_exit and needed by ret_to_user */
+	lo $r36r37r38r39 = PT_Q36[$sp]
 	;;
 	goto ret_to_user
 	;;
@@ -784,12 +800,8 @@ ENDPROC(__switch_to)
 
 
 /***********************************************************************
-*            Common return from exceptions (trap/interrupts)
+*        Common return from exceptions (trap/interrupts/syscall)
 ***********************************************************************/
-
-.section ".rodata"
-notify_panic_str_label:
-	.string "Unimplemented do_notify_resume"
 
 .text
 /**
@@ -797,32 +809,71 @@ notify_panic_str_label:
  * This function is only called from restore_regs_after_exception
  * just before returning to user. It means we can use whatever
  * callee-saved register we might want to use.
- * $r0 = current_task
- * $r1 = current task flags
+ * $r0 = pt_regs addr
  */
 ENTRY(work_pending)
-	andd $r2 = $r1, _TIF_NEED_RESCHED
-	get $r31 = $ra
+	/* Save the callee saved we are going to use */
+	addd $sp = $sp, -QUAD_SIZE
+	so -QUAD_SIZE[$sp] = $r28r29r30r31
 	;;
-	/* Do we have to call schedule ? */
-	cb.deqz $r2? 1f
+	/* Save $ra and our parameters */
+	get $r30 = $ra
 	;;
 	addd $sp = $sp, -SCRATCHPAD_SIZE
+	copyd $r28 = $r0
+	get $r29 = $sr0
+	;;
+recheck:
+	/*
+	 * Use a scratch reg since we do not care about preserving them
+	 * through calls. We only care to keep r28, r29 and r30
+	 */
+	ld $r33 = TASK_TI_FLAGS[$r29]
+	;;
+	andd $r32 = $r33, _TIF_NEED_RESCHED
+	;;
+	andd $r32 = $r33, _TIF_SIGPENDING
+	/* if TIF_NEED_RESCHED is set then call schedule */
+	cb.deqz $r32? check_sigpending
+	;;
 	call schedule
 	;;
-	set $ra = $r31
+	goto recheck
+	;;
+check_sigpending:
+	andd $r32 = $r33, _TIF_NOTIFY_RESUME
+	/* if _TIF_SIGPENDING is set then call do_signal */
+	cb.deqz $r32? check_notify_resume
+	;;
+	/* First arguments of do_signal is current pt_regs */
+	copyd $r0 = $r28
+	call do_signal
+	;;
+	goto recheck
+	;;
+check_notify_resume:
+	/* if _TIF_NOTIFY_RESUME is set then call do_notify_resume */
+	cb.deqz $r32? no_flags
+	;;
+	copyd $r0 = $r28
+	/* First arguments of do_signal is also current pt_regs */
+	call do_notify_resume
+	;;
+	goto recheck
+	;;
+no_flags:
 	addd $sp = $sp, SCRATCHPAD_SIZE
+	set $ra = $r30
+	;;
+	addd $sp = $sp, QUAD_SIZE
+	lo $r28r29r30r31, 0[$sp]
 	;;
 	ret
-	;;
-1:	make $r0 = notify_panic_str_label
-	;;
-	call panic
 	;;
 ENDPROC(work_pending)
 
 /***********************************************************************
-*            Common return from exceptions (trap/interrupts)
+*          		 Misc functions
 ***********************************************************************/
 
 .pushsection .text
@@ -833,4 +884,20 @@ ENTRY(do_tlb_refill)
 	ret
 	;;
 ENDPROC(do_tlb_refill)
+.popsection
+
+
+/**
+ * Avoid hardcoding trampoline for rt_sigreturn by using this code and
+ * copying it on user trampoline
+ */
+.pushsection .text
+.global user_scall_rt_sigreturn_end
+ENTRY(user_scall_rt_sigreturn)
+	make $r6 = __NR_rt_sigreturn
+	;;
+	scall $r6
+	;;
+user_scall_rt_sigreturn_end:
+ENDPROC(user_scall_rt_sigreturn)
 .popsection
