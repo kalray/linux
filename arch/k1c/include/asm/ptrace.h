@@ -11,9 +11,13 @@
 
 #include <asm/types.h>
 #include <asm/sfr_defs.h>
+#include <uapi/asm/ptrace.h>
 
 #define GPR_COUNT	64
 #define SFR_COUNT	8
+#define VIRT_COUNT	1
+
+#define ES_SYSCALL	0x3
 
 /**
  * When updating pt_regs structure, you need to update this size.
@@ -26,12 +30,15 @@
  * (build time check done in asm-offsets.c)
  */
 #define PT_REGS_STRUCT_EXPECTED_SIZE \
-			((GPR_COUNT + SFR_COUNT) * sizeof(uint64_t))
+			((GPR_COUNT + SFR_COUNT + VIRT_COUNT) \
+			* sizeof(uint64_t))
 
 /**
  * Saved register structure. Note that we should save only the necessary
  * registers.
  * When you modify it, please read carefully the comment above.
+ * Moreover, you will need to modify user_pt_regs to match the beginning
+ * of this struct 1:1
  */
 struct pt_regs {
 	/* GPR */
@@ -47,7 +54,10 @@ struct pt_regs {
 	uint64_t r9;
 	uint64_t r10;
 	uint64_t r11;
-	uint64_t r12;
+	union {
+		uint64_t r12;
+		uint64_t sp;
+	};
 	uint64_t r13;
 	uint64_t r14;
 	uint64_t r15;
@@ -101,26 +111,42 @@ struct pt_regs {
 	uint64_t r63;
 
 	/* SFR */
-	uint64_t spc;
-	uint64_t sps;
-	uint64_t cs;
-	uint64_t ra;
-
 	uint64_t lc;
 	uint64_t le;
 	uint64_t ls;
-	uint64_t dummy;
+	uint64_t ra;
+
+	uint64_t cs;
+	/* Up to here, this is registers needed for user_pt_regs */
+	uint64_t spc;
+	uint64_t sps;
+	uint64_t es;
+
+	/* "Virtual" registers */
+	uint64_t orig_r0;
+
 	/**
 	 * If you add some fields, please read carefully the comment for
 	 * PT_REGS_STRUCT_EXPECTED_SIZE.
 	 */
 };
 
-#define user_stack_pointer(regs)	((regs)->r12)
+#define user_stack_pointer(regs)	((regs)->sp)
 #define instruction_pointer(regs)	((regs)->spc)
 #define user_mode(regs)	(((regs)->sps & K1C_SFR_PS_PM_MASK) == 0)
+#define es_ec(regs) ((regs->es & K1C_SFR_ES_EC_MASK) >> K1C_SFR_ES_EC_SHIFT)
+#define es_sysno(regs) ((regs->es & K1C_SFR_ES_SN_MASK) >> K1C_SFR_ES_SN_SHIFT)
+
+static inline bool in_syscall(struct pt_regs const *regs)
+{
+	return es_ec(regs) == ES_SYSCALL;
+}
 
 int do_syscall_trace_enter(struct pt_regs *regs, unsigned long syscall);
 void do_syscall_trace_exit(struct pt_regs *regs);
+
+
+extern char *user_scall_rt_sigreturn_end;
+extern char *user_scall_rt_sigreturn;
 
 #endif	/* _ASM_K1C_PTRACE_H */
