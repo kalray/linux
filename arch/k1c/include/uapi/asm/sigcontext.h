@@ -9,11 +9,10 @@
 #ifndef _UAPI_ASM_K1C_SIGCONTEXT_H
 #define _UAPI_ASM_K1C_SIGCONTEXT_H
 
+#include <asm/ptrace.h>
+
 struct sigcontext {
-	/*
-	 * FIXME AUTO: Fill sigcontext structure correctly
-	 */
-	unsigned long dummy;
+	struct user_pt_regs sc_regs;
 };
 
 #endif	/* _UAPI_ASM_K1C_SIGCONTEXT_H */
