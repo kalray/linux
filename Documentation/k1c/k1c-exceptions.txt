@@ -28,6 +28,10 @@ It contains all assembly routines related to Interrupts/traps/syscall.
 Syscall handling
 ================
 
+When executing a syscall, it must be done using "scall $r6"
+where $r6 contains the syscall number. Using this convention allow to
+modify and restart a syscall from the kernel
+
 syscall are handled differently than interrupts/exceptions. From an ABI
 POV, they are seen as simple function calls. This means that we can
 clobber any caller saved registers we want. However, syscall parameters
@@ -50,8 +54,95 @@ The following steps are then taken:
  - Call do_trace_syscall_enter function
 - Restore syscall arguments since they have been modified by C call
 - Call the syscall function
+- Save $r0 in pt_regs since it can be cloberred afterward
 - If tracing was enabled, call trace_syscall_exit
+- Call work_pending
 - Return to user !
 
 The trace call is handled out of the fast path. All slow path handling
 is done in another part of code to avoid messing with the cache.
+
+Signals
+=======
+
+Signals are handled when exiting kernel before returning to user.
+When handling a signal, the path is the following:
+
+1 - User application is executing normally
+    Then any exception happens (syscall, interrupt, trap)
+2 - The exception handling path is taken
+    and before returning to user, pending signals are checked
+3 - Signal are handled by do_signal
+    Registers are saved and a special part of the stack is modified
+    to create a trampoline to call rt_sigreturn
+    $spc is modified to jump to user signal handler
+    $ra is modified to jump to sigreturn trampoline directly after
+    returning from user signal handler.
+4 - User signal handler is called after rfe from exception
+    when returning, $ra is retored to $pc, resulting in a call
+    to the syscall trampoline.
+5 - syscall trampoline is executed, leading to rt_sigreturn syscall
+6 - rt_sigreturn syscall is executed
+    Previous registers are restored to allow returning to user correctly
+7 - User application is restored at the exact point it was interrupted
+    before.
+
+
+        +----------+
+        |    1     |
+        | User app | @func
+        |  (user)  |
+        +---+------+
+            |
+            | it/trap/scall
+            |
+        +---v-------+
+        |    2      |
+        | exception |
+        | handling  |
+        | (kernel)  |
+        +---+-------+
+            |
+            | Check if signal are pending, if so, handle signals
+            |
+        +---v--------+
+        |    3       |
+        | do_signal  |
+        |  handling  |
+        |  (kernel)  |
+        +----+-------+
+             |
+             | Return to user signal handler
+             |
+        +----v------+
+        |    4      |
+        |  signal   |
+        |  handler  |
+        |  (user)   |
+        +----+------+
+             |
+             | Return to sigreturn trampoline
+             |
+        +----v-------+
+        |    5       |
+        |  syscall   |
+        |rt_sigreturn|
+        |  (user)    |
+        +----+-------+
+             |
+             | Syscall to rt_sigreturn
+             |
+        +----+-------+
+        |    6       |
+        |  sigreturn |
+        |  handler   |
+        |  (kernel)  |
+        +----+-------+
+             |
+             | Modify context to return to original func
+             |
+        +----v-----+
+        |    7     |
+        | User app | @func
+        |  (user)  |
+        +----------+
