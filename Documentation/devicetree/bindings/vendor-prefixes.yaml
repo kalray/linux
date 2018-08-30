@@ -473,6 +473,8 @@ patternProperties:
     description: Shenzhen Jesurun Electronics Business Dept.
   "^jianda,.*":
     description: Jiandangjing Technology Co., Ltd.
+  "^kalray,.*":
+    description: Kalray Inc.
   "^karo,.*":
     description: Ka-Ro electronics GmbH
   "^keithkoep,.*":
