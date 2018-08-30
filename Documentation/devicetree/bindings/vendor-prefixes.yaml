@@ -427,6 +427,8 @@ patternProperties:
     description: JEDEC Solid State Technology Association
   "^jianda,.*":
     description: Jiandangjing Technology Co., Ltd.
+  "^kalray,.*":
+    description: Kalray Inc.
   "^karo,.*":
     description: Ka-Ro electronics GmbH
   "^keithkoep,.*":
