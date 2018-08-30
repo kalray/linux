@@ -651,6 +651,8 @@ patternProperties:
     description: Jiandangjing Technology Co., Ltd.
   "^joz,.*":
     description: JOZ BV
+  "^kalray,.*":
+    description: Kalray Inc.
   "^kam,.*":
     description: Kamstrup A/S
   "^karo,.*":
