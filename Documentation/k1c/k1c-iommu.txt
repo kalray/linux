@@ -1,0 +1,135 @@
+IOMMU
+=====
+
+General Overview
+----------------
+
+To exchange data between device and users through memory, the driver has to
+set up a buffer by doing some kernel allocation. The address of the buffer is
+virtual and the physical one is obtained through the MMU. When the device wants
+to access the same physical memory space it uses a bus address. This address is
+obtained by using the DMA mapping API. The k1c comes with an IOMMU for cluster
+DMA, PCIe peripherals and SoC peripherals that will translate this "bus address"
+into a physical one during DMA operations.
+
+The bus addresses are IOVA (I/O Virtual address) created by the driver for
+use in I/O requests. In Linux, all collection of resources that are allocated
+to a device is a domain. Domain are used for DMA isolation where one or more
+I/O devices can be assigned by the OS to a domain.
+
+Relationships between devices, DMAs and IOMMUs are described in the
+device tree.
+
+Device tree
+-----------
+
+The k1c is coming with different IOMMUs depending on type of bus.
+
+The IOMMU for PCIe and SoC peripherials are related to device and two devices
+can share the same IOMMU. Here is an example about such configuration with an
+I2C and an SPI device sharing the same DMA controller and thus the same IOMMU:
+
+	iommu0: iommu-axi@0 {
+		reg = <0xa 0x1>;
+		compatible = "kalray,k1c-iommu-axi";
+		#iommu-cells = <1>;
+	};
+
+	dmac0: dma-axi-controller@0 {
+		compatible = "snps,dw-dmac";
+		#dma-cells = <1>;
+		dma-channels = <64>;
+		iommus = <&iommu0 K1C_DMAC0>;
+	}
+
+	i2c {
+		compatible = "kalray,k1c-i2c";
+		...
+		dmas = <&dmac0 K1C_I2C_DMA_TX>, <&dmac0 K1C_I2C_DMA_RX>;
+		dma-names = "tx", "rx";
+	};
+
+	spi {
+		compatible = "kalray,k1c-spi";
+		...
+		dmas = <&dmac0 K1C_SPI_DMA_TX>, <&dmac0 K1C_SPI_DMA_RX>;
+		dma-names = "tx", "rx";
+	};
+
+For the cluster, the configuration of the IOMMU will be driven by the driver of
+the DMA of the cluster that will be in charge of allocating resources for memory
+to memory transfer through the NOC.
+
+	iommu0: iommu-cluster@0 {
+		compatible = "kalray,iommu-cluster";
+		#iommu-cells = <0>;
+	}
+
+	dmac0: dmac-noc@0 {
+		compatible = "kalray,k1c-dmac-noc"
+		dma-channels = <64>;
+		iommus = <&iommu0 K1C_DMAC0>;
+	}
+
+	eth_noc@0 {
+		compatible = "kalray,k1c-eth-noc";
+		dmas = <&dmac0 K1C_ETH_NOC_TX>, <&dmac0 K1C_ETH_NOC_RX>;
+		dma-names = "tx", "rx";
+	}
+
+IOMMU implementation
+--------------------
+
+The k1c is providing several IOMMUs. Here is a simplified view of all IOMMUs
+and translations that occurs between memory and devices:
+
+  +------------+     +---------+
+  | Cores 0-15 +---->+ Crypto  |
+  +-----+------+     +----+----+
+        |                 |
+        v                 v
+    +-------+         +-------+
+    |  MMU  |    +----+ IOMMU |
+    +---+---+    |    +---+---+
+        |        |
+        v        v
+  +-----------------+
+  |      MEMORY     |
+  |                 |       +-------+     +------+
+  |                 |<------+ IOMMU |<----+ PCIe |
+  |                 |       +-------+     +------+
+  |                 |
+  |                 |       +-------+     +----------------------------+
+  |                 |<------+ IOMMU |<----+ AXI master Soc Peripherals |
+  |                 |       +-------+     +----------------------------+
+  |                 |
+  |                 |                                       +-------+
+  |                 |       +-------+     +--------+        |       |
+  |                 |<------+ IOMMU |<----+ DMA Rx |<-------+       |
+  |                 |       +-------+     +--------+        |       |
+  |                 |                                       |  NoC  |
+  |                 |       +-------+     +--------+        |       |
+  |                 +------>| IOMMU +---->| DMA Tx +-------->       |
+  |                 |       +-------+     +--------+        |       |
+  +-----------------+                                       +-------+
+
+
+There is also an IOMMU dedicated to the crypto module but this module will not
+be accessed by the operating system.
+
+We will provide one driver to manage those IOMMUs. All of them will be
+described in the device tree to be able to get there particularities. When an
+IOMMU is related to a specific bus like PCIe we will be able to specify that
+all peripherals will go through this IOMMU. If we consider exchange between
+MPPA and NoC the IOMMU is more related to a DMA engine. In this case we will
+describres the DMA engine in the device tree and we will associate it to its
+corresponding IOMMU.
+
+Interrupts
+----------
+
+In some IOMMU we can have 3 interrupts that corresponds to 3 different errors.
+If several clusters need to subscribe to these IRQs we need to configure an association
+table where an entry gives access to cluster masks. We can have 5 clusters and the index
+of the table is managed by the ASN number that has 9 bits. Depending of the device
+we need to configure this table.
