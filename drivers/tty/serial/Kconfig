@@ -1435,6 +1435,16 @@ config SERIAL_ST_ASC
 
 	  If unsure, say N.
 
+config SERIAL_K1C_SCALL_COMM
+	tristate "k1c syscall communication"
+	depends on K1C
+	select SERIAL_CORE
+	select SERIAL_CORE_CONSOLE
+	select SERIAL_EARLYCON
+	help
+	  Add support for emulating a serial device using K1C magic syscall.
+	  These magic syscalls are both supported by JTAG and ISS.
+
 config SERIAL_ST_ASC_CONSOLE
 	bool "Support for console on ST ASC"
 	depends on SERIAL_ST_ASC=y

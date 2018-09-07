@@ -7882,6 +7882,7 @@ S:	Supported
 F:	arch/k1c/
 F:	Documentation/k1c/
 F:	drivers/irqchip/irq-k1c-core-intc.c
+F:	drivers/tty/serial/k1c_scall_comm.c
 
 K8TEMP HARDWARE MONITORING DRIVER
 M:	Rudolf Marek <r.marek@assembler.cz>
