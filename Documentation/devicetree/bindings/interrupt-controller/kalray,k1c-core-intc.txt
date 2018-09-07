@@ -1,0 +1,22 @@
+* K1C Core Interrupt controller
+
+Required properties:
+
+- compatible: must to be "kalray,k1c-core-intc".
+- interrupt-controller
+- #interrupt-cells: has to be <1>: an interrupt index
+- regs: Base address of interrupt controller registers.
+
+Optional properties:
+
+- kalray,intc-nr-irqs: Number of irqs handled by the controller.
+  if not given, will default to 32.
+
+Example:
+
+	core_intc: core_intc@0 {
+		compatible = "kalray,k1c-core-intc";
+		#interrupt-cells = <1>;
+		interrupt-controller;
+		interrupt-parent = <&core_intc>;
+	};
