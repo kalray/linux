@@ -151,6 +151,12 @@ config LEGACY_PTY_COUNT
 	  When not in use, each legacy PTY occupies 12 bytes on 32-bit
 	  architectures and 24 bytes on 64-bit architectures.
 
+config K1C_JTAG_COMM
+	tristate "Blackfin JTAG Communication"
+	depends on K1C
+	help
+	  Add support for emulating a TTY device over K1C JTAG.
+
 config SERIAL_NONSTANDARD
 	bool "Non-standard serial port support"
 	depends on HAS_IOMEM
