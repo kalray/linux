@@ -7881,6 +7881,7 @@ M:	Kalray <kalray@kalray.eu>
 S:	Supported
 F:	arch/k1c/
 F:	Documentation/k1c/
+F:	drivers/irqchip/irq-k1c-core-intc.c
 
 K8TEMP HARDWARE MONITORING DRIVER
 M:	Rudolf Marek <r.marek@assembler.cz>

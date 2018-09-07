@@ -268,6 +268,11 @@ config MIPS_GIC
 	select IRQ_DOMAIN_HIERARCHY
 	select MIPS_CM
 
+config K1C_CORE_INTC
+	bool
+	depends on K1C
+	select IRQ_DOMAIN
+
 config INGENIC_IRQ
 	bool
 	depends on MACH_INGENIC
