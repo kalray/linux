@@ -639,6 +639,12 @@ config SERIAL_IP22_ZILOG_CONSOLE
 	depends on SERIAL_IP22_ZILOG=y
 	select SERIAL_CORE_CONSOLE
 
+config SERIAL_K1C_JTAG_COMM
+	tristate "Blackfin JTAG Communication"
+	depends on K1C
+	help
+	  Add support for emulating a TTY device over K1C JTAG.
+
 config SERIAL_SH_SCI
 	tristate "SuperH SCI(F) serial port support"
 	depends on SUPERH || ARCH_RENESAS || COMPILE_TEST
@@ -1360,6 +1366,16 @@ config SERIAL_ST_ASC
 	  It support all industry standard baud rates.
 
 	  If unsure, say N.
+
+config SERIAL_K1C_SCALL_COMM
+	tristate "k1c syscall communication"
+	depends on K1C
+	select SERIAL_CORE
+	select SERIAL_CORE_CONSOLE
+	select SERIAL_EARLYCON
+	help
+	  Add support for emulating a serial device using K1C magic syscall.
+	  These magic syscalls are both supported by JTAG and ISS.
 
 config SERIAL_ST_ASC_CONSOLE
 	bool "Support for console on ST ASC"
