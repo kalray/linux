@@ -40,6 +40,7 @@ config K1C
 	select CLKSRC_OF
 	select GENERIC_CLOCKEVENTS
 	select TIMER_OF
+	select K1C_CORE_INTC
 
 config HAVE_KPROBES
 	def_bool n
