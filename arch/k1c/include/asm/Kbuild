@@ -27,6 +27,7 @@ generic-y += kprobes.h
 generic-y += linkage.h
 generic-y += local.h
 generic-y += mman.h
+generic-y += mmiowb.h
 generic-y += mmu_context.h
 generic-y += module.h
 generic-y += mutex.h
