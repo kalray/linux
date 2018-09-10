@@ -73,6 +73,7 @@ void __init trap_init(void)
 		register_trap_handler(i, default_trap_handler);
 #ifdef CONFIG_MMU
 	register_trap_handler(K1C_TRAP_NOMAPPING, k1c_trap_nomapping);
+	register_trap_handler(K1C_TRAP_PROTECTION, k1c_trap_protection);
 	register_trap_handler(K1C_TRAP_WRITETOCLEAN, k1c_trap_writetoclean);
 #endif
 
