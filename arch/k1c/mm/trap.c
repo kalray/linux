@@ -11,6 +11,7 @@
 #include <linux/kernel.h> // only needed to panic
 #include <linux/printk.h>
 #include <linux/sched.h>
+#include <linux/sched/debug.h>
 #include <linux/mm.h>
 
 #include <asm/mmu.h>
@@ -84,6 +85,21 @@ no_context:
 	panic("Unable to handle kernel %s at virtual address %016llx\n",
 		 (ea < PAGE_SIZE) ? "NULL pointer dereference" :
 		 "paging request", ea);
+}
+
+void k1c_trap_protection(uint64_t es, uint64_t ea, struct pt_regs *regs)
+{
+	if (user_mode(regs)) {
+		panic("Can't handle protection trap at addr 0x%016llx in user mode\n",
+		ea);
+	}
+
+	if (fixup_exception(regs))
+		return;
+
+	show_regs(regs);
+	panic("Unhandled protection trap at addr 0x%016llx\n",
+		ea);
 }
 
 void k1c_trap_nomapping(uint64_t es, uint64_t ea, struct pt_regs *regs)

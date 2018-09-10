@@ -22,12 +22,31 @@
 
 pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
+static DECLARE_BITMAP(ltlb_entries, MMU_LTLB_WAYS);
+
 /*
  * empty_zero_page is a special page that is used for zero-initialized data and
  * COW.
  */
 struct page *empty_zero_page;
 EXPORT_SYMBOL(empty_zero_page);
+
+static int get_free_ltlb_entry(void)
+{
+	int entry;
+
+	while (1) {
+		entry = find_first_zero_bit(ltlb_entries, MMU_LTLB_WAYS);
+		if (entry == MMU_LTLB_WAYS)
+			panic("No more LTLB entries available !");
+
+		/* If previous value was 0, then nobody took the entry */
+		if (test_and_set_bit(entry, ltlb_entries) == 0)
+			return entry;
+	}
+
+	return -1;
+}
 
 static void __init zone_sizes_init(void)
 {
@@ -44,15 +63,20 @@ static void __init zone_sizes_init(void)
 	free_area_init(zones_size);
 }
 
-/* The kernel page table has been set in the early boot by mapping
- * 1Go of the kernel virtual memory to the DDR in LTLB[0].
- */
+
 void __init paging_init(void)
 {
 	int i;
+	struct k1c_tlb_format tlbe;
+
+	/* The kernel page table has been set in the early boot by mapping
+	 * 512Mb of the kernel virtual memory to the DDR in LTLB[0].
+	 * So reserve the entry in the ltlb entries bitmap.
+	 */
+	set_bit(0, ltlb_entries);
 
 	/* SMEM + Device mapping */
-	struct k1c_tlb_format tlbe = tlb_mk_entry(
+	tlbe = tlb_mk_entry(
 		(void *) 0x0,
 		(void *) KERNEL_PERIPH_MAP_BASE,
 		TLB_PS_512M,
@@ -62,11 +86,20 @@ void __init paging_init(void)
 		0,
 		TLB_ES_A_MODIFIED);
 
-	/**
-	 * The entry  LTLB[1] was used during boot for smem mapping
-	 * We reuse it to map devices at their proper address.
-	 */
-	k1c_mmu_add_ltlb_entry(1, tlbe);
+	k1c_mmu_add_ltlb_entry(get_free_ltlb_entry(), tlbe);
+
+	/* Null mapping page */
+	tlbe = tlb_mk_entry(
+		(void *) 0x0,
+		(void *) 0x0,
+		TLB_PS_4K,
+		TLB_G_GLOBAL,
+		TLB_PA_NA_NA,
+		TLB_CP_U_U,
+		0,
+		TLB_ES_A_MODIFIED);
+
+	k1c_mmu_add_ltlb_entry(get_free_ltlb_entry(), tlbe);
 
 	for (i = 0; i < PTRS_PER_PGD; i++)
 		swapper_pg_dir[i] = __pgd(0);
