@@ -92,13 +92,13 @@ Context switching
 
 context switching is done in entry.S. When spawning a fresh thread,
 copy_thread is called. During this call, we setup callee saved register
-r15 and r16 to special values containing the function to call.
+r20 and r21 to special values containing the function to call.
 
 The normal path for a kernel thread will be the following:
 
  1 - Enter copy_thread_tls and setup callee saved registers which will
      be restored in __switch_to.
- 2 - set r15 and r16 (in thread_struct) to function and argument and
+ 2 - set r20 and r21 (in thread_struct) to function and argument and
      ra to ret_from_kernel_thread.
      These callee saved will be restored in switch_to.
  3 - Call _switch_to at some point.
@@ -108,7 +108,7 @@ The normal path for a kernel thread will be the following:
  6 - At the end of switch to, set sr0 to the new task and use ret to
      jump to ret_from_kernel_thread (address restored from ra).
  7 - In ret_from_kernel_thread, execute the function with arguments by
-     using r15, r16 and we are done
+     using r20, r21 and we are done
 
 For more explanation, you can refer to https://lwn.net/Articles/520227/
 
@@ -124,7 +124,7 @@ The detailed path is the following:
  2 - Enter copy_thread_tls and setup callee saved registers which will
      be restored in __switch_to. Also, set the "return" function to be
      ret_from_fork which will be called at end of switch_to
- 3 - set r15 (in thread_struct) with tracing information.
+ 3 - set r20 (in thread_struct) with tracing information.
      (simply by lazyness to avoid computing it in assembly...)
  4 - Call _switch_to at some point.
  5 - The current pc will then be restored to be ret_from fork.

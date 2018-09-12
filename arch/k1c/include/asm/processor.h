@@ -49,9 +49,8 @@ struct thread_struct {
 	uint64_t save_area[SAVE_AREA_SIZE];	/* regs save area */
 
 /**
- * According to k1c ABI, we have 18 callee-saved which are the following:
- * r10 r15 r16 r17 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30
- * r31.
+ * According to k1c ABI, the following registers are callee-saved:
+ * r14 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31.
  * In order to switch from a task to another, we only need to save these
  * registers + sp (r12) and ra
  *
@@ -61,24 +60,23 @@ struct thread_struct {
  * They are used in asm-offset for store octuples so they must be
  * all right behind each other
  */
+	uint64_t r14;
 
 	uint64_t ra;		/* Return address */
 	uint64_t kernel_sp;
-	uint64_t r10;
-	uint64_t r15;
-
-	uint64_t r16;
-	uint64_t r17;
 	uint64_t r18;
 	uint64_t r19;
+
 	uint64_t r20;
 	uint64_t r21;
 	uint64_t r22;
 	uint64_t r23;
+
 	uint64_t r24;
 	uint64_t r25;
 	uint64_t r26;
 	uint64_t r27;
+
 	uint64_t r28;
 	uint64_t r29;
 	uint64_t r30;
