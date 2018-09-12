@@ -15,7 +15,7 @@ LDFLAGS_vmlinux := -X
 OBJCOPYFLAGS := -O binary -R .comment -R .note -R .bootloader -S
 
 # Link with libgcc to get __div* builtins.
-LIBGCC	:= $(shell $(CC) -m64 $(KBUILD_CFLAGS) --print-libgcc-file-name)
+LIBGCC	:= $(shell $(CC) $(KBUILD_CFLAGS) --print-libgcc-file-name)
 
 DEFAULT_OPTS := -nostdlib -fno-builtin
 KBUILD_CFLAGS += $(DEFAULT_OPTS)
