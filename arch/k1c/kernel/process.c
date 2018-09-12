@@ -90,8 +90,8 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		/* Kernel thread */
 		memset(childregs, 0, sizeof(struct pt_regs));
 
-		p->thread.r15 = usp; /* fn */
-		p->thread.r16 = kthread_arg;
+		p->thread.r20 = usp; /* fn */
+		p->thread.r21 = kthread_arg;
 		p->thread.ra = (unsigned long) ret_from_kernel_thread;
 	} else {
 		regs = current_pt_regs();
@@ -99,10 +99,10 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		/* Copy current process registers */
 		*childregs = *regs;
 
-		/* Store tracing status in r15 to avoid computing it
+		/* Store tracing status in r20 to avoid computing it
 		 * in assembly
 		 */
-		p->thread.r15 = task_thread_info(p)->flags & _TIF_SYSCALL_TRACE;
+		p->thread.r20 = task_thread_info(p)->flags & _TIF_SYSCALL_TRACE;
 		p->thread.ra = (unsigned long) ret_from_fork;
 
 		childregs->r0 = 0; /* Return value of fork() */
