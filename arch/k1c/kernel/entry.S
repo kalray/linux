@@ -18,8 +18,6 @@
 #include <asm/traps.h>
 #include <asm/unistd.h>
 
-#define SCRATCHPAD_SIZE		16
-
 #define PS_HWLOOP_ENABLE	(K1C_SFR_PS_HLE_MASK << 32)
 #define PS_HLE_EN_IT_EN_ET_CLEAR	\
 		(((K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_IE_MASK) << 32) | \
@@ -397,7 +395,6 @@ ENTRY(k1c_trap_handler):
 slow_path:
 	save_regs_for_exception $r0 $r1 $r2 $r0r1r2r3
 	;;
-	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HLE_EN
 	copyd $r2 = $sp
 	get $r1 = $ea
@@ -413,7 +410,6 @@ slow_path:
 	get $r10 = $sps
 	;;
 	get $r11 = $sr0
-	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
 	restore_regs_after_exception $r10 $r11
 	;;
@@ -448,7 +444,6 @@ ENTRY(k1c_interrupt_handler):
 	;;
 	save_regs_for_exception $r0 $r1 $r0 $r0r1r2r3
 	;;
-	addd $sp = $sp, -SCRATCHPAD_SIZE
 	make $r8 = PS_HWLOOP_ENABLE
 	copyd $r1 = $sp
 	;;
@@ -462,7 +457,6 @@ ENTRY(k1c_interrupt_handler):
 	extfz $r0 = $r0, 7, 3
 	call do_IRQ
 	;;
-	addd $sp = $sp, SCRATCHPAD_SIZE
 	get $r10 = $sps
 	;;
 	get $r11 = $sr0
@@ -560,14 +554,12 @@ check_trace:
 	sd PT_ORIG_R0[$sp] = $r0
 	;;
 do_syscall:
-	addd $sp = $sp, -SCRATCHPAD_SIZE
 	/* Call the syscall handler */
 	icall $r38
 	;;
-	addd $sp = $sp, SCRATCHPAD_SIZE
 	/* r36 and r37 might have been clobbered by C call, get thread_info
 	 * trace flag value from stack */
-	lo $r36r37r38r39 = (PT_Q36 + SCRATCHPAD_SIZE)[$sp]
+	lo $r36r37r38r39 = PT_Q36[$sp]
 	;;
 	/* Save r0 which was returned from do_scall previously and
 	 * will be cloberred by work_pending(and potentially
@@ -646,12 +638,10 @@ trace_syscall_enter:
 	 * as argument */
 	copyd $r0 = $sp
 	copyd $r1 = $r32
-	addd $sp = $sp, -SCRATCHPAD_SIZE
 	;;
 	call do_syscall_trace_enter
 	;;
 	make $r41 = sys_ni_syscall
-	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
 	/* Restore r36, r37 and r38 which might have been clobbered by
 	 * do_syscall_trace_enter */
@@ -672,10 +662,7 @@ trace_syscall_enter:
 	;;
 trace_syscall_exit:
 	copyd $r0 = $sp
-	addd $sp = $sp, -SCRATCHPAD_SIZE
 	call do_syscall_trace_exit
-	;;
-	addd $sp = $sp, SCRATCHPAD_SIZE
 	;;
 	/* Restore r36, r37 and r38 which might have been clobbered by
 	 * do_syscall_trace_exit and needed by ret_to_user */
@@ -693,19 +680,18 @@ ENDPROC(k1c_syscall_handler)
 
 .text
 /*
- * When entering in ret_from_kernel_thread, r15 and r16 where set by
+ * When entering in ret_from_kernel_thread, r20 and r21 where set by
  * copy_thread and have been restored in switch_to.
  * These registers contains the values needed to call a function
  * specified by the switch_to caller (or where set by copy_thread).
  */
 ENTRY(ret_from_kernel_thread)
-	addd $sp = $sp, -SCRATCHPAD_SIZE
 	call schedule_tail
 	;;
 	/* Call fn(arg) */
-	copyd $r0 = $r16
+	copyd $r0 = $r21
 	;;
-	icall $r15
+	icall $r20
 	;;
 	goto ret_from_kernel
 	;;
@@ -715,27 +701,24 @@ ENDPROC(ret_from_kernel_thread)
  * Return from fork.
  * start_thread will set return stack and and pc. Then copy_thread will
  * take care of the copying logic.
- * $r15 will then contains 0 if tracing disabled (set by copy_thread)
+ * $r20 will then contains 0 if tracing disabled (set by copy_thread)
  * The mechanism is almost the same as for ret_from_kernel_thread.
  */
 ENTRY(ret_from_fork)
-	addd $sp = $sp, -SCRATCHPAD_SIZE
 	call schedule_tail
 	;;
-	/* $r15 contains 0 if tracing disable */
-	cb.deqz $r15? ret_from_kernel
+	/* $r20 contains 0 if tracing disable */
+	cb.deqz $r20? ret_from_kernel
 	;;
 	copyd $r0 = $sp
 	call do_syscall_trace_exit
 	;;
 ret_from_kernel:
-	addd $sp = $sp, SCRATCHPAD_SIZE
-	;;
 	get $r11 = $sr0
 	/* Load stack pointer set by start_thread from registers */
 	ld $r18 = PT_R12[$sp]
 	/* Compute unwound kernel stack pointer */
-	addd $r15 = $sp, -PT_SIZE_ON_STACK
+	addd $r20 = $sp, -PT_SIZE_ON_STACK
 	;;
 	get $r10 = $sps
 	/* restore_regs_after_exception expect the user stack pointer
@@ -744,7 +727,7 @@ ret_from_kernel:
 	sd TASK_THREAD_USER_SP[$r11] = $r18
 	;;
 	/* Save unwound kernel stack pointer in thread_info */
-	sd TASK_THREAD_KERNEL_SP[$r11] = $r15
+	sd TASK_THREAD_KERNEL_SP[$r11] = $r20
 	;;
 	restore_regs_after_exception $r10 $r11
 	;;
@@ -759,40 +742,36 @@ ENDPROC(ret_from_fork)
  * - r1 = next task struct
  * Moreover, the parameters for function call (given by copy_thread)
  * are stored in:
- * - r15 = Func to call
- * - r16 = Argument for function
+ * - r20 = Func to call
+ * - r21 = Argument for function
  */
 ENTRY(__switch_to)
-	/* Save previous task context */
-	so TASK_THREAD_Q16[$r0] = $r16r17r18r19
-	get $r4 = $ra
+	sd TASK_THREAD_R14[$r0] = $r14
 	;;
+	/* Save previous task context */
 	so TASK_THREAD_Q20[$r0] = $r20r21r22r23
-	copyd $r5 = $sp
 	;;
 	so TASK_THREAD_Q24[$r0] = $r24r25r26r27
-	copyd $r6 = $r10
+	get $r16 = $ra
 	;;
 	so TASK_THREAD_Q28[$r0] = $r28r29r30r31
-	copyd $r7 = $r15
+	copyd $r17 = $sp
 	;;
-	so TASK_THREAD_RA_KERNELSP_R10_R15[$r0] = $r4r5r6r7
+	so TASK_THREAD_RA_KERNELSP_R18_R19[$r0] = $r16r17r18r19
 	;;
 	/* Restore next task context */
-	lo $r4r5r6r7 = TASK_THREAD_RA_KERNELSP_R10_R15[$r1]
-	;;
-	lo $r16r17r18r19 = TASK_THREAD_Q16[$r1]
+	lo $r16r17r18r19 = TASK_THREAD_RA_KERNELSP_R18_R19[$r1]
 	;;
 	lo $r20r21r22r23 = TASK_THREAD_Q20[$r1]
 	;;
 	lo $r24r25r26r27 = TASK_THREAD_Q24[$r1]
-	copyd $r12 = $r5
-	set $ra = $r4
+	copyd $sp = $r17
+	set $ra = $r16
 	;;
 	lo $r28r29r30r31 = TASK_THREAD_Q28[$r1]
-	copyd $r10 = $r6
-	copyd $r15 = $r7
 	set $sr0 = $r1
+	;;
+	ld $r14 = TASK_THREAD_R14[$r1]
 	;;
 	ret
 	;;
@@ -819,7 +798,6 @@ ENTRY(work_pending)
 	/* Save $ra and our parameters */
 	get $r30 = $ra
 	;;
-	addd $sp = $sp, -SCRATCHPAD_SIZE
 	copyd $r28 = $r0
 	get $r29 = $sr0
 	;;
@@ -862,7 +840,6 @@ check_notify_resume:
 	goto recheck
 	;;
 no_flags:
-	addd $sp = $sp, SCRATCHPAD_SIZE
 	set $ra = $r30
 	;;
 	addd $sp = $sp, QUAD_SIZE
