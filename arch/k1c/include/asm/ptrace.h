@@ -59,7 +59,10 @@ struct pt_regs {
 		uint64_t sp;
 	};
 	uint64_t r13;
-	uint64_t r14;
+	union {
+		uint64_t r14;
+		uint64_t fp;
+	};
 	uint64_t r15;
 	uint64_t r16;
 	uint64_t r17;
