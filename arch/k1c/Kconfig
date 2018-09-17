@@ -51,6 +51,7 @@ config K1C
 	select NO_BOOTMEM
 	select TIMER_OF
 	select K1C_CORE_INTC
+	select ARCH_WANT_FRAME_POINTERS
 
 config PGTABLE_LEVELS
 	int
