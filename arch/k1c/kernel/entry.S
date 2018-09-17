@@ -128,6 +128,8 @@ _save_regs:
 	so PT_CS_SPC_SPS_ES[$sp] = $r0r1r2r3
 	;;
 	so PT_LC_LE_LS_RA[$sp] = $r4r5r6r7
+	/* Clear frame pointer */
+	make $fp = 0
 	;;
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	addd $sp = $sp, -REG_SIZE
@@ -543,6 +545,10 @@ check_trace:
 	/* Save hw loop stuff */
 	so PT_LC_LE_LS_RA[$sp] = $r60r61r62r63
 	;;
+	/* Save user frame pointer and clear it for kernel */
+	sd PT_FP[$sp] = $fp
+	make $fp = 0
+	;;
 	/* Enable hwloop and interrupts
 	 * Note that we have to reenable interrupts after saving context
 	 * to avoid losing registers content */
@@ -593,6 +599,7 @@ ret_to_user:
 	lo $r0r1r2r3 = PT_Q0[$sp]
 	set $cs = $r40
 	;;
+	ld $fp = PT_FP[$sp]
 	set $lc = $r60
 	addd $sp = $sp, PT_SIZE_ON_STACK
 	;;
@@ -746,7 +753,7 @@ ENDPROC(ret_from_fork)
  * - r21 = Argument for function
  */
 ENTRY(__switch_to)
-	sd TASK_THREAD_R14[$r0] = $r14
+	sd TASK_THREAD_FP[$r0] = $fp
 	;;
 	/* Save previous task context */
 	so TASK_THREAD_Q20[$r0] = $r20r21r22r23
@@ -771,7 +778,7 @@ ENTRY(__switch_to)
 	lo $r28r29r30r31 = TASK_THREAD_Q28[$r1]
 	set $sr0 = $r1
 	;;
-	ld $r14 = TASK_THREAD_R14[$r1]
+	ld $fp = TASK_THREAD_FP[$r1]
 	;;
 	ret
 	;;
