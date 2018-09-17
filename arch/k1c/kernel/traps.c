@@ -7,21 +7,12 @@
  */
 
 #include <linux/context_tracking.h>
-#include <linux/kallsyms.h>
-#include <linux/printk.h>
-#include <linux/sched.h>
-#include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
+#include <linux/sched/debug.h>
+#include <linux/printk.h>
 #include <linux/init.h>
 
-#include <asm/ptrace.h>
 #include <asm/traps.h>
-
-#define STACK_SLOT_PER_LINE		4
-#define STACK_MAX_SLOT_PRINT		(STACK_SLOT_PER_LINE * 8)
-
-/* 0 == entire stack */
-static unsigned long kstack_depth_to_print = CONFIG_STACK_MAX_DEPTH_TO_PRINT;
 
 static trap_handler_func trap_handler_table[K1C_TRAP_COUNT] = { NULL };
 
@@ -77,93 +68,6 @@ void __init trap_init(void)
 	register_trap_handler(K1C_TRAP_WRITETOCLEAN, k1c_trap_writetoclean);
 #endif
 
-}
-
-/**
- * Display the a backtrace of the stack and try to resolve symbols
- * if configured with KERNEL_KALLSYMS
- */
-void show_trace(unsigned long *sp)
-{
-	unsigned long depth_to_print = 0;
-	unsigned long addr;
-
-	pr_info("\nCall Trace:\n");
-#ifndef CONFIG_KALLSYMS
-	pr_info("Enable CONFIG_KALLSYMS to see symbols name\n");
-#endif
-
-	while (1) {
-
-		if (kstack_end(sp))
-			break;
-
-		/**
-		 * We need to go one double before the value pointed by sp
-		 * otherwise if called from the end of a function, we
-		 * will display the next symbol name
-		 */
-		addr = *(sp) - 8;
-		if (__kernel_text_address(addr)) {
-			print_ip_sym(addr);
-			depth_to_print++;
-
-			if (depth_to_print == kstack_depth_to_print) {
-				pr_info("  ...\nMaximum depth to print reached. Use kstack=<maximum_depth_to_print> To specify a custom value\n");
-				break;
-			}
-		}
-
-		sp++;
-	}
-}
-
-void show_stack(struct task_struct *task, unsigned long *sp)
-{
-	int i = 0;
-	unsigned long *stack;
-
-	/**
-	 * FIXME AUTO: show_stack: Compute correctly the stack pointer
-	 * when none is given
-	 */
-	if (!sp)
-		sp = (unsigned long *)&sp;
-
-	stack = sp;
-
-
-	if (task) {
-		/* display task information */
-		pr_info("\nProcess %s (pid: %ld, threadinfo=%p, task=%p"
-#ifdef CONFIG_SMP
-		       " ,cpu: %d"
-#endif
-		       ")\nSP = <%016lx>\nStack:\t",
-		       task->comm, (long)task->pid, current_thread_info(), task,
-#ifdef CONFIG_SMP
-		       smp_processor_id(),
-#endif
-		       (unsigned long)sp);
-	}
-
-	/**
-	 * Display the stack until we reach the required number of lines
-	 * or until we hit the stack bottom
-	 */
-	printk(KERN_DEFAULT "Stack:\n");
-	for (i = 0; i < STACK_MAX_SLOT_PRINT; i++) {
-		if (kstack_end(sp))
-			break;
-
-		if (i && (i % STACK_SLOT_PER_LINE) == 0)
-			pr_cont("\n\t");
-
-		pr_cont("%016lx ", *sp++);
-	}
-	pr_cont("\n");
-
-	show_trace(stack);
 }
 
 /**

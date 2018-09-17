@@ -207,6 +207,8 @@ clear_bss:
 	set $sr0 = $r41
 	;;
 	addd $sp = $r40, THREAD_SIZE
+	/* Clear frame pointer */
+	make $fp = 0x0
 	/* Here we go ! start the C stuff */
 	make $r20 = arch_low_level_start
 	;;
@@ -325,6 +327,8 @@ ENTRY(smp_secondary_start)
 	make $r26 = __cpu_up_stack_pointer
 	;;
 	ld.xs $sp = $r24[$r26]
+	/* Clear frame pointer */
+	make $fp = 0x0
 	;;
 	ld.xs $r25 = $r24[$r25]
 	;;
