@@ -50,7 +50,7 @@ struct thread_struct {
 
 /**
  * According to k1c ABI, the following registers are callee-saved:
- * r14 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31.
+ * fp (r14) r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31.
  * In order to switch from a task to another, we only need to save these
  * registers + sp (r12) and ra
  *
@@ -60,7 +60,7 @@ struct thread_struct {
  * They are used in asm-offset for store octuples so they must be
  * all right behind each other
  */
-	uint64_t r14;
+	uint64_t fp;
 
 	uint64_t ra;		/* Return address */
 	uint64_t kernel_sp;
@@ -99,6 +99,11 @@ struct thread_struct {
 
 #define task_pt_regs(p) \
 	((struct pt_regs *)(task_stack_page(p) + THREAD_SIZE) - 1)
+
+#define thread_saved_ra(tsk)	\
+	((unsigned long)(tsk->thread.ra))
+#define thread_saved_fp(tsk)	\
+	((unsigned long)(tsk->thread.fp))
 
 void release_thread(struct task_struct *t);
 

@@ -19,6 +19,7 @@
 #include <asm/pgtable.h>
 #include <asm/ptrace.h>
 #include <asm/tlb_defs.h>
+#include <asm/stacktrace.h>
 
 int foo(void)
 {
@@ -51,6 +52,7 @@ int foo(void)
 	OFFSET(PT_R12, pt_regs, r12);
 	OFFSET(PT_R13, pt_regs, r13);
 	OFFSET(PT_R14R15, pt_regs, r14);
+	OFFSET(PT_FP, pt_regs, fp);
 
 	/* Quad description */
 	OFFSET(PT_Q0, pt_regs, r0);
@@ -92,7 +94,7 @@ int foo(void)
 	OFFSET(TASK_THREAD_Q20, task_struct, thread.r20);
 	OFFSET(TASK_THREAD_Q24, task_struct, thread.r24);
 	OFFSET(TASK_THREAD_Q28, task_struct, thread.r28);
-	OFFSET(TASK_THREAD_R14, task_struct, thread.r14);
+	OFFSET(TASK_THREAD_FP, task_struct, thread.fp);
 
 	/* Save area offset */
 	OFFSET(TASK_THREAD_SAVE_AREA, task_struct, thread.save_area);
