@@ -41,7 +41,10 @@ struct vm_area_struct;
 /* Number of entries in the page table */
 #define PTRS_PER_PTE    (PAGE_SIZE / sizeof(pte_t))
 
-#define FIRST_USER_ADDRESS 0
+/**
+ * Do not allow any user stuff below that limit
+ */
+#define FIRST_USER_ADDRESS PAGE_SIZE
 
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
