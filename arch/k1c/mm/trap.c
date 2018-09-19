@@ -53,12 +53,12 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 
 	vma = find_vma(mm, ea);
 	if (!vma)
-		BUG();
+		goto bad_area;
 
 	if (vma->vm_start <= ea)
 		goto good_area;
 
-	panic("%s needs more code", __func__);
+	goto bad_area;
 
 good_area:
 	flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
@@ -69,6 +69,10 @@ good_area:
 	fault = handle_mm_fault(vma, ea, flags);
 	/* TODO: check what must be done according to the value of fault */
 	return;
+
+bad_area:
+	if (user_mode(regs))
+		panic("%s: user bad_area not yet implemented", __func__);
 
 no_context:
 	/* Are we prepared to handle this kernel fault?
