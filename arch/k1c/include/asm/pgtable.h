@@ -28,7 +28,7 @@
 struct mm_struct;
 struct vm_area_struct;
 
-#define VMALLOC_START	(KERNEL_VMALLOC_MAP_BASE + PAGE_OFFSET)
+#define VMALLOC_START	KERNEL_VMALLOC_MAP_BASE
 #define VMALLOC_END	(VMALLOC_START + KERNEL_VMALLOC_MAP_SIZE - 1)
 
 /* Size of region mapped by a page global directory */
@@ -53,7 +53,8 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define pgtable_cache_init() do { } while (0)
 
 /* Page protection bits */
-#define _PAGE_BASE (_PAGE_PRESENT | _PAGE_ACCESSED | _PAGE_USER)
+#define _PAGE_BASE		(_PAGE_PRESENT | _PAGE_USER)
+#define _PAGE_KERNEL		(_PAGE_PRESENT | _PAGE_READ | _PAGE_WRITE)
 
 #define PAGE_NONE		__pgprot(0)
 #define PAGE_READ		__pgprot(_PAGE_BASE | _PAGE_READ)
@@ -62,6 +63,9 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define PAGE_READ_EXEC		__pgprot(_PAGE_BASE | _PAGE_READ | _PAGE_EXEC)
 #define PAGE_WRITE_EXEC		__pgprot(_PAGE_BASE | _PAGE_READ |	\
 					 _PAGE_EXEC | _PAGE_WRITE)
+
+#define PAGE_KERNEL		__pgprot(_PAGE_KERNEL)
+#define PAGE_DEVICE		__pgprot(_PAGE_KERNEL | _PAGE_DEVICE)
 
 #define PAGE_COPY		PAGE_READ
 #define PAGE_COPY_EXEC		PAGE_EXEC
@@ -88,13 +92,6 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define __S101	PAGE_READ_EXEC
 #define __S110	PAGE_SHARED_EXEC
 #define __S111	PAGE_SHARED_EXEC
-
-
-#define PAGE_KERNEL		__pgprot(_PAGE_PRESENT \
-					 | _PAGE_READ  \
-					 | _PAGE_WRITE \
-					 | _PAGE_ACCESSED \
-					 | _PAGE_DIRTY)
 
 #define pgprot_noncached(prot)	(prot)
 
