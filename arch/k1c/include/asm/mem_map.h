@@ -20,20 +20,20 @@
  */
 
 /**
- * Kernel text and data mapping (512M)
+ * Kernel text and data mapping
  */
 #define KERNEL_TEXT_MAP_BASE	PAGE_OFFSET
 #define KERNEL_TEXT_MAP_SIZE	0x40000000
 
 /**
- * Vmalloc mapping (512M)
+ * Vmalloc mapping
  */
 #define KERNEL_VMALLOC_MAP_BASE \
 	(KERNEL_TEXT_MAP_BASE + KERNEL_TEXT_MAP_SIZE)
 #define KERNEL_VMALLOC_MAP_SIZE	0x40000000
 
 /**
- * Device mapping (512M)
+ * Device mapping
  */
 #define KERNEL_PERIPH_MAP_BASE	\
 	(KERNEL_VMALLOC_MAP_BASE + KERNEL_VMALLOC_MAP_SIZE)
