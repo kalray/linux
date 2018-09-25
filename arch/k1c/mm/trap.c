@@ -32,6 +32,14 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	int fault;
 
 	tsk = current;
+
+	/* We fault-in kernel-space virtual memory on-demand. The
+	 * 'reference' page table is init_mm.pgd.
+	 */
+	if (ea >= VMALLOC_START && ea <= VMALLOC_END && !user_mode(regs))
+		goto vmalloc_fault;
+
+
 	mm = tsk->mm;
 
 	/*
@@ -40,16 +48,6 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	 */
 	if (unlikely(faulthandler_disabled() || !mm))
 		goto no_context;
-
-	if (ea >= VMALLOC_START && ea <= VMALLOC_END && !user_mode(regs))
-		panic("%s: vmalloc is not yet implemented", __func__);
-
-	/* I'm not even sure we should keep that here.
-	 * This will probably be called after the new mapping has been
-	 * added
-	 */
-	if (do_tlb_refill(ea, mm))
-		return;
 
 	vma = find_vma(mm, ea);
 	if (!vma)
@@ -89,6 +87,58 @@ no_context:
 	panic("Unable to handle kernel %s at virtual address %016llx\n",
 		 (ea < PAGE_SIZE) ? "NULL pointer dereference" :
 		 "paging request", ea);
+
+vmalloc_fault:
+	{
+		/*
+		 * Synchronize this task's top level page-table with
+		 * the 'reference' page table.
+		 * As we only have 2 or 3 level page table we don't need to
+		 * deal with other levels.
+		 */
+
+		int offset = pgd_index(ea);
+		pgd_t *pgd_k, *pgd;
+		pmd_t *pmd_k, *pmd;
+		pte_t *pte_k;
+
+		pgd = current->active_mm->pgd + offset;
+		pgd_k = init_mm.pgd + offset;
+		if (!pgd_present(*pgd_k)) {
+			pr_err("%s: PGD entry not found for swapper", __func__);
+			goto no_context;
+		}
+		set_pgd(pgd, *pgd_k);
+
+		pmd = pmd_offset((pud_t *)pgd, ea);
+		pmd_k = pmd_offset((pud_t *)pgd_k, ea);
+		if (!pmd_present(*pmd_k)) {
+			pr_err("%s: PMD entry not found for swapper", __func__);
+			goto no_context;
+		}
+
+		/* Some other architectures set pmd to synchronize them but
+		 * as we just synchronized the pgd we don't see how they can
+		 * be different. Maybe we miss something so in case we
+		 * put a guard here.
+		 */
+		if (pmd_val(*pmd) != pmd_val(*pmd_k))
+			pr_err("%s: pmd not synchronized (0x%lx != 0x%lx)\n",
+			       __func__, pmd_val(*pmd), pmd_val(*pmd_k));
+
+		pte_k = pte_offset_kernel(pmd_k, ea);
+		if (!pte_present(*pte_k)) {
+			pr_err("%s: PTE not present for 0x%llx\n",
+			       __func__, ea);
+			goto no_context;
+		}
+
+		/* We refill the TLB now to avoid to take another nomapping
+		 * trap.
+		 */
+		do_tlb_refill(ea, current->active_mm);
+		return;
+	}
 }
 
 void k1c_trap_protection(uint64_t es, uint64_t ea, struct pt_regs *regs)
