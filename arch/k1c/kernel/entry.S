@@ -390,7 +390,7 @@ ENTRY(k1c_trap_handler):
 	get $r0 = $ea
 	;;
 	/* Load mm addr */
-	ld $r1 = TASK_MM[$r2]
+	ld $r1 = TASK_ACTIVE_MM[$r2]
 	/* if nomapping trap, try fast_refill */
 	cb.odd $r3? fast_refill
 	;;
