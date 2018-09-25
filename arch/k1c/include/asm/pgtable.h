@@ -88,7 +88,11 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define __S111	PAGE_SHARED_EXEC
 
 
-#define PAGE_KERNEL		__pgprot(0)	/* these mean nothing to NO_MM */
+#define PAGE_KERNEL		__pgprot(_PAGE_PRESENT \
+					 | _PAGE_READ  \
+					 | _PAGE_WRITE \
+					 | _PAGE_ACCESSED \
+					 | _PAGE_DIRTY)
 
 #define pgprot_noncached(prot)	(prot)
 
