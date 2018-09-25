@@ -100,7 +100,7 @@ int foo(void)
 	OFFSET(TASK_THREAD_SAVE_AREA, task_struct, thread.save_area);
 
 	/* Fast tlb refill defines */
-	OFFSET(TASK_MM, task_struct, mm);
+	OFFSET(TASK_ACTIVE_MM, task_struct, active_mm);
 	OFFSET(MM_PGD, mm_struct, pgd);
 
 	DEFINE(ASM_PGDIR_SHIFT, PGDIR_SHIFT);
