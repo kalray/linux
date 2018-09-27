@@ -22,8 +22,6 @@
 #include <asm/current.h>
 #include <asm/tlbflush.h>
 
-DEFINE_PER_CPU_ALIGNED(uint8_t [MMU_JTLB_SETS], jtlb_current_set_way);
-
 static void do_user_fault(struct task_struct *tsk, uint64_t ea,
 			  int sig, int code)
 {
@@ -86,7 +84,7 @@ static int handle_vmalloc_fault(uint64_t ea)
 	/* We refill the TLB now to avoid to take another nomapping
 	 * trap.
 	 */
-	do_tlb_refill(ea, current->active_mm);
+	update_mmu_cache(NULL, ea, pte_k);
 
 	return 0;
 }
