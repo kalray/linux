@@ -30,7 +30,6 @@
 .altmacro
 
 #define TEL_DEFAULT_VALUE(__pa)  ((__pa << K1C_SFR_TEL_PA_SHIFT) | \
-			(TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT) | \
 			(TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT))
 
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
@@ -319,7 +318,7 @@ _restore_regs:
 	/* Store new way */
 	sb $r5[$r7] = $r0
 	/* Clear low bits of phys addr (pte entry) for tel writing */
-	andd $r1 = $r1, (~(PAGE_SIZE - 1))
+	andd $r5 = $r1, (~(PAGE_SIZE - 1))
 	/* Not writable ? Check readable */
 	cb.deqz $r3? _page_readable
 	/* Is page readable ? */
@@ -352,16 +351,24 @@ _no_rights:
 	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_NA_NA)
 	;;
 _write_entry:
+	/* Does this page map a device ? */
+	andd $r1 = $r1, _PAGE_DEVICE
 	/* Prepare tel */
-	ord $r6 = $r1, $r6
+	ord $r6 = $r5, $r6
 	;;
+	/* Default policy 0 is for devices so if the page we are going
+	 * to map is not a device, add the standard cache policy,
+	 * which is data writethrough and instructions cached */
+	cmoved.deqz $r1? $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
 	/* Prepare teh */
 	ord $r4 = $r4, ((ASM_TLB_PS << K1C_SFR_TEH_PS_SHIFT) | \
 			(TLB_G_GLOBAL << K1C_SFR_TEH_G_SHIFT))
 	;;
-	set $tel = $r6
-	;;
+	/* Add cache policy to entry */
+	ord $r6 = $r6, $r3
 	set $teh = $r4
+	;;
+	set $tel = $r6
 	make $r0 = 1
 	;;
 	tlbwrite
