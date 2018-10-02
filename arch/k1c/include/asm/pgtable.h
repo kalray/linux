@@ -41,6 +41,8 @@ struct vm_area_struct;
 /* Number of entries in the page table */
 #define PTRS_PER_PTE    (PAGE_SIZE / sizeof(pte_t))
 
+#define USER_PTRS_PER_PGD    (TASK_SIZE/PGDIR_SIZE)
+
 /**
  * Do not allow any user stuff below that limit
  */
