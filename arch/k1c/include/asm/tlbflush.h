@@ -51,6 +51,7 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 	unsigned int pa;
 	struct k1c_tlb_format tlbe;
 	unsigned int set, way;
+	unsigned int cp = TLB_CP_W_C;
 
 	if (unlikely(ptep == NULL))
 		panic("pte should not be NULL\n");
@@ -79,6 +80,9 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 	else
 		pa = TLB_PA_NA_RWX;
 
+	if (pte_val & _PAGE_DEVICE)
+		cp = TLB_CP_D_U;
+
 	/* TODO: ASN is not currently supported. So it must be set to the value
 	 * that is in MMC (0 in our case) because non global entries must have
 	 * their ASN field matching MMC.ASN.
@@ -94,7 +98,7 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 		(PAGE_SIZE == 0x1000) ? TLB_PS_4K : TLB_PS_64K,
 		(pte_val & _PAGE_GLOBAL) ? TLB_G_GLOBAL : !TLB_G_GLOBAL,
 		pa,
-		TLB_CP_W_C,
+		cp,
 		0, /* ASN */
 		TLB_ES_A_MODIFIED);
 
