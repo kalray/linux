@@ -35,7 +35,22 @@ pgd_free(struct mm_struct *mm, pgd_t *pgd)
 static inline
 pgd_t *pgd_alloc(struct mm_struct *mm)
 {
-	return (pgd_t *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
+	pgd_t *pgd;
+
+	pgd = (pgd_t *) __get_free_page(GFP_KERNEL | __GFP_ZERO);
+
+	if (likely(pgd != NULL)) {
+		memset(pgd, 0, USER_PTRS_PER_PGD * sizeof(pgd_t));
+		/* Copy kernel mappings */
+		memcpy(pgd + USER_PTRS_PER_PGD,
+			init_mm.pgd + USER_PTRS_PER_PGD,
+			(PTRS_PER_PGD - USER_PTRS_PER_PGD) * sizeof(pgd_t));
+
+		/* Copy first "null trapping" page (cf mm/init.c) */
+		memcpy(pgd, init_mm.pgd, sizeof(pgd_t));
+	}
+
+	return pgd;
 }
 
 /**
