@@ -241,10 +241,35 @@ _restore_regs:
 
 /**
  * Fast TLB refill routine
- * Cache replacement policy using a simple round-robbin at the moment
  * $r0 = $ea
  * $r1 = task mm value
  * Return 1 if refill was successful or 0 if not.
+ *
+ * On k1c, we do not have hardware page walking, hence, TLB refill is
+ * done using the core on no-mapping traps.
+ * This routine must be as fast as possible to avoid wasting CPU time.
+ * For that purpose, it is called directly from trap_handle after saving
+ * only 8 registers ($r0 -> $r7) in a dedicated buffer.
+ * This allows to avoid computing a complete task switching in order
+ * to greatly reduce the refill time.
+ *
+ * We refill the JTLB which contains 128 sets with 4 way each.
+ * Currently, the way selection is done using a round robin algorithm.
+ *
+ * The refill is using the basic flow:
+ * 1 -	Walk the page table to find the TLB entry to add (virtual to
+ *	physical)
+ * 2 -	Compute the TLB entry to be written (convert PTE to TLB entry)
+ * 3 - 	Compute the target set (0 -> 127) for the new TLB entry
+ *	This is done by extracting the 6 lsb of page number
+ * 4 -	Get the current way to be used which is selected using a
+	simple round robin
+ * 5 -	Mark the original PTE entry as _PAGE_ACCESSED
+ * 6 -	Commit the new tlb entry
+ *
+ * Since we are a VLIW core, a lot of this operation can be done
+ * simultaneously by packing bundles.
+ *
  */
 .macro macro_tlb_refill
 	LOCAL _err_out, _out, _page_readable, _write_entry, _no_rights
@@ -280,7 +305,7 @@ _restore_regs:
 	make $r7 = 0
 #endif
 	;;
-	/* extract TLB set from ea (6 last bits of virtual address) */
+	/* extract TLB set from ea (6 lsb of virtual page) */
 	extfz $r5 = $r4, PAGE_SHIFT + 5, PAGE_SHIFT
 	/* Load PMD entry offset */
 	ld.xs $r1 = $r3[$r1]
