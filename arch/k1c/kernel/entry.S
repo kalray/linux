@@ -245,7 +245,6 @@ _restore_regs:
  * $r0 = $ea
  * $r1 = task mm value
  * Return 1 if refill was successful or 0 if not.
- * !!! r2 contains sr0 value and must not be clobbered !!!
  */
 .macro macro_tlb_refill
 	LOCAL _err_out, _out, _page_readable, _write_entry, _no_rights
@@ -301,6 +300,7 @@ _restore_regs:
 	andd $r0 = $r0, 0x3
 	/* Load PTE entry */
 	ld.xs $r1 = $r3[$r1]
+	addx8d $r2 = $r3, $r1
 	;;
 	/* Set the TLB way in $mmc value */
 	insf $r6 = $r0, K1C_SFR_MMC_SW_SHIFT + 3, K1C_SFR_MMC_SW_SHIFT
@@ -352,17 +352,21 @@ _no_rights:
 	;;
 _write_entry:
 	/* Does this page map a device ? */
-	andd $r1 = $r1, _PAGE_DEVICE
+	andd $r7 = $r1, _PAGE_DEVICE
 	/* Prepare tel */
 	ord $r6 = $r5, $r6
+	/* Set page as accessed by setting pte flags */
+	ord $r1 = $r1, _PAGE_ACCESSED
 	;;
 	/* Default policy 0 is for devices so if the page we are going
 	 * to map is not a device, add the standard cache policy,
 	 * which is data writethrough and instructions cached */
-	cmoved.deqz $r1? $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
+	cmoved.deqz $r7? $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
 	/* Prepare teh */
 	ord $r4 = $r4, ((ASM_TLB_PS << K1C_SFR_TEH_PS_SHIFT) | \
 			(TLB_G_GLOBAL << K1C_SFR_TEH_G_SHIFT))
+	/* Store updated pte entry */
+	sd 0[$r2] = $r1
 	;;
 	/* Add cache policy to entry */
 	ord $r6 = $r6, $r3
@@ -428,6 +432,8 @@ fast_refill:
 	/* Save more registers to be comfy */
 	so (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2] = $r4r5r6r7
 	macro_tlb_refill
+	;;
+	get $r2 = $sr0
 	;;
 	/* Was TLB refill successful ? */
 	cb.deqz $r0? slow_path
