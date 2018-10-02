@@ -4,8 +4,8 @@ import ctypes
 from arch.k1c import constants
 #
 # PTE format:
-# | 63   8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0
-#   PFN      D   A   G   U   X   W   R   V
+# | 63   9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0
+#   PFN     DEV  D   A   G   U   X   W   R   V
 #
 
 class pte_bits(ctypes.LittleEndianStructure):
@@ -18,7 +18,8 @@ class pte_bits(ctypes.LittleEndianStructure):
             ("G", ctypes.c_uint8, 1),
             ("A", ctypes.c_uint8, 1),
             ("D", ctypes.c_uint8, 1),
-            ("res", ctypes.c_uint8, 4),
+            ("DEV", ctypes.c_uint8, 1),
+            ("res", ctypes.c_uint8, 3),
             ("pfn", ctypes.c_uint64, 52),
         ]
 
