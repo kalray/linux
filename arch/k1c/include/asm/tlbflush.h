@@ -83,6 +83,9 @@ static inline void update_mmu_cache(struct vm_area_struct *vma,
 	if (pte_val & _PAGE_DEVICE)
 		cp = TLB_CP_D_U;
 
+	/* Set page as accessed */
+	pte_val(*ptep) |= _PAGE_ACCESSED;
+
 	/* TODO: ASN is not currently supported. So it must be set to the value
 	 * that is in MMC (0 in our case) because non global entries must have
 	 * their ASN field matching MMC.ASN.
