@@ -109,13 +109,13 @@ static inline struct page *pte_alloc_one(struct mm_struct *mm,
 static inline pte_t *pte_alloc_one_kernel(struct mm_struct *mm,
 	unsigned long address)
 {
-	panic("%s is not implemented yet\n", __func__);
-	return NULL;
+	return (pte_t *)__get_free_page(
+				GFP_KERNEL | __GFP_RETRY_MAYFAIL | __GFP_ZERO);
 }
 
 static inline void pte_free_kernel(struct mm_struct *mm, pte_t *pte)
 {
-	panic("%s is not implemented yet\n", __func__);
+	free_page((unsigned long)pte);
 }
 
 static inline void pte_free(struct mm_struct *mm, pgtable_t pte)
