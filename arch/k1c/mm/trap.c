@@ -49,6 +49,9 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	if (unlikely(faulthandler_disabled() || !mm))
 		goto no_context;
 
+retry:
+	down_read(&mm->mmap_sem);
+
 	vma = find_vma(mm, ea);
 	if (!vma)
 		goto bad_area;
@@ -59,16 +62,52 @@ static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	goto bad_area;
 
 good_area:
+	/* By default we retry and fault task can be killed */
 	flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
 	if (vma->vm_flags & VM_WRITE)
 		flags |= FAULT_FLAG_WRITE;
 
+	/*
+	 * If for any reason we can not handle the fault we make sure that
+	 * we exit gracefully rather then retry endlessly with the same
+	 * result.
+	 */
 	fault = handle_mm_fault(vma, ea, flags);
-	/* TODO: check what must be done according to the value of fault */
+
+	if (unlikely(fault & VM_FAULT_ERROR)) {
+		up_read(&mm->mmap_sem);
+		goto no_context;
+	}
+
+	if (flags & FAULT_FLAG_ALLOW_RETRY) {
+		/* To avoid updating stats twice for retry case */
+		if (fault & VM_FAULT_MAJOR)
+			tsk->maj_flt++;
+		else
+			tsk->min_flt++;
+
+		if (fault & VM_FAULT_RETRY) {
+			/* Clear FAULT_FLAG_ALLOW_RETRY to avoid any risk
+			 * of starvation.
+			 */
+			flags &= ~FAULT_FLAG_ALLOW_RETRY;
+			flags |= FAULT_FLAG_TRIED;
+			/* No need to up_read(&mm->mmap_sem) as we would
+			 * have already released it in __lock_page_or_retry().
+			 * Look in mm/filemap.c for explanations.
+			 */
+			goto retry;
+		}
+	}
+
+	/* Fault errors and retry case have been handled nicely */
+	up_read(&mm->mmap_sem);
 	return;
 
 bad_area:
+	up_read(&mm->mmap_sem);
+
 	if (user_mode(regs))
 		panic("%s: user bad_area not yet implemented", __func__);
 
