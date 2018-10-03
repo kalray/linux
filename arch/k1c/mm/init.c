@@ -63,6 +63,57 @@ static void __init zone_sizes_init(void)
 	free_area_init(zones_size);
 }
 
+/*
+ * In order to handle prefetch properly and silently ignore
+ * invalid prefetch (with NULL pointer for instance), we use dtouchl.
+ * This instruction is a speculative one and it behaves differently than
+ * other instruction. Speculative accesses can be done at invalid
+ * addresses.
+ *
+ * We have two paths to handle speculative access (but one is flawed):
+ * 1 -	Disable mmc.sne bit which disable nomapping traps for speculative
+ *	accesses. If a speculative access is done at a trapping address,
+ *	then, 0 is silently returned to the register and not trap is
+ *	triggered. This is not what we want since speculative access
+ *	will load an invalid value even if the mapping is in the page
+ *	table but not in TLBs.
+ * 2 -	Let mmc.sne enabled but disable mmc.spe (Speculative Protection
+ *	Enable) to avoid taking protection trap on speculative access.
+ *	However, this requires to install a "trapping" page at address
+ *	0x0 to catch normal accesses and allow speculative accesses to be
+ *	silently ignored.
+ *
+ * This function installs a trapping page without any rights to handle both
+ * normal accesses and speculative accesses correctly.
+ */
+static int setup_null_page(void)
+{
+	pgd_t *pgd;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *pte;
+
+	/* Page without any rights */
+	pte_t pte_val = __pte(_PAGE_PRESENT);
+
+	pgd = pgd_offset_k(0x0);
+
+	pud = pud_alloc(&init_mm, pgd, 0x0);
+	if (!pud)
+		return 1;
+
+	pmd = pmd_alloc(&init_mm, pud, 0x0);
+	if (!pmd)
+		return 1;
+
+	pte = pte_alloc_kernel(pmd, 0x0);
+	if (!pte || !pte_none(*pte))
+		return 1;
+
+	set_pte(pte, pte_val);
+
+	return 0;
+}
 
 void __init paging_init(void)
 {
@@ -83,19 +134,6 @@ void __init paging_init(void)
 		TLB_G_GLOBAL,
 		TLB_PA_NA_RW,
 		TLB_CP_D_U,
-		0,
-		TLB_ES_A_MODIFIED);
-
-	k1c_mmu_add_ltlb_entry(get_free_ltlb_entry(), tlbe);
-
-	/* Null mapping page */
-	tlbe = tlb_mk_entry(
-		(void *) 0x0,
-		(void *) 0x0,
-		TLB_PS_4K,
-		TLB_G_GLOBAL,
-		TLB_PA_NA_NA,
-		TLB_CP_U_U,
 		0,
 		TLB_ES_A_MODIFIED);
 
@@ -173,6 +211,7 @@ void __init setup_arch_memory(void)
 void __init mem_init(void)
 {
 	unsigned long pr;
+	int ret;
 
 	pr = free_all_bootmem();
 	pr_info("%s: %lu (%lu Mo) pages released\n",
@@ -183,6 +222,11 @@ void __init mem_init(void)
 	empty_zero_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
 	if (!empty_zero_page)
 		panic("Failed to allocate the empty_zero_page");
+
+	ret = setup_null_page();
+	if (ret)
+		panic("Failed to setup NULL protection page");
+
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
