@@ -105,8 +105,8 @@ struct k1c_tlb_format {
 #define k1c_mmu_select_ltlb() \
 	k1c_sfr_set_bit(K1C_SFR_MMC, K1C_SFR_MMC_SB_SHIFT)
 
-static inline void k1c_mmu_writetlb(void) { asm volatile ("tlbwrite;;"); }
-static inline void k1c_mmu_readtlb(void) { asm volatile ("tlbread;;"); }
+static inline void k1c_mmu_writetlb(void) { asm volatile ("tlbwrite\n;;"); }
+static inline void k1c_mmu_readtlb(void) { asm volatile ("tlbread\n;;"); }
 
 static inline int k1c_mmu_mmc_error_is_set(void)
 {
