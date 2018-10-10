@@ -12,6 +12,7 @@
 #include <linux/printk.h>
 #include <linux/sched.h>
 #include <linux/sched/debug.h>
+#include <linux/sched/signal.h>
 #include <linux/mm.h>
 
 #include <asm/mmu.h>
@@ -22,6 +23,21 @@
 #include <asm/tlbflush.h>
 
 DEFINE_PER_CPU_ALIGNED(uint8_t [MMU_JTLB_SETS], jtlb_current_set_way);
+
+static void do_user_fault(struct task_struct *tsk, uint64_t ea,
+			  int sig, int code)
+{
+	kernel_siginfo_t si;
+
+	clear_siginfo(&si);
+
+	si.si_signo = sig;
+	si.si_errno = 0;
+	si.si_addr = (void __user *)ea;
+	si.si_code = code;
+
+	force_sig_info(sig, &si, tsk);
+}
 
 static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
@@ -108,8 +124,10 @@ good_area:
 bad_area:
 	up_read(&mm->mmap_sem);
 
-	if (user_mode(regs))
-		panic("%s: user bad_area not yet implemented", __func__);
+	if (user_mode(regs)) {
+		do_user_fault(tsk, ea, SIGSEGV, SIGSEGV);
+		return;
+	}
 
 no_context:
 	/* Are we prepared to handle this kernel fault?
@@ -183,8 +201,8 @@ vmalloc_fault:
 void k1c_trap_protection(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
 	if (user_mode(regs)) {
-		panic("Can't handle protection trap at addr 0x%016llx in user mode\n",
-		ea);
+		do_user_fault(current, ea, SIGSEGV, SIGSEGV);
+		return;
 	}
 
 	if (fixup_exception(regs))
