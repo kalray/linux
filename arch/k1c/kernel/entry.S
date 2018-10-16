@@ -19,6 +19,8 @@
 #include <asm/unistd.h>
 
 #define PS_HWLOOP_ENABLE	(K1C_SFR_PS_HLE_MASK << 32)
+#define PS_HWLOOP_EN_ET_EN	\
+	(PS_HWLOOP_ENABLE | K1C_SFR_PS_ET_MASK)
 #define PS_HLE_EN_IT_EN_ET_CLEAR	\
 		(((K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_IE_MASK) << 32) | \
 		K1C_SFR_PS_ET_MASK)
@@ -484,10 +486,10 @@ ENTRY(k1c_interrupt_handler):
 	;;
 	save_regs_for_exception $r0 $r1 $r0 $r0r1r2r3
 	;;
-	make $r8 = PS_HWLOOP_ENABLE
+	make $r8 = PS_HWLOOP_EN_ET_EN
 	copyd $r1 = $sp
 	;;
-	/* Enable hwloop */
+	/* Enable hwloop and exceptions */
 	wfxl $ps, $r8
 	;;
 	/* Prepare handler call */
