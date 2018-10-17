@@ -238,7 +238,7 @@ void __init free_initrd_mem(unsigned long start, unsigned long end)
 void free_initmem(void)
 {
 #ifdef CONFIG_POISON_INITMEM
-	free_initmem_default(0xDE);
+	free_initmem_default(0x0);
 #else
 	free_initmem_default(-1);
 #endif
