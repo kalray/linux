@@ -55,8 +55,8 @@
 #define K1C_SFR_OCEA 49 /* OCE Address $ocea $s49 */
 #define K1C_SFR_ES 50 /* Exception Syndrome $es $s50 */
 #define K1C_SFR_ILR 51 /* Interrupt Line Request $ilr $s51 */
-#define K1C_SFR_MES 52 /* Memory Error Status $mes $s54 */
-#define K1C_SFR_WS 53 /* Wake-Up Status $ws $s53 */
+#define K1C_SFR_WS 52 /* Wake-Up Status $ws $s53 */
+#define K1C_SFR_MES 53 /* Memory Error Status $mes $s54 */
 
 /* Register field masks */
 
