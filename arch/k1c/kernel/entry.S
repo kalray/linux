@@ -21,6 +21,7 @@
 #define PS_HWLOOP_ENABLE	(K1C_SFR_PS_HLE_MASK << 32)
 #define PS_HWLOOP_EN_ET_EN	\
 	(PS_HWLOOP_ENABLE | K1C_SFR_PS_ET_MASK)
+#define PS_ET_CLEAR K1C_SFR_PS_ET_MASK
 #define PS_HLE_EN_IT_EN_ET_CLEAR	\
 		(((K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_IE_MASK) << 32) | \
 		K1C_SFR_PS_ET_MASK)
@@ -844,6 +845,10 @@ ENTRY(work_pending)
 	;;
 	/* Save $ra and our parameters */
 	get $r30 = $ra
+	make $r28 = PS_ET_CLEAR
+	;;
+	/* Clear ET to be able to send signal */
+	wfxl $ps, $r28
 	;;
 	copyd $r28 = $r0
 	get $r29 = $sr0
