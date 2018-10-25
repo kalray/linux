@@ -43,11 +43,6 @@ extern char _exception_start;
 
 #define SAVE_AREA_SIZE	8
 
-struct thread_struct {
-	uint64_t user_sp;
-	mm_segment_t addr_limit;		/* Addr limit */
-	uint64_t save_area[SAVE_AREA_SIZE];	/* regs save area */
-
 /**
  * According to k1c ABI, the following registers are callee-saved:
  * fp (r14) r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31.
@@ -60,10 +55,12 @@ struct thread_struct {
  * They are used in asm-offset for store octuples so they must be
  * all right behind each other
  */
+struct ctx_switch_regs {
+
 	uint64_t fp;
 
 	uint64_t ra;		/* Return address */
-	uint64_t kernel_sp;
+	uint64_t sp;
 	uint64_t r18;
 	uint64_t r19;
 
@@ -81,10 +78,21 @@ struct thread_struct {
 	uint64_t r29;
 	uint64_t r30;
 	uint64_t r31;
+};
+
+struct thread_struct {
+	uint64_t user_sp;
+	uint64_t kernel_sp;
+	mm_segment_t addr_limit;		/* Addr limit */
+	uint64_t save_area[SAVE_AREA_SIZE];	/* regs save area */
+
+	/* Context switch related registers */
+	struct ctx_switch_regs ctx_switch;
 } __packed;
 
 #define INIT_THREAD  {							\
-	.kernel_sp = sizeof(init_stack) + (unsigned long) &init_stack,	\
+	.ctx_switch.sp =						\
+		sizeof(init_stack) + (unsigned long) &init_stack,	\
 	.addr_limit = KERNEL_DS,					\
 }
 
@@ -101,9 +109,9 @@ struct thread_struct {
 	((struct pt_regs *)(task_stack_page(p) + THREAD_SIZE) - 1)
 
 #define thread_saved_ra(tsk)	\
-	((unsigned long)(tsk->thread.ra))
+	((unsigned long)(tsk->thread.ctx_switch.ra))
 #define thread_saved_fp(tsk)	\
-	((unsigned long)(tsk->thread.fp))
+	((unsigned long)(tsk->thread.ctx_switch.fp))
 
 void release_thread(struct task_struct *t);
 
