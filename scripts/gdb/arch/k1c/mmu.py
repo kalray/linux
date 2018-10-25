@@ -71,14 +71,14 @@ class LxDecodetlb(gdb.Command):
                               es=es_value[get_reg_value("$tel.es")],
                               cp=cp_value[get_reg_value("$tel.cp")],
                               pa=pa_value[get_reg_value("$tel.pa")],
-                              fn=get_reg_value("$tel.fn") << page_size_shift,
+                              fn=get_reg_value("$tel.fn"),
                           ))
 
         gdb.write('teh:\n\tasn:\t{asn}\n\tg:\t{toto}\n\tps:\t{ps}\n\tpn:\t0x{pn:016x}\n'.format(
                               asn=get_reg_value("$teh.asn"),
                               toto=g_value[get_reg_value("$teh.g")],
                               ps=ps_value[page_size_value],
-                              pn=get_reg_value("$teh.pn") << page_size_shift,
+                              pn=get_reg_value("$teh.pn"),
                           ))
 
 LxDecodetlb()
