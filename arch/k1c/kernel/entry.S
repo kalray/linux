@@ -765,17 +765,12 @@ ret_from_kernel:
 	get $r11 = $sr0
 	/* Load stack pointer set by start_thread from registers */
 	ld $r18 = PT_R12[$sp]
-	/* Compute unwound kernel stack pointer */
-	addd $r20 = $sp, -PT_SIZE_ON_STACK
 	;;
 	get $r10 = $sps
 	/* restore_regs_after_exception expect the user stack pointer
 	 * to be in TASK_THREAD_USER_SP[task] so store the one
 	 * we got from start_thread */
 	sd TASK_THREAD_USER_SP[$r11] = $r18
-	;;
-	/* Save unwound kernel stack pointer in thread_info */
-	sd TASK_THREAD_KERNEL_SP[$r11] = $r20
 	;;
 	restore_regs_after_exception $r10 $r11
 	;;
@@ -794,32 +789,32 @@ ENDPROC(ret_from_fork)
  * - r21 = Argument for function
  */
 ENTRY(__switch_to)
-	sd TASK_THREAD_FP[$r0] = $fp
+	sd CTX_SWITCH_FP[$r0] = $fp
 	;;
 	/* Save previous task context */
-	so TASK_THREAD_Q20[$r0] = $r20r21r22r23
+	so CTX_SWITCH_Q20[$r0] = $r20r21r22r23
 	;;
-	so TASK_THREAD_Q24[$r0] = $r24r25r26r27
+	so CTX_SWITCH_Q24[$r0] = $r24r25r26r27
 	get $r16 = $ra
 	;;
-	so TASK_THREAD_Q28[$r0] = $r28r29r30r31
+	so CTX_SWITCH_Q28[$r0] = $r28r29r30r31
 	copyd $r17 = $sp
 	;;
-	so TASK_THREAD_RA_KERNELSP_R18_R19[$r0] = $r16r17r18r19
+	so CTX_SWITCH_RA_SP_R18_R19[$r0] = $r16r17r18r19
 	;;
 	/* Restore next task context */
-	lo $r16r17r18r19 = TASK_THREAD_RA_KERNELSP_R18_R19[$r1]
+	lo $r16r17r18r19 = CTX_SWITCH_RA_SP_R18_R19[$r1]
 	;;
-	lo $r20r21r22r23 = TASK_THREAD_Q20[$r1]
+	lo $r20r21r22r23 = CTX_SWITCH_Q20[$r1]
 	;;
-	lo $r24r25r26r27 = TASK_THREAD_Q24[$r1]
+	lo $r24r25r26r27 = CTX_SWITCH_Q24[$r1]
 	copyd $sp = $r17
 	set $ra = $r16
 	;;
-	lo $r28r29r30r31 = TASK_THREAD_Q28[$r1]
+	lo $r28r29r30r31 = CTX_SWITCH_Q28[$r1]
 	set $sr0 = $r1
 	;;
-	ld $fp = TASK_THREAD_FP[$r1]
+	ld $fp = CTX_SWITCH_FP[$r1]
 	;;
 	ret
 	;;
