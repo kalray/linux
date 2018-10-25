@@ -90,9 +90,10 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		/* Kernel thread */
 		memset(childregs, 0, sizeof(struct pt_regs));
 
-		p->thread.r20 = usp; /* fn */
-		p->thread.r21 = kthread_arg;
-		p->thread.ra = (unsigned long) ret_from_kernel_thread;
+		p->thread.ctx_switch.r20 = usp; /* fn */
+		p->thread.ctx_switch.r21 = kthread_arg;
+		p->thread.ctx_switch.ra =
+				(unsigned long) ret_from_kernel_thread;
 	} else {
 		regs = current_pt_regs();
 
@@ -102,8 +103,9 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		/* Store tracing status in r20 to avoid computing it
 		 * in assembly
 		 */
-		p->thread.r20 = task_thread_info(p)->flags & _TIF_SYSCALL_TRACE;
-		p->thread.ra = (unsigned long) ret_from_fork;
+		p->thread.ctx_switch.r20 =
+			task_thread_info(p)->flags & _TIF_SYSCALL_TRACE;
+		p->thread.ctx_switch.ra = (unsigned long) ret_from_fork;
 
 		childregs->r0 = 0; /* Return value of fork() */
 		/* Set stack pointer if any */
@@ -114,8 +116,9 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		if (clone_flags & CLONE_SETTLS)
 			childregs->r13 = tls;
 	}
-
-	p->thread.kernel_sp = (unsigned long) childregs;
+	p->thread.kernel_sp =
+		(unsigned long) (task_stack_page(p) + THREAD_SIZE);
+	p->thread.ctx_switch.sp = (unsigned long) childregs;
 
 	return 0;
 }
