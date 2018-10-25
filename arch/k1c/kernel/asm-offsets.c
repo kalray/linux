@@ -89,11 +89,11 @@ int foo(void)
 	/*
 	 * Offsets to save registers in switch_to using quads
 	 */
-	OFFSET(TASK_THREAD_RA_KERNELSP_R18_R19, task_struct, thread.ra);
-	OFFSET(TASK_THREAD_Q20, task_struct, thread.r20);
-	OFFSET(TASK_THREAD_Q24, task_struct, thread.r24);
-	OFFSET(TASK_THREAD_Q28, task_struct, thread.r28);
-	OFFSET(TASK_THREAD_FP, task_struct, thread.fp);
+	OFFSET(CTX_SWITCH_RA_SP_R18_R19, task_struct, thread.ctx_switch.ra);
+	OFFSET(CTX_SWITCH_Q20, task_struct, thread.ctx_switch.r20);
+	OFFSET(CTX_SWITCH_Q24, task_struct, thread.ctx_switch.r24);
+	OFFSET(CTX_SWITCH_Q28, task_struct, thread.ctx_switch.r28);
+	OFFSET(CTX_SWITCH_FP, task_struct, thread.ctx_switch.fp);
 
 	/* Save area offset */
 	OFFSET(TASK_THREAD_SAVE_AREA, task_struct, thread.save_area);
