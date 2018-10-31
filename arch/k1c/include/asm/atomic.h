@@ -30,16 +30,15 @@ static inline void atomic64_set(atomic64_t *v, long i)
 
 static inline long atomic64_add_return(long i, atomic64_t *v)
 {
-	long add_value = i;
+	long new, old, ret;
 
-	/* afadd add the content of %0 to the value stored at address
-	 * contained in %1 and returns the old value in %0
-	 */
-	asm volatile ("afaddd 0[%1] = %0\n\t;;"
-	: "+r" (i)
-	: "r" (&v->counter));
+	do {
+		old = v->counter;
+		new = old + i;
+		ret = cmpxchg(&v->counter, old, new);
+	} while (ret != old);
 
-	return i + add_value;
+	return new;
 }
 
 static inline long atomic64_sub_return(long i, atomic64_t *v)
@@ -112,16 +111,15 @@ ATOMIC64_OPS(xor, ^)
 #define atomic_add_return atomic_add_return
 static inline int atomic_add_return(int i, atomic_t *v)
 {
-	int add_value = i;
+	int new, old, ret;
 
-	/* afadd add the content of %0 to the value stored at address
-	 * contained in %1 and returns the old value in %0
-	 */
-	asm volatile ("afaddw 0[%1] = %0\n\t;;"
-	: "+r" (i)
-	: "r" (&v->counter));
+	do {
+		old = v->counter;
+		new = old + i;
+		ret = cmpxchg(&v->counter, old, new);
+	} while (ret != old);
 
-	return i + add_value;
+	return new;
 }
 
 #define atomic_sub_return atomic_sub_return
