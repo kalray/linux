@@ -32,7 +32,7 @@
 				 PS_ENABLE_CACHES | PS_ENABLE_64BIT | \
 				 K1C_SFR_PS_CE_MASK | PS_ENABLE_MMU)
 /* Shift the whole value to set the bits to set using wfxl */
-#define PS_WFXL_VALUE		(PS_DEFAULT_VALUE << 32)
+#define PS_WFXL_VALUE		((PS_DEFAULT_VALUE << 32) | K1C_SFR_PS_ET_MASK)
 
 /* Enable STOP in WS */
 #define WS_ENABLE_WU2		(K1C_SFR_WS_WU2_MASK)
