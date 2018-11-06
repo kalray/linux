@@ -18,7 +18,7 @@
 #include <asm-generic/vmlinux.lds.h>
 
 OUTPUT_FORMAT("elf64-k1")
-OUTPUT_ARCH(k1c)
+OUTPUT_ARCH(k1:k1c:64)
 ENTRY(k1c_start)
 
 jiffies = jiffies_64;
