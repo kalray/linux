@@ -125,7 +125,6 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 
 void release_thread(struct task_struct *dead_task)
 {
-	panic("%s unimplemented\n", __func__);
 }
 
 void flush_thread(void)
