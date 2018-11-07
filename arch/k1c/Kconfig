@@ -51,6 +51,7 @@ config K1C
 	select K1C_CORE_INTC
 	select K1C_APIC_GIC
 	select K1C_APIC_MAILBOX
+	select K1C_ITGEN
 	select SPARSE_IRQ
 	select ARCH_WANT_FRAME_POINTERS
 
