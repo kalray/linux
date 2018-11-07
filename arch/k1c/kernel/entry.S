@@ -496,7 +496,7 @@ ENTRY(k1c_interrupt_handler):
 	/* Prepare handler call */
 	get $r0 = $es
 	;;
-	/* Extract syscall number */
+	/* Extract interrupt number */
 	extfz $r0 = $r0, 7, 3
 	call do_IRQ
 	;;
