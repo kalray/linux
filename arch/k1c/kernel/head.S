@@ -42,7 +42,7 @@
 /* SMP stuff */
 #define RM_PID_MASK		((16) << K1C_SFR_PI_PID_SHIFT)
 
-#define PWR_CTRL_ADDR 0x940000
+#define PWR_CTRL_ADDR 0xA40000
 
 #define PWR_CTRL_WUP_SET_OFFSET \
 	(K1C_PWR_CTRL_VEC_OFFSET + \
