@@ -20,7 +20,7 @@ static inline void k1c_clear_jtlb_entry(unsigned long addr)
 	struct k1c_tlb_format tlbe;
 	int way;
 
-	tlbe = tlb_mk_entry((void *)addr, 0x0, 0, 0, 0, 0, 0, 0);
+	tlbe = tlb_mk_entry(0x0, (void *)addr, 0, 0, 0, 0, 0, 0);
 	k1c_mmu_select_jtlb();
 
 	for (way = 0; way < MMU_JTLB_WAYS; way++) {
@@ -58,7 +58,7 @@ void local_flush_tlb_all(void)
 	local_irq_save(flags);
 
 	for (set = 0; set < MMU_JTLB_SETS; set++)
-		k1c_clear_jtlb_entry(set);
+		k1c_clear_jtlb_entry(set << PAGE_SHIFT);
 
 	local_irq_restore(flags);
 }
