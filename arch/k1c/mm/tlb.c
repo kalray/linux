@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -6,6 +7,7 @@
  * Copyright (C) 2018 Kalray Inc.
  */
 
+#include <linux/mmu_context.h>
 #include <linux/sched.h>
 
 #include <asm/tlbflush.h>
@@ -13,6 +15,7 @@
 #include <asm/pgtable.h>
 
 DEFINE_PER_CPU_ALIGNED(uint8_t[MMU_JTLB_SETS], jtlb_current_set_way);
+DEFINE_PER_CPU(unsigned long, k1c_asn_cache);
 
 /* 5 bits are used to index the K1C access permissions. Bytes are used as
  * follow:
@@ -78,8 +81,13 @@ static inline void k1c_clear_jtlb_entry(unsigned long addr)
 
 void local_flush_tlb_mm(struct mm_struct *mm)
 {
-	/* TODO: cleanup only mm */
-	local_flush_tlb_all();
+	/*
+	 * We don't need to really flush the TLB. We just need to destroy
+	 * the MMU context and create a new one if the mm belongs to current.
+	 */
+	destroy_context(mm);
+	if (current->mm == mm)
+		get_new_mmu_context(mm, smp_processor_id());
 }
 
 void local_flush_tlb_page(struct vm_area_struct *vma,
@@ -109,10 +117,7 @@ void local_flush_tlb_range(struct vm_area_struct *vma,
 			   unsigned long start,
 			   unsigned long end)
 {
-	unsigned long addr;
-
-	for (addr = start; addr < end; addr += PAGE_SIZE)
-		local_flush_tlb_page(vma, addr);
+	panic("%s: not implemented", __func__);
 }
 
 void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
@@ -129,6 +134,9 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	struct k1c_tlb_format tlbe;
 	unsigned int set, way;
 	unsigned int cp = TLB_CP_W_C;
+	struct mm_struct *mm;
+	unsigned int asn;
+	int cpu = smp_processor_id();
 
 	if (unlikely(ptep == NULL))
 		panic("pte should not be NULL\n");
@@ -146,8 +154,15 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	/* No need to add the TLB entry until the process that owns the memory
 	 * is running.
 	 */
-	if (vma && (current->active_mm != vma->vm_mm))
+	mm = current->active_mm;
+	if (vma && (mm != vma->vm_mm))
 		return;
+
+	/* Get the ASN */
+	asn = MMU_EXTRACT_ASN(mm->context.asn[cpu]);
+	if (asn < 1)
+		panic("%s: ASN [%u] is not properly set on CPU %d\n",
+		      __func__, asn, cpu);
 
 	pa = (unsigned int)k1c_access_perms[K1C_ACCESS_PERMS_INDEX(pte_val)];
 
@@ -157,23 +172,16 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	/* Set page as accessed */
 	pte_val(*ptep) |= _PAGE_ACCESSED;
 
-	/* TODO: ASN is not currently supported. So it must be set to the value
-	 * that is in MMC (0 in our case) because non global entries must have
-	 * their ASN field matching MMC.ASN.
-	 * TODO: Need to check how copy on write can be implemented. We should
-	 * probably use TLB_ES_PRESENT and manage the trap WRITETOCLEAN to find
-	 * when a page frame is written and must be duplicated. Currently we
-	 * are setting the entry as A-Modified to prevent the WRITETOCLEAN and
-	 * the ATOMICTOCLEAN.
-	 */
+	k1c_validate_asn(asn);
+
 	tlbe = tlb_mk_entry(
 		(void *)pfn_to_phys(pfn),
 		(void *)address,
 		(PAGE_SIZE == 0x1000) ? TLB_PS_4K : TLB_PS_64K,
-		(pte_val & _PAGE_GLOBAL) ? TLB_G_GLOBAL : !TLB_G_GLOBAL,
+		(pte_val & _PAGE_GLOBAL) ? TLB_G_GLOBAL : TLB_G_USE_ASN,
 		pa,
 		cp,
-		0, /* ASN */
+		asn,
 		TLB_ES_A_MODIFIED);
 
 	/* Compute way to use to store the new translation */
@@ -188,3 +196,13 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	if (k1c_mmu_mmc_error_is_set())
 		panic("Failed to write entry to the JTLB");
 }
+
+#ifdef CONFIG_K1C_DEBUG_ASN
+void k1c_validate_asn(unsigned int asn)
+{
+	unsigned int mmc_asn = k1c_mmu_mmc_get_asn();
+
+	if (asn != mmc_asn)
+		pr_emerg("ASN SYNC ERR: asn:%u != mmc.asn:%u\n", asn, mmc_asn);
+}
+#endif
