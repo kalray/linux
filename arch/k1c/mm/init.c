@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -82,7 +83,7 @@ static int __init setup_null_page(void)
 	pte_t *pte;
 
 	/* Page without any rights */
-	pte_t pte_val = __pte(_PAGE_PRESENT);
+	pte_t pte_val = __pte(_PAGE_PRESENT | _PAGE_GLOBAL);
 
 	pgd = pgd_offset_k(0x0);
 
