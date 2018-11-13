@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License. See the file "COPYING" in the main directory of this archive
@@ -323,6 +324,8 @@ _restore_regs:
 	lbz $r0 = $r5[$r7]
 	/* Clear way and select JTLB */
 	make $r6 = MMC_SEL_JTLB_CLEAR_WAY
+	/* Prepare teh */
+	ord $r4 = $r4, (ASM_TLB_PS << K1C_SFR_TEH_PS_SHIFT)
 	;;
 	/* Keep only the two LSB */
 	andd $r0 = $r0, 0x3
@@ -330,23 +333,30 @@ _restore_regs:
 	ld.xs $r1 = $r3[$r1]
 	addx8d $r2 = $r3, $r1
 	;;
+	/* Extract page global bit */
+	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT + 1, _PAGE_GLOBAL_SHIFT
 	/* Set the TLB way in $mmc value */
 	insf $r6 = $r0, K1C_SFR_MMC_SW_SHIFT + 3, K1C_SFR_MMC_SW_SHIFT
 	/* If bit 0 of pte entry is 0, then entry is not present */
 	cb.even $r1? _err_out
-	/* Is page writable ? */
-	andd $r3 = $r1, _PAGE_WRITE
 	;;
+	/* Shift global bit (if any) to its position */
+	slld $r3 = $r3, K1C_SFR_TEH_G_SHIFT
 	/* Increment way value, note that we do not care about overflow since
 	 * we only use the two lower byte */
 	addd $r0 = $r0, 1
 	/* Prepare MMC */
 	wfxl $mmc, $r6
 	;;
+	/* Or teh value with global bit */
+	ord $r4 = $r4, $r3
 	/* Store new way */
 	sb $r5[$r7] = $r0
 	/* Clear low bits of phys addr (pte entry) for tel writing */
 	andd $r5 = $r1, (~(PAGE_SIZE - 1))
+	/* Is page writable ? */
+	andd $r3 = $r1, _PAGE_WRITE
+	;;
 	/* Not writable ? Check readable */
 	cb.deqz $r3? _page_readable
 	/* Is page readable ? */
@@ -390,11 +400,12 @@ _write_entry:
 	 * to map is not a device, add the standard cache policy,
 	 * which is data writethrough and instructions cached */
 	cmoved.deqz $r7? $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
-	/* Prepare teh */
-	ord $r4 = $r4, ((ASM_TLB_PS << K1C_SFR_TEH_PS_SHIFT) | \
-			(TLB_G_GLOBAL << K1C_SFR_TEH_G_SHIFT))
 	/* Store updated pte entry */
 	sd 0[$r2] = $r1
+	get $r5 = $mmc
+	;;
+	/* Add ASN from mmc */
+	insf $r4 = $r5, K1C_SFR_MMC_ASN_SHIFT + 8, K1C_SFR_MMC_ASN_SHIFT
 	;;
 	/* Add cache policy to entry */
 	ord $r6 = $r6, $r3
