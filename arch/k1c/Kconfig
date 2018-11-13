@@ -156,6 +156,19 @@ config CMDLINE
 
 endmenu
 
+menuconfig K1C_DEBUG
+	bool "K1C debugging"
+	default y
+if K1C_DEBUG
+config K1C_DEBUG_ASN
+	bool "Check ASN before writing TLB entry"
+	default y
+	help
+	  This option allows to check if the ASN of the current
+	  process is matching the ASN found in MMC. If it is not the
+	  case an error will be print.
+endif
+
 menu "Kernel Features"
 source "kernel/Kconfig.hz"
 endmenu
