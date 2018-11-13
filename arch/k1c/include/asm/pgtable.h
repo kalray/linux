@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -52,7 +53,8 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
 /* Page protection bits */
 #define _PAGE_BASE		(_PAGE_PRESENT | _PAGE_USER)
-#define _PAGE_KERNEL		(_PAGE_PRESENT | _PAGE_READ | _PAGE_WRITE)
+#define _PAGE_KERNEL		(_PAGE_PRESENT | _PAGE_GLOBAL | \
+				 _PAGE_READ | _PAGE_WRITE)
 
 #define PAGE_NONE		__pgprot(0)
 #define PAGE_READ		__pgprot(_PAGE_BASE | _PAGE_READ)
