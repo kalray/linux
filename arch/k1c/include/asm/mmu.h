@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -11,6 +12,7 @@
 
 #include <asm/sfr.h>
 #include <linux/types.h>
+#include <linux/threads.h>
 
 /* When 4K pages are used the user space is 512GB while it it 1TB when
  * 16K pages are used. See Documentation/k1c/k1c-mmu.txt for details.
@@ -46,6 +48,8 @@
 
 typedef struct mm_context {
 	 unsigned long end_brk;
+	 unsigned long asn[NR_CPUS];
+	 int cpu;
 } mm_context_t;
 
 struct __attribute__((__packed__)) tlb_entry_low {
@@ -87,6 +91,20 @@ struct k1c_tlb_format {
 	tlbf.tel_val = k1c_sfr_get(K1C_SFR_TEL); \
 	tlbf.teh_val = k1c_sfr_get(K1C_SFR_TEH); \
 } while (0)
+
+#ifdef CONFIG_K1C_DEBUG_ASN
+void k1c_validate_asn(unsigned int asn);
+#else
+#define k1c_validate_asn(asn)
+#endif
+
+#define k1c_mmu_mmc_get_asn() \
+	((k1c_sfr_get(K1C_SFR_MMC) & K1C_SFR_MMC_ASN_MASK) \
+	 >> K1C_SFR_MMC_ASN_SHIFT)
+
+#define k1c_mmu_mmc_set_asn(asn) \
+	k1c_sfr_set_mask(K1C_SFR_MMC, K1C_SFR_MMC_ASN_MASK, \
+			 (asn << K1C_SFR_MMC_ASN_SHIFT))
 
 #define k1c_mmu_mmc_clean_error_flag() \
 	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_E_SHIFT)
