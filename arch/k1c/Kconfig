@@ -61,7 +61,7 @@ config HAVE_KPROBES
 
 menu "System setup"
 
-config PANIC_SCALL
+config PANIC_SYSCALL
 	bool "Emit a magic syscall in panic"
 	default y
 	help
@@ -71,7 +71,7 @@ config PANIC_SCALL
 
 config PANIC_SYSCALL_EXPECTED
         string "Expected panic string"
-        depends on PANIC_SCALL
+        depends on PANIC_SYSCALL
         default ""
         help
           Expected string by syscall panic notifier. If panic string

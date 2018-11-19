@@ -14,7 +14,8 @@
 static int
 scall_panic_event(struct notifier_block *this, unsigned long event, void *buf)
 {
-	if (strcmp(CONFIG_PANIC_SYSCALL_EXPECTED, buf))
+	if (strncmp(CONFIG_PANIC_SYSCALL_EXPECTED, buf,
+		    strlen(CONFIG_PANIC_SYSCALL_EXPECTED)))
 		scall_machine_exit(1);
 
 	scall_machine_exit(0);
