@@ -565,7 +565,7 @@ check_trace:
 	addd $sp = $sp, -PT_SIZE_ON_STACK
 	get $r40 = $cs
 	/* Save regs r0 -> r3 in pt_regs for restart & trace if needed */
-	so PT_Q0[$sp] = $r0r1r2r3
+	so (PT_Q0 - PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
 	;;
 	/* store volatile register which will be needed after C call */
 	so PT_Q36[$sp] = $r36r37r38r39
@@ -642,10 +642,11 @@ ret_to_user:
 	;;
 	ld $fp = PT_FP[$sp]
 	set $lc = $r60
-	addd $sp = $sp, PT_SIZE_ON_STACK
 	;;
+	lo $r4r5r6r7 = PT_Q4[$sp]
 	set $le = $r61
 	make $r60 = K1C_SFR_PS_IE_MASK
+	addd $sp = $sp, PT_SIZE_ON_STACK
 	;;
 	/* Restore user pointer */
 	ld $sp = TASK_THREAD_USER_SP[$r36]
