@@ -13,4 +13,4 @@ obj-y	:= setup.o process.o traps.o common.o time.o prom.o \
 		entry.o syscall_table.o signal.o sys_k1c.o \
 		stacktrace.o
 
-obj-$(CONFIG_PANIC_SCALL) += panic.o
+obj-$(CONFIG_PANIC_SYSCALL) += panic.o
