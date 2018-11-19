@@ -35,6 +35,10 @@
 
 #define _PAGE_SPECIAL   _PAGE_SOFT
 
+#define K1C_ACCESS_PERMS_BITS	5
+#define K1C_ACCESS_PERMS_SIZE	(1 << K1C_ACCESS_PERMS_BITS)
+#define K1C_ACCESS_PERMS_INDEX(x) ((unsigned int)(x & 0x3E) >> 1)
+
 /**
  * Set of bits to preserve across pte_modify()
  * TODO: Check this !
