@@ -14,6 +14,48 @@
 
 DEFINE_PER_CPU_ALIGNED(uint8_t[MMU_JTLB_SETS], jtlb_current_set_way);
 
+/* 5 bits are used to index the K1C access permissions. Bytes are used as
+ * follow:
+ *
+ *   Bit 4      |   Bit 3    |   Bit 2    |   Bit 1     |   Bit 0
+ * _PAGE_GLOBAL | _PAGE_USER | _PAGE_EXEC | _PAGE_WRITE | _PAGE_READ
+ *
+ * NOTE: When the page belongs to user we set the same rights to kernel
+ */
+static uint8_t k1c_access_perms[K1C_ACCESS_PERMS_SIZE] = {
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_R_R,		/* 09: User R */
+	TLB_PA_NA_NA,
+	TLB_PA_RW_RW,		/* 11: User RW */
+	TLB_PA_NA_NA,
+	TLB_PA_RX_RX,		/* 13: User RX */
+	TLB_PA_NA_NA,
+	TLB_PA_RWX_RWX,		/* 15: User RWX */
+	TLB_PA_NA_NA,
+	TLB_PA_NA_R,		/* 17: Kernel R */
+	TLB_PA_NA_NA,
+	TLB_PA_NA_RW,		/* 19: Kernel RW */
+	TLB_PA_NA_NA,
+	TLB_PA_NA_RX,		/* 21: Kernel RX */
+	TLB_PA_NA_NA,
+	TLB_PA_NA_RWX,		/* 23: Kernel RWX */
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+	TLB_PA_NA_NA,
+};
+
 /* Preemption must be disabled here */
 static inline void k1c_clear_jtlb_entry(unsigned long addr)
 {
@@ -107,13 +149,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	if (vma && (current->active_mm != vma->vm_mm))
 		return;
 
-	/* Set access permissions: privileged mode always have all accesses */
-	if (pte_val & _PAGE_WRITE)
-		pa = (pte_val & _PAGE_EXEC) ? TLB_PA_RWX_RWX : TLB_PA_RW_RWX;
-	else if (pte_val & _PAGE_READ)
-		pa = (pte_val & _PAGE_EXEC) ? TLB_PA_RX_RWX : TLB_PA_R_RWX;
-	else
-		pa = TLB_PA_NA_RWX;
+	pa = (unsigned int)k1c_access_perms[K1C_ACCESS_PERMS_INDEX(pte_val)];
 
 	if (pte_val & _PAGE_DEVICE)
 		cp = TLB_CP_D_U;
