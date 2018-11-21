@@ -151,6 +151,4 @@ extern void k1c_mmu_dump_jtlb(int dump_all);
 
 struct mm_struct;
 
-int do_tlb_refill(uint64_t ea, struct mm_struct *mm);
-
 #endif	/* _ASM_K1C_MMU_H */
