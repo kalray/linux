@@ -25,7 +25,7 @@ DEFINE_PER_CPU(unsigned long, k1c_asn_cache);
  *
  * NOTE: When the page belongs to user we set the same rights to kernel
  */
-static uint8_t k1c_access_perms[K1C_ACCESS_PERMS_SIZE] = {
+uint8_t k1c_access_perms[K1C_ACCESS_PERMS_SIZE] = {
 	TLB_PA_NA_NA,
 	TLB_PA_NA_NA,
 	TLB_PA_NA_NA,
