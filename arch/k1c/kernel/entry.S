@@ -33,9 +33,6 @@
 
 .altmacro
 
-#define TEL_DEFAULT_VALUE(__pa)  ((__pa << K1C_SFR_TEL_PA_SHIFT) | \
-			(TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT))
-
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 .section .rodata
 stack_error_panic_str_label:
@@ -347,6 +344,7 @@ _restore_regs:
 	addd $r0 = $r0, 1
 	/* Prepare MMC */
 	wfxl $mmc, $r6
+	make $r6 = k1c_access_perms
 	;;
 	/* Or teh value with global bit */
 	ord $r4 = $r4, $r3
@@ -354,48 +352,19 @@ _restore_regs:
 	sb $r5[$r7] = $r0
 	/* Clear low bits of phys addr (pte entry) for tel writing */
 	andd $r5 = $r1, (~(PAGE_SIZE - 1))
-	/* Is page writable ? */
-	andd $r3 = $r1, _PAGE_WRITE
+	/* Extract access perms from pte entry */
+	extfz $r3 = $r1, K1C_ACCESS_PERM_STOP_BIT, K1C_ACCESS_PERM_START_BIT
 	;;
-	/* Not writable ? Check readable */
-	cb.deqz $r3? _page_readable
-	/* Is page readable ? */
-	andd $r3 = $r1, _PAGE_READ
-	andd $r0 = $r1, _PAGE_EXEC
-	;;
-	/* If we are here, page is writable */
-	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_RWX_RWX)
-	/* if Page is executable goto write_entry */
-	cb.dnez $r0, _write_entry
-	;;
-	/* not executable, remove X */
-	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_RW_RWX)
-	goto _write_entry
-	;;
-_page_readable:
-	/* Not readable ? */
-	cb.deqz $r3? _no_rights
-	;;
-	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_RX_RWX)
-	/* if Page is executable goto write_entry */
-	cb.dnez $r0, _write_entry
-	;;
-	/* not executable, remove X */
-	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_R_RWX)
-	goto _write_entry
-	;;
-_no_rights:
-	/* Default value for entry */
-	make $r6 = TEL_DEFAULT_VALUE(TLB_PA_NA_NA)
-	;;
-_write_entry:
+	/* load access permissions */
+	lbz $r6 = $r3[$r6]
 	/* Does this page map a device ? */
 	andd $r7 = $r1, _PAGE_DEVICE
-	/* Prepare tel */
-	ord $r6 = $r5, $r6
 	/* Set page as accessed by setting pte flags */
 	ord $r1 = $r1, _PAGE_ACCESSED
+	ord $r0 = $r5, (TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT)
 	;;
+	/* Shift PA to correct position */
+	slld $r6 = $r6, K1C_SFR_TEL_PA_SHIFT
 	/* Default policy 0 is for devices so if the page we are going
 	 * to map is not a device, add the standard cache policy,
 	 * which is data writethrough and instructions cached */
@@ -404,6 +373,8 @@ _write_entry:
 	sd 0[$r2] = $r1
 	get $r5 = $mmc
 	;;
+	/* Prepare tel */
+	ord $r6 = $r0, $r6
 	/* Add ASN from mmc */
 	insf $r4 = $r5, K1C_SFR_MMC_ASN_SHIFT + 8, K1C_SFR_MMC_ASN_SHIFT
 	;;
