@@ -883,17 +883,6 @@ ENDPROC(work_pending)
 *          		 Misc functions
 ***********************************************************************/
 
-.pushsection .text
-.align L1_CACHE_BYTES
-/* Wrapper for tlb refill macro */
-ENTRY(do_tlb_refill)
-	macro_tlb_refill
-	ret
-	;;
-ENDPROC(do_tlb_refill)
-.popsection
-
-
 /**
  * Avoid hardcoding trampoline for rt_sigreturn by using this code and
  * copying it on user trampoline
