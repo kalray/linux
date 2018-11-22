@@ -10,6 +10,7 @@
 #include <asm/sfr_defs.h>
 #include <asm/page.h>
 #include <asm/tlb_defs.h>
+#include <asm/mem_map.h>
 
 #include <linux/linkage.h>
 #include <linux/init.h>
@@ -75,6 +76,14 @@
 #define TEL_SHARED_MEMORY \
 	TLB_MK_TEL_ENTRY(0, TLB_ES_A_MODIFIED,\
 	TLB_CP_W_C, TLB_PA_NA_RWX)
+
+/* (TEH|TEL)_DSU_MEMORY for DSU debug routine */
+#define TEH_DSU_MEMORY \
+	TLB_MK_TEH_ENTRY(DSU_MAP_BASE, TLB_PS_64K, TLB_G_GLOBAL, 0)
+
+#define TEL_DSU_MEMORY \
+	TLB_MK_TEL_ENTRY(PWR_CTRL_ADDR, TLB_ES_A_MODIFIED,\
+	TLB_CP_D_U, TLB_PA_NA_RWX)
 
 .altmacro
 
@@ -306,6 +315,13 @@ ENTRY(asm_init_mmu)
 	;;
 	make $r20 = TEH_VIRTUAL_MEMORY
 	make $r21 = TEL_VIRTUAL_MEMORY
+	;;
+	write_tlb_entry $r20, $r21
+	;;
+	select_way_from_immediate LTLB_ENTRY_DSU, $r20, $r21
+	;;
+	make $r20 = TEH_DSU_MEMORY
+	make $r21 = TEL_DSU_MEMORY
 	;;
 	write_tlb_entry $r20, $r21
 	;;
