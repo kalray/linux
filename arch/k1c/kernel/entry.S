@@ -365,14 +365,16 @@ _restore_regs:
 	;;
 	/* Shift PA to correct position */
 	slld $r6 = $r6, K1C_SFR_TEL_PA_SHIFT
-	/* Default policy 0 is for devices so if the page we are going
-	 * to map is not a device, add the standard cache policy,
-	 * which is data writethrough and instructions cached */
-	cmoved.deqz $r7? $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
 	/* Store updated pte entry */
 	sd 0[$r2] = $r1
 	get $r5 = $mmc
+	/* Set default cache policy */
+	make $r3 = (TLB_CP_D_U << K1C_SFR_TEL_CP_SHIFT)
 	;;
+	/* Default policy is for devices so if the page we are going
+	 * to map is not a device, add the standard cache policy,
+	 * which is data writethrough and instructions cached */
+	cmoved.deqz $r7? $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
 	/* Prepare tel */
 	ord $r6 = $r0, $r6
 	/* Add ASN from mmc */
