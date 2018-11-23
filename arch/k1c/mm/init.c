@@ -17,8 +17,10 @@
 #include <linux/mm.h>
 
 #include <asm/sections.h>
-#include <asm/page.h>
 #include <asm/tlb_defs.h>
+#include <asm/tlbflush.h>
+#include <asm/fixmap.h>
+#include <asm/page.h>
 
 pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
@@ -168,11 +170,45 @@ static void __init setup_bootmem(void)
 	memblock_dump_all();
 }
 
+static pte_t *fixmap_pte_p;
+
+static void __init fixedrange_init(void)
+{
+	unsigned long vaddr;
+	pgd_t *pgd;
+	pud_t *pud;
+	pmd_t *pmd;
+	pmd_t *fixmap_pmd_p;
+
+	/*
+	 * Fixed mappings:
+	 */
+	vaddr = __fix_to_virt(__end_of_fixed_addresses - 1);
+	pgd = swapper_pg_dir + pgd_index(vaddr);
+	pud = pud_offset(pgd, vaddr);
+	/* Allocate the PMD page */
+	fixmap_pmd_p = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
+	if (!fixmap_pmd_p)
+		panic("%s: failed to allocate pmd page for fixmap\n", __func__);
+	memset(fixmap_pmd_p, 0, PAGE_SIZE);
+	set_pud(pud, __pud((unsigned long) fixmap_pmd_p));
+
+	pmd = pmd_offset(pud, vaddr);
+	/* Allocate the PTE page */
+	fixmap_pte_p = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
+	if (!fixmap_pte_p)
+		panic("%s: failed to allocate pte page for fixmap\n", __func__);
+	memset(fixmap_pte_p, 0, PAGE_SIZE);
+	set_pmd(pmd, __pmd((unsigned long) fixmap_pte_p));
+}
+
+
 void __init setup_arch_memory(void)
 {
 	setup_bootmem();
 	k1c_mmu_setup_initial_mapping();
 	paging_init();
+	fixedrange_init();
 }
 
 void __init mem_init(void)
@@ -210,4 +246,24 @@ void free_initmem(void)
 #else
 	free_initmem_default(-1);
 #endif
+}
+
+void __set_fixmap(enum fixed_addresses idx,
+				phys_addr_t phys, pgprot_t flags)
+{
+	unsigned long addr = __fix_to_virt(idx);
+	pte_t *pte;
+
+
+	BUG_ON(idx >= __end_of_fixed_addresses);
+
+	pte = &fixmap_pte_p[pte_index(addr)];
+
+	if (pgprot_val(flags)) {
+		set_pte(pte, pfn_pte(phys_to_pfn(phys), flags));
+	} else {
+		/* Remove the fixmap */
+		pte_clear(&init_mm, addr, pte);
+		local_flush_tlb_kernel_range(addr, addr + PAGE_SIZE);
+	}
 }
