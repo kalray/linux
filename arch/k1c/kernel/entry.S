@@ -400,6 +400,21 @@ _out:
 /***********************************************************************
 *                      Traps handling
 ***********************************************************************/
+
+/**
+ * There is nothing much we can do if we take a early trap since the
+ * kernel  is not yet ready to handle them.
+ * Register this as the early exception handler to at least avoid
+ * going in a black hole.
+ */
+.section .early_exception.handler, "ax", @progbits
+ENTRY(early_ev_handler)
+1: 	nop
+	;;
+	goto 1b
+	;;
+ENDPROC(early_ev_handler)
+
 .section .exception.trap, "ax", @progbits
 ENTRY(k1c_trap_handler):
 	save_quad_regs $r0r1r2r3 $r0
