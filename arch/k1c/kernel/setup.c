@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -59,10 +60,15 @@ void __init setup_arch(char **cmdline_p)
 {
 	*cmdline_p = boot_command_line;
 
-	parse_early_param();
-
 	setup_processor();
 	setup_arch_memory();
+
+	/*
+	 * Parse early param after setting up arch memory since
+	 * we need fixmap for earlycon and fixedmap need to do
+	 * memory allocation (fixed_range_init).
+	 */
+	parse_early_param();
 
 	setup_device_tree();
 }
