@@ -62,6 +62,13 @@ SECTIONS
 	}
 
 	__init_begin = .;
+
+	.early_exception ALIGN(EXCEPTION_ALIGNMENT) :
+				AT(ADDR(.early_exception) - LOAD_OFFSET)
+	{
+		KEEP(*(.early_exception.handler));
+	}
+
 	HEAD_TEXT_SECTION
 	INIT_TEXT_SECTION(PAGE_SIZE)
 	INIT_DATA_SECTION(16)
