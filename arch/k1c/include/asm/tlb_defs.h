@@ -70,6 +70,13 @@
 	((_pa) << K1C_SFR_TEL_PA_SHIFT) | \
 	(((_paddr) >> K1C_SFR_TEL_FN_SHIFT) << K1C_SFR_TEL_FN_SHIFT))
 
+
+/*
+ * LTLB fixed entry index
+ */
+#define LTLB_ENTRY_KERNEL_TEXT	0
+#define LTLB_ENTRY_EARLY_SMEM	1
+
 #ifndef __ASSEMBLY__
 #include <asm/mmu.h>
 
