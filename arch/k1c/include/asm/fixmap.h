@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -10,19 +11,18 @@
 #define _ASM_K1C_FIXMAP_H
 
 #include <asm/page.h>
+#include <asm/pgtable.h>
 
-/*
- * We use fixed_addresses for doing ioremap before memory initialization. This
- * is used by early console for example. In our case the address is not
- * used so we don't need to remap any register in memory. Instead we are using
- * some specific system calls to write messages.
- *
- *       /!\ We don't do real allocation here /!\
+/**
+ * Use the latest available kernel address minus one page.
+ * This is needed since __fix_to_virt returns
+ * (FIXADDR_TOP - ((x) << PAGE_SHIFT))
+ * Due to that, first member will be shifted by 0 and will be equal to
+ * FIXADDR_TOP.
+ * Some other architectures simply add a FIX_HOLE at the beginning of
+ * the fixed_addresses enum (I think ?).
  */
-
-/* As the address is not used we put a magic number as the TOP address */
-#define FIXADDR_TOP 0xDEADCAFE
-#define FIXADDR_END FIXADDR_TOP
+#define FIXADDR_TOP	((unsigned long) (-PAGE_SIZE))
 
 enum fixed_addresses {
 	FIX_EARLYCON_MEM_BASE,
@@ -31,9 +31,10 @@ enum fixed_addresses {
 
 #define FIXADDR_SIZE  (__end_of_fixed_addresses << PAGE_SHIFT)
 #define FIXADDR_START (FIXADDR_TOP - FIXADDR_SIZE)
-#define FIXMAP_PAGE_IO (PAGE_NONE)
+#define FIXMAP_PAGE_IO (PAGE_DEVICE)
 
-#define __set_fixmap(idx, paddr, prot) do {} while(0)
+void __set_fixmap(enum fixed_addresses idx,
+				phys_addr_t phys, pgprot_t prot);
 
 #include <asm-generic/fixmap.h>
 
