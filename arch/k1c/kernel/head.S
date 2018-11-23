@@ -161,6 +161,9 @@ init_core:
 	;;
 	/* Setup default processor status */
 	make $r25 = PS_WFXL_VALUE
+	make $r26 = early_ev_handler
+	;;
+	set $ev = $r26
 	;;
 	wfxl $ps = $r25
 	;;
@@ -299,14 +302,14 @@ ENTRY(asm_init_mmu)
 
 	/* See Documentation/k1c/k1c.txt for details about the settings of
 	   the LTLB */
-	select_way_from_immediate 0, $r20, $r21
+	select_way_from_immediate LTLB_ENTRY_KERNEL_TEXT, $r20, $r21
 	;;
 	make $r20 = TEH_VIRTUAL_MEMORY
 	make $r21 = TEL_VIRTUAL_MEMORY
 	;;
 	write_tlb_entry $r20, $r21
 	;;
-	select_way_from_immediate 1, $r20, $r21
+	select_way_from_immediate LTLB_ENTRY_EARLY_SMEM, $r20, $r21
 	;;
 	make $r20 = TEH_SHARED_MEMORY
 	make $r21 = TEL_SHARED_MEMORY

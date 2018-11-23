@@ -72,6 +72,8 @@ asmlinkage __visible void __init arch_low_level_start(unsigned long r0,
 {
 	void *dt = NULL;
 
+	mmu_early_init();
+
 	if (r0 == K1_PARAM_MAGIC) {
 		strncpy(boot_command_line, cmdline_ptr, COMMAND_LINE_SIZE);
 		dt = dtb_ptr;
