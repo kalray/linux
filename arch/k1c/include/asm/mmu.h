@@ -145,9 +145,16 @@ static inline int k1c_mmu_mmc_error_is_set(void)
 	k1c_mmu_writetlb();           \
 } while (0)
 
+#define k1c_mmu_remove_ltlb_entry(way) do { \
+	struct k1c_tlb_format __invalid_entry = K1C_EMPTY_TLB_ENTRY;	\
+	k1c_mmu_add_ltlb_entry(way, __invalid_entry);			\
+} while (0)
+
 extern void k1c_mmu_setup_initial_mapping(void);
 extern void k1c_mmu_dump_ltlb(int dump_all);
 extern void k1c_mmu_dump_jtlb(int dump_all);
+
+extern void mmu_early_init(void);
 
 struct mm_struct;
 
