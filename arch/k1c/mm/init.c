@@ -23,14 +23,6 @@
 pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
 /*
- * LTLB fixed entry index
- */
-enum ltlb_entry_index {
-	LTLB_ENTRY_KERNEL = 0,
-	LTLB_ENTRY_LOCAL_DEV,
-};
-
-/*
  * empty_zero_page is a special page that is used for zero-initialized data and
  * COW.
  */
@@ -104,23 +96,15 @@ static int __init setup_null_page(void)
 	return 0;
 }
 
+void __init mmu_early_init(void)
+{
+	/* Invalidate early smem mapping to avoid reboot loops */
+	k1c_mmu_remove_ltlb_entry(LTLB_ENTRY_EARLY_SMEM);
+}
+
 void __init paging_init(void)
 {
 	int i;
-	struct k1c_tlb_format tlbe;
-
-	/* SMEM + Device mapping */
-	tlbe = tlb_mk_entry(
-		(void *) 0x0,
-		(void *) KERNEL_PERIPH_MAP_BASE,
-		TLB_PS_512M,
-		TLB_G_GLOBAL,
-		TLB_PA_NA_RW,
-		TLB_CP_D_U,
-		0,
-		TLB_ES_A_MODIFIED);
-
-	k1c_mmu_add_ltlb_entry(LTLB_ENTRY_LOCAL_DEV, tlbe);
 
 	for (i = 0; i < PTRS_PER_PGD; i++)
 		swapper_pg_dir[i] = __pgd(0);
