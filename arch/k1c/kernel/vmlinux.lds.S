@@ -34,7 +34,8 @@ SECTIONS
 	_start = .;
 
 	/* Exception vector must be aligned on a huge frontier */
-	.exception ALIGN(EXCEPTION_ALIGNEMENT) : AT(ADDR(.exception) - LOAD_OFFSET)
+	.exception ALIGN(EXCEPTION_ALIGNMENT) :
+				AT(ADDR(.exception) - LOAD_OFFSET)
 	{
 		_exception_start = ABSOLUTE(.);
 		/**
