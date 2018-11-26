@@ -14,13 +14,14 @@
 #include <linux/types.h>
 #include <linux/threads.h>
 
-/* When 4K pages are used the user space is 512GB while it it 1TB when
- * 16K pages are used. See Documentation/k1c/k1c-mmu.txt for details.
+/*
+ * See Documentation/k1c/k1c-mmu.txt for details about the division of the
+ * virtual memory space.
  */
 #if defined(CONFIG_K1C_4K_PAGES)
 #define MMU_USR_ADDR_BITS	39
-#elif defined(CONFIG_K1C_64K_PAGES)
-#define MMU_USR_ADDR_BITS	40
+#else
+#error "Only 4Ko page size is supported at this time"
 #endif
 
 /* Architecture specification */
