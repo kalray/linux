@@ -22,6 +22,7 @@
 #define ISS_TTY_DRIVER_NAME		"iss_tty"
 #define ISS_TTY_NAME			"ISS tty driver"
 #define ISS_TTY_VERSION			"0.1"
+#define ISS_TTY_MAJOR			204
 
 #define ISS_SERIAL_MAX_NUM_LINES	1
 
@@ -114,8 +115,8 @@ static int iss_tty_init(void)
 	/* Initialize the tty_driver structure */
 	iss_tty_driver->owner = THIS_MODULE;
 	iss_tty_driver->driver_name = ISS_TTY_DRIVER_NAME;
-	iss_tty_driver->name = "ttyS";
-	iss_tty_driver->major = TTY_MAJOR;
+	iss_tty_driver->name = "ttyKS";
+	iss_tty_driver->major = ISS_TTY_MAJOR;
 	iss_tty_driver->minor_start = 64;
 	iss_tty_driver->type = TTY_DRIVER_TYPE_SERIAL;
 	iss_tty_driver->subtype = SERIAL_TYPE_NORMAL;
@@ -168,7 +169,7 @@ static struct tty_driver *scall_console_device(struct console *c, int *index)
  * console is attached to ttyS0.
  */
 static struct console scall_console = {
-	.name = "ttyS",
+	.name = "ttyKS",
 	.write = scall_console_write,
 	.device = scall_console_device,
 	.flags = CON_PRINTBUFFER,
