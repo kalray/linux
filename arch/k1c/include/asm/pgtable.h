@@ -32,12 +32,18 @@ struct vm_area_struct;
 #define VMALLOC_START	KERNEL_VMALLOC_MAP_BASE
 #define VMALLOC_END	(VMALLOC_START + KERNEL_VMALLOC_MAP_SIZE - 1)
 
+/* Also used by GDB script to go through the page table */
+#define PGDIR_BITS	_PGDIR_BITS
+#define PMD_BITS	_PMD_BITS
+#define PTE_BITS	_PTE_BITS
+
 /* Size of region mapped by a page global directory */
 #define PGDIR_SIZE      _BITUL(PGDIR_SHIFT)
 #define PGDIR_MASK      (~(PGDIR_SIZE - 1))
 
 /* Number of entries in the page global directory */
-#define PTRS_PER_PGD	(PAGE_SIZE / sizeof(pgd_t))
+#define PAGES_PER_PGD	2
+#define PTRS_PER_PGD	(PAGES_PER_PGD * PAGE_SIZE / sizeof(pgd_t))
 
 /* Number of entries in the page table */
 #define PTRS_PER_PTE    (PAGE_SIZE / sizeof(pte_t))
