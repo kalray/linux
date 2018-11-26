@@ -14,6 +14,7 @@
 
 #include <asm/tlb_defs.h>
 #include <asm/page.h>
+#include <asm/pgtable.h>
 
 #define LX_VALUE(x) LX_##x = x
 
@@ -55,3 +56,8 @@ LX_VALUE(TLB_G_USE_ASN)
 
 /* asm/page.h */
 LX_VALUE(PAGE_SHIFT)
+
+/* asm/pgtable.h */
+LX_VALUE(PGDIR_BITS)
+LX_VALUE(PMD_BITS)
+LX_VALUE(PTE_BITS)
