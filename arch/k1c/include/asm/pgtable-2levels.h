@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -11,10 +12,6 @@
 
 #include <asm-generic/pgtable-nopmd.h>
 
-#if defined(CONFIG_K1C_64K_PAGES)
-#define PGDIR_SHIFT     28
-#else
-#error "2 level page table is not available with 4K page"
-#endif
+#error "Only 3 levels page table is supported at this time"
 
 #endif	/* _ASM_K1C_PGTABLE_2LEVELS_H */
