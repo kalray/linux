@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -29,7 +30,7 @@ static inline void check_pgt_cache(void)
 static inline void
 pgd_free(struct mm_struct *mm, pgd_t *pgd)
 {
-	free_page((unsigned long)pgd);
+	free_pages((unsigned long) pgd, PAGES_PER_PGD);
 }
 
 static inline
@@ -37,18 +38,19 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 {
 	pgd_t *pgd;
 
-	pgd = (pgd_t *) __get_free_page(GFP_KERNEL | __GFP_ZERO);
+	pgd = (pgd_t *) __get_free_pages(GFP_KERNEL, PAGES_PER_PGD);
+	if (unlikely(pgd == NULL))
+		return NULL;
 
-	if (likely(pgd != NULL)) {
-		memset(pgd, 0, USER_PTRS_PER_PGD * sizeof(pgd_t));
-		/* Copy kernel mappings */
-		memcpy(pgd + USER_PTRS_PER_PGD,
-			init_mm.pgd + USER_PTRS_PER_PGD,
-			(PTRS_PER_PGD - USER_PTRS_PER_PGD) * sizeof(pgd_t));
+	memset(pgd, 0, USER_PTRS_PER_PGD * sizeof(pgd_t));
 
-		/* Copy first "null trapping" page (cf mm/init.c) */
-		memcpy(pgd, init_mm.pgd, sizeof(pgd_t));
-	}
+	/* Copy kernel mappings */
+	memcpy(pgd + USER_PTRS_PER_PGD,
+	       init_mm.pgd + USER_PTRS_PER_PGD,
+	       (PTRS_PER_PGD - USER_PTRS_PER_PGD) * sizeof(pgd_t));
+
+	/* Copy first "null trapping" page (cf mm/init.c) */
+	memcpy(pgd, init_mm.pgd, sizeof(pgd_t));
 
 	return pgd;
 }
