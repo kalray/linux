@@ -275,7 +275,7 @@ _restore_regs:
 .macro macro_tlb_refill
 	LOCAL _err_out, _out, _page_readable, _write_entry, _no_rights
 	/* extract PGD offset */
-	extfz $r3 = $r0, (ASM_PGDIR_SHIFT + 8), ASM_PGDIR_SHIFT
+	extfz $r3 = $r0, (ASM_PGDIR_SHIFT + ASM_PGDIR_BITS - 1), ASM_PGDIR_SHIFT
 	/* is mm NULL ? */
 	cb.deqz $r1? _err_out
 	;;
@@ -293,7 +293,7 @@ _restore_regs:
 #endif
 	;;
 	/* extract PMD offset*/
-	extfz $r3 = $r0, (ASM_PMD_SHIFT + 8), ASM_PMD_SHIFT
+	extfz $r3 = $r0, (ASM_PMD_SHIFT + ASM_PMD_BITS - 1), ASM_PMD_SHIFT
 	/* Extract virt page from ea */
 	andd $r4 = $r0, (~(PAGE_SIZE - 1))
 	/* If pgd entry is null -> out */
