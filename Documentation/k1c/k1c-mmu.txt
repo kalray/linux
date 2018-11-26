@@ -23,27 +23,16 @@ only one ZONE_NORMAL. This will be updated if DMA cannot access all memory.
 
 Currently, the memory mapping is the following for 4KB page:
 
-+---------------------+---------------------+------+-------+------------------------------+
-| Start               | End                 | Attr | Size  | Name                         |
-+---------------------+---------------------+------+-------+------------------------------+
-| 0000 0000 0000 0000 | 0000 007F FFFF FFFF | ---  | 512GB | User                         |
-| 0000 00FF FFFF FFFF | FFFF FEFF FFFF FFFF | ---  | ---   | Hole between user and kernel |
-| FFFF FF00 0000 0000 | FFFF FF00 3FFF FFFF | R-X  | 1GB   | Kernel text mapping          |
-| FFFF FF00 4000 0000 | FFFF FF00 7FFF FFFF | RWX  | 1GB   | VMalloc mapping              |
-| FFFF FF00 8000 0000 | FFFF FF00 CFFF FFFF | RW   | 1GB   | Peripherals mapping          |
-+---------------------+---------------------+------+-------+------------------------------+
-
-Currently, the memory mapping is the following for 64KB page:
-
-+---------------------+---------------------+------+------+------------------------------+
-| Start               | End                 | Attr | Size | Name                         |
-+---------------------+---------------------+------+------+------------------------------+
-| 0000 0000 0000 0000 | 0000 00FF FFFF FFFF | ---  | 1TB  | User                         |
-| 0000 00FF FFFF FFFF | FFFF FEFF FFFF FFFF | ---  | ---  | Hole between user and kernel |
-| FFFF FF00 0000 0000 | FFFF FF00 3FFF FFFF | R-X  | 1GB  | Kernel text mapping          |
-| FFFF FF00 4000 0000 | FFFF FF00 7FFF FFFF | RWX  | 1GB  | VMalloc mapping              |
-| FFFF FF00 8000 0000 | FFFF FF00 CFFF FFFF | RW   | 1GB  | Peripherals mapping          |
-+---------------------+---------------------+------+------+------------------------------+
++-----------------------+-----------------------+------+-------+--------------+
+| Start                 | End                   | Attr | Size  | Name         |
++-----------------------+-----------------------+------+-------+--------------+
+| 0000 0000 0000 0000   | 0000 007F FFFF FFFF   | ---  | 512GB | User         |
+| 0000 0080 0000 0000   | FFFF FF7F FFFF FFFF   | ---  | ---   | Gap          |
+| FFFF FF80 0000 0000   | FFFF FFFF FFFF FFFF   | ---  | 512GB | Kernel       |
+|   FFFF FF80 0000 0000 |   FFFF FF80 3FFF FFFF | R-X  | 1GB   |   Text       |
+|   FFFF FF80 4000 0000 |   FFFF FF80 7FFF FFFF | RWX  | 1GB   |   Vmalloc    |
+|   FFFF FF80 8000 0000 |   FFFF FFFF FFFF FFFF | RW   | 510GB |   Free area  |
++-----------------------+-----------------------+------+-------+--------------+
 
 Enable the MMU
 ==============
@@ -107,103 +96,27 @@ LTLB Usage
 
 LTLB is used to add resident mapping which allows for faster MMU lookup.
 Currently, the LTLB is used to map some mandatory kernel pages.
-The current LTLB use is the following:
-
-Entry 0 - Kernel Code mapping (1G)
-Entry 1 - Peripherals mapping (1G)
 
 Page Table
 ==========
 
-We support two and three levels for the page table and 4KB or 64KB for page size.
-
-When a process is created we need to initalize its memory structure. One of the
-entries is the top level page table called the Page Global Directory (PGD). It
-is a table of pgd_t whitin a single page. As the pgd_t is an unsigned long, that
-means that:
-  - A 4KB page will store up to 512 entries
-  - A 64KB page will store up to 8192 entries
-
-It is the same for pmd_t and pte_t. So that means that we cannot use more
-than 9 bits for the offset for a 4Ko page.
-
-Let's have a look to the different options we have about the number of levels
-in the page table.
-
-2 levels page table
--------------------
-
-Let's look what it means for the 2 levels page table. A 4Ko page implies an
-offset of 12 bits. As bit 40 is used to differentiate kernel and user memory
-space it left 28 bits for pgd and pte offset. If we split into 14 bits offset
-for pdg and pte  that is the minimum it means that we will need to allocate
-4 pages for each level.
-
-So the page table layout for a 4KB page size is:
-
-
-...--------------------------------------------------------+
-   48|47    40|39    32|31    24|23    16|15     8|7      0|
-...----------+-+--------------+---------------+------------+
-             | |              |               |
-             | |              |               +--->  [11:0] Offset (12 bits)
-             | |              +------------------->  [25:12] PTE offset (14 bits)
-             | +---------------------------------->  [39:26] PGD offset (14 bits)
-             +------------------------------------>  [40] 0 if user, 1 otherwise
-                                              Bits 41 to 64 are signed extended
-
-And we will need to allocate 4 pages per level entry.
-
-For a page of 64Ko we can use a layout like this:
-
-...--------------------------------------------------------+
-   48|47    40|39    32|31    24|23    16|15     8|7      0|
-...----------+-+------------+-------------+----------------+
-             | |            |             |
-             | |            |             +------->  [15:0] Offset (16 bits)
-             | |            +--------------------->  [27:16] PTE offset (12 bits)
-             | +---------------------------------->  [39:28] PGD offset (12 bits)
-             +------------------------------------>  [40] 0 if user, 1 otherwise
-                                              Bits 41 to 64 are signed extended
+We support three levels for the page table and 4KB for page size.
 
 3 levels page table
 -------------------
 
-Like the 2 level page table we can not only use one page per level because we
-have 28 bits and 3 levels. As for a 4Ko page we can use a maximum of 9 bits it
-means that 1 bit remains. One solution is to allocate 2 pages for the pte level.
-The other solution that we chose is to use 38 bits for the user memory space.
-That means that we will be able to use 512GB for the virtual address space.
-So the layout will be:
+...-----+--------+--------+--------+--------+--------+
+      40|39    32|31    24|23    16|15     8|7      0|
+...-----++-------+--+-----+---+----+----+---+--------+
+         |          |         |         |
+         |          |         |         +--->  [11:0] Offset (12 bits)
+         |          |         +------------->  [20:12] PTE offset (9 bits)
+         |          +----------------------->  [29:21] PMD offset (9 bits)
+         +---------------------------------->  [39:30] PGD offset (10 bits)
+Bits 40 to 64 are signed extended according to bit 39. If bit 39 is equal to 1
+we are in kernel space.
 
-...--------------------------------------------------------+
-   48|47    40|39    32|31    24|23    16|15     8|7      0|
-...----------+-++---------+---------+---------+------------+
-             | ||         |         |         |
-             | ||         |         |         +--->  [11:0] Offset (12 bits)
-             | ||         |         +------------->  [20:12] PTE offset (9 bits)
-             | ||         +----------------------->  [29:21] PMD offset (9 bits)
-             | |+--------------------------------->  [38:30] PGD offset (9 bits)
-             | +---------------------------------->  [39] Always 0
-             +------------------------------------>  [40] 0 if user, 1 otherwise
-                                              Bits 41 to 64 are signed extended
-
-The page table layout for a 64KB page size is:
-
-...--------------------------------------------------------+
-   48|47    40|39    32|31    24|23    16|15     8|7      0|
-...----------+-+-----+------+-------------+----------------+
-             | |     |      |             |
-             | |     |      |             +------->  [15:0] Offset (16 bits)
-             | |     |      +--------------------->  [27:16] PTE offset (12 bits)
-             | |     +---------------------------->  [33:28] PMD offset (6 bits)
-             | +---------------------------------->  [39:34] PGD offset (6 bits)
-             +------------------------------------>  [40] 0 if user, 1 otherwise
-                                              Bits 41 to 64 are signed extended
-
-So as we can see for 4Ko page table we can not allocate one page per level. The
-other solution is to use a 4 level page table. By doing this we will be able to
-allocate one page per level.
+As 10 bits are used for PGD we need to allocate 2 pages.
 
 4 levels page table
 -------------------
@@ -215,17 +128,21 @@ true for a 5 level page table.
 
 Conclusion:
 
-It seems that the best solution if we consider that allocation of one page
-and usage of a maximum number of entries within a page is a good thing is to
-use:
+Today we are only supporting 4Ko page size. If we want support page of 64Ko we
+will need to use a layout like this one:
 
-  - 2 levels page table for 64KB pages
-  - 3 levels page table for 4KB pages and reduce the virtual memory space to
-    512GB for the user.
-
-Allocate and free pages for managing the page table is something that happens
-a lot of time. To improve performance we can use a specific object in the slab
-allocator for pgd.
+...---+--------+--------+--------+--------+--------+
+    40|39    32|31    24|23    16|15     8|7      0|
+...--++------+-+----+---+--------++-------+--------+
+     |       |      |             |
+     |       |      |             +------->  [15:0] Offset (16 bits)
+     |       |      +--------------------->  [27:16] PTE offset (12 bits)
+     |       +---------------------------->  [33:28] PMD offset (6 bits)
+     +------------------------------------>  [40:34] PGD offset (7 bits)
+Bits 41 to 64 are signed extended according to bit 40. If bit 40 is equal to 1
+we are dealing with kernel addresses. As we can see we are loosing memory space
+so a better layout could be to use a 2 level page table. It will also reduce
+the number of load and store in memory.
 
 PTE format
 ==========
@@ -236,7 +153,7 @@ we choose to follow the format described in the RiscV implementation.
     +----...----+---------+---+---+---+---+---+---+---+---+---+
     | 63 ... 12 | 11 .. 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
     +----...----+---------+---+---+---+---+---+---+---+---+---+
-         PFN       Unused   S   D   A   G   U   X   W   R   P
+         PFN       Unused  DEV  D   A   G   U   X   W   R   P
 
        where:
         P: Present
@@ -247,7 +164,7 @@ we choose to follow the format described in the RiscV implementation.
         G: Global
         A: Accessed
         D: Dirty
-        S: Reserved for software
+        DEV: Device space mapping
         PFN: Page frame number (depends on page size)
 
 Fast TLB refill
