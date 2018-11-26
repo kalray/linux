@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -104,6 +105,10 @@ int foo(void)
 
 	DEFINE(ASM_PGDIR_SHIFT, PGDIR_SHIFT);
 	DEFINE(ASM_PMD_SHIFT, PMD_SHIFT);
+
+	DEFINE(ASM_PGDIR_BITS, PGDIR_BITS);
+	DEFINE(ASM_PMD_BITS, PMD_BITS);
+	DEFINE(ASM_PTE_BITS, PTE_BITS);
 
 	DEFINE(ASM_PTRS_PER_PGD, PTRS_PER_PGD);
 	DEFINE(ASM_PTRS_PER_PMD, PTRS_PER_PMD);
