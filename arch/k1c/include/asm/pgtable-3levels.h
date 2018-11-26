@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
@@ -33,6 +34,10 @@ typedef struct {
 
 /* Number of entries in the page global directory */
 #define PTRS_PER_PMD    (PAGE_SIZE / sizeof(pmd_t))
+
+#define _PGDIR_BITS	10
+#define _PMD_BITS	9
+#define _PTE_BITS	9
 
 /**
  * PUD

@@ -158,11 +158,16 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	if (vma && (mm != vma->vm_mm))
 		return;
 
-	/* Get the ASN */
+	/*
+	 * Get the ASN:
+	 * ASN is equal to 0 only if address belongs to kernel space. Otherwise
+	 * we don't care because kernel pages are globals and thus ASN is
+	 * ignored.
+	 */
 	asn = MMU_EXTRACT_ASN(mm->context.asn[cpu]);
-	if (asn < 1)
-		panic("%s: ASN [%u] is not properly set on CPU %d\n",
-		      __func__, asn, cpu);
+	if ((asn == 0) && (address < PAGE_OFFSET))
+		panic("%s: ASN [%u] is not properly set for address 0x%lx on CPU %d\n",
+		      __func__, asn, address, cpu);
 
 	pa = (unsigned int)k1c_access_perms[K1C_ACCESS_PERMS_INDEX(pte_val)];
 

@@ -90,8 +90,8 @@ config K1C_PHYS_OFFSET
 	default 0x100000000
 
 config K1C_PAGE_OFFSET
-	hex "RAM address of memory base"
-	default 0xFFFFFF0000000000
+	hex "kernel virtual address of memory base"
+	default 0xFFFFFF8000000000
 
 config STACK_MAX_DEPTH_TO_PRINT
 	int "Maximum depth of stack to print"
