@@ -29,16 +29,19 @@ class Pte(ctypes.Union):
 
 PTRSIZE = 8
 
+PGD_ENTRIES = 1 << constants.LX_PGDIR_BITS
+PMD_ENTRIES = 1 << constants.LX_PMD_BITS
+PTE_ENTRIES = 1 << constants.LX_PTE_BITS
+
 def extract_hexa(s):
     return map(lambda x:int(x, 16), re.findall(r'(0x[0-9a-f]+)',s))
 
-def do_lookup(base):
-    """Run x/512gx to look for the first 512 values. PGD, PMD and PTE are using
-       a page to store values of 8 bytes. Currently our pages are 4096 bytes so
-       we can store 512 values.
+def do_lookup(base, size=512):
+    """Run x/512gx to look for the first 512 values where 512 is the size
+       given as a parameter. PGD has a size different from others.
        It returns a list of pairs (adresses, value) found in the table.
     """
-    gdb_output = gdb.execute("x/512gx 0x{:016x}".format(base), True, True)
+    gdb_output = gdb.execute("x/{}gx 0x{:016x}".format(size, base), True, True)
 
     res = []
 
@@ -109,17 +112,17 @@ class LxPageTableWalk(gdb.Command):
         pgd = m[0]
         print "> Looking for PGD base 0x{:016x}\n".format(pgd)
 
-        for pgd_pair in do_lookup(pgd):
+        for pgd_pair in do_lookup(pgd, PGD_ENTRIES):
             gdb.write("[{}] -> Entry[0x{:016x}]\n".format(
                     (pgd_pair[0] - pgd)/PTRSIZE,
                     pgd_pair[1]))
             gdb.write("\t> Looking for PMD base 0x{:016x}\n".format(pgd_pair[1]))
-            for pmd_pair in do_lookup(pgd_pair[1]):
+            for pmd_pair in do_lookup(pgd_pair[1], PMD_ENTRIES):
                 gdb.write("\t[{}] -> Entry[0x{:016x}]\n".format(
                         (pmd_pair[0] - pgd_pair[1])/8,
                         pmd_pair[1]))
                 gdb.write("\t\t> Looking for PTE base 0x{:016x}\n".format(pmd_pair[1]))
-                for pte_pair in do_lookup(pmd_pair[1]):
+                for pte_pair in do_lookup(pmd_pair[1], PTE_ENTRIES):
                     gdb.write("\t\t[{}] -> PTE [0x{:016x}]\n".format(
                             (pte_pair[0] - pmd_pair[1])/8, pte_pair[1]))
                     gdb.write(get_pte_bits(pte_pair[1]))
