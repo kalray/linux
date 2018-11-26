@@ -21,8 +21,8 @@
 #define _PAGE_GLOBAL_SHIFT	5 /* Global */
 /*
  * PTE format:
- * | 63   9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0
- *   PFN     DEV  D   A   G   U   X   W   R   V
+ * | 63 ... 12 | 11 .. 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0
+ *      PFN               DEV  D   A   G   U   X   W   R   P
  */
 #define _PAGE_PRESENT   (1 << 0)
 #define _PAGE_READ      (1 << 1)    /* Readable */
