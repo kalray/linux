@@ -247,7 +247,7 @@ ENTRY(asm_rm_start_pe)
 	/* Start PE0 ! */
 	sd PWR_CTRL_WUP_SET_OFFSET[$r26] = $r28
 	/* Go to idle */
-	make $r20 = proc_power_off
+	make $r20 = rm_power_off
 	;;
 	igoto $r20
 	;;
@@ -370,3 +370,21 @@ ENTRY(proc_power_off)
 	goto 1b
 	;;
 ENDPROC(proc_power_off)
+
+/**
+ * This code will be put in rm_firmware section by default.
+ * If the rm_firmware section is overridden using another firmware,
+ * this default code will also be overridden.
+ */
+.section .rm_firmware.default, "ax", @progbits
+ENTRY(rm_power_off)
+	make $r1 = WS_WFXL_VALUE
+	;;
+	/* Enable STOP */
+	wfxl $ws, $r1
+	;;
+1:	stop
+	;;
+	goto 1b
+	;;
+ENDPROC(rm_power_off)
