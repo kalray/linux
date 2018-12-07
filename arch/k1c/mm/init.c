@@ -31,6 +31,8 @@ pgd_t swapper_pg_dir[PTRS_PER_PGD];
 struct page *empty_zero_page;
 EXPORT_SYMBOL(empty_zero_page);
 
+extern char _start[];
+
 static void __init zone_sizes_init(void)
 {
 	unsigned long zones_size[MAX_NR_ZONES];
@@ -127,9 +129,8 @@ static void __init setup_bootmem(void)
 	init_mm.brk = (unsigned long)_end;
 
 	/* kernel means text + data here */
-	kernel_start = __pa(init_mm.start_code);
+	kernel_start = __pa(_start);
 	kernel_end = __pa(init_mm.brk);
-	memory_start = memory_end = 0;
 
 	/* Find the memory region containing the kernel */
 	for_each_memblock(memory, region) {
@@ -139,10 +140,10 @@ static void __init setup_bootmem(void)
 		/* Check that this memblock includes the kernel */
 		if (memory_start <= kernel_start && kernel_end <= memory_end) {
 
-			pr_info("%s: Memory  : 0x%lx - 0x%lx\n", __func__,
+			pr_info("%15s: memory  : 0x%lx - 0x%lx\n", __func__,
 				(unsigned long)memory_start,
 				(unsigned long)memory_end);
-			pr_info("%s: Reserved: 0x%lx - 0x%lx\n", __func__,
+			pr_info("%15s: reserved: 0x%lx - 0x%lx\n", __func__,
 				(unsigned long)kernel_start,
 				(unsigned long)kernel_end);
 
@@ -159,7 +160,7 @@ static void __init setup_bootmem(void)
 	min_low_pfn = PFN_UP(memory_start);
 
 	/* max_low_pfn indicates the end if NORMAL zone */
-	max_low_pfn = PFN_DOWN(memblock_end_of_DRAM());
+	max_low_pfn = PFN_DOWN(memblock_end_of_DRAM() - 1);
 
 	/* Set the maximum number of pages in the system */
 	set_max_mapnr(max_low_pfn - min_low_pfn);
