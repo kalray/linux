@@ -331,7 +331,7 @@ _restore_regs:
 	addx8d $r2 = $r3, $r1
 	;;
 	/* Extract page global bit */
-	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT + 1, _PAGE_GLOBAL_SHIFT
+	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT, _PAGE_GLOBAL_SHIFT
 	/* Set the TLB way in $mmc value */
 	insf $r6 = $r0, K1C_SFR_MMC_SW_SHIFT + 3, K1C_SFR_MMC_SW_SHIFT
 	/* If bit 0 of pte entry is 0, then entry is not present */
