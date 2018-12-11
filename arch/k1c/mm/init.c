@@ -13,6 +13,7 @@
 #include <linux/of_fdt.h>
 #include <linux/sched.h>
 #include <linux/init.h>
+#include <linux/initrd.h>
 #include <linux/pfn.h>
 #include <linux/mm.h>
 
@@ -116,6 +117,46 @@ void __init paging_init(void)
 	zone_sizes_init();
 }
 
+#ifdef CONFIG_BLK_DEV_INITRD
+static int __init early_initrd(char *p)
+{
+	unsigned long start, size;
+	char *endp;
+
+	start = memparse(p, &endp);
+	if (*endp == ',') {
+		size = memparse(endp + 1, NULL);
+
+		initrd_start = (unsigned long)__va(start);
+		initrd_end = (unsigned long)__va(start + size);
+	}
+	return 0;
+}
+early_param("initrd", early_initrd);
+
+static void __init setup_initrd(void)
+{
+	if (initrd_start >= initrd_end) {
+		pr_info("%s: initrd not found or empty", __func__);
+		return;
+	}
+
+	if (__pa(initrd_end) > PFN_PHYS(max_low_pfn)) {
+		pr_err("%s: initrd extends beyond end of memory, disabling it",
+		       __func__);
+		initrd_start = initrd_end = 0;
+	}
+
+	if (initrd_start) {
+		pr_info("%15s: initrd  : 0x%lx - 0x%lx\n", __func__,
+			(unsigned long)initrd_start,
+			(unsigned long)initrd_end);
+		memblock_reserve(__pa(initrd_start), initrd_end - initrd_start);
+		initrd_below_start_ok = 1;
+	}
+}
+#endif
+
 static void __init setup_bootmem(void)
 {
 	struct memblock_region *region;
@@ -164,6 +205,10 @@ static void __init setup_bootmem(void)
 
 	/* Set the maximum number of pages in the system */
 	set_max_mapnr(max_low_pfn - min_low_pfn);
+
+#ifdef CONFIG_BLK_DEV_INITRD
+	setup_initrd();
+#endif
 
 	early_init_fdt_scan_reserved_mem();
 
