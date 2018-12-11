@@ -157,11 +157,11 @@ static int __init k1c_setup_core_timer(struct device_node *np)
 		return err;
 	}
 
-	err = cpuhp_setup_state(CPUHP_AP_K1C_TIMER_STARTING,
-				"AP_K1C_TIMER_STARTING",
+	err = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
+				"k1c/time:online",
 				k1c_timer_starting_cpu,
 				k1c_timer_dying_cpu);
-	if (err) {
+	if (err < 0) {
 		pr_err("k1c_core_timer: Failed to setup hotplug state");
 		return err;
 	}
