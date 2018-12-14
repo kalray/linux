@@ -113,7 +113,7 @@ static int k1c_timer_starting_cpu(unsigned int cpu)
 	/* Enable timer interrupt */
 	k1c_sfr_set_bit(K1C_SFR_TC, K1C_SFR_TC_T0IE_SHIFT);
 
-	enable_percpu_irq(k1c_timer_irq, 0);
+	enable_percpu_irq(k1c_timer_irq, IRQ_TYPE_NONE);
 
 	return 0;
 }
