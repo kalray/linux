@@ -15,8 +15,6 @@
 
 #include <asm/sfr_defs.h>
 
-#define ES_CLASS_INTERRUPT	0x2
-
 #define wfxl(_sfr, _val)	__builtin_k1_wfxl(_sfr, _val)
 
 #define wfxm(_sfr, _val)	__builtin_k1_wfxm(_sfr, _val)
