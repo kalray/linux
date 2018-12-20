@@ -178,7 +178,7 @@ def get_current_task(cpu):
     elif utils.is_target_arch("kvx"):
          if cpu != -1:
               raise gdb.GdbError("Only current cpu is supported for lx_current")
-         var_ptr = gdb.parse_and_eval("(struct task_struct *) $sr0")
+         var_ptr = gdb.parse_and_eval("(struct task_struct *) $sr")
          return var_ptr.dereference()
     else:
         raise gdb.GdbError("Sorry, obtaining the current task is not yet "
