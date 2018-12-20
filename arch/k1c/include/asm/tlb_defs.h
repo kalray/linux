@@ -58,14 +58,15 @@
 #define TLB_G_GLOBAL	1
 #define TLB_G_USE_ASN	0
 
-#define TLB_MK_TEH_ENTRY(_vaddr, _ps, _global, _asn) \
-	(((_ps) << K1C_SFR_TEH_PS_SHIFT) | \
+#define TLB_MK_TEH_ENTRY(_vaddr, _vs, _global, _asn) \
+	(((_vs) << K1C_SFR_TEH_VS_SHIFT) | \
 	((_global) << K1C_SFR_TEH_G_SHIFT) | \
 	((_asn) << K1C_SFR_TEH_ASN_SHIFT) | \
 	(((_vaddr) >> K1C_SFR_TEH_PN_SHIFT) << K1C_SFR_TEH_PN_SHIFT))
 
-#define TLB_MK_TEL_ENTRY(_paddr, _es, _cp, _pa) \
+#define TLB_MK_TEL_ENTRY(_paddr, _ps, _es, _cp, _pa) \
 	(((_es) << K1C_SFR_TEL_ES_SHIFT) | \
+	((_ps) << K1C_SFR_TEL_PS_SHIFT) | \
 	((_cp) << K1C_SFR_TEL_CP_SHIFT) | \
 	((_pa) << K1C_SFR_TEL_PA_SHIFT) | \
 	(((_paddr) >> K1C_SFR_TEL_FN_SHIFT) << K1C_SFR_TEL_FN_SHIFT))
@@ -75,8 +76,7 @@
  * LTLB fixed entry index
  */
 #define LTLB_ENTRY_KERNEL_TEXT	0
-#define LTLB_ENTRY_DSU		1
-#define LTLB_ENTRY_EARLY_SMEM	2
+#define LTLB_ENTRY_EARLY_SMEM	1
 
 #ifndef __ASSEMBLY__
 #include <asm/mmu.h>
@@ -93,8 +93,14 @@ static inline struct k1c_tlb_format tlb_mk_entry(
 {
 	struct k1c_tlb_format entry;
 
-	entry.teh_val = TLB_MK_TEH_ENTRY((uintptr_t) vaddr, ps, global, asn);
-	entry.tel_val = TLB_MK_TEL_ENTRY((uintptr_t) paddr, es, cp, pa);
+	/**
+	 * 0 matches the virtual space:
+	 * - either we are virtualized and the hypervisor will set it
+	 * for us when using writetlb
+	 * - Or we are native and the virtual space is 0
+	 */
+	entry.teh_val = TLB_MK_TEH_ENTRY((uintptr_t) vaddr, 0, global, asn);
+	entry.tel_val = TLB_MK_TEL_ENTRY((uintptr_t) paddr, ps, es, cp, pa);
 
 	return entry;
 }
