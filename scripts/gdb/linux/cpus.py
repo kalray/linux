@@ -173,7 +173,7 @@ number. If CPU is omitted, the CPU of the current context is used."""
         if utils.is_target_arch("k1:k1c"):
             if cpu != -1:
                 raise gdb.GdbError("Only current cpu is supported for lx_current")
-            var_ptr = gdb.parse_and_eval("(struct task_struct *) $sr0")
+            var_ptr = gdb.parse_and_eval("(struct task_struct *) $sr")
             return var_ptr.dereference()
         else:
             var_ptr = gdb.parse_and_eval("&current_task")

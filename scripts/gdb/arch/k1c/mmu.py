@@ -65,19 +65,20 @@ class LxDecodetlb(gdb.Command):
         super(LxDecodetlb, self).__init__("lx-k1c-tlb-decode", gdb.COMMAND_DATA)
 
     def invoke(self, argument, from_tty):
-        page_size_value = get_reg_value("$teh.ps")
+        page_size_value = get_reg_value("$tel.ps")
         page_size_shift = ps_shift[page_size_value]
-        gdb.write('tel:\n\tes:\t{es}\n\tcp:\t{cp}\n\tpa:\t{pa}\n\tfn:\t0x{fn:016x}\n'.format(
+        gdb.write('tel:\n\tes:\t{es}\n\tcp:\t{cp}\n\tpa:\t{pa}\n\tps:\t{ps}\n\tfn:\t0x{fn:016x}\n'.format(
                               es=es_value[get_reg_value("$tel.es")],
                               cp=cp_value[get_reg_value("$tel.cp")],
                               pa=pa_value[get_reg_value("$tel.pa")],
+                              ps=ps_value[page_size_value],
                               fn=get_reg_value("$tel.fn"),
                           ))
 
-        gdb.write('teh:\n\tasn:\t{asn}\n\tg:\t{toto}\n\tps:\t{ps}\n\tpn:\t0x{pn:016x}\n'.format(
+        gdb.write('teh:\n\tasn:\t{asn}\n\tg:\t{toto}\n\tvs:\t{vs}\n\tpn:\t0x{pn:016x}\n'.format(
                               asn=get_reg_value("$teh.asn"),
                               toto=g_value[get_reg_value("$teh.g")],
-                              ps=ps_value[page_size_value],
+                              vs=get_reg_value("$teh.vs"),
                               pn=get_reg_value("$teh.pn"),
                           ))
 
