@@ -57,14 +57,15 @@ struct __attribute__((__packed__)) tlb_entry_low {
 	unsigned int es:2;       /* Entry Status */
 	unsigned int cp:2;       /* Cache Policy */
 	unsigned int pa:4;       /* Protection Attributes */
-	unsigned int reserved:4; /* as the name suggests */
+	unsigned int reserved:2; /* as the name suggests */
+	unsigned int ps:2;       /* Page Size */
 	unsigned int fn:28;      /* Frame Number */
 };
 
 struct __attribute__((__packed__)) tlb_entry_high {
 	unsigned int asn:9;  /* Adress Space Number */
 	unsigned int g:1;    /* Global Indicator */
-	unsigned int ps:2;   /* Page Size */
+	unsigned int vs:2;   /* Virtual Space */
 	unsigned int pn:29;  /* Page Number */
 };
 
