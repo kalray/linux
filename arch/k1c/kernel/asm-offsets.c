@@ -53,6 +53,7 @@ int foo(void)
 	OFFSET(PT_R13, pt_regs, r13);
 	OFFSET(PT_R14R15, pt_regs, r14);
 	OFFSET(PT_FP, pt_regs, fp);
+	OFFSET(PT_SPS, pt_regs, sps);
 
 	/* Quad description */
 	OFFSET(PT_Q0, pt_regs, r0);

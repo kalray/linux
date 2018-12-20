@@ -49,6 +49,22 @@ because once we are really running in virtual space we don't need it anymore.
 This entry is then reused to map devices mmu entry. This mapping is used for
 ioremap.
 
+Privilege Level
+================
+Since we are using privilege levels on k1, we make use of the virtual
+spaces to be in the same space as the user. The kernel will have the
+$ps.mmup set in kernel (PL1) and unset for user (PL2).
+As said in k1c documentation, we have two cases when the kernel is
+booted:
+- Either we have been booted by someone (bootloader, hypervisor, etc)
+- Or we are alone (boot from flash)
+
+In both cases, we will use the virtual space 0. Indeed, if we are alone
+on the core, then it means nobody is using the MMU and we can take the
+first virtual space. If not alone, then when writing an entry to the tlb
+using writetlb instruction, the hypervisor will catch it and change the
+virtual space accordingly.
+
 Memblock
 ========
 
