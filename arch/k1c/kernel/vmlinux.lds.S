@@ -8,6 +8,7 @@
 
 
 #include <asm/thread_info.h>
+#include <asm/sys_arch.h>
 #include <asm/cache.h>
 #include <asm/page.h>
 
@@ -21,6 +22,23 @@
 OUTPUT_FORMAT("elf64-k1")
 OUTPUT_ARCH(k1:k1c:64)
 ENTRY(k1c_start)
+
+#define HANDLER_SECTION(__sec, __name) \
+	__sec ## _ ## __name ## _start = .; \
+	KEEP(*(.##__sec ##.## __name)); \
+	. = __sec ## _ ##__name ## _start + EXCEPTION_STRIDE;
+
+/**
+ * Generate correct section positioning for exception handling
+ * Since we need it twice for early exception handler and normal
+ * exception handler, factorize it here.
+ */
+#define EXCEPTION_SECTIONS(__sec) \
+	_ ## __sec ## _start = ABSOLUTE(.); \
+	HANDLER_SECTION(__sec,debug) \
+	HANDLER_SECTION(__sec,trap) \
+	HANDLER_SECTION(__sec,interrupt) \
+	HANDLER_SECTION(__sec,syscall)
 
 jiffies = jiffies_64;
 SECTIONS
@@ -51,28 +69,7 @@ SECTIONS
 	.exception ALIGN(EXCEPTION_ALIGNMENT) :
 				AT(ADDR(.exception) - LOAD_OFFSET)
 	{
-		_exception_start = ABSOLUTE(.);
-		/**
-		 * First handler is at _exception_start + EXCEPTION_STRIDE
-		 * In order to force getting to the next stride, add at
-		 * least 1 byte of data. The next ALIGN will then be
-		 * forced to get to the next stride.
-		 */
-		. += 1;
-		. = ALIGN(EXCEPTION_STRIDE);
-
-		/* Entry for traps */
-		KEEP(*(.exception.trap));
-		. += 1;
-
-		/* Entry for interrupts */
-		. = ALIGN(EXCEPTION_STRIDE);
-		KEEP(*(.exception.interrupt));
-		. += 1;
-
-		/* Entry for syscall */
-		. = ALIGN(EXCEPTION_STRIDE);
-		KEEP(*(.exception.syscall));
+		EXCEPTION_SECTIONS(exception)
 	}
 
 	__init_begin = .;
@@ -80,7 +77,7 @@ SECTIONS
 	.early_exception ALIGN(EXCEPTION_ALIGNMENT) :
 				AT(ADDR(.early_exception) - LOAD_OFFSET)
 	{
-		KEEP(*(.early_exception.handler));
+		EXCEPTION_SECTIONS(early_exception)
 	}
 
 	HEAD_TEXT_SECTION
