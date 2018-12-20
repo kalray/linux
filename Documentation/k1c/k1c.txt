@@ -8,11 +8,48 @@ Regarding the peripheral, we MUST use device tree to describe ALL
 peripherals. The bindings should always start with "kalray,k1c" for all
 core related peripherals (watchdog, timer, etc)
 
-System
-======
+System Architecture
+===================
 
-sr0 will hold the current task_struct. This register is reserved and
-should not be touched by any other code.
+On k1c, we have 4 levels of privilege level starting from 0 (most
+privileged one) to 3 (less privilege one). A system of owners allows
+to delegate ownership of resources by using specials system registers.
+
+The 2 main software stacks for Linux Kernel are the following:
+
++-------------+       +-------------+
+| PL0: Debug  |       | PL0: Debug  |
++-------------+       +-------------+
+| PL1: Linux  |       | PL1: HyperV |
++-------------+       +-------------+
+| PL2: User   |       | PL2: Linux  |
++-------------+       +-------------+
+|             |       | PL3: User   |
++-------------+       +-------------+
+
+In both cases, the k1c support for privileges has been designed using
+only relative PL and thus should work on both configurations without
+any modifications.
+
+When booting, the CPU is executing in PL0 and owns all the privileges.
+This level is almost dedicated to the debug routines for the debugguer.
+It only needs to own few privileges (breakpoint 0 and watchpoint 0) to
+be able to debug a system executing in PL1 to PL3.
+Debug routines are not always there for instance when the kernel is
+executing alone (booted from flash).
+In order to ease the load of debug routines, software convention is to
+jump directly to PL1 and let PL0 for the debug.
+When the kernel boots, it checks if the current privilege level is 0
+($ps.pl is the only absolute value). If so, then it will delegate
+almost all resources to PL1 and use a RFE to lower its execution
+privilege level (see asm_delegate_pl in head.S).
+If the current PL is already different from 0, then it means somebody
+already delegated us privileges and put us in a lower PL.
+All privileges levels have their set of banked registers (ps, ea, sps,
+sr, etc) which contain privilege level specific values.
+$sr (system reserved) is banked and will hold the current task_struct.
+This register is reserved and should not be touched by any other code.
+For more information, refer to the k1c system level architecture manual.
 
 Boot arguments
 ==============
