@@ -33,6 +33,26 @@ EXPORT_SYMBOL(memory_start);
 unsigned long memory_end;
 EXPORT_SYMBOL(memory_end);
 
+static void __init setup_user_privilege(void)
+{
+	/*
+	 * We want to let the user control various fields of ps:
+	 * - hardware loop
+	 * - instruction cache enable
+	 * - streaming enable
+	 */
+	uint64_t mask = K1C_SFR_PSOW_HLE_MASK |
+			K1C_SFR_PSOW_ICE_MASK |
+			K1C_SFR_PSOW_USE_MASK;
+
+	uint64_t value = (1 << K1C_SFR_PSOW_HLE_SHIFT) |
+			(1 << K1C_SFR_PSOW_ICE_SHIFT) |
+			(1 << K1C_SFR_PSOW_USE_SHIFT);
+
+	k1c_sfr_set_mask(K1C_SFR_PSOW, mask, value);
+
+}
+
 /*
  * Everything that needs to be setup PER cpu should be put here.
  * This function will be called by per-cpu setup routine.
@@ -40,7 +60,7 @@ EXPORT_SYMBOL(memory_end);
 static void setup_processor(void)
 {
 	/* Setup exception vector */
-	uint64_t ev_val = (uint64_t) &_exception_start | EXCEPTION_STRIDE;
+	uint64_t ev_val = (uint64_t) &_exception_start;
 
 	k1c_sfr_set(K1C_SFR_EV, ev_val);
 
@@ -53,7 +73,12 @@ static void setup_processor(void)
 	/* Make sure nobody disabled traps before booting and reenable them */
 	k1c_sfr_clear_bit(K1C_SFR_PS, K1C_SFR_PS_HTD_SHIFT);
 
+	/* Clear performance monitor 0 */
+	k1c_sfr_set_mask(K1C_SFR_PMC, K1C_SFR_PMC_PM0C_WFXL_MASK, 0);
+
 	k1c_init_core_irq();
+
+	setup_user_privilege();
 }
 
 void __init setup_arch(char **cmdline_p)

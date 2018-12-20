@@ -11,9 +11,6 @@
 
 #include <linux/const.h>
 
-#define EXCEPTION_STRIDE	0x400
-#define EXCEPTION_ALIGNMENT	0x1000
-
 #define PAGE_SHIFT		CONFIG_K1C_PAGE_SHIFT
 #define PAGE_SIZE		_BITUL(PAGE_SHIFT)
 #define PAGE_MASK		(~(PAGE_SIZE - 1))
