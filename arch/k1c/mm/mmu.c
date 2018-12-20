@@ -23,13 +23,14 @@ dump_tlb_entry(int dump_all, int dump_jtlb, int set, int way,
 	       struct k1c_tlb_format tlbf)
 {
 	if (dump_all || tlbf.tel.es != 0)
-		pr_info("%s[s:%02d w:%02d]: PN:%09lx | FN:%09lx | PS:%lu | G:%lu | ASN:%03lu | PA:%02lu | CP:%lu | ES:%lu\n",
+		pr_info("%s[s:%02d w:%02d]: PN:%09lx | FN:%09lx | PS:%lu | G:%lu | ASN:%03lu | VS:%02lu | PA:%02lu | CP:%lu | ES:%lu\n",
 			dump_jtlb ? "JTLB" : "LTLB", set, way,
 			(unsigned long)tlbf.teh.pn,
 			(unsigned long)tlbf.tel.fn,
-			(unsigned long)tlbf.teh.ps,
+			(unsigned long)tlbf.tel.ps,
 			(unsigned long)tlbf.teh.g,
 			(unsigned long)tlbf.teh.asn,
+			(unsigned long)tlbf.teh.vs,
 			(unsigned long)tlbf.tel.pa,
 			(unsigned long)tlbf.tel.cp,
 			(unsigned long)tlbf.tel.es);
@@ -111,8 +112,8 @@ void k1c_mmu_setup_initial_mapping(void)
 
 	supported_psize = MMC_PMJ_4K | MMC_PMJ_64K | MMC_PMJ_2M | MMC_PMJ_512M;
 
-	k1c_sfr_set_mask(K1C_SFR_MMC, K1C_SFR_MMC_PMJ_MASK,
-		(supported_psize << K1C_SFR_MMC_PMJ_SHIFT));
+	k1c_sfr_set_mask(K1C_SFR_PS, K1C_SFR_PS_PMJ_MASK,
+		(supported_psize << K1C_SFR_PS_PMJ_SHIFT));
 
 	cleanup_jtlb();
 

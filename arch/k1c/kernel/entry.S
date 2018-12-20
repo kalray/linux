@@ -14,10 +14,14 @@
 #include <asm/cache.h>
 #include <asm/page.h>
 #include <asm/pgtable-bits.h>
+#include <asm/sys_arch.h>
 #include <asm/sfr_defs.h>
 #include <asm/tlb_defs.h>
 #include <asm/traps.h>
 #include <asm/unistd.h>
+
+/* Mask to replicate data from 32bits LSB to MSBs */
+#define REPLICATE_32_MASK 0x0804020108040201
 
 #define PS_HWLOOP_ENABLE	(K1C_SFR_PS_HLE_MASK << 32)
 #define PS_HWLOOP_EN_ET_EN	\
@@ -33,6 +37,9 @@
 
 .altmacro
 
+#define TEL_DEFAULT_VALUE  ((ASM_TLB_PS << K1C_SFR_TEL_PS_SHIFT) | \
+			(TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT))
+
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 .section .rodata
 stack_error_panic_str_label:
@@ -40,37 +47,41 @@ stack_error_panic_str_label:
 #endif
 
 /**
- * Save quad registers
- * After call, the quad is saved in task_struct.thread.save_area
- * morevoer sr_swap_reg contains the value of sr0
+ * save_quad_regs: Save quad registers in temporary thread area
+ * After call, the quad is saved in task_struct.thread.save_area.
+ * sr_swap_reg is only used as a temporary value and will be
+ * restored after returning from this macro
+ *
+ * quad: 	Quad to saved
+ * sr_swap_reg:	Register used for sr swap and quad saving.
  */
 .macro save_quad_regs quad sr_swap_reg
-	set $sr1 = \sr_swap_reg
-	;;
-	/* Get task_struct */
-	get \sr_swap_reg = $sr0
+	rswap \sr_swap_reg = $sr
 	;;
 	/* Save registers in save_area */
 	so TASK_THREAD_SAVE_AREA[\sr_swap_reg] = \quad
+	/* Restore register */
+	rswap \sr_swap_reg = $sr
+	;;
 .endm
 
 /**
  * Prepare and save registers for entry in kernel space.
- * sr_swap_reg is the register that has been cloberred right on entry
- * using save_quad_regs. It contains sr0 value but must be restored
- * scratch_reg is a free register to do stack checking
+ * using save_quad_regs.
+ * scratch_reg is a free register to do stack switching
  */
-.macro save_regs_for_exception sr_swap_reg scratch_reg task_reg saved_quad
+.macro save_regs_for_exception scratch_reg task_reg saved_quad
 	LOCAL _save_regs
 	get \scratch_reg = $sps
 	;;
-	/* Check if $sps.pm bit is set (ie in kernel mode) */
-	cb.odd \scratch_reg? _save_regs
+	/* Check if $sps.pl bit is 0 (ie in kernel mode)
+	 * if so, then we dont have to switch stack */
+	cb.even \scratch_reg? _save_regs
 	;;
 	/* Store current pointer to user pointer sp of thread_info */
 	sd TASK_THREAD_USER_SP[\task_reg] = $sp
 	;;
-	/* restore sp from kernel stack pointer and r48 from sr1 */
+	/* restore sp from kernel stack pointer */
 	ld $sp = TASK_THREAD_KERNEL_SP[\task_reg]
 	;;
 _save_regs:
@@ -81,7 +92,6 @@ _save_regs:
 	addd $sp = $sp, -(PT_SIZE_ON_STACK)
 	so (PT_Q4-PT_SIZE_ON_STACK)[$sp] = $r4r5r6r7
 	;;
-	get \sr_swap_reg = $sr1
 	so PT_Q8[$sp] = $r8r9r10r11
 	;;
 	so PT_Q12[$sp] = $r12r13r14r15
@@ -142,9 +152,11 @@ _save_regs:
 /**
  * Restore registers after exception
  * When entering this macro, $sp must be located right before regs
- * storage
+ * storage.
+ * sr_reg contains $sr value: Be careful not to use a restored register
+ * if you change it !
  */
-.macro restore_regs_after_exception sps_reg sr0_reg
+.macro restore_regs_after_exception sr_reg
 	LOCAL _restore_regs
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	LOCAL _check_ok
@@ -163,9 +175,15 @@ _check_ok:
 	addd $sp = $sp, REG_SIZE
 	;;
 #endif
-	/* Are we returning to userspace ? */
-	cb.odd \sps_reg? _restore_regs
-	ld $r1 = TASK_TI_FLAGS[\sr0_reg]
+	/* Load sps value from saved registers */
+	ld $r6 = PT_SPS[$sp]
+	;;
+	/* Check PL bit of sps, if set, then it means we are returning
+	 * to a lower privilege level (ie to user), if so, we need to
+	 * check work pending. If coming from kernel, directly go to
+	 * register restoration */
+	cb.even $r6? _restore_regs
+	ld $r1 = TASK_TI_FLAGS[\sr_reg]
 	;;
 	/* Do we have work pending ? */
 	andd $r5 = $r1, _TIF_WORK_MASK
@@ -188,15 +206,39 @@ _restore_regs:
 	lo $r60r61r62r63 = PT_Q60[$sp]
 	;;
 	lo $r56r57r58r59 = PT_Q56[$sp]
+	get $r11 = $sr
+	;;
+	/* Save r56r57r58r59 in temporary area to use them later in the
+	 * stack switching step */
+	so TASK_THREAD_SAVE_AREA[$r11] = $r56r57r58r59
 	;;
 	lo $r52r53r54r55 = PT_Q52[$sp]
+	/* Save sr in a register we saved before */
+	copyd $r56 = $r11
+	get $r14 = $sps
 	;;
 	lo $r48r49r50r51 = PT_Q48[$sp]
+	/* Generate a mask of ones at each bit where the current $sps
+	 * differs from the $sps to be restored
+	 */
+	xord $r14 = $r2, $r14
+	/* prepare wfxl clear mask on LSBs */
+	notd $r15 = $r2
+	/* prepare wfxl set mask on MSBs */
+	slld $r13 = $r2, 32
 	;;
 	lo $r44r45r46r47 = PT_Q44[$sp]
+	/* Replicate mask of ones on the 32 MSBs */
+	sbmm8 $r14 = $r14, REPLICATE_32_MASK
+	/* Combine the set and clear mask for wfxl */
+	insf  $r13 = $r15, 31, 0
 	;;
 	lo $r40r41r42r43 = PT_Q40[$sp]
 	set $lc = $r4
+	/* Mask to drop identical bits in order to avoid useless
+	 * privilege traps
+	 */
+	andd $r13 = $r13, $r14
 	;;
 	lo $r36r37r38r39 = PT_Q36[$sp]
 	set $le = $r5
@@ -214,30 +256,27 @@ _restore_regs:
 	set $spc = $r1
 	;;
 	lo $r16r17r18r19 = PT_Q16[$sp]
-	set $sps = $r2
+	wfxl $sps = $r13
 	;;
 	lq $r14r15 = PT_R14R15[$sp]
 	;;
 	ld $r13 = PT_R13[$sp]
-	/* Save r52 and r53 into srx */
-	set $sr1 = $r52
 	;;
 	lo $r8r9r10r11 = PT_Q8[$sp]
-	set $sr2 = $r53
+	get $r57 = $sps
 	;;
 	lo $r4r5r6r7 = PT_Q4[$sp]
-	/* in order to compute stack switching */
-	get $r52 = $sps
 	;;
 	lo $r0r1r2r3 = PT_Q0[$sp]
 	addd $sp = $sp, PT_SIZE_ON_STACK
-	get $r53 = $sr0
 	;;
-	/* Restore user stack pointer if sps.pm == 0 */
-	ld.even $r52? $sp = TASK_THREAD_USER_SP[$r53]
-	get $r52 = $sr1
+	/* Restore user stack pointer if sps.pl == 1 */
+	ld.odd $r57? $sp = TASK_THREAD_USER_SP[$r56]
 	;;
-	get $r53 = $sr2
+	/* Finally, restore $r56 and $r57 inplace using $r56 value
+	 * (current)
+	 */
+	lq $r56r57 = TASK_THREAD_SAVE_AREA[$r56]
 .endm
 
 /**
@@ -284,7 +323,7 @@ _restore_regs:
 	ld $r1 = MM_PGD[$r1]
 	;;
 	/* Extract processor ID to compute cpu_offset*/
-	extfz $r7 = $r7, 15, 11
+	extfz $r7 = $r7, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
 	/* Load PGD entry offset */
 	ld.xs $r1 = $r3[$r1]
 	/* Load per_cpu_offset */
@@ -321,8 +360,6 @@ _restore_regs:
 	lbz $r0 = $r5[$r7]
 	/* Clear way and select JTLB */
 	make $r6 = MMC_SEL_JTLB_CLEAR_WAY
-	/* Prepare teh */
-	ord $r4 = $r4, (ASM_TLB_PS << K1C_SFR_TEH_PS_SHIFT)
 	;;
 	/* Keep only the two LSB */
 	andd $r0 = $r0, 0x3
@@ -333,17 +370,18 @@ _restore_regs:
 	/* Extract page global bit */
 	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT, _PAGE_GLOBAL_SHIFT
 	/* Set the TLB way in $mmc value */
-	insf $r6 = $r0, K1C_SFR_MMC_SW_SHIFT + 3, K1C_SFR_MMC_SW_SHIFT
+	insf $r6 = $r0, K1C_SFR_END(MMC_SW), K1C_SFR_START(MMC_SW)
 	/* If bit 0 of pte entry is 0, then entry is not present */
 	cb.even $r1? _err_out
+	;;
+	/* Prepare MMC */
+	wfxl $mmc, $r6
 	;;
 	/* Shift global bit (if any) to its position */
 	slld $r3 = $r3, K1C_SFR_TEH_G_SHIFT
 	/* Increment way value, note that we do not care about overflow since
 	 * we only use the two lower byte */
 	addd $r0 = $r0, 1
-	/* Prepare MMC */
-	wfxl $mmc, $r6
 	make $r6 = k1c_access_perms
 	;;
 	/* Or teh value with global bit */
@@ -361,7 +399,7 @@ _restore_regs:
 	andd $r7 = $r1, _PAGE_DEVICE
 	/* Set page as accessed by setting pte flags */
 	ord $r1 = $r1, _PAGE_ACCESSED
-	ord $r0 = $r5, (TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT)
+	ord $r0 = $r5, TEL_DEFAULT_VALUE
 	;;
 	/* Shift PA to correct position */
 	slld $r6 = $r6, K1C_SFR_TEL_PA_SHIFT
@@ -378,7 +416,7 @@ _restore_regs:
 	/* Prepare tel */
 	ord $r6 = $r0, $r6
 	/* Add ASN from mmc */
-	insf $r4 = $r5, K1C_SFR_MMC_ASN_SHIFT + 8, K1C_SFR_MMC_ASN_SHIFT
+	insf $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
 	;;
 	/* Add cache policy to entry */
 	ord $r6 = $r6, $r3
@@ -397,31 +435,51 @@ _err_out:
 _out:
 .endm
 
+
+/***********************************************************************
+*                Exception vectors trampolines
+***********************************************************************/
+#define exception_trampoline(__type) \
+.section .exception.## __type, "ax", @progbits ;\
+ENTRY(k1c_##__type ##_handler_trampoline): ;\
+	goto k1c_## __type ##_handler ;\
+	;; ;\
+ENDPROC(k1c_ ## __type ## _handler_trampoline) ;\
+.section .early_exception.## __type, "ax", @progbits ;\
+ENTRY(k1c_## __type ##_early_handler): ;\
+1:	nop ;\
+	;; ;\
+	goto 1b ;\
+	;; ;\
+ENDPROC(k1c_ ## __type ## _early_handler)
+
+exception_trampoline(debug)
+exception_trampoline(trap)
+exception_trampoline(interrupt)
+exception_trampoline(syscall)
+
 /***********************************************************************
 *                      Traps handling
 ***********************************************************************/
 
-/**
- * There is nothing much we can do if we take a early trap since the
- * kernel  is not yet ready to handle them.
- * Register this as the early exception handler to at least avoid
- * going in a black hole.
- */
-.section .early_exception.handler, "ax", @progbits
-ENTRY(early_ev_handler)
-1: 	nop
+.text
+ENTRY(k1c_debug_handler):
+	goto k1c_debug_handler
 	;;
-	goto 1b
-	;;
-ENDPROC(early_ev_handler)
+ENDPROC(k1c_debug_handler)
 
-.section .exception.trap, "ax", @progbits
+/***********************************************************************
+*                      Traps handling
+***********************************************************************/
+.text
 ENTRY(k1c_trap_handler):
-	save_quad_regs $r0r1r2r3 $r0
+	/* Save r0r1r2r3 using $r4 as temporary */
+	save_quad_regs $r0r1r2r3 $r4
 	get $r3 = $es
 	;;
-	extfz $r3 = $r3, 7, 3 /* Hardware trap cause  */
-	copyd $r2 = $r0
+	/* Hardware trap cause  */
+	extfz $r3 = $r3, K1C_SFR_END(ES_HTC), K1C_SFR_START(ES_HTC)
+	get $r2 = $sr
 	;;
 	/* Is this a nomapping trap ? */
 	compd.eq $r3 = $r3, K1C_TRAP_NOMAPPING
@@ -433,7 +491,7 @@ ENTRY(k1c_trap_handler):
 	cb.odd $r3? fast_refill
 	;;
 slow_path:
-	save_regs_for_exception $r0 $r1 $r2 $r0r1r2r3
+	save_regs_for_exception $r1 $r2 $r0r1r2r3
 	;;
 	make $r8 = PS_HLE_EN
 	copyd $r2 = $sp
@@ -447,11 +505,9 @@ slow_path:
 	;;
 	call trap_handler
 	;;
-	get $r10 = $sps
+	get $r11 = $sr
 	;;
-	get $r11 = $sr0
-	;;
-	restore_regs_after_exception $r10 $r11
+	restore_regs_after_exception $r11
 	;;
 	rfe
 	;;
@@ -460,7 +516,7 @@ fast_refill:
 	so (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2] = $r4r5r6r7
 	macro_tlb_refill
 	;;
-	get $r2 = $sr0
+	get $r2 = $sr
 	;;
 	/* Was TLB refill successful ? */
 	cb.deqz $r0? slow_path
@@ -470,9 +526,6 @@ fast_refill:
 	/* Restore registers */
 	lo $r0r1r2r3 = TASK_THREAD_SAVE_AREA[$r2]
 	;;
-	/* $r0 was swapped with sr1 at start of exception */
-	get $r0 = $sr1
-	;;
 	rfe
 	;;
 ENDPROC(k1c_trap_handler)
@@ -480,11 +533,13 @@ ENDPROC(k1c_trap_handler)
 /***********************************************************************
 *                      Interrupts handling
 ***********************************************************************/
-.section .exception.interrupt, "ax", @progbits
+.text
 ENTRY(k1c_interrupt_handler):
-	save_quad_regs $r0r1r2r3 $r0
+	save_quad_regs $r0r1r2r3 $r4
 	;;
-	save_regs_for_exception $r0 $r1 $r0 $r0r1r2r3
+	get $r0 = $sr
+	;;
+	save_regs_for_exception $r1 $r0 $r0r1r2r3
 	;;
 	make $r8 = PS_HWLOOP_EN_ET_EN
 	copyd $r1 = $sp
@@ -496,14 +551,12 @@ ENTRY(k1c_interrupt_handler):
 	get $r0 = $es
 	;;
 	/* Extract interrupt number */
-	extfz $r0 = $r0, 7, 3
+	extfz $r0 = $r0, K1C_SFR_END(ES_ITN), K1C_SFR_START(ES_ITN)
 	call do_IRQ
 	;;
-	get $r10 = $sps
+	get $r11 = $sr
 	;;
-	get $r11 = $sr0
-	;;
-	restore_regs_after_exception $r10 $r11
+	restore_regs_after_exception $r11
 	;;
 	rfe
 	;;
@@ -512,7 +565,7 @@ ENDPROC(k1c_interrupt_handler)
 /***********************************************************************
 *                      Syscall handling
 ***********************************************************************/
-.section .exception.syscall, "ax", @progbits
+.text
 ENTRY(k1c_syscall_handler):
 	/**
 	 * Syscalls are seen as standard func call from ABI POV
@@ -523,7 +576,7 @@ ENTRY(k1c_syscall_handler):
 	 * Note that r0 -> r11 MUST not be used since they are
 	 * containing syscall parameters !
 	 * During this function:
-	 * r36 = sr0 = current
+	 * r36 = sr = current
 	 * r37 = current trace flag
 	 * r38 = syscall handler addr
 	 * r39 = current task flags
@@ -533,10 +586,10 @@ ENTRY(k1c_syscall_handler):
 	 */
 	get $r43 = $es
 	;;
-	get $r36 = $sr0
+	get $r36 = $sr
 	;;
 	/* Extract syscall number */
-	extfz $r32 = $r43, 14, 3
+	extfz $r32 = $r43, K1C_SFR_END(ES_SN), K1C_SFR_START(ES_SN)
 	make $r42 = sys_call_table
 	/* Store current user stack pointer sp of thread_info */
 	sd TASK_THREAD_USER_SP[$r36] = $sp
@@ -629,6 +682,7 @@ do_syscall:
 ret_to_user:
 	/* Restore registers */
 	lo $r60r61r62r63 = PT_LC_LE_LS_RA[$sp]
+	get $r33 = $sps
 	;;
 	lo $r40r41r42r43 = PT_CS_SPC_SPS_ES[$sp];
 	set $ra = $r63
@@ -638,14 +692,30 @@ ret_to_user:
 	 */
 	lo $r0r1r2r3 = PT_Q0[$sp]
 	set $cs = $r40
+	/* Generate a mask of ones at each bit where the current $sps
+	 * differs from the $sps to be restored
+	 */
+	xord $r33 = $r42, $r33
+	/* prepare wfxl clear mask on LSBs */
+	notd $r34 = $r42
+	/* prepare wfxl set mask on MSBs */
+	slld $r35 = $r42, 32
 	;;
 	ld $fp = PT_FP[$sp]
 	set $lc = $r60
+	/* Replicate mask of ones on the 32 MSBs */
+	sbmm8 $r33 = $r33, REPLICATE_32_MASK
+	/* Combine the set and clear mask for wfxl */
+	insf  $r35 = $r34, 31, 0
 	;;
 	lo $r4r5r6r7 = PT_Q4[$sp]
 	set $le = $r61
 	make $r60 = K1C_SFR_PS_IE_MASK
 	addd $sp = $sp, PT_SIZE_ON_STACK
+	/* Mask to drop identical bits in order to avoid useless
+	 * privilege traps
+	 */
+	andd $r35 = $r35, $r33
 	;;
 	/* Restore user pointer */
 	ld $sp = TASK_THREAD_USER_SP[$r36]
@@ -659,7 +729,7 @@ ret_to_user:
 	 */
 	wfxl $ps, $r60
 	;;
-	set $sps = $r42
+	wfxl $sps = $r35
 	;;
 	set $spc = $r41
 	;;
@@ -762,17 +832,16 @@ ENTRY(ret_from_fork)
 	call do_syscall_trace_exit
 	;;
 ret_from_kernel:
-	get $r11 = $sr0
+	get $r11 = $sr
 	/* Load stack pointer set by start_thread from registers */
 	ld $r18 = PT_R12[$sp]
 	;;
-	get $r10 = $sps
 	/* restore_regs_after_exception expect the user stack pointer
 	 * to be in TASK_THREAD_USER_SP[task] so store the one
 	 * we got from start_thread */
 	sd TASK_THREAD_USER_SP[$r11] = $r18
 	;;
-	restore_regs_after_exception $r10 $r11
+	restore_regs_after_exception $r11
 	;;
 	rfe
 	;;
@@ -812,7 +881,7 @@ ENTRY(__switch_to)
 	set $ra = $r16
 	;;
 	lo $r28r29r30r31 = CTX_SWITCH_Q28[$r1]
-	set $sr0 = $r1
+	set $sr = $r1
 	;;
 	ld $fp = CTX_SWITCH_FP[$r1]
 	;;
@@ -846,7 +915,7 @@ ENTRY(work_pending)
 	wfxl $ps, $r28
 	;;
 	copyd $r28 = $r0
-	get $r29 = $sr0
+	get $r29 = $sr
 	;;
 recheck:
 	/*

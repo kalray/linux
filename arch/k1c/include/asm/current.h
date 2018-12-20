@@ -18,7 +18,7 @@ struct task_struct;
 
 static __always_inline struct task_struct *get_current(void)
 {
-	return (struct task_struct *) k1c_sfr_get(K1C_SFR_SR0);
+	return (struct task_struct *) k1c_sfr_get(K1C_SFR_SR);
 }
 
 #define current get_current()
