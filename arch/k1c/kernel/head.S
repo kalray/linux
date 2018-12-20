@@ -3,12 +3,13 @@
  * License. See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc
+ * Copyright (C) 2018 Kalray Inc
  */
 #include <asm/thread_info.h>
 #include <asm/pwr_ctrl.h>
 #include <asm/sfr_defs.h>
-#include <asm/page.h>
+#include <asm/sys_arch.h>
+#include <asm/privilege.h>
 #include <asm/tlb_defs.h>
 #include <asm/mem_map.h>
 
@@ -21,19 +22,22 @@
 #define SECONDARY_START_ADDR	proc_power_off
 #endif
 
-/* Enable 64bits for both user and kernel */
-#define PS_ENABLE_64BIT		(K1C_SFR_PS_P64_MASK | K1C_SFR_PS_U64_MASK)
-/* Enable both ICache and DCache */
-#define PS_ENABLE_CACHES	(K1C_SFR_PS_DCE_MASK | K1C_SFR_PS_ICE_MASK)
-/* Enable MMU */
-#define PS_ENABLE_MMU		(K1C_SFR_PS_MME_MASK)
+#define PS_VAL_WFXL(__field, __val) \
+	SFR_SET_VAL_WFXL(PS, __field, __val)
 
-/* Enable also hardware loops and uncached streaming */
-#define PS_DEFAULT_VALUE	(K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_USE_MASK | \
-				 PS_ENABLE_CACHES | PS_ENABLE_64BIT | \
-				 K1C_SFR_PS_CE_MASK | PS_ENABLE_MMU)
-/* Shift the whole value to set the bits to set using wfxl */
-#define PS_WFXL_VALUE		((PS_DEFAULT_VALUE << 32) | K1C_SFR_PS_ET_MASK)
+#define PS_WFXL_VALUE	PS_VAL_WFXL(HLE, 1) | \
+			PS_VAL_WFXL(USE, 1) | \
+			PS_VAL_WFXL(DCE, 1) | \
+			PS_VAL_WFXL(ICE, 1) | \
+			PS_VAL_WFXL(MME, 1) | \
+			PS_VAL_WFXL(MMUP, 1) | \
+			PS_VAL_WFXL(ET, 0) | \
+			PS_VAL_WFXL(PMJ, 0xF)
+
+#define PCR_VAL_WFXM(__field, __val) \
+	SFR_SET_VAL_WFXM(PCR, __field, __val)
+
+#define PCR_WFXM_VALUE	PCR_VAL_WFXM(L1CE, 1)
 
 /* Enable STOP in WS */
 #define WS_ENABLE_WU2		(K1C_SFR_WS_WU2_MASK)
@@ -41,7 +45,7 @@
 #define WS_WFXL_VALUE		(WS_ENABLE_WU2)
 
 /* SMP stuff */
-#define RM_PID_MASK		((16) << K1C_SFR_PI_PID_SHIFT)
+#define RM_PID_MASK		((16) << K1C_SFR_PCR_PID_SHIFT)
 
 #define PWR_CTRL_ADDR 0xA40000
 
@@ -60,31 +64,25 @@
 
 /* Clean error and selected buffer */
 #define MMC_CLEAR_ERROR (K1C_SFR_MMC_E_MASK)
-#define MMC_SET_PMJ     ((0xF << K1C_SFR_MMC_PMJ_SHIFT) << 32)
 
 #define TEH_VIRTUAL_MEMORY \
-	TLB_MK_TEH_ENTRY(PAGE_OFFSET, TLB_PS_512M, TLB_G_GLOBAL, 0)
+	TLB_MK_TEH_ENTRY(PAGE_OFFSET, 0, TLB_G_GLOBAL, 0)
 
 #define TEL_VIRTUAL_MEMORY \
-	TLB_MK_TEL_ENTRY(PHYS_OFFSET, TLB_ES_A_MODIFIED,\
+	TLB_MK_TEL_ENTRY(PHYS_OFFSET, TLB_PS_512M, TLB_ES_A_MODIFIED,\
 	TLB_CP_W_C, TLB_PA_NA_RWX)
 
 /* (TEH|TEL)_SHARED_MEMORY are mapping 0x0 to 0x0 */
 #define TEH_SHARED_MEMORY \
-	TLB_MK_TEH_ENTRY(0, TLB_PS_2M, TLB_G_GLOBAL, 0)
+	TLB_MK_TEH_ENTRY(0, 0, TLB_G_GLOBAL, 0)
 
 #define TEL_SHARED_MEMORY \
-	TLB_MK_TEL_ENTRY(0, TLB_ES_A_MODIFIED,\
+	TLB_MK_TEL_ENTRY(0, TLB_PS_2M, TLB_ES_A_MODIFIED,\
 	TLB_CP_W_C, TLB_PA_NA_RWX)
 
-/* (TEH|TEL)_DSU_MEMORY for DSU debug routine */
-#define TEH_DSU_MEMORY \
-	TLB_MK_TEH_ENTRY(DSU_MAP_BASE, TLB_PS_64K, TLB_G_GLOBAL, 0)
-
-#define TEL_DSU_MEMORY \
-	TLB_MK_TEL_ENTRY(PWR_CTRL_ADDR, TLB_ES_A_MODIFIED,\
-	TLB_CP_D_U, TLB_PA_NA_RWX)
-
+/**
+ * Macros
+ */
 .altmacro
 
 /* To select the JTLB we clear SB from MMC */
@@ -152,7 +150,11 @@ __HEAD
 .section .boot.startup, "ax", @progbits
 
 ENTRY(k1c_start)
+	/* Setup 64 bit really early to avoid bugs */
+	make $r21 = PS_VAL_WFXL(V64, 1)
 	get $r20 = $pcr
+	;;
+	wfxl $ps = $r21
 	;;
 	andd $r21 = $r20, RM_PID_MASK
 	;;
@@ -161,18 +163,24 @@ ENTRY(k1c_start)
 	call asm_rm_start_pe
 	;;
 init_core:
-	/* (Re)initialize performance counter */
-	make $r20 = 0x00000000
-	;;
-	set $pmc = $r20
+	call asm_init_pl
 	;;
 	call asm_init_mmu
 	;;
 	/* Setup default processor status */
 	make $r25 = PS_WFXL_VALUE
-	make $r26 = early_ev_handler
+	make $r26 = PCR_WFXM_VALUE
+	/**
+	 * There is nothing much we can do if we take a early trap since the
+	 * kernel is not yet ready to handle them.
+	 * Register this as the early exception handler to at least avoid
+	 * going in a black hole.
+	 */
+	make $r27 = _early_exception_start
 	;;
-	set $ev = $r26
+	set $ev = $r27
+	;;
+	wfxm $pcr = $r26
 	;;
 	wfxl $ps = $r25
 	;;
@@ -182,7 +190,7 @@ gdb_mmu_enabled:
 	/* Extract processor identifier */
 	get $r24 = $pcr
 	;;
-	extfz $r24 = $r24, 15, 11
+	extfz $r24 = $r24, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
 	;;
 	/* If proc 0, then go to clear bss and do normal boot */
 	cb.deqz $r24? clear_bss
@@ -216,7 +224,7 @@ clear_bss:
 	make $r40 = init_thread_union
 	make $r41 = init_task
 	;;
-	set $sr0 = $r41
+	set $sr = $r41
 	;;
 	addd $sp = $r40, THREAD_SIZE
 	/* Clear frame pointer */
@@ -254,10 +262,79 @@ ENTRY(asm_rm_start_pe)
 ENDPROC(asm_rm_start_pe)
 
 /**
+ * Initialize privilege level for Kernel
+ */
+ENTRY(asm_init_pl)
+	get $r21 = $ps
+	;;
+	/* Extract privilege level from $ps to check if we need to
+	 * lower our privilege level
+	 */
+	extfz $r20 = $r21, K1C_SFR_END(PS_PL), K1C_SFR_START(PS_PL)
+	;;
+	/* If our pviliege level is not 0 (ie we are already in a less
+	 * privilege level, then, somebody take care of setting the
+	 * ring settings for us and we can return directly
+	 */
+	cb.deqz $r20? delegate_pl
+	;;
+	ret
+	;;
+delegate_pl:
+	make $r21 = SYO_WFXL_VALUE
+	;;
+	wfxl $syow = $r21
+	;;
+	make $r21 = HTO_WFXL_VALUE
+	;;
+	wfxl $htow = $r21
+	;;
+	make $r21 = DO_WFXL_VALUE
+	;;
+	wfxl $dow = $r21
+	;;
+	make $r21 = MO_WFXL_VALUE
+	make $r22 = MO_WFXM_VALUE
+	;;
+	wfxl $mow = $r21
+	;;
+	wfxm $mow = $r22
+	;;
+	make $r21 = ITO_WFXL_VALUE
+	make $r22 = ITO_WFXM_VALUE
+	;;
+	wfxl $itow = $r21
+	;;
+	wfxm $itow = $r22
+	;;
+	make $r21 = PSO_WFXL_VALUE
+	make $r22 = PSO_WFXM_VALUE
+	;;
+	wfxl $psow = $r21
+	;;
+	wfxm $psow = $r22
+	;;
+	/* Copy our $ps into $sps for 1:1 restoration */
+	get $r22 = $ps
+	;;
+	/* We will return to $ra after rfe */
+	get $r21 = $ra
+	/* Set privilege level to +1 is $sps */
+	addd $r22 = $r22, PL_KERNEL_REL_LEVEL
+	;;
+	set $spc = $r21
+	;;
+	set $sps = $r22
+	;;
+	rfe
+	;;
+ENDPROC(asm_init_pl)
+
+/**
  * Reset and initialize minimal tlb entries
  */
 ENTRY(asm_init_mmu)
-	make $r20 = MMC_SET_PMJ | MMC_CLEAR_ERROR
+	make $r20 = MMC_CLEAR_ERROR
 	;;
 	wfxl $mmc = $r20
 	;;
@@ -318,13 +395,6 @@ ENTRY(asm_init_mmu)
 	;;
 	write_tlb_entry $r20, $r21
 	;;
-	select_way_from_immediate LTLB_ENTRY_DSU, $r20, $r21
-	;;
-	make $r20 = TEH_DSU_MEMORY
-	make $r21 = TEL_DSU_MEMORY
-	;;
-	write_tlb_entry $r20, $r21
-	;;
 	select_way_from_immediate LTLB_ENTRY_EARLY_SMEM, $r20, $r21
 	;;
 	make $r20 = TEH_SHARED_MEMORY
@@ -351,7 +421,7 @@ ENTRY(smp_secondary_start)
 	;;
 	ld.xs $r25 = $r24[$r25]
 	;;
-	set $sr0 = $r25
+	set $sr = $r25
 	make $r26 = start_kernel_secondary
 	;;
 	icall $r26
