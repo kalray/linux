@@ -136,7 +136,10 @@ struct pt_regs {
 
 #define user_stack_pointer(regs)	((regs)->sp)
 #define instruction_pointer(regs)	((regs)->spc)
-#define user_mode(regs)	(((regs)->sps & K1C_SFR_PS_PM_MASK) == 0)
+#define pl(__reg) ((__reg & K1C_SFR_PS_PL_MASK) >> K1C_SFR_PS_PL_SHIFT)
+
+/* Privilege level is relative in $sps, so 1 indicates current PL + 1 */
+#define user_mode(regs)	(pl((regs)->sps) == 1)
 #define es_ec(regs) ((regs->es & K1C_SFR_ES_EC_MASK) >> K1C_SFR_ES_EC_SHIFT)
 #define es_sysno(regs) ((regs->es & K1C_SFR_ES_SN_MASK) >> K1C_SFR_ES_SN_SHIFT)
 

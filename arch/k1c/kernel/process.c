@@ -73,8 +73,12 @@ void start_thread(struct pt_regs *regs,
 	regs->sp = sp;
 	regs->sps = k1c_sfr_get(K1C_SFR_PS);
 
-	/* Clear user mode */
-	regs->sps &= ~K1C_SFR_PS_PM_MASK;
+	/* Remove MMUP bit (user is not privilege in current virtual space) */
+	regs->sps &= ~K1C_SFR_PS_MMUP_MASK;
+
+	/* Set privilege level to +1 (relative) */
+	regs->sps &= ~K1C_SFR_PS_PL_MASK;
+	regs->sps |= (1 << K1C_SFR_PS_PL_SHIFT);
 
 	set_fs(USER_DS);
 }
