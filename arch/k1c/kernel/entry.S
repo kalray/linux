@@ -69,44 +69,63 @@ stack_error_panic_str_label:
  * Prepare and save registers for entry in kernel space.
  * using save_quad_regs.
  * scratch_reg is a free register to do stack switching
+ * This scratch reg must be in the saved_quad since it will be restored
+ * after using it.
  */
 .macro save_regs_for_exception scratch_reg task_reg saved_quad
+.if (\saved_quad==$r4r5r6r7 || \saved_quad==$r60r61r62r63)
+.error "saved_quad must not be $r4r5r6r7 or $r60r61r62r63 !"
+.endif
 	LOCAL _save_regs
 	get \scratch_reg = $sps
 	;;
 	/* Check if $sps.pl bit is 0 (ie in kernel mode)
 	 * if so, then we dont have to switch stack */
 	cb.even \scratch_reg? _save_regs
-	;;
-	/* Store current pointer to user pointer sp of thread_info */
-	sd TASK_THREAD_USER_SP[\task_reg] = $sp
+	/* Copy original $sp in the scratch reg */
+	copyd \scratch_reg = $sp
 	;;
 	/* restore sp from kernel stack pointer */
 	ld $sp = TASK_THREAD_KERNEL_SP[\task_reg]
 	;;
 _save_regs:
-	/* Reload the saved quad registers to save correct values */
-	lo \saved_quad = TASK_THREAD_SAVE_AREA[\task_reg]
-	;;
 	/* make some room on stack to save registers */
 	addd $sp = $sp, -(PT_SIZE_ON_STACK)
 	so (PT_Q4-PT_SIZE_ON_STACK)[$sp] = $r4r5r6r7
 	;;
+	so PT_Q60[$sp] = $r60r61r62r63
+	/* Now that $r60r61r62r63 is saved, we can use it for saving
+	 * original stack stored in scratch_reg. Note that we can not
+	 * use the r12r13r14r15 quad to do that because it would
+	 * modify the current $r12/sp ! This is if course not what we
+	 * want and hence we use the freshly saved quad $r60r61r62r63.
+	 *
+	 * Note that we must use scratch_reg before reloading the saved
+	 * quad since the scratch reg is contained in it, so reloading
+	 * it before copying it would overwrite it.
+	 */
+	copyd $r60 = \scratch_reg
+	;;
+	/* Reload the saved quad registers to save correct values
+	 * Since we use the scratch reg before that */
+	lo \saved_quad = TASK_THREAD_SAVE_AREA[\task_reg]
+	;;
 	so PT_Q8[$sp] = $r8r9r10r11
 	;;
-	so PT_Q12[$sp] = $r12r13r14r15
-	;;
 	so PT_Q0[$sp] = $r0r1r2r3
+	copyd $r61 = $r13
 	;;
 	so PT_Q16[$sp] = $r16r17r18r19
 	make $r10 = 0x0
 	get $r5 = $le
+	copyd $r62 = $r14
 	;;
 	so PT_Q20[$sp] = $r20r21r22r23
 	/* Since we are going to enable hardware loop, we must be careful
 	 * and reset le (loop exit) to avoid any exploit and return to
 	 * user with kernel mode */
 	set $le = $r10
+	copyd $r63 = $r15
 	;;
 	so PT_Q24[$sp] = $r24r25r26r27
 	get $r0 = $cs
@@ -133,7 +152,7 @@ _save_regs:
 	;;
 	so PT_Q56[$sp] = $r56r57r58r59
 	;;
-	so PT_Q60[$sp] = $r60r61r62r63
+	so PT_Q12[$sp] = $r60r61r62r63
 	;;
 	so PT_CS_SPC_SPS_ES[$sp] = $r0r1r2r3
 	;;
@@ -206,15 +225,8 @@ _restore_regs:
 	lo $r60r61r62r63 = PT_Q60[$sp]
 	;;
 	lo $r56r57r58r59 = PT_Q56[$sp]
-	get $r11 = $sr
-	;;
-	/* Save r56r57r58r59 in temporary area to use them later in the
-	 * stack switching step */
-	so TASK_THREAD_SAVE_AREA[$r11] = $r56r57r58r59
 	;;
 	lo $r52r53r54r55 = PT_Q52[$sp]
-	/* Save sr in a register we saved before */
-	copyd $r56 = $r11
 	get $r14 = $sps
 	;;
 	lo $r48r49r50r51 = PT_Q48[$sp]
@@ -263,20 +275,13 @@ _restore_regs:
 	ld $r13 = PT_R13[$sp]
 	;;
 	lo $r8r9r10r11 = PT_Q8[$sp]
-	get $r57 = $sps
 	;;
 	lo $r4r5r6r7 = PT_Q4[$sp]
 	;;
 	lo $r0r1r2r3 = PT_Q0[$sp]
+	;;
+	ld $r12 = PT_R12[$sp]
 	addd $sp = $sp, PT_SIZE_ON_STACK
-	;;
-	/* Restore user stack pointer if sps.pl == 1 */
-	ld.odd $r57? $sp = TASK_THREAD_USER_SP[$r56]
-	;;
-	/* Finally, restore $r56 and $r57 inplace using $r56 value
-	 * (current)
-	 */
-	lq $r56r57 = TASK_THREAD_SAVE_AREA[$r56]
 .endm
 
 /**
@@ -833,13 +838,6 @@ ENTRY(ret_from_fork)
 	;;
 ret_from_kernel:
 	get $r11 = $sr
-	/* Load stack pointer set by start_thread from registers */
-	ld $r18 = PT_R12[$sp]
-	;;
-	/* restore_regs_after_exception expect the user stack pointer
-	 * to be in TASK_THREAD_USER_SP[task] so store the one
-	 * we got from start_thread */
-	sd TASK_THREAD_USER_SP[$r11] = $r18
 	;;
 	restore_regs_after_exception $r11
 	;;
