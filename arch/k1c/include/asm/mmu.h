@@ -25,6 +25,9 @@
 #endif
 
 /* Architecture specification */
+#define MMC_SB_JTLB 0
+#define MMC_SB_LTLB 1
+
 #define MMU_LTLB_SETS 1
 #define MMU_LTLB_WAYS 16
 
@@ -94,60 +97,33 @@ struct k1c_tlb_format {
 	tlbf.teh_val = k1c_sfr_get(K1C_SFR_TEH); \
 } while (0)
 
-#ifdef CONFIG_K1C_DEBUG_ASN
-void k1c_validate_asn(unsigned int asn);
-#else
-#define k1c_validate_asn(asn)
-#endif
+/* Use k1c_mmc_ to read a field from MMC value passed as parameter */
+#define __k1c_mmc(mmc_reg, field) \
+	((K1C_SFR_MMC_##field##_MASK & mmc_reg) >> \
+	 K1C_SFR_MMC_##field##_SHIFT)
 
-#define k1c_mmu_mmc_get_asn() \
-	((k1c_sfr_get(K1C_SFR_MMC) & K1C_SFR_MMC_ASN_MASK) \
-	 >> K1C_SFR_MMC_ASN_SHIFT)
-
-#define k1c_mmu_mmc_set_asn(asn) \
-	k1c_sfr_set_mask(K1C_SFR_MMC, K1C_SFR_MMC_ASN_MASK, \
-			 (asn << K1C_SFR_MMC_ASN_SHIFT))
-
-#define k1c_mmu_mmc_clean_error_flag() \
-	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_E_SHIFT)
-
-#define k1c_mmu_select_way(way)  \
-	k1c_sfr_set_mask(K1C_SFR_MMC, K1C_SFR_MMC_SW_MASK, \
-		(way << K1C_SFR_MMC_SW_SHIFT))
-
-#define k1c_mmu_select_jtlb() \
-	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_SB_SHIFT)
-
-#define k1c_mmu_select_ltlb() \
-	k1c_sfr_set_bit(K1C_SFR_MMC, K1C_SFR_MMC_SB_SHIFT)
+#define k1c_mmc_error(mmc)  __k1c_mmc(mmc, E)
+#define k1c_mmc_parity(mmc) __k1c_mmc(mmc, PAR)
+#define k1c_mmc_sb(mmc)     __k1c_mmc(mmc, SB)
+#define k1c_mmc_asn(mmc)    __k1c_mmc(mmc, ASN)
 
 static inline void k1c_mmu_writetlb(void) { asm volatile ("tlbwrite\n;;"); }
 static inline void k1c_mmu_readtlb(void) { asm volatile ("tlbread\n;;"); }
+static inline void k1c_mmu_probetlb(void) { asm volatile ("tlbprobe\n;;"); }
 
-static inline int k1c_mmu_mmc_error_is_set(void)
-{
-	return (K1C_SFR_MMC_E_MASK & k1c_sfr_get(K1C_SFR_MMC)) != 0;
-}
-
-#define k1c_mmu_add_jtlb_entry(way, entry) do { \
-	k1c_mmu_select_jtlb();        \
-	k1c_mmu_select_way(way);      \
-	k1c_mmu_set_tlb_entry(entry); \
-	k1c_mmu_writetlb();           \
-} while (0)
-
-#define k1c_mmu_add_ltlb_entry(way, entry) do { \
-	k1c_mmu_select_ltlb();        \
-	k1c_mmu_select_way(way);      \
+#define k1c_mmu_add_entry(buffer, way, entry) do { \
+	k1c_sfr_set_field(K1C_SFR_MMC, SB, buffer); \
+	k1c_sfr_set_field(K1C_SFR_MMC, SW, way); \
 	k1c_mmu_set_tlb_entry(entry); \
 	k1c_mmu_writetlb();           \
 } while (0)
 
 #define k1c_mmu_remove_ltlb_entry(way) do { \
-	struct k1c_tlb_format __invalid_entry = K1C_EMPTY_TLB_ENTRY;	\
-	k1c_mmu_add_ltlb_entry(way, __invalid_entry);			\
+	struct k1c_tlb_format __invalid_entry = K1C_EMPTY_TLB_ENTRY; \
+	k1c_mmu_add_entry(MMC_SB_LTLB, way, __invalid_entry); \
 } while (0)
 
+extern void k1c_mmu_cleanup_jtlb(int verbose);
 extern void k1c_mmu_setup_initial_mapping(void);
 extern void k1c_mmu_dump_ltlb(int dump_all);
 extern void k1c_mmu_dump_jtlb(int dump_all);

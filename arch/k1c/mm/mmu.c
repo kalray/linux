@@ -36,7 +36,7 @@ dump_tlb_entry(int dump_all, int dump_jtlb, int set, int way,
 			(unsigned long)tlbf.tel.es);
 }
 
-static void cleanup_jtlb(void)
+void k1c_mmu_cleanup_jtlb(int verbose)
 {
 	struct k1c_tlb_format tlbe = K1C_EMPTY_TLB_ENTRY;
 	int set, way;
@@ -49,15 +49,16 @@ static void cleanup_jtlb(void)
 			 * With 4K pages the set is the value of the 6 lower
 			 * signigicant bits of the page number.
 			 */
-			k1c_mmu_add_jtlb_entry(way, tlbe);
+			k1c_mmu_add_entry(MMC_SB_JTLB, way, tlbe);
 
-			if (k1c_mmu_mmc_error_is_set())
+			if (k1c_mmc_error(k1c_sfr_get(K1C_SFR_MMC)))
 				panic("Failed to initialize JTLB[s:%02d w:%d]",
 				      set, way);
 		}
 	}
 
-	pr_info("JTLB has been cleaned\n");
+	if (verbose)
+		pr_info("JTLB has been cleaned\n");
 }
 
 void k1c_mmu_dump_ltlb(int dump_all)
@@ -65,15 +66,15 @@ void k1c_mmu_dump_ltlb(int dump_all)
 	struct k1c_tlb_format tlbe;
 	int way;
 
-	k1c_mmu_select_ltlb();
+	k1c_sfr_set_field(K1C_SFR_MMC, SB, MMC_SB_LTLB);
 
 	/* There is only one set on the ltlb */
 	k1c_sfr_set_field(K1C_SFR_MMC, SS, 0);
 	for (way = 0; way < MMU_LTLB_WAYS; way++) {
-		k1c_mmu_select_way(way);
+		k1c_sfr_set_field(K1C_SFR_MMC, SW, way);
 		k1c_mmu_readtlb();
 
-		if (k1c_mmu_mmc_error_is_set())
+		if (k1c_mmc_error(k1c_sfr_get(K1C_SFR_MMC)))
 			panic("Failed to read LTLB[s:0, w:%d]\n", way);
 
 		k1c_mmu_get_tlb_entry(tlbe);
@@ -86,15 +87,15 @@ void k1c_mmu_dump_jtlb(int dump_all)
 	struct k1c_tlb_format tlbe;
 	int set, way;
 
-	k1c_mmu_select_jtlb();
+	k1c_sfr_set_field(K1C_SFR_MMC, SB, MMC_SB_JTLB);
 
 	for (set = 0; set < MMU_JTLB_SETS; set++) {
 		k1c_sfr_set_field(K1C_SFR_MMC, SS, set);
 		for (way = 0; way < MMU_JTLB_WAYS; way++) {
-			k1c_mmu_select_way(way);
+			k1c_sfr_set_field(K1C_SFR_MMC, SW, way);
 			k1c_mmu_readtlb();
 
-			if (k1c_mmu_mmc_error_is_set())
+			if (k1c_mmc_error(k1c_sfr_get(K1C_SFR_MMC)))
 				panic("Failed to read JTLB[s:%d, w:%d]\n",
 					set, way);
 
@@ -108,14 +109,15 @@ void k1c_mmu_setup_initial_mapping(void)
 {
 	unsigned int supported_psize = 0;
 
-	k1c_mmu_mmc_clean_error_flag();
+	/* Clean error field in MMC */
+	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_E_SHIFT);
 
 	supported_psize = MMC_PMJ_4K | MMC_PMJ_64K | MMC_PMJ_2M | MMC_PMJ_512M;
 
 	k1c_sfr_set_mask(K1C_SFR_PS, K1C_SFR_PS_PMJ_MASK,
 		(supported_psize << K1C_SFR_PS_PMJ_SHIFT));
 
-	cleanup_jtlb();
+	k1c_mmu_cleanup_jtlb(1);
 
 #ifdef K1C_MMU_DEBUG
 	k1c_mmu_dump_jtlb(1);
