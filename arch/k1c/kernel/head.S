@@ -12,6 +12,7 @@
 #include <asm/privilege.h>
 #include <asm/tlb_defs.h>
 #include <asm/mem_map.h>
+#include <asm/rm_fw.h>
 
 #include <linux/linkage.h>
 #include <linux/init.h>
@@ -56,6 +57,9 @@
 #define PWR_CTRL_GLOBAL_CONFIG_OFFSET \
 	(K1C_PWR_CTRL_GLOBAL_OFFSET + \
 	 K1C_PWR_CTRL_GLOBAL_SET_OFFSET)
+
+#define PWR_CTRL_GLOBAL_CONFIG_VALUE \
+	(1 << K1C_PWR_CTRL_GLOBAL_SET_PE_EN_SHIFT)
 
 /* MMU related defines */
 #define JTLB_MAX_SETS 63
@@ -160,7 +164,7 @@ ENTRY(k1c_start)
 	;;
 	cb.deqz $r21 ? init_core
 	;;
-	call asm_rm_start_pe
+	call asm_rm_cfg_pwr_ctrl
 	;;
 init_core:
 	call asm_init_pl
@@ -181,8 +185,27 @@ init_core:
 	set $ev = $r27
 	;;
 	wfxm $pcr = $r26
+	make $r27 = rm_firmware_features
 	;;
+	/* Load firmware features */
+	ld $r26 = 0[$r27]
+	;;
+	/* Check L2$ bit of firmware features */
+	andd $r28 = $r26, K1C_FW_FEATURE_L2
+	;;
+	cb.deqz $r28? setup_ps
+	;;
+	/* Else, enable L2$ in $ps value */
+	ord $r25 = $r25, PS_VAL_WFXL(L2E, 1)
+	;;
+setup_ps:
 	wfxl $ps = $r25
+	;;
+	dinval
+	;;
+	iinval
+	;;
+	fence
 	;;
 	/* Use as break point for debugging purpose.
 	   See Documentation/k1c/k1c.txt for more details. */
@@ -220,6 +243,15 @@ clear_bss:
 		addd $r21 = $r21, 32
 		;;
 	clear_bss_done:
+	/* Copy firmware feature in DDR to be accessible in kernel */
+	make $r20 = rm_firmware_features
+	make $r21 = rm_firmware_features_vm
+	;;
+	/* Load flat mem firmware features */
+	ld $r26 = 0[$r20]
+	;;
+	/* Store them in the vm copy */
+	sd 0[$r21] = $r26
 	/* Setup stack */
 	make $r40 = init_thread_union
 	make $r41 = init_task
@@ -241,25 +273,44 @@ clear_bss:
 ENDPROC(k1c_start)
 
 /**
- * $r20 = pcr value
+ * This function is called by firmware after init is done.
+ * First argument ($r0) is the list of features supported by firmware
  */
-ENTRY(asm_rm_start_pe)
-	make $r26 = (PWR_CTRL_ADDR)
-	make $r27 = (1 << K1C_PWR_CTRL_GLOBAL_SET_PE_EN_SHIFT)
+ENTRY(firmware_init_done)
+	/* Store firmware features */
+	make $r1 = rm_firmware_features
 	;;
-	/* Set PE enable on power controller */
-	sd PWR_CTRL_GLOBAL_CONFIG_OFFSET[$r26] = $r27
+	sd 0[$r1] = $r0
+	;;
+	make $r0 = PWR_CTRL_ADDR
 	/* PE 0 start (1 << cpu) */
-	make $r28 = 1
+	make $r1 = 1
 	;;
 	/* Start PE0 ! */
-	sd PWR_CTRL_WUP_SET_OFFSET[$r26] = $r28
-	/* Go to idle */
-	make $r20 = rm_power_off
+	sd PWR_CTRL_WUP_SET_OFFSET[$r0] = $r1
 	;;
+	ret
+	;;
+ENDPROC(firmware_init_done)
+
+/**
+ * Configure the power controller to be accessible by PEs and start the
+ * rm firmware
+ */
+ENTRY(asm_rm_cfg_pwr_ctrl)
+	make $r26 = PWR_CTRL_ADDR
+	make $r27 = PWR_CTRL_GLOBAL_CONFIG_VALUE
+	;;
+	/* Set PE enable in power controller */
+	sd PWR_CTRL_GLOBAL_CONFIG_OFFSET[$r26] = $r27
+	;;
+	/* Go to firmware */
+	make $r20 = rm_firmware
+	;;
+	make $r0 = firmware_init_done
 	igoto $r20
 	;;
-ENDPROC(asm_rm_start_pe)
+ENDPROC(asm_rm_cfg_pwr_ctrl)
 
 /**
  * Initialize privilege level for Kernel
@@ -442,12 +493,26 @@ ENTRY(proc_power_off)
 ENDPROC(proc_power_off)
 
 /**
+ * Storage for rm firmware features
+ */
+rm_firmware_features:
+	.dword 0x0
+
+/**
  * This code will be put in rm_firmware section by default.
  * If the rm_firmware section is overridden using another firmware,
  * this default code will also be overridden.
+ * The first argument supplied to this firmware is the function which will
+ * start PE0. In order to be compliant with this interface, the firmware must
+ * call this function when everything is setup and use r0 to give the set of
+ * supported features (rm_fw.h).
  */
 .section .rm_firmware.default, "ax", @progbits
-ENTRY(rm_power_off)
+ENTRY(rm_firmware)
+	/* No feature supported by default code */
+	make $r0 = K1C_FW_NO_FEATURES
+	icall $r0
+	;;
 	make $r1 = WS_WFXL_VALUE
 	;;
 	/* Enable STOP */
@@ -457,4 +522,4 @@ ENTRY(rm_power_off)
 	;;
 	goto 1b
 	;;
-ENDPROC(rm_power_off)
+ENDPROC(rm_firmware)
