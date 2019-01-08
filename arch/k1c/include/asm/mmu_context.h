@@ -26,11 +26,10 @@
 
 #include <asm-generic/mm_hooks.h>
 
-/* ASN is 9-bits */
-#define MMU_ASN_MASK		_UL(0x1FF)
-#define MMU_NO_ASN		_UL(0x0)
-#define MMU_FIRST_ASN		_UL(0x1)
-#define MMU_EXTRACT_ASN(asn) ((unsigned int)(asn & MMU_ASN_MASK))
+#define MMU_ASN_MASK     GENMASK(K1C_SFR_MMC_ASN_WIDTH - 1, 0)
+#define MMU_GET_ASN(asn) ((unsigned int)(asn & MMU_ASN_MASK))
+#define MMU_NO_ASN       UL(0x0)
+#define MMU_FIRST_ASN    UL(0x1)
 
 DECLARE_PER_CPU(unsigned long, k1c_asn_cache);
 #define cpu_asn_cache(cpu) per_cpu(k1c_asn_cache, cpu)
@@ -41,9 +40,10 @@ static inline void get_new_mmu_context(struct mm_struct *mm, unsigned int cpu)
 
 	asn++;
 	/* Check if we need to start a new cycle */
-	if (MMU_EXTRACT_ASN(asn) == 0) {
+	if (MMU_GET_ASN(asn) == 0) {
+		pr_debug("%s: start new cycle, flush all tlb\n", __func__);
 		local_flush_tlb_all();
-		asn += MMU_FIRST_ASN;
+		asn = MMU_FIRST_ASN;
 	}
 
 	cpu_asn_cache(cpu) = asn;
@@ -51,7 +51,7 @@ static inline void get_new_mmu_context(struct mm_struct *mm, unsigned int cpu)
 	mm->context.cpu = cpu;
 
 	pr_debug("%s: mm = 0x%llx: asn_cpu[%d] = %lu\n",
-	       __func__, (unsigned long long)mm, cpu, asn);
+		 __func__, (unsigned long long)mm, cpu, asn);
 }
 
 static inline void get_mmu_context(struct mm_struct *mm, unsigned int cpu)
@@ -72,7 +72,7 @@ static inline void get_mmu_context(struct mm_struct *mm, unsigned int cpu)
 static inline void activate_context(struct mm_struct *mm, unsigned int cpu)
 {
 	get_mmu_context(mm, cpu);
-	k1c_mmu_mmc_set_asn(mm->context.asn[cpu]);
+	k1c_sfr_set_field(K1C_SFR_MMC, ASN, mm->context.asn[cpu]);
 }
 
 /**
@@ -96,11 +96,10 @@ static inline int init_new_context(struct task_struct *tsk,
 
 	for_each_possible_cpu(cpu) {
 		mm->context.asn[cpu] = MMU_NO_ASN;
-		pr_debug("%s: ASN initialized for mm at 0x%llx and CPU[%d]",
-			__func__, (unsigned long long)mm, cpu);
+		pr_debug("%s: mm at 0x%llx on CPU[%d]", __func__,
+			 (unsigned long long)mm, cpu);
 	}
 	mm->context.cpu = -1; /* process has never run on any core */
-
 	return 0;
 }
 
