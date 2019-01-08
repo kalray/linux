@@ -7,6 +7,8 @@
  * Copyright (C) 2017 Kalray Inc.
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/start_kernel.h>
 #include <linux/screen_info.h>
 #include <linux/linkage.h>
@@ -20,6 +22,7 @@
 #include <asm/processor.h>
 #include <asm/hw_irq.h>
 #include <asm/setup.h>
+#include <asm/rm_fw.h>
 #include <asm/page.h>
 #include <asm/sfr.h>
 
@@ -32,6 +35,8 @@ unsigned long memory_start;
 EXPORT_SYMBOL(memory_start);
 unsigned long memory_end;
 EXPORT_SYMBOL(memory_end);
+
+unsigned long rm_firmware_features_vm;
 
 static void __init setup_user_privilege(void)
 {
@@ -81,6 +86,13 @@ static void setup_processor(void)
 	setup_user_privilege();
 }
 
+static void display_rm_fw_features(void)
+{
+	bool l2_en = rm_firmware_features_vm & K1C_FW_FEATURE_L2;
+
+	pr_info("L2 cache %sabled\n", l2_en ? "en" : "dis");
+}
+
 void __init setup_arch(char **cmdline_p)
 {
 	*cmdline_p = boot_command_line;
@@ -96,6 +108,8 @@ void __init setup_arch(char **cmdline_p)
 	parse_early_param();
 
 	setup_device_tree();
+
+	display_rm_fw_features();
 }
 
 asmlinkage __visible void __init arch_low_level_start(unsigned long r0,
