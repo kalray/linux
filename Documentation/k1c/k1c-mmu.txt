@@ -26,7 +26,8 @@ Currently, the memory mapping is the following for 4KB page:
 +-----------------------+-----------------------+------+-------+--------------+
 | Start                 | End                   | Attr | Size  | Name         |
 +-----------------------+-----------------------+------+-------+--------------+
-| 0000 0000 0000 0000   | 0000 007F FFFF FFFF   | ---  | 512GB | User         |
+| 0000 0000 0000 0000   | 0000 003F FFFF FFFF   | ---  | 256GB | User         |
+| 0000 0040 0000 0000   | 0000 007F FFFF FFFF   | ---  | 256GB |   MMAP       |
 | 0000 0080 0000 0000   | FFFF FF7F FFFF FFFF   | ---  | ---   | Gap          |
 | FFFF FF80 0000 0000   | FFFF FFFF FFFF FFFF   | ---  | 512GB | Kernel       |
 |   FFFF FF80 0000 0000 |   FFFF FF80 3FFF FFFF | R-X  | 1GB   |   Text       |
