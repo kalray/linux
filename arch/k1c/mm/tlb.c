@@ -60,56 +60,117 @@ uint8_t k1c_access_perms[K1C_ACCESS_PERMS_SIZE] = {
 };
 
 /* Preemption must be disabled here */
-static inline void k1c_clear_jtlb_entry(unsigned long addr)
+static inline void clear_jtlb_entry(unsigned long addr, unsigned int asn)
 {
-	struct k1c_tlb_format tlbe;
-	int way;
+	struct k1c_tlb_format entry;
+	unsigned long mmc_val;
 
-	tlbe = tlb_mk_entry(0x0, (void *)addr, 0, 0, 0, 0, 0, 0);
-	k1c_mmu_select_jtlb();
+	/* Probe is based on PN and ASN. So ES can be anything */
+	entry = tlb_mk_entry(0, (void *)addr, 0, 0, 0, 0, asn, TLB_ES_INVALID);
+	k1c_mmu_set_tlb_entry(entry);
 
-	for (way = 0; way < MMU_JTLB_WAYS; way++) {
-		k1c_mmu_select_way(way);
-		k1c_mmu_set_tlb_entry(tlbe);
-		k1c_mmu_writetlb();
+	k1c_mmu_probetlb();
 
-		if (k1c_mmu_mmc_error_is_set())
-			panic("%s: Failed to clear addr (0x%lx) way (%d) the JTLB",
-			      __func__, addr, way);
+	mmc_val = k1c_sfr_get(K1C_SFR_MMC);
+
+	if (k1c_mmc_error(mmc_val)) {
+		if (k1c_mmc_parity(mmc_val)) {
+			/*
+			 * This should never happens unless you are bombared by
+			 * streams of charged particules. If it happens just
+			 * flush the JTLB and let's continue (but check your
+			 * environment you are probably not in a safe place).
+			 */
+			WARN(1, "%s: parity error during lookup (addr 0x%lx, asn %u). JTLB will be flushed\n",
+			     __func__, addr, asn);
+			k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_PAR_SHIFT);
+			local_flush_tlb_all();
+		} else {
+			/* else there is no matching entry */
+			pr_debug("%s: try to clean a no matching entry (addr 0x%lx, asn %u)\n",
+				 __func__, addr, asn);
+		}
+
+		k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_E_SHIFT);
+		return;
 	}
+
+	/*
+	 * At this point a matching entry has been found and MMC.{SB,SS,SW}
+	 * are set. So just clear it after ensuring that entry doesn't belong
+	 * to the LTLB.
+	 */
+	if (k1c_mmc_sb(mmc_val) == MMC_SB_LTLB)
+		panic("%s: Trying to clean an entry in LTLB\n", __func__);
+
+	/*
+	 * At this point the probe found an entry. TEL and TEH have correct
+	 * values so we just need to set the entry status to invalid to clear
+	 * the entry.
+	 */
+	k1c_sfr_set_field(K1C_SFR_TEL, ES, TLB_ES_INVALID);
+
+	k1c_mmu_writetlb();
+
+	/* Need to read MMC SFR again */
+	mmc_val = k1c_sfr_get(K1C_SFR_MMC);
+	if (k1c_mmc_error(mmc_val))
+		panic("%s: Failed to clear entry (addr 0x%lx, asn %u)",
+		      __func__, addr, asn);
+	else
+		pr_debug("%s: Entry (addr 0x%lx, asn %u) cleared\n",
+			__func__, addr, asn);
 }
 
+/* If mm is current we just need to assign the current task a new ASN. By
+ * doing this all previous tlb entries with the former ASN will be invalidated.
+ * if mm is not the current one we invalidate the context and when this other
+ * mm will be swapped in then a new context will be generated.
+ */
 void local_flush_tlb_mm(struct mm_struct *mm)
 {
-	/*
-	 * We don't need to really flush the TLB. We just need to destroy
-	 * the MMU context and create a new one if the mm belongs to current.
-	 */
-	destroy_context(mm);
-	if (current->mm == mm)
-		get_new_mmu_context(mm, smp_processor_id());
+	int cpu = smp_processor_id();
+
+	if (current->active_mm == mm) {
+		unsigned long flags;
+
+		local_irq_save(flags);
+		mm->context.asn[cpu] = MMU_NO_ASN;
+		/* As MMU_NO_ASN is set a new ASN will be given */
+		activate_context(mm, cpu);
+		local_irq_restore(flags);
+	} else {
+		mm->context.asn[cpu] = MMU_NO_ASN;
+		mm->context.cpu = -1;
+	}
 }
 
 void local_flush_tlb_page(struct vm_area_struct *vma,
 			  unsigned long addr)
 {
+	int cpu = smp_processor_id();
+	unsigned int current_asn;
+	struct mm_struct *mm;
 	unsigned long flags;
 
+	mm = vma->vm_mm;
+	current_asn = MMU_GET_ASN(mm->context.asn[cpu]);
+
+	/* If mm has no context there is nothing to do */
+	if (current_asn == MMU_NO_ASN)
+		return;
+
 	local_irq_save(flags);
-	k1c_clear_jtlb_entry(addr);
+	clear_jtlb_entry(addr, current_asn);
 	local_irq_restore(flags);
 }
 
 void local_flush_tlb_all(void)
 {
 	unsigned long flags;
-	unsigned int set;
 
 	local_irq_save(flags);
-
-	for (set = 0; set < MMU_JTLB_SETS; set++)
-		k1c_clear_jtlb_entry(set << PAGE_SHIFT);
-
+	k1c_mmu_cleanup_jtlb(0);
 	local_irq_restore(flags);
 }
 
@@ -160,12 +221,12 @@ void update_mmu_cache(struct vm_area_struct *vma,
 
 	/*
 	 * Get the ASN:
-	 * ASN is equal to 0 only if address belongs to kernel space. Otherwise
-	 * we don't care because kernel pages are globals and thus ASN is
-	 * ignored.
+	 * ASN can have no context if address belongs to kernel space. In
+	 * fact as pages are global for kernel space the ASN is ignored
+	 * and can be equal to any value.
 	 */
-	asn = MMU_EXTRACT_ASN(mm->context.asn[cpu]);
-	if ((asn == 0) && (address < PAGE_OFFSET))
+	asn = MMU_GET_ASN(mm->context.asn[cpu]);
+	if ((asn == MMU_NO_ASN) && (address < PAGE_OFFSET))
 		panic("%s: ASN [%u] is not properly set for address 0x%lx on CPU %d\n",
 		      __func__, asn, address, cpu);
 
@@ -177,7 +238,19 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	/* Set page as accessed */
 	pte_val(*ptep) |= _PAGE_ACCESSED;
 
-	k1c_validate_asn(asn);
+#ifdef CONFIG_K1C_DEBUG_ASN
+	/*
+	 * For addresses that belong to user space, the value of the ASN
+	 * must match the mmc.asn
+	 */
+	if (address < PAGE_OFFSET) {
+		unsigned int mmc_asn = k1c_mmc_asn(k1c_sfr_get(K1C_SFR_MMC));
+
+		if (asn != mmc_asn)
+			panic("%s: ASN not synchronized with MMC: asn:%u != mmc.asn:%u\n",
+			      __func__, asn, mmc_asn);
+	}
+#endif
 
 	tlbe = tlb_mk_entry(
 		(void *)pfn_to_phys(pfn),
@@ -196,18 +269,8 @@ void update_mmu_cache(struct vm_area_struct *vma,
 
 	way &= MMU_JTLB_WAY_MASK;
 
-	k1c_mmu_add_jtlb_entry(way, tlbe);
+	k1c_mmu_add_entry(MMC_SB_JTLB, way, tlbe);
 
-	if (k1c_mmu_mmc_error_is_set())
+	if (k1c_mmc_error(k1c_sfr_get(K1C_SFR_MMC)))
 		panic("Failed to write entry to the JTLB");
 }
-
-#ifdef CONFIG_K1C_DEBUG_ASN
-void k1c_validate_asn(unsigned int asn)
-{
-	unsigned int mmc_asn = k1c_mmu_mmc_get_asn();
-
-	if (asn != mmc_asn)
-		pr_emerg("ASN SYNC ERR: asn:%u != mmc.asn:%u\n", asn, mmc_asn);
-}
-#endif
