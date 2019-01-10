@@ -68,7 +68,7 @@ void k1c_mmu_dump_ltlb(int dump_all)
 	k1c_mmu_select_ltlb();
 
 	/* There is only one set on the ltlb */
-	k1c_mmu_select_set(0);
+	k1c_sfr_set_field(K1C_SFR_MMC, SS, 0);
 	for (way = 0; way < MMU_LTLB_WAYS; way++) {
 		k1c_mmu_select_way(way);
 		k1c_mmu_readtlb();
@@ -89,7 +89,7 @@ void k1c_mmu_dump_jtlb(int dump_all)
 	k1c_mmu_select_jtlb();
 
 	for (set = 0; set < MMU_JTLB_SETS; set++) {
-		k1c_mmu_select_set(set);
+		k1c_sfr_set_field(K1C_SFR_MMC, SS, set);
 		for (way = 0; way < MMU_JTLB_WAYS; way++) {
 			k1c_mmu_select_way(way);
 			k1c_mmu_readtlb();
