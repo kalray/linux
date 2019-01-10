@@ -52,6 +52,10 @@ k1c_sfr_set_mask(unsigned char sfr, uint64_t mask, uint64_t value)
 	}
 }
 
+#define k1c_sfr_set_field(sfr, field, value) \
+	k1c_sfr_set_mask(sfr, sfr ## _ ## field ## _MASK, \
+			 ((uint64_t) (value) << sfr ## _ ## field ## _SHIFT))
+
 static inline void
 k1c_sfr_clear_bit(unsigned char sfr, unsigned char bit)
 {
