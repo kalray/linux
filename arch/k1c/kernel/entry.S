@@ -374,8 +374,8 @@ _restore_regs:
 	;;
 	/* Extract page global bit */
 	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT, _PAGE_GLOBAL_SHIFT
-	/* Set the TLB way in $mmc value */
-	insf $r6 = $r0, K1C_SFR_END(MMC_SW), K1C_SFR_START(MMC_SW)
+	/* Set the TLB way in $mmc value, add 32 bits to be in the set part */
+	insf $r6 = $r0, K1C_SFR_END(MMC_SW) + 32, K1C_SFR_START(MMC_SW) + 32
 	/* If bit 0 of pte entry is 0, then entry is not present */
 	cb.even $r1? _err_out
 	;;
