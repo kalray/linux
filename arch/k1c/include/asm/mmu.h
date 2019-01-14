@@ -60,7 +60,7 @@ struct __attribute__((__packed__)) tlb_entry_low {
 	unsigned int es:2;       /* Entry Status */
 	unsigned int cp:2;       /* Cache Policy */
 	unsigned int pa:4;       /* Protection Attributes */
-	unsigned int reserved:2; /* as the name suggests */
+	unsigned int r:2;        /* Reserved */
 	unsigned int ps:2;       /* Page Size */
 	unsigned int fn:28;      /* Frame Number */
 };
@@ -105,11 +105,68 @@ struct k1c_tlb_format {
 #define k1c_mmc_error(mmc)  __k1c_mmc(mmc, E)
 #define k1c_mmc_parity(mmc) __k1c_mmc(mmc, PAR)
 #define k1c_mmc_sb(mmc)     __k1c_mmc(mmc, SB)
+#define k1c_mmc_ss(mmc)     __k1c_mmc(mmc, SS)
+#define k1c_mmc_sw(mmc)     __k1c_mmc(mmc, SW)
 #define k1c_mmc_asn(mmc)    __k1c_mmc(mmc, ASN)
 
-static inline void k1c_mmu_writetlb(void) { asm volatile ("tlbwrite\n;;"); }
-static inline void k1c_mmu_readtlb(void) { asm volatile ("tlbread\n;;"); }
-static inline void k1c_mmu_probetlb(void) { asm volatile ("tlbprobe\n;;"); }
+#define K1C_TLB_ACCESS_READ 0
+#define K1C_TLB_ACCESS_WRITE 1
+#define K1C_TLB_ACCESS_PROBE 2
+
+#ifdef CONFIG_K1C_DEBUG_TLB_ACCESS_BITS
+
+#define K1C_TLB_ACCESS_SIZE (1 << CONFIG_K1C_DEBUG_TLB_ACCESS_BITS)
+#define K1C_TLB_ACCESS_MASK GENMASK((CONFIG_K1C_DEBUG_TLB_ACCESS_BITS - 1), 0)
+#define K1C_TLB_ACCESS_GET_IDX(idx) (idx & K1C_TLB_ACCESS_MASK)
+
+/* This structure is used to make decoding of MMC easier in gdb */
+struct mmc_t {
+	unsigned int asn:9;
+	unsigned int s: 1;
+	unsigned int r1: 4;
+	unsigned int sne: 1;
+	unsigned int spe: 1;
+	unsigned int ptc: 2;
+	unsigned int sw: 4;
+	unsigned int ss: 6;
+	unsigned int sb: 1;
+	unsigned int r2: 1;
+	unsigned int par: 1;
+	unsigned int e: 1;
+};
+
+struct __attribute__((__packed__)) k1c_tlb_access_t {
+	struct k1c_tlb_format entry;  /* 128 bits */
+	union {
+		struct mmc_t mmc;
+		uint32_t mmc_val;
+	};
+	uint32_t type;
+};
+
+extern void k1c_update_tlb_access(int type);
+
+#else
+#define k1c_update_tlb_access(type) do {} while (0)
+#endif
+
+static inline void k1c_mmu_readtlb(void)
+{
+	k1c_update_tlb_access(K1C_TLB_ACCESS_READ);
+	asm volatile ("tlbread\n;;");
+}
+
+static inline void k1c_mmu_writetlb(void)
+{
+	k1c_update_tlb_access(K1C_TLB_ACCESS_WRITE);
+	asm volatile ("tlbwrite\n;;");
+}
+
+static inline void k1c_mmu_probetlb(void)
+{
+	k1c_update_tlb_access(K1C_TLB_ACCESS_PROBE);
+	asm volatile ("tlbprobe\n;;");
+}
 
 #define k1c_mmu_add_entry(buffer, way, entry) do { \
 	k1c_sfr_set_field(K1C_SFR_MMC, SB, buffer); \
