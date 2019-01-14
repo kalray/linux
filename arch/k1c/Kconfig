@@ -185,6 +185,17 @@ config K1C_DEBUG_ASN
 	  This option allows to check if the ASN of the current
 	  process is matching the ASN found in MMC. If it is not the
 	  case an error will be print.
+
+config K1C_DEBUG_TLB_ACCESS_BITS
+	int "Number of bits used as index of entries in logged table"
+	default 12
+	help
+	  Set the number of bits used as index of entries that will be logged
+	  in a ring buffer called k1c_tlb_access. One entry in the table
+	  contains registers TEL, TEH and MMC. It also logs the type of the
+	  operations (0:read, 1:write, 2:probe). Buffer is per CPU. For one
+	  entry 24 bytes are used. So by default it uses 96Ko of memory per
+	  CPU to store 2^12 (4096) entries.
 endif
 
 menu "Kernel Features"
