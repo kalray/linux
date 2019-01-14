@@ -14,6 +14,7 @@
 
 #include <asm/tlb_defs.h>
 #include <asm/page.h>
+#include <asm/mmu.h>
 #include <asm/pgtable.h>
 
 #define LX_VALUE(x) LX_##x = x
@@ -53,6 +54,13 @@ LX_VALUE(TLB_PS_512M)
 
 LX_VALUE(TLB_G_GLOBAL)
 LX_VALUE(TLB_G_USE_ASN)
+
+#ifdef CONFIG_K1C_DEBUG_TLB_ACCESS_BITS
+LX_VALUE(CONFIG_K1C_DEBUG_TLB_ACCESS_BITS)
+#endif
+LX_VALUE(K1C_TLB_ACCESS_READ)
+LX_VALUE(K1C_TLB_ACCESS_WRITE)
+LX_VALUE(K1C_TLB_ACCESS_PROBE)
 
 /* asm/page.h */
 LX_VALUE(PAGE_SHIFT)

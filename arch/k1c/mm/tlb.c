@@ -59,6 +59,32 @@ uint8_t k1c_access_perms[K1C_ACCESS_PERMS_SIZE] = {
 	TLB_PA_NA_NA,
 };
 
+#ifdef CONFIG_K1C_DEBUG_TLB_ACCESS_BITS
+
+static DEFINE_PER_CPU_ALIGNED(struct k1c_tlb_access_t[K1C_TLB_ACCESS_SIZE],
+		       k1c_tlb_access_rb);
+/* Lower bits hold the index and upper ones hold the number of wrapped */
+static DEFINE_PER_CPU(unsigned int, k1c_tlb_access_idx);
+
+void k1c_update_tlb_access(int type)
+{
+	unsigned int *idx_ptr = &get_cpu_var(k1c_tlb_access_idx);
+	unsigned int idx;
+	struct k1c_tlb_access_t *tab = get_cpu_var(k1c_tlb_access_rb);
+
+	idx = K1C_TLB_ACCESS_GET_IDX(*idx_ptr);
+
+	k1c_mmu_get_tlb_entry(tab[idx].entry);
+	tab[idx].mmc_val = k1c_sfr_get(K1C_SFR_MMC);
+	tab[idx].type = type;
+
+	(*idx_ptr)++;
+	put_cpu_var(k1c_tlb_access_rb);
+	put_cpu_var(k1c_tlb_access_idx);
+};
+
+#endif
+
 /* Preemption must be disabled here */
 static inline void clear_jtlb_entry(unsigned long addr, unsigned int asn)
 {
