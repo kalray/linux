@@ -75,6 +75,7 @@ int foo(void)
 	OFFSET(PT_Q60, pt_regs, r60);
 	OFFSET(PT_CS_SPC_SPS_ES, pt_regs, cs);
 	OFFSET(PT_LC_LE_LS_RA, pt_regs, lc);
+	OFFSET(PT_ILR, pt_regs, ilr);
 	OFFSET(PT_ORIG_R0, pt_regs, orig_r0);
 
 	/*
