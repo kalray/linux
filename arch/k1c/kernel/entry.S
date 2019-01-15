@@ -66,29 +66,40 @@ stack_error_panic_str_label:
 .endm
 
 /**
- * Prepare and save registers for entry in kernel space.
- * using save_quad_regs.
- * scratch_reg is a free register to do stack switching
- * This scratch reg must be in the saved_quad since it will be restored
- * after using it.
+ * Switch task when entering kernel if needed.
+ * sp_reg: register which will be used to store original stack pointer when
+ * entering the kernel
+ * task_reg: is a register containing the current task pointer
+ * save_regs_label: label to jump to save register immediately. This label is
+ * used when we are already in kernel execution context.
+ * NOTE: when returning from this macro, we consider that the assembly following
+ * it will be executed only when coming from user space
  */
-.macro save_regs_for_exception scratch_reg task_reg saved_quad
-.if (\saved_quad==$r4r5r6r7 || \saved_quad==$r60r61r62r63)
-.error "saved_quad must not be $r4r5r6r7 or $r60r61r62r63 !"
-.endif
-	LOCAL _save_regs
-	get \scratch_reg = $sps
+.macro switch_stack sp_reg task_reg save_regs_label
+	get \sp_reg = $sps
 	;;
 	/* Check if $sps.pl bit is 0 (ie in kernel mode)
 	 * if so, then we dont have to switch stack */
-	cb.even \scratch_reg? _save_regs
-	/* Copy original $sp in the scratch reg */
-	copyd \scratch_reg = $sp
+	cb.even \sp_reg? \save_regs_label
+	/* Copy original $sp in a scratch reg */
+	copyd \sp_reg = $sp
 	;;
 	/* restore sp from kernel stack pointer */
 	ld $sp = TASK_THREAD_KERNEL_SP[\task_reg]
 	;;
-_save_regs:
+.endm
+
+/**
+ * Save registers for entry in kernel space.
+ * sp_reg should point to the original stack pointer when entering kernel space
+ * task_reg is a register containing the current task pointer
+ * both task_reg and sp_reg must be in saved_quad since they have been cloberred
+ * and will be restored when restoring saved_quad.
+ */
+.macro save_regs_for_exception sp_reg task_reg saved_quad
+.if (\saved_quad==$r4r5r6r7 || \saved_quad==$r60r61r62r63)
+.error "saved_quad must not be $r4r5r6r7 or $r60r61r62r63 !"
+.endif
 	/* make some room on stack to save registers */
 	addd $sp = $sp, -(PT_SIZE_ON_STACK)
 	so (PT_Q4-PT_SIZE_ON_STACK)[$sp] = $r4r5r6r7
@@ -104,7 +115,7 @@ _save_regs:
 	 * quad since the scratch reg is contained in it, so reloading
 	 * it before copying it would overwrite it.
 	 */
-	copyd $r60 = \scratch_reg
+	copyd $r60 = \sp_reg
 	;;
 	/* Reload the saved quad registers to save correct values
 	 * Since we use the scratch reg before that */
@@ -496,6 +507,9 @@ ENTRY(k1c_trap_handler):
 	cb.odd $r3? fast_refill
 	;;
 slow_path:
+	switch_stack $r1 $r2 trap_save_regs
+	;;
+trap_save_regs:
 	save_regs_for_exception $r1 $r2 $r0r1r2r3
 	;;
 	make $r8 = PS_HLE_EN
@@ -544,19 +558,58 @@ ENTRY(k1c_interrupt_handler):
 	;;
 	get $r0 = $sr
 	;;
+	switch_stack $r1 $r0 it_save_regs
+	;;
+#ifdef CONFIG_SECURE_DAME_HANDLING
+	/**
+	 * In order to securely Handle Data Asynchronous Memory Error,
+	 * we need to have a correct entry point. This means we do not
+	 * want to handle a user induced DAME interrupt when entering
+	 * kernel.
+	 * In order to do that, we need to do a barrier, which will
+	 * reflect the DAME status in $ilr (if any).
+	 */
+	barrier
+	;;
+#endif
+it_save_regs:
 	save_regs_for_exception $r1 $r0 $r0r1r2r3
 	;;
 	make $r8 = PS_HWLOOP_EN_ET_EN
 	copyd $r1 = $sp
+	/* Prepare handler call */
+	get $r0 = $ilr
+	;;
+	get $r2 = $ile
+	;;
+	/**
+	 * When an interrupt happens, the processor automatically clears
+	 * the corresponding bit in $ilr. However, as we are using $ilr
+	 * to get the list of irq we want to handle, we need to or the
+	 * current interrupt number in the irq mask coming from $ilr.
+	 * In order to do that, get $es to get the pending irq.
+	 */
+	get $r3 = $es
+	make $r4 = 1
 	;;
 	/* Enable hwloop and exceptions */
 	wfxl $ps, $r8
 	;;
-	/* Prepare handler call */
-	get $r0 = $es
+	/* Extract interrupt number from $es */
+	extfz $r3 = $r3, K1C_SFR_END(ES_ITN), K1C_SFR_START(ES_ITN)
+	/**
+	 * Mask requests with enabled line since ILR will also contain disabled
+	 * interrupt lines (ie not enabled in $ile) and we want to respect the
+	 * current state of interrupt lines.
+	 */
+	andd $r0 = $r0, $r2
 	;;
-	/* Extract interrupt number */
-	extfz $r0 = $r0, K1C_SFR_END(ES_ITN), K1C_SFR_START(ES_ITN)
+	/* Clear $ilr with bits we are going to handle */
+	wfxl $ilr = $r0
+	slld $r4 = $r4, $r3
+	;;
+	/* Or the irq mask with the current pending irq */
+	ord $r0 = $r0, $r4
 	call do_IRQ
 	;;
 	get $r11 = $sr
@@ -614,7 +667,7 @@ ENTRY(k1c_syscall_handler):
 	;;
 	/* Restore kernel stack pointer */
 	ld $sp = TASK_THREAD_KERNEL_SP[$r36]
-	/* If the syscall number is valid, directly jump to do_syscall */
+	/* If the syscall number is valid, directly jump to check_trace */
 	cb.dlez $r50? invalid_scall
 	;;
 check_trace:
@@ -624,6 +677,18 @@ check_trace:
 	/* Save regs r0 -> r3 in pt_regs for restart & trace if needed */
 	so (PT_Q0 - PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
 	;;
+#ifdef CONFIG_SECURE_DAME_HANDLING
+	get $r44 = $ilr
+	make $r45 = SFR_CLEAR_WFXL(ILR, IT16);
+	;;
+	/* Extract $ilr.dame bit */
+	extfz $r44 = $r44, K1C_SFR_END(ILR_IT16), K1C_SFR_START(ILR_IT16)
+	/* Save $ilr value */
+	sd PT_ILR[$sp] = $r44
+	/* Clear $ilr.dame */
+	wfxl $ilr = $r45
+	;;
+#endif
 	/* store volatile register which will be needed after C call */
 	so PT_Q36[$sp] = $r36r37r38r39
 	get $r60 = $lc
@@ -722,10 +787,20 @@ ret_to_user:
 	 */
 	andd $r35 = $r35, $r33
 	;;
-	/* Restore user pointer */
-	ld $sp = TASK_THREAD_USER_SP[$r36]
+	/* Restore $ilr */
+	ld $r44 = PT_ILR[$sp]
 	set $ls = $r62
 	;;
+	/* Restore user pointer */
+	ld $sp = TASK_THREAD_USER_SP[$r36]
+	/* Prepare $r44 as a set mask for $ilr wfxl */
+	slld $r44 = $r44,  32
+	;;
+#ifdef CONFIG_SECURE_DAME_HANDLING
+	/* Barrier to force DAME interrupt to be generated if any pending */
+	barrier
+	;;
+#endif
 	/* Disable interrupt before restoring critical registers or else
 	 * our restored SFRs will be clobbered
 	 * ie: if an interrupt happens right after "set $spc = $r43"
@@ -733,6 +808,13 @@ ret_to_user:
 	 * routine (it or trap).
 	 */
 	wfxl $ps, $r60
+	;;
+	/**
+	 * wfxl on $ilr to avoid privilege traps when restoring with set
+	 * Note that we do that after disabling interrupt since we explicitly
+	 * want to serve DAME itnerrupt to the user (ie not in kernel mode).
+	 */
+	wfxl $ilr = $r44
 	;;
 	wfxl $sps = $r35
 	;;

@@ -14,7 +14,7 @@
 #include <uapi/asm/ptrace.h>
 
 #define GPR_COUNT	64
-#define SFR_COUNT	8
+#define SFR_COUNT	9
 #define VIRT_COUNT	1
 
 #define ES_SYSCALL	0x3
@@ -124,6 +124,8 @@ struct pt_regs {
 	uint64_t spc;
 	uint64_t sps;
 	uint64_t es;
+
+	uint64_t ilr;
 
 	/* "Virtual" registers */
 	uint64_t orig_r0;
