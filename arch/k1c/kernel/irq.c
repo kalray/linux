@@ -9,24 +9,34 @@
 #include <linux/irqdomain.h>
 #include <linux/hardirq.h>
 #include <linux/irqchip.h>
+#include <linux/bitops.h>
 #include <linux/init.h>
+
+#include <asm/dame.h>
 
 #define IT_MASK(__it) (K1C_SFR_ILL_ ## __it ## _MASK)
 #define IT_LEVEL(__it, __level) \
 	(__level << K1C_SFR_ILL_ ## __it ## _SHIFT)
 
-void do_IRQ(int hwirq, struct pt_regs *regs)
+void do_IRQ(unsigned long hwirq_mask, struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 	int irq;
+	unsigned int hwirq;
 
 	irq_enter();
 
-	irq = irq_find_mapping(NULL, hwirq);
-	generic_handle_irq(irq);
+	while (hwirq_mask) {
+		hwirq = __ffs(hwirq_mask);
+		irq = irq_find_mapping(NULL, hwirq);
+		generic_handle_irq(irq);
+		hwirq_mask &= ~BIT_ULL(hwirq);
+	}
 
 	irq_exit();
 	set_irq_regs(old_regs);
+
+	dame_irq_check(regs);
 }
 
 /*
