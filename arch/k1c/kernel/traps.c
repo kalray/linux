@@ -12,6 +12,7 @@
 #include <linux/printk.h>
 #include <linux/init.h>
 
+#include <asm/dame.h>
 #include <asm/traps.h>
 
 static trap_handler_func trap_handler_table[K1C_TRAP_COUNT] = { NULL };
@@ -91,5 +92,6 @@ void trap_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	trap_func(es, ea, regs);
 
 done:
+	dame_irq_check(regs);
 	exception_exit(prev_state);
 }
