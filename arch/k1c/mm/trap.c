@@ -22,21 +22,6 @@
 #include <asm/current.h>
 #include <asm/tlbflush.h>
 
-static void do_user_fault(struct task_struct *tsk, uint64_t ea,
-			  int sig, int code)
-{
-	kernel_siginfo_t si;
-
-	clear_siginfo(&si);
-
-	si.si_signo = sig;
-	si.si_errno = 0;
-	si.si_addr = (void __user *)ea;
-	si.si_code = code;
-
-	force_sig_info(sig, &si, tsk);
-}
-
 static int handle_vmalloc_fault(uint64_t ea)
 {
 	/*
@@ -177,7 +162,8 @@ bad_area:
 	up_read(&mm->mmap_sem);
 
 	if (user_mode(regs)) {
-		do_user_fault(tsk, ea, SIGSEGV, SIGSEGV);
+		force_sig_fault(SIGSEGV, SEGV_MAPERR,
+				(void __user *) ea, tsk);
 		return;
 	}
 
@@ -201,7 +187,8 @@ no_context:
 void k1c_trap_protection(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
 	if (user_mode(regs)) {
-		do_user_fault(current, ea, SIGSEGV, SIGSEGV);
+		force_sig_fault(SIGSEGV, SEGV_ACCERR,
+				(void __user *) ea, current);
 		return;
 	}
 
