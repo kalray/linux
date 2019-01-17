@@ -95,8 +95,9 @@ stack_error_panic_str_label:
  * task_reg is a register containing the current task pointer
  * both task_reg and sp_reg must be in saved_quad since they have been cloberred
  * and will be restored when restoring saved_quad.
+ * pt_regs_sp is a single register which will be filled by pt_regs addr.
  */
-.macro save_regs_for_exception sp_reg task_reg saved_quad
+.macro save_regs_for_exception sp_reg task_reg saved_quad pt_regs_sp
 .if (\saved_quad==$r4r5r6r7 || \saved_quad==$r60r61r62r63)
 .error "saved_quad must not be $r4r5r6r7 or $r60r61r62r63 !"
 .endif
@@ -170,6 +171,7 @@ stack_error_panic_str_label:
 	so PT_LC_LE_LS_RA[$sp] = $r4r5r6r7
 	/* Clear frame pointer */
 	make $fp = 0
+	copyd \pt_regs_sp = $sp
 	;;
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	addd $sp = $sp, -REG_SIZE
@@ -510,10 +512,9 @@ slow_path:
 	switch_stack $r1 $r2 trap_save_regs
 	;;
 trap_save_regs:
-	save_regs_for_exception $r1 $r2 $r0r1r2r3
+	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r2
 	;;
 	make $r8 = PS_HLE_EN
-	copyd $r2 = $sp
 	get $r1 = $ea
 	;;
 	/* Enable hwloop */
@@ -573,10 +574,9 @@ ENTRY(k1c_interrupt_handler):
 	;;
 #endif
 it_save_regs:
-	save_regs_for_exception $r1 $r0 $r0r1r2r3
+	save_regs_for_exception $r1 $r0 $r0r1r2r3 $r1
 	;;
 	make $r8 = PS_HWLOOP_EN_ET_EN
-	copyd $r1 = $sp
 	/* Prepare handler call */
 	get $r0 = $ilr
 	;;
@@ -920,6 +920,15 @@ ENTRY(ret_from_fork)
 	;;
 ret_from_kernel:
 	get $r11 = $sr
+#ifdef CONFIG_DEBUG_EXCEPTION_STACK
+	/**
+	* Debug code expect entry stack to be stored at current $sp.
+	* Make some room and store current $sp to avoid triggering false alarm.
+	*/
+	addd $sp = $sp, -REG_SIZE
+	;;
+	sd 0[$sp] = $sp
+#endif
 	;;
 	restore_regs_after_exception $r11
 	;;
