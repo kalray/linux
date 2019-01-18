@@ -750,6 +750,21 @@ do_syscall:
 	call work_pending
 	;;
 ret_to_user:
+#ifdef CONFIG_SECURE_DAME_HANDLING
+	/* Barrier to force DAME interrupt to be generated if any pending */
+	barrier
+	;;
+#endif
+	make $r60 = K1C_SFR_PS_IE_MASK
+	;;
+	/* Disable interrupt before restoring critical registers or else
+	 * our restored SFRs will be clobbered
+	 * ie: if an interrupt happens right after "set $spc = $r43"
+	 * Then spc will be cloberred when restoring it in the upper
+	 * routine (it or trap).
+	 */
+	wfxl $ps, $r60
+	;;
 	/* Restore registers */
 	lo $r60r61r62r63 = PT_LC_LE_LS_RA[$sp]
 	get $r33 = $sps
@@ -780,7 +795,6 @@ ret_to_user:
 	;;
 	lo $r4r5r6r7 = PT_Q4[$sp]
 	set $le = $r61
-	make $r60 = K1C_SFR_PS_IE_MASK
 	addd $sp = $sp, PT_SIZE_ON_STACK
 	/* Mask to drop identical bits in order to avoid useless
 	 * privilege traps
@@ -795,19 +809,6 @@ ret_to_user:
 	ld $sp = TASK_THREAD_USER_SP[$r36]
 	/* Prepare $r44 as a set mask for $ilr wfxl */
 	slld $r44 = $r44,  32
-	;;
-#ifdef CONFIG_SECURE_DAME_HANDLING
-	/* Barrier to force DAME interrupt to be generated if any pending */
-	barrier
-	;;
-#endif
-	/* Disable interrupt before restoring critical registers or else
-	 * our restored SFRs will be clobbered
-	 * ie: if an interrupt happens right after "set $spc = $r43"
-	 * Then spc will be cloberred when restoring it in the upper
-	 * routine (it or trap).
-	 */
-	wfxl $ps, $r60
 	;;
 	/**
 	 * wfxl on $ilr to avoid privilege traps when restoring with set
