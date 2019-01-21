@@ -1,0 +1,72 @@
+* Kalray NWL PCIe Root Port Bridge DT description
+
+Required properties:
+- compatible: Should contain "k1c,k1c-pcie-rc"
+- #address-cells: Address representation for root ports, set to <3>
+- #size-cells: Size representation for root ports, set to <2>
+- #interrupt-cells: specifies the number of cells needed to encode an
+	interrupt source. The value must be 1.
+- reg: Should contain Bridge, CSR, bar decoder, ecam, phycore, ftu physical
+  address and length
+- reg-names: Must include the following entries:
+	"dma_bridge_reg": bridge registers
+	"csr_reg": core status registers
+	"bar_decoder_reg": bar decoder registers region
+	"phycore_reg": PCIe phy configuration registers region
+	"ftu_reg": ftu registers region
+	"ecam_reg": configuration space region
+- device_type: must be "pci"
+- interrupts: Should contain misc and legacy interrupt number
+- interrupt-names: Must include the following entries:
+	"intx": interrupt asserted when a legacy interrupt is received
+	"misc": interrupt asserted when miscellaneous interrupt is received
+- interrupt-map-mask and interrupt-map: standard PCI properties to define the
+	mapping of the PCI interface to interrupt numbers.
+- ranges: ranges for the PCI memory regions (I/O space region is not
+	supported by hardware)
+	Please refer to the standard PCI bus binding document for a more
+	detailed explanation
+- legacy-interrupt-controller: Interrupt controller device node for Legacy
+	interrupts
+	- interrupt-controller: identifies the node as an interrupt controller
+	- #interrupt-cells: should be set to 1
+	- #address-cells: specifies the number of cells needed to encode an
+		address. The value must be 0.
+- kalray,nb-lane : define the number of PCIe lane used by the root complex
+
+Example:
+++++++++
+
+pcie: pcie@0x112fd00000 {
+	compatible = "kalray,k1c-pcie-rc";
+	#address-cells = <3>;
+	#size-cells = <2>;
+	#interrupt-cells = <1>;
+	device_type = "pci";
+	kalray,nb-lane = <8>;
+	reg = <0x51 0x2FD00000 0x0 0x40000>, /* Expresso dma bridge register mapping*/
+		  <0x51 0x28100000 0x0 0x40000>, /* Expresso core register mapping */
+		  <0x51 0x28340000 0x0 0x10000>, /* Bar decoder (essentially to disable it)*/
+		  <0x51 0x30000000 0x0 0x10000000>, /* ECAM region mapping */
+		  <0x51 0x28300200 0x0 0x1000>, /* phy core region mapping */
+		  <0x40 0x10181000 0x0 0x1000>; /* FTU region mapping */
+
+	reg-names = "dma_bridge_reg", "csr_reg", "bar_decoder_reg", "ecam_reg", "phycore_reg", "ftu_reg";
+			 /* flags */ /* pci addr 64 bits*/ /*mppa addr 64 bits*/ /*    region size  */
+	ranges = <0x02000000 0x00000000 0x80000000 0x00000053 0xA0000000 0x00000000 0x10000000	/* non-prefetchable memory, 32 bits only*/
+		  0x43000000 0x00000012 0x00000000 0x00000052 0x00000000 0x00000001 0x80000000>;  /* prefetchable memory*/
+	bus-range = <0x00 0xff>;
+	interrupt-map-mask = <0x0 0x0 0x0 0x7>;
+	interrupt-map = <0x0 0x0 0x0 0x1 &pcie_intc 0x1>,
+			<0x0 0x0 0x0 0x2 &pcie_intc 0x2>,
+			<0x0 0x0 0x0 0x3 &pcie_intc 0x3>,
+			<0x0 0x0 0x0 0x4 &pcie_intc 0x4>;
+	interrupt-parent = <&itgen_misc>;
+	interrupts = <2>, <3>;
+	interrupt-names = "intx", "misc";
+	pcie_intc: legacy-interrupt-controller {
+		interrupt-controller;
+		#address-cells = <0>;
+		#interrupt-cells = <1>;
+	};
+};
