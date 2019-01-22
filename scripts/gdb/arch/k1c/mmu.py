@@ -53,10 +53,6 @@ pa_value = {
     constants.LX_TLB_PA_RWX_RWX: 'RWX_RWX',
 }
 
-def get_reg_value(field):
-        val = gdb.parse_and_eval(field)
-        return long(val.cast(gdb.lookup_type('unsigned long')))
-
 class LxDecodetlb(gdb.Command):
     """Decode $tel and $teh values
     """
@@ -65,21 +61,21 @@ class LxDecodetlb(gdb.Command):
         super(LxDecodetlb, self).__init__("lx-k1c-tlb-decode", gdb.COMMAND_DATA)
 
     def invoke(self, argument, from_tty):
-        page_size_value = get_reg_value("$tel.ps")
-        page_size_shift = ps_shift[page_size_value]
+        tel_val = gdb.parse_and_eval("$tel")
         gdb.write('tel:\n\tes:\t{es}\n\tcp:\t{cp}\n\tpa:\t{pa}\n\tps:\t{ps}\n\tfn:\t0x{fn:016x}\n'.format(
-                              es=es_value[get_reg_value("$tel.es")],
-                              cp=cp_value[get_reg_value("$tel.cp")],
-                              pa=pa_value[get_reg_value("$tel.pa")],
-                              ps=ps_value[page_size_value],
-                              fn=get_reg_value("$tel.fn"),
-                          ))
+                              es=es_value[int(tel_val["es"])],
+                              cp=cp_value[int(tel_val["cp"])],
+                              pa=pa_value[int(tel_val["pa"])],
+                              ps=ps_value[int(tel_val["ps"])],
+                              fn=int(tel_val["fn"]))
+                          )
 
-        gdb.write('teh:\n\tasn:\t{asn}\n\tg:\t{toto}\n\tvs:\t{vs}\n\tpn:\t0x{pn:016x}\n'.format(
-                              asn=get_reg_value("$teh.asn"),
-                              toto=g_value[get_reg_value("$teh.g")],
-                              vs=get_reg_value("$teh.vs"),
-                              pn=get_reg_value("$teh.pn"),
-                          ))
+        teh_val = gdb.parse_and_eval("$teh")
+        gdb.write('teh:\n\tasn:\t{asn}\n\tg:\t{g}\n\tvs:\t{vs}\n\tpn:\t0x{pn:016x}\n'.format(
+                              asn=teh_val["asn"],
+                              g=g_value[int(teh_val["g"])],
+                              vs=teh_val["vs"],
+                              pn=int(teh_val["pn"]))
+                          )
 
 LxDecodetlb()
