@@ -185,10 +185,8 @@ stack_error_panic_str_label:
  * Restore registers after exception
  * When entering this macro, $sp must be located right before regs
  * storage.
- * sr_reg contains $sr value: Be careful not to use a restored register
- * if you change it !
  */
-.macro restore_regs_after_exception sr_reg
+.macro restore_regs_after_exception
 	LOCAL _restore_regs
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	LOCAL _check_ok
@@ -207,6 +205,7 @@ _check_ok:
 	addd $sp = $sp, REG_SIZE
 	;;
 #endif
+	get $r11 = $sr
 	/* Load sps value from saved registers */
 	ld $r6 = PT_SPS[$sp]
 	;;
@@ -215,7 +214,7 @@ _check_ok:
 	 * check work pending. If coming from kernel, directly go to
 	 * register restoration */
 	cb.even $r6? _restore_regs
-	ld $r1 = TASK_TI_FLAGS[\sr_reg]
+	ld $r1 = TASK_TI_FLAGS[$r11]
 	;;
 	/* Do we have work pending ? */
 	andd $r5 = $r1, _TIF_WORK_MASK
@@ -525,9 +524,7 @@ trap_save_regs:
 	;;
 	call trap_handler
 	;;
-	get $r11 = $sr
-	;;
-	restore_regs_after_exception $r11
+	restore_regs_after_exception
 	;;
 	rfe
 	;;
@@ -612,9 +609,7 @@ it_save_regs:
 	ord $r0 = $r0, $r4
 	call do_IRQ
 	;;
-	get $r11 = $sr
-	;;
-	restore_regs_after_exception $r11
+	restore_regs_after_exception
 	;;
 	rfe
 	;;
@@ -920,7 +915,6 @@ ENTRY(ret_from_fork)
 	call do_syscall_trace_exit
 	;;
 ret_from_kernel:
-	get $r11 = $sr
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	/**
 	* Debug code expect entry stack to be stored at current $sp.
@@ -931,7 +925,7 @@ ret_from_kernel:
 	sd 0[$sp] = $sp
 #endif
 	;;
-	restore_regs_after_exception $r11
+	restore_regs_after_exception
 	;;
 	rfe
 	;;
