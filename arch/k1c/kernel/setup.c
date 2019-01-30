@@ -81,6 +81,19 @@ static void setup_processor(void)
 	/* Clear performance monitor 0 */
 	k1c_sfr_set_mask(K1C_SFR_PMC, K1C_SFR_PMC_PM0C_WFXL_MASK, 0);
 
+	/*
+	 * On k1c, we have speculative accesses which differ from normal
+	 * accesses by the fact their trapping policy is directed by mmc.sne
+	 * (speculative no-mapping enable) and mmc.spe (speculative protection
+	 * enabled).
+	 * To handle these accesses properly, we disable all traps on
+	 * speculative accesses while in kernel and user (sne & spe)
+	 * in order to silently discard data if fetched.
+	 * This allows to do an effective prefetch.
+	 */
+	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_SNE_SHIFT);
+	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_SPE_SHIFT);
+
 	k1c_init_core_irq();
 
 	setup_user_privilege();
