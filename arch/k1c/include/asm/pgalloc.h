@@ -49,9 +49,6 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 	       init_mm.pgd + USER_PTRS_PER_PGD,
 	       (PTRS_PER_PGD - USER_PTRS_PER_PGD) * sizeof(pgd_t));
 
-	/* Copy first "null trapping" page (cf mm/init.c) */
-	memcpy(pgd, init_mm.pgd, sizeof(pgd_t));
-
 	return pgd;
 }
 
