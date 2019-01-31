@@ -89,6 +89,10 @@ void trap_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 		goto done;
 	}
 
+	/* If irqs were enabled in the preempted context, reenable them */
+	if (regs->sps & K1C_SFR_PS_IE_MASK)
+		local_irq_enable();
+
 	trap_func(es, ea, regs);
 
 done:
