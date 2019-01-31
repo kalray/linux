@@ -9,8 +9,6 @@
 #ifndef _ASM_K1C_CURRENT_H
 #define _ASM_K1C_CURRENT_H
 
-#include <linux/preempt.h>
-
 #include <asm/percpu.h>
 #include <asm/sfr.h>
 
