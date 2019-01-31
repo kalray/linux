@@ -30,8 +30,8 @@
 #define PS_HLE_EN_IT_EN_ET_CLEAR	\
 		(((K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_IE_MASK) << 32) | \
 		K1C_SFR_PS_ET_MASK)
-#define PS_HLE_EN		(K1C_SFR_PS_HLE_MASK << 32)
 #define PS_IT_DIS		K1C_SFR_PS_IE_MASK
+#define PS_IL_CLEAR		K1C_SFR_PS_IL_WFXL_CLEAR
 
 #define MMC_SEL_JTLB_CLEAR_WAY	(K1C_SFR_MMC_SB_MASK | K1C_SFR_MMC_SW_MASK)
 
@@ -230,6 +230,14 @@ _check_ok:
 	call work_pending
 	;;
 _restore_regs:
+	/* Interrupts might have been reenabled inside traps/interrupt/
+	 * work_pending handler for nested support. In order to avoid messing
+	 * the restored context, disable interrupts.
+	 */
+	make $r60 = K1C_SFR_PS_IE_MASK
+	;;
+	wfxl $ps, $r60
+	;;
 	lo $r0r1r2r3 = PT_CS_SPC_SPS_ES[$sp]
 	;;
 	lo $r4r5r6r7 = PT_LC_LE_LS_RA[$sp]
@@ -513,7 +521,7 @@ slow_path:
 trap_save_regs:
 	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r2
 	;;
-	make $r8 = PS_HLE_EN
+	make $r8 = PS_HWLOOP_EN_ET_EN
 	get $r1 = $ea
 	;;
 	/* Enable hwloop */
@@ -608,6 +616,16 @@ it_save_regs:
 	/* Or the irq mask with the current pending irq */
 	ord $r0 = $r0, $r4
 	call do_IRQ
+	;;
+	/* From now on, lower the interrupt level (IL) to allow IT nesting.
+	 * If returning to user, we will call schedule which will reenable
+	 * interrupts by itself when ready.
+	 * If returning to kernel and with CONFIG_PREEMPT, we will call
+	 * preempt_schedule_irq which will do the same.
+	 */
+	make $r0 = PS_IL_CLEAR
+	;;
+	wfxl $ps = $r0
 	;;
 	restore_regs_after_exception
 	;;
