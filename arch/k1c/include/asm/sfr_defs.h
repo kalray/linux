@@ -1736,6 +1736,22 @@
 #define K1C_SFR_DO_W1_WFXL_CLEAR _ULL(0xc0)
 #define K1C_SFR_DO_W1_WFXL_SET _ULL(0xc000000000)
 
+#define K1C_SFR_DBA0_DBA0_MASK _ULL(0x0) /* Debug Breakpoint Address 0 */
+#define K1C_SFR_DBA0_DBA0_SHIFT 0
+#define K1C_SFR_DBA0_DBA0_WIDTH 64
+
+#define K1C_SFR_DBA1_DBA1_MASK _ULL(0x0) /* Debug Breakpoint Address 1 */
+#define K1C_SFR_DBA1_DBA1_SHIFT 0
+#define K1C_SFR_DBA1_DBA1_WIDTH 64
+
+#define K1C_SFR_DWA0_DWA0_MASK _ULL(0x0) /* Debug Breakpoint Address 0 */
+#define K1C_SFR_DWA0_DWA0_SHIFT 0
+#define K1C_SFR_DWA0_DWA0_WIDTH 64
+
+#define K1C_SFR_DWA1_DWA1_MASK _ULL(0x0) /* Debug Breakpoint Address 1 */
+#define K1C_SFR_DWA1_DWA1_SHIFT 0
+#define K1C_SFR_DWA1_DWA1_WIDTH 64
+
 #define K1C_SFR_DOW_B0_MASK _ULL(0x3) /* Breakpoint 0 owner. */
 #define K1C_SFR_DOW_B0_SHIFT 0
 #define K1C_SFR_DOW_B0_WIDTH 2
@@ -3269,6 +3285,10 @@
 #define K1C_SFR_CS_XPOW2_WFXM_CLEAR _ULL(0xfc00000)
 #define K1C_SFR_CS_XPOW2_WFXM_SET _ULL(0xfc0000000000000)
 
+#define K1C_SFR_AESPC_AESPC_MASK _ULL(0x0) /* Arithmetic Exception Saved PC */
+#define K1C_SFR_AESPC_AESPC_SHIFT 0
+#define K1C_SFR_AESPC_AESPC_WIDTH 64
+
 #define K1C_SFR_CSIT_ICIE_MASK _ULL(0x1) /* Integer Carry Interrupt Enable */
 #define K1C_SFR_CSIT_ICIE_SHIFT 0
 #define K1C_SFR_CSIT_ICIE_WIDTH 1
@@ -4397,6 +4417,50 @@
 #define K1C_SFR_TCR_WSI_WFXL_MASK _ULL(0x10000000)
 #define K1C_SFR_TCR_WSI_WFXL_CLEAR _ULL(0x10000000)
 #define K1C_SFR_TCR_WSI_WFXL_SET _ULL(0x1000000000000000)
+
+#define K1C_SFR_PM0_PM0_MASK _ULL(0x0) /* Performance Monitor 0 */
+#define K1C_SFR_PM0_PM0_SHIFT 0
+#define K1C_SFR_PM0_PM0_WIDTH 64
+
+#define K1C_SFR_PM1_PM1_MASK _ULL(0x0) /* Performance Monitor 1 */
+#define K1C_SFR_PM1_PM1_SHIFT 0
+#define K1C_SFR_PM1_PM1_WIDTH 64
+
+#define K1C_SFR_PM2_PM2_MASK _ULL(0x0) /* Performance Monitor 2 */
+#define K1C_SFR_PM2_PM2_SHIFT 0
+#define K1C_SFR_PM2_PM2_WIDTH 64
+
+#define K1C_SFR_PM3_PM3_MASK _ULL(0x0) /* Performance Monitor 3 */
+#define K1C_SFR_PM3_PM3_SHIFT 0
+#define K1C_SFR_PM3_PM3_WIDTH 64
+
+#define K1C_SFR_PMSA_PMSA_MASK _ULL(0x0) /* Performance Monitor Saved Address */
+#define K1C_SFR_PMSA_PMSA_SHIFT 0
+#define K1C_SFR_PMSA_PMSA_WIDTH 64
+
+#define K1C_SFR_T0V_T0V_MASK _ULL(0x0) /* Timer 0 value */
+#define K1C_SFR_T0V_T0V_SHIFT 0
+#define K1C_SFR_T0V_T0V_WIDTH 64
+
+#define K1C_SFR_T1V_T1V_MASK _ULL(0x0) /* Timer 1 value */
+#define K1C_SFR_T1V_T1V_SHIFT 0
+#define K1C_SFR_T1V_T1V_WIDTH 64
+
+#define K1C_SFR_T0R_T0R_MASK _ULL(0x0) /* Timer 0 reload value */
+#define K1C_SFR_T0R_T0R_SHIFT 0
+#define K1C_SFR_T0R_T0R_WIDTH 64
+
+#define K1C_SFR_T1R_T1R_MASK _ULL(0x0) /* Timer 1 reload value */
+#define K1C_SFR_T1R_T1R_SHIFT 0
+#define K1C_SFR_T1R_T1R_WIDTH 64
+
+#define K1C_SFR_WDV_WDV_MASK _ULL(0x0) /* Watchdog Value */
+#define K1C_SFR_WDV_WDV_SHIFT 0
+#define K1C_SFR_WDV_WDV_WIDTH 64
+
+#define K1C_SFR_WDR_WDR_MASK _ULL(0x0) /* Watchdog Reload Value */
+#define K1C_SFR_WDR_WDR_SHIFT 0
+#define K1C_SFR_WDR_WDR_WIDTH 64
 
 #define K1C_SFR_PMC_PM0C_MASK _ULL(0x3f) /* PM0 Configuration */
 #define K1C_SFR_PMC_PM0C_SHIFT 0
