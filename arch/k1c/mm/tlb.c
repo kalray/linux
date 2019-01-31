@@ -281,7 +281,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	tlbe = tlb_mk_entry(
 		(void *)pfn_to_phys(pfn),
 		(void *)address,
-		(PAGE_SIZE == 0x1000) ? TLB_PS_4K : TLB_PS_64K,
+		TLB_DEFAULT_PS,
 		(pte_val & _PAGE_GLOBAL) ? TLB_G_GLOBAL : TLB_G_USE_ASN,
 		pa,
 		cp,
