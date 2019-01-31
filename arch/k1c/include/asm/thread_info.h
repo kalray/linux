@@ -59,11 +59,13 @@
  */
 struct thread_info {
 	unsigned long flags;				/* low level flags */
+	int preempt_count;
 };
 
 #define INIT_THREAD_INFO(tsk)			\
 {						\
 	.flags		= 0,			\
+	.preempt_count  = INIT_PREEMPT_COUNT,	\
 }
 #endif /* __ASSEMBLY__*/
 #endif /* _ASM_K1C_THREAD_INFO_H */
