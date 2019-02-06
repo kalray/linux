@@ -74,7 +74,7 @@ static int handle_vmalloc_fault(uint64_t ea)
 	return 0;
 }
 
-static void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
+void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
 	struct task_struct *tsk;
 	struct mm_struct *mm;
@@ -184,28 +184,7 @@ no_context:
 		 "paging request", ea);
 }
 
-void k1c_trap_protection(uint64_t es, uint64_t ea, struct pt_regs *regs)
-{
-	if (user_mode(regs)) {
-		force_sig_fault(SIGSEGV, SEGV_ACCERR,
-				(void __user *) ea, current);
-		return;
-	}
-
-	if (fixup_exception(regs))
-		return;
-
-	show_regs(regs);
-	panic("Unhandled protection trap at addr 0x%016llx\n",
-		ea);
-}
-
-void k1c_trap_nomapping(uint64_t es, uint64_t ea, struct pt_regs *regs)
-{
-	do_page_fault(es, ea, regs);
-}
-
-void k1c_trap_writetoclean(uint64_t es, uint64_t ea, struct pt_regs *regs)
+void do_writetoclean(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
 	panic("%s not implemented", __func__);
 }
