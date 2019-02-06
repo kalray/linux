@@ -120,8 +120,8 @@ struct pt_regs {
 	uint64_t ra;
 
 	uint64_t cs;
-	/* Up to here, this is registers needed for user_pt_regs */
 	uint64_t spc;
+	/* Up to here, this is registers needed for user_pt_regs */
 	uint64_t sps;
 	uint64_t es;
 
