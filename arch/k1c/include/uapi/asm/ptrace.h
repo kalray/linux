@@ -92,6 +92,7 @@ struct user_pt_regs {
 	unsigned long ra;
 
 	unsigned long cs;
+	unsigned long spc;
 };
 
 

@@ -29,7 +29,7 @@ int foo(void)
 	/**
 	 * Check that user_pt_regs size matches the beginning of pt_regs
 	 */
-	BUILD_BUG_ON((offsetof(struct user_pt_regs, cs) + sizeof(uint64_t)) !=
+	BUILD_BUG_ON((offsetof(struct user_pt_regs, spc) + sizeof(uint64_t)) !=
 		     sizeof(struct user_pt_regs));
 
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
