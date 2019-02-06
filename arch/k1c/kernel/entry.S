@@ -739,9 +739,12 @@ do_syscall:
 	/* Call the syscall handler */
 	icall $r38
 	;;
-	/* r36 and r37 might have been clobbered by C call, get thread_info
-	 * trace flag value from stack */
-	lo $r36r37r38r39 = PT_Q36[$sp]
+	/* Reload task flags since the syscall might have generated a signal*/
+	get $r36 = $sr
+	;;
+	ld $r38 = TASK_TI_FLAGS[$r36]
+	;;
+	andd $r37 = $r38, _TIF_SYSCALL_TRACE
 	;;
 	/* Save r0 which was returned from do_scall previously and
 	 * will be cloberred by work_pending(and potentially
@@ -753,8 +756,10 @@ do_syscall:
 	sd PT_Q0[$sp] = $r0
 	/* used to store if trace system */
 	cb.dnez $r37? trace_syscall_exit
+	;;
+check_work_pending:
 	/* Do we have work pending ? */
-	andd $r2 = $r39, _TIF_WORK_MASK
+	andd $r2 = $r38, _TIF_WORK_MASK
 	;;
 	/* If no work pending, directly jump to ret_to_user */
 	cb.deqz $r2? ret_to_user
@@ -880,14 +885,16 @@ trace_syscall_enter:
 	goto do_syscall
 	;;
 trace_syscall_exit:
+	sd PT_R38[$sp] = $r38
+	;;
 	copyd $r0 = $sp
 	call do_syscall_trace_exit
 	;;
-	/* Restore r36, r37 and r38 which might have been clobbered by
+	/* Restore r38 (task flags) which might have been clobbered by
 	 * do_syscall_trace_exit and needed by ret_to_user */
-	lo $r36r37r38r39 = PT_Q36[$sp]
+	ld $r38 = PT_R38[$sp]
 	;;
-	goto ret_to_user
+	goto check_work_pending
 	;;
 ENDPROC(k1c_syscall_handler)
 
