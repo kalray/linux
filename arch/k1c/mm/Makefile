@@ -6,4 +6,4 @@
 # Copyright (C) 2017 Kalray Inc.
 #
 
-obj-y := init.o ioremap.o mmu.o trap.o tlb.o extable.o
+obj-y := init.o ioremap.o mmu.o fault.o tlb.o extable.o
