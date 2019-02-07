@@ -87,7 +87,6 @@ int foo(void)
 	 * Stack pointers
 	 */
 	OFFSET(TASK_THREAD_KERNEL_SP, task_struct, thread.kernel_sp);
-	OFFSET(TASK_THREAD_USER_SP, task_struct, thread.user_sp);
 
 	/*
 	 * Offsets to save registers in switch_to using quads
