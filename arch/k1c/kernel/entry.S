@@ -813,7 +813,6 @@ ret_to_user:
 	;;
 	lo $r4r5r6r7 = PT_Q4[$sp]
 	set $le = $r61
-	addd $sp = $sp, PT_SIZE_ON_STACK
 	/* Mask to drop identical bits in order to avoid useless
 	 * privilege traps
 	 */
