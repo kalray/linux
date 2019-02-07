@@ -662,13 +662,13 @@ ENTRY(k1c_syscall_handler):
 	/* Extract syscall number */
 	extfz $r32 = $r43, K1C_SFR_END(ES_SN), K1C_SFR_START(ES_SN)
 	make $r42 = sys_call_table
-	/* Store current user stack pointer sp of thread_info */
-	sd TASK_THREAD_USER_SP[$r36] = $sp
 	/* Get regs to save on stack */
 	get $r63 = $ra
 	;;
 	ld $r39 = TASK_TI_FLAGS[$r36]
 	get $r41 = $spc
+	/* Store current user stack pointer sp of thread_info */
+	copyd $r44 = $sp
 	;;
 	/* Check for out-of-bound syscall number */
 	sbfd $r50 = $r32, __NR_syscalls
@@ -689,6 +689,9 @@ check_trace:
 	get $r40 = $cs
 	/* Save regs r0 -> r3 in pt_regs for restart & trace if needed */
 	so (PT_Q0 - PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
+	;;
+	/* Store user stack pointer */
+	sd PT_R12[$sp] = $r44
 	;;
 #ifdef CONFIG_SECURE_DAME_HANDLING
 	get $r44 = $ilr
@@ -823,7 +826,7 @@ ret_to_user:
 	set $ls = $r62
 	;;
 	/* Restore user pointer */
-	ld $sp = TASK_THREAD_USER_SP[$r36]
+	ld $sp = PT_R12[$sp]
 	/* Prepare $r44 as a set mask for $ilr wfxl */
 	slld $r44 = $r44,  32
 	;;
