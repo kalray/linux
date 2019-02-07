@@ -81,7 +81,6 @@ struct ctx_switch_regs {
 };
 
 struct thread_struct {
-	uint64_t user_sp;
 	uint64_t kernel_sp;
 	mm_segment_t addr_limit;		/* Addr limit */
 	uint64_t save_area[SAVE_AREA_SIZE];	/* regs save area */
