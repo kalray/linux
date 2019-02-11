@@ -13,15 +13,26 @@
 #include <asm/ucontext.h>
 #include <asm/cacheflush.h>
 
-#define TRAMP_SIZE	8
 #define STACK_ALIGN_MASK	0x1F
 
 struct rt_sigframe {
 	struct siginfo info;
 	struct ucontext uc;
-	unsigned long trampoline[TRAMP_SIZE / sizeof(unsigned long)];
 };
 
+int __init setup_syscall_sigreturn_page(void *sigpage_addr)
+{
+	unsigned int frame_size = (uintptr_t) &user_scall_rt_sigreturn_end -
+				  (uintptr_t) &user_scall_rt_sigreturn;
+
+	/* Copy the sigreturn scall implementation */
+	memcpy(sigpage_addr, &user_scall_rt_sigreturn, frame_size);
+
+	flush_icache_range((unsigned long) sigpage_addr,
+			   (unsigned long) sigpage_addr + frame_size);
+
+	return 0;
+}
 
 static long restore_sigcontext(struct pt_regs *regs,
 			       struct sigcontext __user *sc)
@@ -113,10 +124,9 @@ static inline void __user *get_sigframe(struct ksignal *ksig,
 static int setup_rt_frame(struct ksignal *ksig, sigset_t *set,
 			  struct pt_regs *regs)
 {
+	unsigned long sigpage = current->mm->context.sigpage;
 	struct rt_sigframe __user *frame;
 	long err = 0;
-	unsigned int frame_size = (uintptr_t) &user_scall_rt_sigreturn_end -
-				  (uintptr_t) &user_scall_rt_sigreturn;
 
 	frame = get_sigframe(ksig, regs, sizeof(*frame));
 	if (!access_ok(frame, sizeof(*frame)))
@@ -133,23 +143,14 @@ static int setup_rt_frame(struct ksignal *ksig, sigset_t *set,
 	if (err)
 		return -EFAULT;
 
-	BUG_ON(frame_size > TRAMP_SIZE);
-
-	/* Copy the sigreturn scall trampoline */
-	__copy_to_user(frame->trampoline, user_scall_rt_sigreturn_end,
-		       frame_size);
-
-	flush_icache_range((unsigned long) &frame->trampoline,
-			   (unsigned long) &frame->trampoline + frame_size);
-
 	/*
 	 * When returning from the handler, we want to jump to the
-	 * trampoline which will execute the sigreturn scall.
+	 * sigpage which will execute the sigreturn scall.
 	 */
-	regs->ra = (unsigned long) frame->trampoline;
+	regs->ra = sigpage;
 	/* Return to signal handler */
 	regs->spc = (unsigned long)ksig->ka.sa.sa_handler;
-	regs->sp = (unsigned long)frame;
+	regs->sp = (unsigned long) frame;
 
 	/* Parameters for signal handler */
 	regs->r0 = ksig->sig;                     /* r0: signal number */
