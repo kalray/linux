@@ -641,9 +641,8 @@ ENTRY(k1c_syscall_handler):
 	/**
 	 * Syscalls are seen as standard func call from ABI POV
 	 * We may use all caller saved register whithout causing havoc
-	 * in the userspace. If we do not touch callee saved registers,
-	 * then we have nothing to save since it will be done by callee
-	 * func.
+	 * in the userspace. We need to save callee registers because they
+	 * will be restored when returning from fork.
 	 * Note that r0 -> r11 MUST not be used since they are
 	 * containing syscall parameters !
 	 * During this function:
@@ -727,6 +726,20 @@ check_trace:
 	/* Save user frame pointer and clear it for kernel */
 	sd PT_FP[$sp] = $fp
 	make $fp = 0
+	;;
+	/* Save callee registers (from $r18 to $31). Even if it's not needed
+	 * for the syscall return path, they are needed for child process.
+	 * Indeed, when forking we want it to have the same registers contents
+	 * as its parent. These registers will then be restored in
+	 * ret_from_fork.
+	 */
+	sq PT_R18R19[$sp] = $r18r19
+	;;
+	so PT_Q20[$sp] = $r20r21r22r23
+	;;
+	so PT_Q24[$sp] = $r24r25r26r27
+	;;
+	so PT_Q28[$sp] = $r28r29r30r31
 	;;
 	/* Enable hwloop and interrupts
 	 * Note that we have to reenable interrupts after saving context
