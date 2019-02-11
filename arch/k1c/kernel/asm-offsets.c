@@ -52,6 +52,7 @@ int foo(void)
 	OFFSET(PT_R12, pt_regs, r12);
 	OFFSET(PT_R13, pt_regs, r13);
 	OFFSET(PT_R14R15, pt_regs, r14);
+	OFFSET(PT_R18R19, pt_regs, r18);
 	OFFSET(PT_FP, pt_regs, fp);
 	OFFSET(PT_SPS, pt_regs, sps);
 
