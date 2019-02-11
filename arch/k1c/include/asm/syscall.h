@@ -37,4 +37,6 @@ static inline int syscall_get_nr(struct task_struct *task, struct pt_regs *regs)
 	return es_sysno(regs);
 }
 
+int __init setup_syscall_sigreturn_page(void *sigpage_addr);
+
 #endif
