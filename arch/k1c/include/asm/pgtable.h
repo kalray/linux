@@ -53,7 +53,7 @@ struct vm_area_struct;
 /**
  * Do not allow any user stuff below that limit
  */
-#define FIRST_USER_ADDRESS PAGE_SIZE
+#define FIRST_USER_ADDRESS 0UL
 
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
