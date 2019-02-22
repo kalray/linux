@@ -57,6 +57,7 @@ config K1C
 	select ARCH_CLOCKSOURCE_DATA
 	select HAVE_GENERIC_DMA_COHERENT
 	select HAVE_PCI
+	select HAVE_ARCH_JUMP_LABEL
 
 config PGTABLE_LEVELS
 	int
