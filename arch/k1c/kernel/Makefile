@@ -14,3 +14,4 @@ obj-y	:= setup.o process.o traps.o common.o time.o prom.o \
 		stacktrace.o dame_handler.o vdso.o
 
 obj-$(CONFIG_PANIC_SYSCALL) += panic.o
+obj-$(CONFIG_JUMP_LABEL) += jump_label.o
