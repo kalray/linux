@@ -290,18 +290,13 @@ _restore_regs:
 	lo $r16r17r18r19 = PT_Q16[$sp]
 	wfxl $sps = $r13
 	;;
-	lq $r14r15 = PT_R14R15[$sp]
-	;;
-	ld $r13 = PT_R13[$sp]
-	;;
 	lo $r8r9r10r11 = PT_Q8[$sp]
 	;;
 	lo $r4r5r6r7 = PT_Q4[$sp]
 	;;
 	lo $r0r1r2r3 = PT_Q0[$sp]
 	;;
-	ld $r12 = PT_R12[$sp]
-	addd $sp = $sp, PT_SIZE_ON_STACK
+	lo $r12r13r14r15 = PT_Q12[$sp]
 .endm
 
 /**
