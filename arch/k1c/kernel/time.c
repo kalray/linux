@@ -15,6 +15,7 @@
 #include <linux/clockchips.h>
 #include <linux/clocksource.h>
 #include <linux/clk-provider.h>
+#include <linux/of_address.h>
 
 #include <asm/sfr_defs.h>
 
@@ -177,8 +178,7 @@ TIMER_OF_DECLARE(k1c_core_timer, "kalray,k1c-core-timer",
  */
 static u64 k1c_dsu_clocksource_read(struct clocksource *cs)
 {
-	/* We should return DSU timestamp */
-	return 0;
+	return readq(cs->archdata.regs);
 }
 
 static struct clocksource k1c_dsu_clocksource = {
@@ -194,6 +194,10 @@ static int __init k1c_setup_dsu_clock(struct device_node *np)
 	int ret;
 	struct clk *clk;
 	unsigned long k1c_dsu_frequency;
+
+	k1c_dsu_clocksource.archdata.regs = of_iomap(np, 0);
+
+	BUG_ON(!k1c_dsu_clocksource.archdata.regs);
 
 	clk = of_clk_get(np, 0);
 	if (IS_ERR(clk)) {
