@@ -54,6 +54,7 @@ config K1C
 	select K1C_ITGEN
 	select SPARSE_IRQ
 	select ARCH_WANT_FRAME_POINTERS
+	select ARCH_CLOCKSOURCE_DATA
 
 config PGTABLE_LEVELS
 	int
