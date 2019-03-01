@@ -650,8 +650,12 @@ ENTRY(k1c_syscall_handler):
 	 * syscall func.
 	 */
 	get $r43 = $es
+	copyd $r52 = $sp
+	copyd $r53 = $tp
 	;;
 	get $r36 = $sr
+	copyd $r54 = $fp
+	copyd $r55 = $r15
 	;;
 	/* Extract syscall number */
 	extfz $r32 = $r43, K1C_SFR_END(ES_SN), K1C_SFR_START(ES_SN)
@@ -661,8 +665,6 @@ ENTRY(k1c_syscall_handler):
 	;;
 	ld $r39 = TASK_TI_FLAGS[$r36]
 	get $r41 = $spc
-	/* Store current user stack pointer sp of thread_info */
-	copyd $r44 = $sp
 	;;
 	/* Check for out-of-bound syscall number */
 	sbfd $r50 = $r32, __NR_syscalls
@@ -684,8 +686,8 @@ check_trace:
 	/* Save regs r0 -> r3 in pt_regs for restart & trace if needed */
 	so (PT_Q0 - PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
 	;;
-	/* Store user stack pointer */
-	sd PT_R12[$sp] = $r44
+	/* Store user stack pointer, frame pointer, thread pointer and r15 */
+	so PT_Q12[$sp] = $r52r53r54r55
 	;;
 #ifdef CONFIG_SECURE_DAME_HANDLING
 	get $r44 = $ilr
@@ -717,9 +719,7 @@ check_trace:
 	set $le = $r43
 	/* Save hw loop stuff */
 	so PT_LC_LE_LS_RA[$sp] = $r60r61r62r63
-	;;
-	/* Save user frame pointer and clear it for kernel */
-	sd PT_FP[$sp] = $fp
+	/* Clear frame pointer for kernel */
 	make $fp = 0
 	;;
 	/* Save callee registers (from $r18 to $31). Even if it's not needed
@@ -815,7 +815,6 @@ ret_to_user:
 	/* prepare wfxl set mask on MSBs */
 	slld $r35 = $r42, 32
 	;;
-	ld $fp = PT_FP[$sp]
 	set $lc = $r60
 	/* Replicate mask of ones on the 32 MSBs */
 	sbmm8 $r33 = $r33, REPLICATE_32_MASK
@@ -834,7 +833,7 @@ ret_to_user:
 	set $ls = $r62
 	;;
 	/* Restore user pointer */
-	ld $sp = PT_R12[$sp]
+	lo $r12r13r14r15 = PT_Q12[$sp]
 	/* Prepare $r44 as a set mask for $ilr wfxl */
 	slld $r44 = $r44,  32
 	;;
