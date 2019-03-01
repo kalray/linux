@@ -33,8 +33,14 @@ struct user_pt_regs {
 		unsigned long r12;
 		unsigned long sp;
 	};
-	unsigned long r13;
-	unsigned long r14;
+	union {
+		unsigned long r13;
+		unsigned long tp;
+	};
+	union {
+		unsigned long r14;
+		unsigned long fp;
+	};
 	unsigned long r15;
 	unsigned long r16;
 	unsigned long r17;
