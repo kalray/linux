@@ -34,7 +34,6 @@ generic-y += module.h
 generic-y += msi.h
 generic-y += mutex.h
 generic-y += param.h
-generic-y += pci.h
 generic-y += percpu.h
 generic-y += preempt.h
 generic-y += rwsem.h
