@@ -1,0 +1,22 @@
+* Kalray DMA NOC controller
+
+The K1C DMA controller has 64 RX/TX channels.
+
+Required properties:
+- compatible: Should be "kalray,k1c-dma-noc"
+- reg: DMA NOC registers and length
+- dma-channels: number of used channels
+- dma-requests: max number of request per channel
+- msi-parent: mailbox use for MSI
+
+Example:
+
+/* DMA NOC*/
+dma_noc: dma_noc@0x800000 {
+	 compatible = "kalray,k1c-dma-noc";
+	 #dma-cells = <1>;
+	 reg = <0 0x1800000 0 0x100000>;
+	 dma-channels = <64>;
+	 dma-requests = <127>;
+	 msi-parent = <&apic_mailbox>;
+ };
