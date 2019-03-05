@@ -11014,6 +11014,7 @@ F:	drivers/tty/serial/k1c_scall_comm.c
 F:	scripts/gdb/arch/k1c/
 F:	drivers/irqchip/irq-k1c-*.c
 F:	include/linux/irqchip/irq-k1c-*.h
+F:	include/linux/mfd/k1c-ftu.h
 
 K8TEMP HARDWARE MONITORING DRIVER
 M:	Rudolf Marek <r.marek@assembler.cz>
