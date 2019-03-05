@@ -1,0 +1,162 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ *
+ * Copyright (C) 2019 Kalray Inc.
+ */
+
+#ifndef ASM_K1C_DMA_H
+#define ASM_K1C_DMA_H
+
+#include <linux/scatterlist.h>
+#include <linux/platform_device.h>
+#include "../virt-dma.h"
+
+#include "k1c-dma-hw.h"
+
+#define K1C_DMA_QUEUE_STOPPED     (0x0)
+#define K1C_DMA_QUEUE_RUNNING     (0x1)
+#define K1C_DMA_QUEUE_SWITCH_OFF  (0x2)
+
+#define K1C_DMA_PREALLOC_DESC_NB  (16)
+#define K1C_DMA_MAX_REQUESTS      (127)
+#define K1C_DMA_MAX_TXD           (8)
+
+
+/**
+ * struct k1c_dma_hw_job - HW transfer descriptor
+ * @txd: actual job descriptor
+ * @node: node for desc->txd_pending
+ */
+struct k1c_dma_hw_job {
+	struct k1c_dma_tx_job txd;
+	struct list_head node;
+};
+
+/**
+ * struct k1c_dma_desc - Transfer descriptor
+ * @vd: Pointer to virt-dma descriptor
+ * @txd: Pointer to  of HW transfer descriptors
+ * @nb_txd: Number of transfer descriptors
+ * @size: Total descriptor size including all sg elements (in bytes)
+ * @phy: Pointer to hw phy (RX or TX)
+ * @dir: Direction for descriptor
+ * @route: Actual route for transfer desc
+ * @route_id: Route id in route table
+ * @last_job_id: Last hw job id (monotonic counter)
+ * @err: HW error status
+ */
+struct k1c_dma_desc {
+	struct virt_dma_desc vd;
+	struct list_head txd_pending;
+	size_t size;
+	struct k1c_dma_phy *phy;
+	enum dma_transfer_direction dir;
+	u64 route;
+	u64 route_id;
+	u64 last_job_id;
+	u64 err;
+};
+
+/**
+ * struct k1c_dma_slave_cfg - Extended slave configuration structure for dmachan
+ * @cfg: dma engine channel config
+ * @noc_route: Transfer route
+ * @qos_id: qos
+ * @global: Global mode
+ * @asn: ASN
+ * @hw_vchan: Hw vchan requested [0, 1]
+ */
+struct k1c_dma_slave_cfg {
+	struct dma_slave_config cfg;
+	u64 noc_route;
+	u8  qos_id;
+	u8  global;
+	u16 asn;
+	u8  hw_vchan;
+};
+
+/**
+ * struct k1c_dma_chan_param - Channel parameter
+ * @rx_tag: rx_tag to target for TX or to receive for RX [0, 63]
+ * @rx_cache_id: rx_cache_id to register to [0:3]
+ * @dir: RX / TX
+ * @trans_type: transfer type for dma-noc
+ *
+ * Initialized at request_chan call (before slave_config)
+ */
+struct k1c_dma_chan_param {
+	u64 rx_tag;
+	u64 rx_cache_id;
+	enum k1c_dma_dir_type dir;
+	enum k1c_dma_transfer_type trans_type;
+};
+
+/**
+ * struct k1c_dma_chan
+ * @vc: Pointer to virt-dma chan
+ * @dev: Pointer to dma-noc device
+ * @desc_pool: Pool of transfer descriptor
+ * @desc_running: Currently pushed in hw resources
+ * @txd_cache: HW transfer descriptor cache
+ * @phy: Pointer to Hw RX/TX phy
+ * @node: For pending_chan list
+ * @cfg: Chan config after slave_config
+ * @param: Param for chan filtering/request (before slave_config)
+ */
+struct k1c_dma_chan {
+	struct virt_dma_chan vc;
+	struct k1c_dma_dev *dev;
+	struct list_head desc_pool;
+	struct list_head desc_running;
+	struct kmem_cache *txd_cache;
+	/* protected by c->vc.lock */
+	struct k1c_dma_phy *phy;
+	/* protected by d->lock */
+	struct list_head node;
+	struct k1c_dma_slave_cfg cfg;
+	struct k1c_dma_chan_param param;
+};
+
+/**
+ * struct k1c_dma_dev - K1C DMA hardware device
+ * @iobase: Register mapping
+ * @dma: dmaengine device
+ * @dma_channels: Number of requested dma channels
+ * @dma_requests: Max requests per dma channel
+ * @task: Tasklet handling
+ * @chan: Array of channels for device
+ * @desc_cache: Cache of descriptors
+ * @phy: RX/TX HW resources
+ * @jobq_list: owns jobq list for allocator (under lock)
+ * @lock: Lock on device/channel lists
+ * @desc_cache: Descriptor cache
+ * @pending_chan: Awaiting dma channels
+ * @dbg: dbg fs
+ *
+ * One dev per rx/tx channels
+ */
+struct k1c_dma_dev {
+	void __iomem *iobase;
+	struct dma_device dma;
+	u32 dma_channels;
+	u32 dma_requests;
+	struct tasklet_struct task;
+	struct k1c_dma_chan **chan;
+	struct kmem_cache *desc_cache;
+	struct k1c_dma_phy *phy[K1C_DMA_DIR_TYPE_MAX];
+	struct k1c_dma_job_queue_list jobq_list;
+	spinlock_t lock;
+	struct list_head pending_chan;
+	struct dentry *dbg;
+};
+
+struct dma_chan *k1c_dma_get_channel(struct k1c_dma_chan_param *param);
+
+int k1c_dma_request_msi(struct platform_device *pdev);
+
+void k1c_dma_free_msi(struct platform_device *pdev);
+
+#endif /* ASM_K1C_DMA_H */
