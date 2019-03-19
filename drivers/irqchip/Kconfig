@@ -362,6 +362,15 @@ config K1C_ITGEN
 	select IRQ_DOMAIN
 	select IRQ_DOMAIN_HIERARCHY
 
+config K1C_PCI_MSI
+	bool
+	depends on K1C
+	depends on HAVE_PCI
+	depends on PCI_MSI
+	select IRQ_DOMAIN
+	select IRQ_DOMAIN_HIERARCHY
+	select PCI_MSI_IRQ_DOMAIN
+
 config INGENIC_IRQ
 	bool
 	depends on MACH_INGENIC
