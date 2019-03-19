@@ -39,6 +39,7 @@ config PCIE_XILINX_NWL
 config PCIE_K1C_NWL
 	bool "NWL PCIe Core for K1c"
 	depends on K1C
+	select K1C_PCI_MSI if PCI_MSI
 	select MFD_SYSCON
 	help
 	 Say 'Y' here if you want kernel support for k1c
