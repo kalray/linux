@@ -11009,6 +11009,7 @@ M:	Kalray <kalray@kalray.eu>
 S:	Supported
 F:	arch/k1c/
 F:	Documentation/k1c/
+F:	Documentation/devicetree/bindings/pci/kalray*.txt
 F:	drivers/irqchip/irq-k1c-core-intc.c
 F:	drivers/tty/serial/k1c_scall_comm.c
 F:	scripts/gdb/arch/k1c/
