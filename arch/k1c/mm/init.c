@@ -10,8 +10,10 @@
 /* Memblock header depends on types.h but does not include it ! */
 #include <linux/types.h>
 #include <linux/memblock.h>
+#include <linux/mmzone.h>
 #include <linux/of_fdt.h>
 #include <linux/sched.h>
+#include <linux/sizes.h>
 #include <linux/init.h>
 #include <linux/initrd.h>
 #include <linux/pfn.h>
@@ -22,6 +24,38 @@
 #include <asm/tlbflush.h>
 #include <asm/fixmap.h>
 #include <asm/page.h>
+
+/*
+ * On k1c, memory map contains the first 2G of DDR being aliased.
+ * Full contiguous DDR is located at @[4G - 68G].
+ * However, to access this DDR in 32bit mode, the first 2G of DDR are
+ * mirrored from 4G to 2G.
+ * These first 2G are accessible from all DMAs (included 32 bits one).
+ *
+ * Hence, the memory map is the following:
+ *
+ * (68G) 0x1100000000-> +-------------+
+ *                      |             |
+ *              66G     |(ZONE_NORMAL)|
+ *                      |             |
+ *   (6G) 0x180000000-> +-------------+
+ *                      |             |
+ *              2G      |(ZONE_DMA32) |
+ *                      |             |
+ *   (4G) 0x100000000-> +-------------+ +--+
+ *                      |             |    |
+ *              2G      |   (Alias)   |    | 2G Alias
+ *                      |             |    |
+ *    (2G) 0x80000000-> +-------------+ <--+
+ *
+ * The translation of 64bit -> 32bit can then be done using dma-ranges property
+ * in device-trees.
+ */
+
+#define DDR_64BIT_START		(4ULL * SZ_1G)
+#define DDR_32BIT_ALIAS_SIZE	(2ULL * SZ_1G)
+
+#define MAX_DMA32_PFN	PHYS_PFN(DDR_64BIT_START + DDR_32BIT_ALIAS_SIZE)
 
 pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
@@ -38,15 +72,12 @@ static void __init zone_sizes_init(void)
 {
 	unsigned long zones_size[MAX_NR_ZONES];
 
-	/* We only use the ZONE_NORMAL since our DMA can access
-	 * this zone. As we run on 64 bits we don't need to configure
-	 * the ZONE_HIGHMEM.
-	 */
 	memset(zones_size, 0, sizeof(zones_size));
-	zones_size[ZONE_NORMAL] = max_mapnr;
 
-	/* We are UMA so we don't have different nodes */
-	free_area_init(zones_size);
+	zones_size[ZONE_DMA32] = min(MAX_DMA32_PFN, max_low_pfn);
+	zones_size[ZONE_NORMAL] = max_low_pfn;
+
+	free_area_init_nodes(zones_size);
 }
 
 
@@ -106,6 +137,20 @@ static void __init setup_initrd(void)
 }
 #endif
 
+static void __init setup_memblock_nodes(void)
+{
+	struct memblock_region *reg;
+
+	for_each_memblock(memory, reg) {
+		unsigned long start_pfn = memblock_region_memory_base_pfn(reg);
+		unsigned long end_pfn = memblock_region_memory_end_pfn(reg);
+
+		memblock_set_node(PFN_PHYS(start_pfn),
+				  PFN_PHYS(end_pfn - start_pfn),
+				  &memblock.memory, 0);
+	}
+}
+
 static void __init setup_bootmem(void)
 {
 	struct memblock_region *region;
@@ -147,10 +192,10 @@ static void __init setup_bootmem(void)
 	BUG_ON(kernel_memory_reserved == 0);
 
 	/* min_low_pfn is the lowest PFN available in the system */
-	min_low_pfn = PFN_UP(memory_start);
+	min_low_pfn = PFN_UP(memblock_start_of_DRAM());
 
 	/* max_low_pfn indicates the end if NORMAL zone */
-	max_low_pfn = PFN_DOWN(memblock_end_of_DRAM() - 1);
+	max_low_pfn = PFN_DOWN(memblock_end_of_DRAM());
 
 	/* Set the maximum number of pages in the system */
 	set_max_mapnr(max_low_pfn - min_low_pfn);
@@ -163,6 +208,7 @@ static void __init setup_bootmem(void)
 
 	memblock_allow_resize();
 	memblock_dump_all();
+	setup_memblock_nodes();
 }
 
 static pte_t *fixmap_pte_p;
