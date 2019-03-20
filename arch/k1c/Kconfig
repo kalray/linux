@@ -30,6 +30,9 @@ config GENERIC_HWEIGHT
 config HAVE_COPY_THREAD_TLS
 	def_bool y
 
+config ZONE_DMA32
+	def_bool n
+
 config K1C
 	def_bool y
 	select OF
@@ -58,6 +61,9 @@ config K1C
 	select HAVE_GENERIC_DMA_COHERENT
 	select HAVE_PCI
 	select HAVE_ARCH_JUMP_LABEL
+	select ZONE_DMA32
+	select HAVE_MEMBLOCK_NODE_MAP
+	select ARCH_DMA_ADDR_T_64BIT
 
 config PGTABLE_LEVELS
 	int
