@@ -427,16 +427,18 @@ _restore_regs:
 	sd 0[$r2] = $r1
 	get $r5 = $mmc
 	/* Set default cache policy */
-	make $r3 = (TLB_CP_D_U << K1C_SFR_TEL_CP_SHIFT)
+	make $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
 	;;
-	/* Default policy is for devices so if the page we are going
-	 * to map is not a device, add the standard cache policy,
-	 * which is data writethrough and instructions cached */
-	cmoved.deqz $r7? $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
+	/* Does this page map a uncached area ? */
+	andd $r2 = $r1, _PAGE_UNCACHED
+	/* If the page is mapping a device, then set the policy to device */
+	cmoved.dnez $r7? $r3 = (TLB_CP_D_U << K1C_SFR_TEL_CP_SHIFT)
 	/* Prepare tel */
 	ord $r6 = $r0, $r6
 	/* Add ASN from mmc */
 	insf $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
+	;;
+	cmoved.dnez $r2? $r3 = (TLB_CP_U_U << K1C_SFR_TEL_CP_SHIFT)
 	;;
 	/* Add cache policy to entry */
 	ord $r6 = $r6, $r3
