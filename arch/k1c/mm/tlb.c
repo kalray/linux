@@ -263,6 +263,8 @@ void update_mmu_cache(struct vm_area_struct *vma,
 
 	if (pte_val & _PAGE_DEVICE)
 		cp = TLB_CP_D_U;
+	else if (pte_val & _PAGE_UNCACHED)
+		cp = TLB_CP_U_U;
 
 	/* Set page as accessed */
 	pte_val(*ptep) |= _PAGE_ACCESSED;

@@ -19,7 +19,8 @@ class pte_bits(ctypes.LittleEndianStructure):
             ("A", ctypes.c_uint8, 1),
             ("D", ctypes.c_uint8, 1),
             ("DEV", ctypes.c_uint8, 1),
-            ("res", ctypes.c_uint8, 3),
+            ("UNC", ctypes.c_uint8, 1),
+            ("res", ctypes.c_uint8, 2),
             ("pfn", ctypes.c_uint64, 52),
         ]
 
