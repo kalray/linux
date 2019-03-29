@@ -21,8 +21,10 @@
 #define _PAGE_GLOBAL_SHIFT	5 /* Global */
 /*
  * PTE format:
- * | 63 ... 12 | 11 .. 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0
- *      PFN               DEV  D   A   G   U   X   W   R   P
+ *  +-----------+----------+---+---+---+---+---+---+---+---+---+---+
+ *  | 63 ... 12 | 11 .. 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+ *  +-----------+----------+---+---+---+---+---+---+---+---+---+---+
+ *       PFN       Unused   UNC DEV  D   A   G   U   X   W   R   P
  */
 #define _PAGE_PRESENT   (1 << 0)
 #define _PAGE_READ      (1 << 1)    /* Readable */
@@ -33,7 +35,8 @@
 #define _PAGE_ACCESSED  (1 << 6)    /* Set by hardware on any access */
 #define _PAGE_DIRTY     (1 << 7)    /* Set by hardware on any write */
 #define _PAGE_DEVICE    (1 << 8)    /* Device space mapping */
-#define _PAGE_SOFT      (1 << 9)    /* Reserved for software */
+#define _PAGE_UNCACHED  (1 << 9)    /* Uncached mapping */
+#define _PAGE_SOFT      (1 << 10)   /* Reserved for software */
 
 #define _PAGE_SPECIAL   _PAGE_SOFT
 
