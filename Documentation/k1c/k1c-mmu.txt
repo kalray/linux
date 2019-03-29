@@ -165,12 +165,13 @@ PTE format
 ==========
 
 About the format of the PTE entry, as we are not forced by hardware for choices,
-we choose to follow the format described in the RiscV implementation.
+we choose to follow the format described in the RiscV implementation as a
+starting point.
 
-    +----...----+---------+---+---+---+---+---+---+---+---+---+
-    | 63 ... 12 | 11 .. 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-    +----...----+---------+---+---+---+---+---+---+---+---+---+
-         PFN       Unused  DEV  D   A   G   U   X   W   R   P
+    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
+    | 63 ... 12 | 11 .. 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
+         PFN       Unused   UNC DEV  D   A   G   U   X   W   R   P
 
        where:
         P: Present
@@ -182,6 +183,7 @@ we choose to follow the format described in the RiscV implementation.
         A: Accessed
         D: Dirty
         DEV: Device space mapping
+        UNC: Uncached mapping
         PFN: Page frame number (depends on page size)
 
 Fast TLB refill
