@@ -238,6 +238,9 @@ void update_mmu_cache(struct vm_area_struct *vma,
 		panic("%s: pfn %lx is not valid\n",
 		      __func__, (unsigned long)pfn);
 
+	/* Flush any previous TLB entries */
+	flush_tlb_page(vma, address);
+
 	/* No need to add the TLB entry until the process that owns the memory
 	 * is running.
 	 */
