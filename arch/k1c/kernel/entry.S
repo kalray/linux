@@ -402,7 +402,6 @@ _restore_regs:
 	/* Increment way value, note that we do not care about overflow since
 	 * we only use the two lower byte */
 	addd $r0 = $r0, 1
-	make $r6 = k1c_access_perms
 	;;
 	/* Or teh value with global bit */
 	ord $r4 = $r4, $r3
@@ -414,7 +413,7 @@ _restore_regs:
 	extfz $r3 = $r1, K1C_ACCESS_PERM_STOP_BIT, K1C_ACCESS_PERM_START_BIT
 	;;
 	/* load access permissions */
-	lbz $r6 = $r3[$r6]
+	lbz $r6 = k1c_access_perms[$r3]
 	/* Does this page map a device ? */
 	andd $r7 = $r1, _PAGE_DEVICE
 	/* Set page as accessed by setting pte flags */
