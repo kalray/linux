@@ -204,7 +204,22 @@ void local_flush_tlb_range(struct vm_area_struct *vma,
 			   unsigned long start,
 			   unsigned long end)
 {
-	panic("%s: not implemented", __func__);
+	const unsigned int cpu = smp_processor_id();
+	unsigned long flags;
+	unsigned int current_asn;
+
+	start &= PAGE_MASK;
+
+	local_irq_save(flags);
+	current_asn = vma->vm_mm->context.asn[cpu];
+	if (current_asn != MMU_NO_ASN) {
+		while (start < end) {
+			clear_jtlb_entry(start, current_asn);
+			start += PAGE_SIZE;
+		}
+	}
+
+	local_irq_restore(flags);
 }
 
 void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
