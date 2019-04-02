@@ -157,6 +157,13 @@ int do_syscall_trace_enter(struct pt_regs *regs, unsigned long syscall);
 void do_syscall_trace_exit(struct pt_regs *regs);
 
 
+static inline unsigned long get_current_sp(void)
+{
+	const register unsigned long current_sp __asm__ ("$r12");
+
+	return current_sp;
+}
+
 extern char *user_scall_rt_sigreturn_end;
 extern char *user_scall_rt_sigreturn;
 
