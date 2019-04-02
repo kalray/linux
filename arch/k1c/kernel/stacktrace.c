@@ -113,39 +113,22 @@ static void dump_backtrace(struct task_struct *task, unsigned long *sp)
 }
 #endif
 
+/*
+ * If show_stack is called with a non-null task, then the task will have been
+ * claimed with try_get_task_stack by the caller. If task is NULL or current
+ * then there is no need to get task stack since it's our current stack...
+ */
 void show_stack(struct task_struct *task, unsigned long *sp)
 {
 	int i = 0;
 	unsigned long *stack;
 
 	if (!sp)
-		sp = (unsigned long *)&sp;
+		sp = (unsigned long *) get_current_sp();
 
 	stack = sp;
 
-	if (!task)
-		task = current;
-
-	/* display task information */
-	pr_info("\nProcess %s (pid: %ld, task=%p"
-#ifdef CONFIG_SMP
-	       " ,cpu: %d"
-#endif
-	       ")\nSP = <%016lx>\nStack:\n ",
-	       task->comm, (long)task->pid, task,
-#ifdef CONFIG_SMP
-	       smp_processor_id(),
-#endif
-	       (unsigned long)sp);
-
-	/**
-	 * Display the stack until we reach the required number of lines
-	 * or until we hit the stack bottom
-	 */
-
-	if (!try_get_task_stack(task))
-		return;
-
+	pr_info("Stack dump (@%p):\n", sp);
 	for (i = 0; i < STACK_MAX_SLOT_PRINT; i++) {
 		if (kstack_end(sp))
 			break;
@@ -158,6 +141,4 @@ void show_stack(struct task_struct *task, unsigned long *sp)
 	pr_cont("\n");
 
 	dump_backtrace(task, stack);
-
-	put_task_stack(task);
 }
