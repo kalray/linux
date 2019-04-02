@@ -85,14 +85,27 @@ void k1c_update_tlb_access(int type)
 
 #endif
 
-/* Preemption must be disabled here */
-static inline void clear_jtlb_entry(unsigned long addr, unsigned int asn)
+/**
+ * clear_jtlb_entry() - clear an entry in JTLB if it exists
+ * @addr: the address used to set TEH.PN
+ * @global: is page global or not
+ * @asn: ASN used if page is not global
+ *
+ * Preemption must be disabled when calling this function. There is no need to
+ * invalidate micro TLB because it is invalidated when we write TLB.
+ *
+ * Return: nothing
+ */
+static void clear_jtlb_entry(unsigned long addr,
+			     unsigned int global,
+			     unsigned int asn)
 {
 	struct k1c_tlb_format entry;
 	unsigned long mmc_val;
 
 	/* Probe is based on PN and ASN. So ES can be anything */
-	entry = tlb_mk_entry(0, (void *)addr, 0, 0, 0, 0, asn, TLB_ES_INVALID);
+	entry = tlb_mk_entry(0, (void *)addr, 0, global, 0, 0, asn,
+			     TLB_ES_INVALID);
 	k1c_mmu_set_tlb_entry(entry);
 
 	k1c_mmu_probetlb();
@@ -187,7 +200,7 @@ void local_flush_tlb_page(struct vm_area_struct *vma,
 		return;
 
 	local_irq_save(flags);
-	clear_jtlb_entry(addr, current_asn);
+	clear_jtlb_entry(addr, TLB_G_USE_ASN, current_asn);
 	local_irq_restore(flags);
 }
 
@@ -211,10 +224,11 @@ void local_flush_tlb_range(struct vm_area_struct *vma,
 	start &= PAGE_MASK;
 
 	local_irq_save(flags);
+
 	current_asn = vma->vm_mm->context.asn[cpu];
 	if (current_asn != MMU_NO_ASN) {
 		while (start < end) {
-			clear_jtlb_entry(start, current_asn);
+			clear_jtlb_entry(start, TLB_G_USE_ASN, current_asn);
 			start += PAGE_SIZE;
 		}
 	}
@@ -222,9 +236,27 @@ void local_flush_tlb_range(struct vm_area_struct *vma,
 	local_irq_restore(flags);
 }
 
+/**
+ * local_flush_tlb_kernel_range() - flush kernel TLB entries
+ * @start: start kernel virtual address
+ * @end: end kernel virtual address
+ *
+ * Return: nothing
+ */
 void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
 {
-	panic("%s: not implemented", __func__);
+	unsigned long flags;
+
+	start &= PAGE_MASK;
+
+	local_irq_save(flags);
+
+	while (start < end) {
+		clear_jtlb_entry(start, TLB_G_GLOBAL, 0);
+		start += PAGE_SIZE;
+	}
+
+	local_irq_restore(flags);
 }
 
 void update_mmu_cache(struct vm_area_struct *vma,
