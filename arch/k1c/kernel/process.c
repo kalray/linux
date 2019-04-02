@@ -8,6 +8,7 @@
 
 #include <linux/sched.h>
 #include <linux/ptrace.h>
+#include <linux/printk.h>
 #include <linux/sched/task_stack.h>
 
 #include <asm/ptrace.h>
@@ -30,15 +31,17 @@ void show_regs(struct pt_regs *regs)
 	unsigned short i, reg_offset;
 	void *ptr;
 
+	show_regs_print_info(KERN_DEFAULT);
+
 	if (user_mode(regs))
 		in_kernel = 0;
 
-	pr_info("\nCPU #: %d, mode: %s\n"
+	pr_info("\nmode: %s\n"
 	       "    PC: %016llx    PS: %016llx\n"
 	       "    CS: %016llx    RA: %016llx\n"
 	       "    LS: %016llx    LE: %016llx\n"
 	       "    LC: %016llx\n\n",
-	       smp_processor_id(), in_kernel ? "kernel" : "user",
+	       in_kernel ? "kernel" : "user",
 	       regs->spc, regs->sps,
 	       regs->cs, regs->ra, regs->ls, regs->le, regs->lc);
 
