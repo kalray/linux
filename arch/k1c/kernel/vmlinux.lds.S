@@ -11,6 +11,7 @@
 #include <asm/sys_arch.h>
 #include <asm/cache.h>
 #include <asm/page.h>
+#include <asm/fixmap.h>
 
 #define BOOT_ENTRY		0x0
 #define DTB_DEFAULT_SIZE	(24 * 1024)
@@ -112,9 +113,9 @@ SECTIONS
 	.gdb_page ALIGN(PAGE_SIZE) : AT(ADDR(.gdb_page) - LOAD_OFFSET)
 	{
 		_debug_start = ADDR(.gdb_page) - LOAD_OFFSET;
-		_debug_start_lma = ABSOLUTE(.);
 		. += PAGE_SIZE;
 	}
+	_debug_start_lma = ASM_FIX_TO_VIRT(FIX_GDB_MEM_BASE_IDX);
 
 	_sdata = .;
 	RO_DATA_SECTION(PAGE_SIZE)
