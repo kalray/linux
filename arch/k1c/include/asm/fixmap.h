@@ -10,9 +10,6 @@
 #ifndef _ASM_K1C_FIXMAP_H
 #define _ASM_K1C_FIXMAP_H
 
-#include <asm/page.h>
-#include <asm/pgtable.h>
-
 /**
  * Use the latest available kernel address minus one page.
  * This is needed since __fix_to_virt returns
@@ -22,10 +19,19 @@
  * Some other architectures simply add a FIX_HOLE at the beginning of
  * the fixed_addresses enum (I think ?).
  */
-#define FIXADDR_TOP	((unsigned long) (-PAGE_SIZE))
+#define FIXADDR_TOP	(-PAGE_SIZE)
+#define FIX_GDB_MEM_BASE_IDX 1
+
+#define ASM_FIX_TO_VIRT(IDX) \
+	(FIXADDR_TOP - ((IDX) << PAGE_SHIFT))
+
+#ifndef __ASSEMBLY__
+#include <asm/page.h>
+#include <asm/pgtable.h>
 
 enum fixed_addresses {
 	FIX_EARLYCON_MEM_BASE,
+	FIX_GDB_BARE_DISPLACED_MEM_BASE = FIX_GDB_MEM_BASE_IDX,
 	__end_of_fixed_addresses
 };
 
@@ -37,5 +43,6 @@ void __set_fixmap(enum fixed_addresses idx,
 				phys_addr_t phys, pgprot_t prot);
 
 #include <asm-generic/fixmap.h>
+#endif /* __ASSEMBLY__ */
 
 #endif
