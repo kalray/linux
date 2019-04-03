@@ -27,6 +27,37 @@
 #define flush_dcache_mmap_unlock(mapping)       do { } while (0)
 
 static inline
+void inval_dcache_range(unsigned long start, unsigned long end)
+{
+	unsigned long addr;
+	unsigned long size = end - start;
+
+	if (size >= K1C_DCACHE_INVAL_SIZE) {
+		__builtin_k1_dinval();
+		return;
+	}
+
+	for (addr = start; addr <= end; addr += K1C_DCACHE_LINE_SIZE)
+		__builtin_k1_dinvall((void *) addr);
+}
+
+static inline
+void flush_dcache_range(unsigned long start, unsigned long end)
+{
+	/* Fence to ensure all write are committed to memory */
+	__builtin_k1_fence();
+}
+
+static inline
+void flush_inval_dcache_range(unsigned long start, unsigned long end)
+{
+	/* Write back all data */
+	flush_dcache_range(start, end);
+	/* Then invalidate */
+	inval_dcache_range(start, end);
+}
+
+static inline
 void inval_icache_range(unsigned long start, unsigned long end)
 {
 	unsigned long addr;
