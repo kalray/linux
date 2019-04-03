@@ -76,7 +76,8 @@
  * LTLB fixed entry index
  */
 #define LTLB_ENTRY_KERNEL_TEXT	0
-#define LTLB_ENTRY_EARLY_SMEM	1
+#define LTLB_ENTRY_GDB_PAGE	1
+#define LTLB_ENTRY_EARLY_SMEM	2
 
 #ifndef __ASSEMBLY__
 #include <asm/mmu.h>
