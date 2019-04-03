@@ -84,6 +84,13 @@
 	TLB_MK_TEL_ENTRY(0, TLB_PS_2M, TLB_ES_A_MODIFIED,\
 	TLB_CP_W_C, TLB_PA_NA_RWX)
 
+#define TEH_GDB_PAGE_MEMORY \
+	TLB_MK_TEH_ENTRY(0, 0, TLB_G_GLOBAL, 0)
+
+#define TEL_GDB_PAGE_MEMORY \
+	TLB_MK_TEL_ENTRY(0, TLB_PS_4K, TLB_ES_A_MODIFIED,\
+	TLB_CP_U_U, TLB_PA_RWX_RWX)
+
 /**
  * Macros
  */
@@ -450,6 +457,19 @@ ENTRY(asm_init_mmu)
 	;;
 	make $r20 = TEH_SHARED_MEMORY
 	make $r21 = TEL_SHARED_MEMORY
+	;;
+	write_tlb_entry $r20, $r21
+	;;
+	select_way_from_immediate LTLB_ENTRY_GDB_PAGE, $r20, $r21
+	;;
+	make $r20 = _debug_start_lma
+	make $r21 = _debug_start
+	;;
+	andd $r20 = $r20, K1C_SFR_TEH_PN_MASK
+	andd $r21 = $r21, K1C_SFR_TEL_FN_MASK
+	;;
+	addd $r20 = $r20, TEH_GDB_PAGE_MEMORY
+	addd $r21 = $r21, TEL_GDB_PAGE_MEMORY
 	;;
 	write_tlb_entry $r20, $r21
 	;;
