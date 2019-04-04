@@ -19,15 +19,12 @@ struct stackframe {
 	unsigned long ra;	/* Return address */
 };
 
-static inline bool on_task_stack(struct task_struct *tsk, unsigned long sp)
+static inline bool on_stack_page(unsigned long stack_page, unsigned long sp)
 {
-	unsigned long low = (unsigned long)task_stack_page(tsk);
+	unsigned long low = stack_page;
 	unsigned long high = low + THREAD_SIZE;
 
-	if (sp < low || sp >= high)
-		return false;
-
-	return true;
+	return (sp >= low && sp < high);
 }
 
 #endif /* _ASM_K1C_STACKTRACE_H */
