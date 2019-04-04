@@ -20,7 +20,7 @@
 
 #if defined(CONFIG_FRAME_POINTER)
 
-static int notrace unwind_frame(struct task_struct *task,
+static int notrace unwind_frame(unsigned long stack_page,
 				struct stackframe *frame)
 {
 	unsigned long fp = frame->fp;
@@ -29,7 +29,7 @@ static int notrace unwind_frame(struct task_struct *task,
 	if (fp & 0x7)
 		return -EINVAL;
 
-	if (!on_task_stack(task, fp))
+	if (!on_stack_page(stack_page, fp))
 		return -EINVAL;
 
 	frame->fp = READ_ONCE_NOCHECK(*(unsigned long *)(fp));
@@ -45,30 +45,36 @@ static int notrace unwind_frame(struct task_struct *task,
 	return 0;
 }
 
-static void dump_backtrace(struct task_struct *task, unsigned long *sp)
+
+static void notrace walk_stackframe(struct task_struct *task,
+				    bool (*fn)(unsigned long, void *),
+				    void *arg)
 {
 	struct stackframe frame;
-	unsigned long addr;
+	unsigned long addr, stack_page;
 	int ret;
 
-	if (task == current) {
+	if (task == NULL || task == current) {
 		frame.fp = (unsigned long) __builtin_frame_address(0);
-		frame.ra = (unsigned long) k1c_sfr_get(K1C_SFR_RA);
+		frame.ra = (unsigned long) walk_stackframe;
+		stack_page = ALIGN_DOWN(get_current_sp(), THREAD_SIZE);
 	} else {
 		/* Task has been switched_to */
 		frame.fp = thread_saved_fp(task);
 		frame.ra = thread_saved_ra(task);
+		stack_page = (unsigned long) task_stack_page(task);
 	}
 
-	pr_info("\nCall Trace:\n");
 	while (1) {
 		addr = frame.ra;
 
-		if (!__kernel_text_address(addr))
+		if (unlikely(!__kernel_text_address(addr)))
 			break;
 
-		print_ip_sym(addr);
-		ret = unwind_frame(task, &frame);
+		if (fn(addr, arg))
+			break;
+
+		ret = unwind_frame(stack_page, &frame);
 		if (ret)
 			break;
 	}
@@ -86,12 +92,19 @@ static int __init kstack_setup(char *s)
 
 __setup("kstack=", kstack_setup);
 
-static void dump_backtrace(struct task_struct *task, unsigned long *sp)
+static void notrace walk_stackframe(struct task_struct *task,
+				    bool (*fn)(unsigned long, void *),
+				    void *arg)
 {
 	unsigned long print_depth = kstack_depth_to_print;
 	unsigned long addr;
+	unsigned long *sp;
 
-	pr_info("\nCall Trace (unreliable):\n");
+	if (task == NULL || task == current)
+		sp = (unsigned long *) get_current_sp();
+	else
+		sp = (unsigned long *) thread_saved_sp(task);
+
 	while (!kstack_end(sp)) {
 		/*
 		 * We need to go one double before the value pointed by sp
@@ -99,19 +112,27 @@ static void dump_backtrace(struct task_struct *task, unsigned long *sp)
 		 * will display the next symbol name
 		 */
 		addr = *sp++;
-		if (__kernel_text_address(addr)) {
-			print_ip_sym(addr);
-			print_depth--;
+		if (!__kernel_text_address(addr))
+			continue;
 
-			if (!print_depth) {
-				pr_info("  ...\nMaximum depth to print reached. Use kstack=<maximum_depth_to_print> To specify a custom value\n");
-				break;
-			}
+		if (fn(addr, arg))
+			break;
+
+		print_depth--;
+		if (!print_depth) {
+			pr_info("  ...\nMaximum depth to print reached. Use kstack=<maximum_depth_to_print> To specify a custom value\n");
+			break;
 		}
 
 	}
 }
 #endif
+
+static bool print_pc(unsigned long pc, void *arg)
+{
+	print_ip_sym(pc);
+	return false;
+}
 
 /*
  * If show_stack is called with a non-null task, then the task will have been
@@ -121,12 +142,9 @@ static void dump_backtrace(struct task_struct *task, unsigned long *sp)
 void show_stack(struct task_struct *task, unsigned long *sp)
 {
 	int i = 0;
-	unsigned long *stack;
 
 	if (!sp)
 		sp = (unsigned long *) get_current_sp();
-
-	stack = sp;
 
 	pr_info("Stack dump (@%p):\n", sp);
 	for (i = 0; i < STACK_MAX_SLOT_PRINT; i++) {
@@ -140,5 +158,6 @@ void show_stack(struct task_struct *task, unsigned long *sp)
 	}
 	pr_cont("\n");
 
-	dump_backtrace(task, stack);
+	pr_info("\nCall Trace:\n");
+	walk_stackframe(task, print_pc, NULL);
 }
