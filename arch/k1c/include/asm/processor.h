@@ -111,6 +111,8 @@ struct thread_struct {
 	((unsigned long)(tsk->thread.ctx_switch.ra))
 #define thread_saved_fp(tsk)	\
 	((unsigned long)(tsk->thread.ctx_switch.fp))
+#define thread_saved_sp(tsk)	\
+	((unsigned long)(tsk->thread.ctx_switch.sp))
 
 void release_thread(struct task_struct *t);
 
