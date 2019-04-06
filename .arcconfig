@@ -1,6 +1,4 @@
 {
 	"repository.callsign": "LINUXCOOLIDGE",
-	"phabricator.codereview": "true",
-	"lint.engine": "ArcanistSingleLintEngine",
-	"lint.engine.single.linter": "ArcanistCheckpatchLinter"
+	"phabricator.codereview": "true"
 }
