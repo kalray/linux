@@ -1,0 +1,8 @@
+{
+  "linters": {
+    "linux_checkpatch": {
+      "type": "checkpatch",
+      "bin": ["./scripts/checkpatch.pl"]
+    }
+  }
+}
