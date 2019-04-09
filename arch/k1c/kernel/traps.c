@@ -11,9 +11,11 @@
 #include <linux/sched/debug.h>
 #include <linux/printk.h>
 #include <linux/init.h>
+#include <linux/ptrace.h>
 
 #include <asm/dame.h>
 #include <asm/traps.h>
+#include <asm/ptrace.h>
 
 static trap_handler_func trap_handler_table[K1C_TRAP_COUNT] = { NULL };
 
@@ -59,6 +61,20 @@ static void register_trap_handler(unsigned int trap_nb, trap_handler_func fn)
 	trap_handler_table[trap_nb] = fn;
 }
 
+static void do_vsfr_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
+{
+	/* check if it the breakpoint instruction: set $vsfr0=$r63*/
+	if ((current->ptrace & PT_PTRACED) &&
+	     trap_sfri(es) == K1C_TRAP_SFRI_SET &&
+	     trap_gprp(es) == 63 &&
+	     trap_sfrp(es) == K1C_SFR_VSFR0) {
+		k1c_breakpoint();
+		return;
+	}
+
+	default_trap_handler(es, ea, regs);
+}
+
 void __init trap_init(void)
 {
 	int i;
@@ -71,6 +87,7 @@ void __init trap_init(void)
 	register_trap_handler(K1C_TRAP_WRITETOCLEAN, do_writetoclean);
 #endif
 
+	register_trap_handler(K1C_TRAP_VSFR, do_vsfr_fault);
 }
 
 /**
