@@ -34,12 +34,29 @@
 
 #define K1C_TRAP_COUNT          0x14
 
+#define K1C_TRAP_SFRI_NOT_BCU	0
+#define K1C_TRAP_SFRI_GET	1
+#define K1C_TRAP_SFRI_IGET	2
+#define K1C_TRAP_SFRI_SET	4
+#define K1C_TRAP_SFRI_WFXL	5
+#define K1C_TRAP_SFRI_WFXM	6
+#define K1C_TRAP_SFRI_RSWAP	7
+
 #ifndef __ASSEMBLY__
 
 typedef void (*trap_handler_func) (uint64_t es, uint64_t ea,
 				   struct pt_regs *regs);
 
 #define trap_cause(__es) k1c_sfr_field_val(__es, ES, HTC)
+
+#define trap_sfri(__es) \
+	k1c_sfr_field_val((__es), ES, SFRI)
+
+#define trap_gprp(__es) \
+	k1c_sfr_field_val((__es), ES, GPRP)
+
+#define trap_sfrp(__es) \
+	k1c_sfr_field_val((__es), ES, SFRP)
 
 #ifdef CONFIG_MMU
 extern void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs);
