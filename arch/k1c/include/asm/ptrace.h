@@ -147,6 +147,19 @@ struct pt_regs {
 #define user_mode(regs)	(pl((regs)->sps) == 1)
 #define es_ec(regs) k1c_sfr_field_val(regs->es, ES, EC)
 #define es_sysno(regs) k1c_sfr_field_val(regs->es, ES, SN)
+#define debug_dc(es) k1c_sfr_field_val((es), ES, DC)
+
+/* ptrace */
+#define PTRACE_GETREGS		12
+#define PTRACE_SETREGS		13
+#define arch_has_single_step()	1
+
+#define DEBUG_CAUSE_BREAKPOINT	0
+#define DEBUG_CAUSE_WATCHPOINT	1
+#define DEBUG_CAUSE_STEPI	2
+#define DEBUG_CAUSE_DSU_BREAK	3
+
+void k1c_breakpoint(void);
 
 static inline bool in_syscall(struct pt_regs const *regs)
 {
