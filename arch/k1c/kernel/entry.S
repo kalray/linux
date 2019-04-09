@@ -481,12 +481,34 @@ exception_trampoline(interrupt)
 exception_trampoline(syscall)
 
 /***********************************************************************
-*                      Traps handling
+*                      Debug handling
 ***********************************************************************/
 
 .text
 ENTRY(k1c_debug_handler):
-	goto k1c_debug_handler
+	save_quad_regs $r0r1r2r3 $r4
+	;;
+	get $r2 = $sr
+	;;
+	switch_stack $r1 $r2 debug_save_regs
+	;;
+debug_save_regs:
+	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r2
+	;;
+	make $r8 = PS_HWLOOP_EN_ET_EN
+	get $r1 = $ea
+	;;
+	/* Enable hwloop */
+	wfxl $ps, $r8
+	;;
+	/* Handler call */
+	get $r0 = $es
+	;;
+	call debug_handler
+	;;
+	restore_regs_after_exception
+	;;
+	rfe
 	;;
 ENDPROC(k1c_debug_handler)
 
