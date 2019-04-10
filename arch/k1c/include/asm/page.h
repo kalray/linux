@@ -76,6 +76,7 @@ typedef struct page *pgtable_t;
 #define page_to_virt(page)	(pfn_to_virt(page_to_pfn(page)))
 
 #define page_to_phys(page)	virt_to_phys(page_to_virt(page))
+#define phys_to_page(phys)	(pfn_to_page(phys_to_pfn(phys)))
 
 #define virt_addr_valid(vaddr)	(pfn_valid(virt_to_pfn(vaddr)))
 
