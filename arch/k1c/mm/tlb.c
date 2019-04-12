@@ -270,6 +270,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	unsigned int cp = TLB_CP_W_C;
 	struct mm_struct *mm;
 	unsigned int asn;
+	unsigned long flags;
 	int cpu = smp_processor_id();
 
 	if (unlikely(ptep == NULL))
@@ -340,6 +341,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 		asn,
 		TLB_ES_A_MODIFIED);
 
+	local_irq_save(flags);
 	/* Compute way to use to store the new translation */
 	set = (address >> PAGE_SHIFT) & MMU_JTLB_SET_MASK;
 	way = get_cpu_var(jtlb_current_set_way)[set]++;
@@ -351,4 +353,6 @@ void update_mmu_cache(struct vm_area_struct *vma,
 
 	if (k1c_mmc_error(k1c_sfr_get(K1C_SFR_MMC)))
 		panic("Failed to write entry to the JTLB");
+
+	local_irq_restore(flags);
 }
