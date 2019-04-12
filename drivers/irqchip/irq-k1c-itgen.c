@@ -205,4 +205,9 @@ static struct platform_driver itgen_platform_driver = {
 	.probe			= k1c_itgen_device_probe,
 };
 
-module_platform_driver(itgen_platform_driver);
+static int __init k1c_itgen_init(void)
+{
+	return platform_driver_register(&itgen_platform_driver);
+}
+
+arch_initcall(k1c_itgen_init);
