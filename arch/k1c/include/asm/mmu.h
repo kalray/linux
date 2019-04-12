@@ -100,8 +100,7 @@ struct k1c_tlb_format {
 
 /* Use k1c_mmc_ to read a field from MMC value passed as parameter */
 #define __k1c_mmc(mmc_reg, field) \
-	((K1C_SFR_MMC_##field##_MASK & mmc_reg) >> \
-	 K1C_SFR_MMC_##field##_SHIFT)
+	k1c_sfr_field_val(mmc_reg, MMC, field)
 
 #define k1c_mmc_error(mmc)  __k1c_mmc(mmc, E)
 #define k1c_mmc_parity(mmc) __k1c_mmc(mmc, PAR)

@@ -35,8 +35,7 @@
 typedef void (*trap_handler_func) (uint64_t es, uint64_t ea,
 				   struct pt_regs *regs);
 
-#define trap_cause(__es) \
-		((__es & K1C_SFR_ES_HTC_MASK) >> K1C_SFR_ES_HTC_SHIFT)
+#define trap_cause(__es) k1c_sfr_field_val(__es, ES, HTC)
 
 #ifdef CONFIG_MMU
 extern void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs);
