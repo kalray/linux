@@ -65,6 +65,9 @@ void k1c_mmu_dump_ltlb(int dump_all)
 {
 	struct k1c_tlb_format tlbe;
 	int way;
+	unsigned long flags;
+
+	local_irq_save(flags);
 
 	k1c_sfr_set_field(K1C_SFR_MMC, SB, MMC_SB_LTLB);
 
@@ -78,14 +81,20 @@ void k1c_mmu_dump_ltlb(int dump_all)
 			panic("Failed to read LTLB[s:0, w:%d]\n", way);
 
 		k1c_mmu_get_tlb_entry(tlbe);
+
 		dump_tlb_entry(dump_all, DUMP_LTLB, 0, way, tlbe);
 	}
+
+	local_irq_restore(flags);
 }
 
 void k1c_mmu_dump_jtlb(int dump_all)
 {
 	struct k1c_tlb_format tlbe;
 	int set, way;
+	unsigned long flags;
+
+	local_irq_save(flags);
 
 	k1c_sfr_set_field(K1C_SFR_MMC, SB, MMC_SB_JTLB);
 
@@ -103,6 +112,8 @@ void k1c_mmu_dump_jtlb(int dump_all)
 			dump_tlb_entry(dump_all, DUMP_JTLB, set, way, tlbe);
 		}
 	}
+
+	local_irq_restore(flags);
 }
 
 void k1c_mmu_setup_initial_mapping(void)
