@@ -68,6 +68,10 @@ k1c_sfr_clear_bit(unsigned char sfr, unsigned char bit)
 #define k1c_sfr_set(_sfr, _val)	__builtin_k1_set(_sfr, _val)
 #define k1c_sfr_get(_sfr)	__builtin_k1_get(_sfr)
 
+#define k1c_sfr_field_val(_val, _sfr, _field) \
+			  (((_val) & K1C_SFR_ ## _sfr ## _ ## _field ## _MASK) \
+			  >> K1C_SFR_ ## _sfr ## _ ## _field ## _SHIFT)
+
 #endif
 
 #endif	/* _ASM_K1C_SFR_DEFS_H */
