@@ -8,6 +8,7 @@
  */
 
 #include <linux/context_tracking.h>
+#include <linux/sched/debug.h>
 #include <linux/kallsyms.h>
 #include <linux/printk.h>
 #include <linux/init.h>
@@ -160,4 +161,44 @@ void show_stack(struct task_struct *task, unsigned long *sp)
 
 	pr_info("\nCall Trace:\n");
 	walk_stackframe(task, print_pc, NULL);
+}
+
+static bool find_wchan(unsigned long pc, void *arg)
+{
+	unsigned long *p = arg;
+
+	/*
+	 * If the pc is in a scheduler function (waiting), then, this is the
+	 * address where the process is currently stuck. Note that scheduler
+	 * functions also include lock functions. This functions are
+	 * materialized using annotation to put them is special text sections.
+	 */
+	if (!in_sched_functions(pc)) {
+		*p = pc;
+		return true;
+	}
+
+	return false;
+}
+
+/*
+ * get_wchan is called to obtain "schedule()" caller function address.
+ */
+unsigned long get_wchan(struct task_struct *task)
+{
+	unsigned long pc = 0;
+
+	/*
+	 * We need to obtain the task stack since we don't want the stack to
+	 * move under our feet.
+	 */
+	if (!try_get_task_stack(task))
+		return 0;
+
+	if (likely(task && task != current && task->state != TASK_RUNNING))
+		walk_stackframe(task, find_wchan, &pc);
+
+	put_task_stack(task);
+
+	return pc;
 }
