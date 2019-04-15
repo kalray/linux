@@ -142,12 +142,6 @@ void flush_thread(void)
 	 */
 }
 
-unsigned long get_wchan(struct task_struct *p)
-{
-	panic("%s unimplemented\n", __func__);
-	return 0;
-}
-
 void scall_machine_exit(unsigned char value)
 {
 	register int status asm("r0") = value;
