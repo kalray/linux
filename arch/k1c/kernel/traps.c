@@ -35,7 +35,11 @@ static const char * const trap_name[] = {
 	"NOMAPPING",
 	"PROTECTION",
 	"WRITETOCLEAN",
-	"ATOMICTOCLEAN"
+	"ATOMICTOCLEAN",
+	"TPAR",
+	"DOUBLE_ECC",
+	"VSFR",
+	"PL_OVERFLOW"
 };
 
 static void default_trap_handler(uint64_t es, uint64_t ea,
