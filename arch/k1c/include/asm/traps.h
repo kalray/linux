@@ -27,8 +27,12 @@
 #define K1C_TRAP_PROTECTION     0xD
 #define K1C_TRAP_WRITETOCLEAN   0xE
 #define K1C_TRAP_ATOMICTOCLEAN  0xF
+#define K1C_TRAP_TPAR           0x10
+#define K1C_TRAP_DOUBLE_ECC     0x11
+#define K1C_TRAP_VSFR           0x12
+#define K1C_TRAP_PL_OVERFLOW    0x13
 
-#define K1C_TRAP_COUNT          0x10
+#define K1C_TRAP_COUNT          0x14
 
 #ifndef __ASSEMBLY__
 
