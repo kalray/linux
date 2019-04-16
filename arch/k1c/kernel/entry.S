@@ -288,6 +288,7 @@ _restore_regs:
 	set $spc = $r1
 	;;
 	lo $r16r17r18r19 = PT_Q16[$sp]
+	;;
 	wfxl $sps = $r13
 	;;
 	lo $r8r9r10r11 = PT_Q8[$sp]
