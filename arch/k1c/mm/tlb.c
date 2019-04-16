@@ -102,9 +102,15 @@ static void clear_jtlb_entry(unsigned long addr,
 {
 	struct k1c_tlb_format entry;
 	unsigned long mmc_val;
+	int saved_asn;
+
+	/* Before probing we need to save the current ASN */
+	mmc_val = k1c_sfr_get(K1C_SFR_MMC);
+	saved_asn = k1c_sfr_field_val(mmc_val, MMC, ASN);
+	k1c_sfr_set_field(K1C_SFR_MMC, ASN, asn);
 
 	/* Probe is based on PN and ASN. So ES can be anything */
-	entry = tlb_mk_entry(0, (void *)addr, 0, global, 0, 0, asn,
+	entry = tlb_mk_entry(0, (void *)addr, 0, global, 0, 0, 0,
 			     TLB_ES_INVALID);
 	k1c_mmu_set_tlb_entry(entry);
 
@@ -124,14 +130,14 @@ static void clear_jtlb_entry(unsigned long addr,
 			     __func__, addr, asn);
 			k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_PAR_SHIFT);
 			local_flush_tlb_all();
-		} else {
-			/* else there is no matching entry */
-			pr_debug("%s: try to clean a no matching entry (addr 0x%lx, asn %u)\n",
-				 __func__, addr, asn);
 		}
 
+		/*
+		 * else there is no matching entry so just clean the error and
+		 * restore the ASN before returning.
+		 */
 		k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_E_SHIFT);
-		return;
+		goto restore_asn;
 	}
 
 	/*
@@ -159,6 +165,9 @@ static void clear_jtlb_entry(unsigned long addr,
 	else
 		pr_debug("%s: Entry (addr 0x%lx, asn %u) cleared\n",
 			__func__, addr, asn);
+
+restore_asn:
+	k1c_sfr_set_field(K1C_SFR_MMC, ASN, saved_asn);
 }
 
 /* If mm is current we just need to assign the current task a new ASN. By
