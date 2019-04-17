@@ -506,4 +506,26 @@ config SPRD_IOMMU
 
 	  Say Y here if you want to use the multimedia devices listed above.
 
+config K1C_IOMMU
+	bool "K1C IOMMU support"
+	depends on K1C
+	select IOMMU_API
+	help
+	  Say Y here if you want to compile device drivers
+	  for IO Memory Management Units for K1c into the
+	  kernel. These devices allow to remap DMA requests
+	  and/or remap interrupts from other devices on the
+	  system.
+
+config K1C_IOMMU_CHECK_COHERENCY
+	bool "K1C IOMMU check coherency"
+	depends on K1C_IOMMU
+	default n
+	help
+	  If enabled it checks that the TLB and the
+	  software TLB cache are synchronized each
+	  time a write occurs. As check is done for
+	  each write it has a performance impact and
+	  should be used for debugging purpose.
+
 endif # IOMMU_SUPPORT
