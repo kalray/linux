@@ -81,14 +81,6 @@
 #ifndef __ASSEMBLY__
 #include <asm/mmu.h>
 
-#if defined(CONFIG_K1C_4K_PAGES)
-#define TLB_DEFAULT_PS	TLB_PS_4K
-#elif defined(CONFIG_K1C_64K_PAGES)
-#define TLB_DEFAULT_PS	TLB_PS_64K
-#else
-#error "Unsupported page size"
-#endif
-
 static inline struct k1c_tlb_format tlb_mk_entry(
 	void *paddr,
 	void *vaddr,
