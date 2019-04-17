@@ -17,6 +17,7 @@
 #include <asm/processor.h>
 #include <asm/ptrace.h>
 #include <asm/page.h>
+#include <asm/page_size.h>
 #include <asm/pgtable.h>
 #include <asm/ptrace.h>
 #include <asm/tlb_defs.h>
