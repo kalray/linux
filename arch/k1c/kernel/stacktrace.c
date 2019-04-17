@@ -129,6 +129,34 @@ static void notrace walk_stackframe(struct task_struct *task,
 }
 #endif
 
+#ifdef CONFIG_STACKTRACE
+bool append_stack_addr(unsigned long pc, void *arg)
+{
+	struct stack_trace *trace;
+
+	trace = (struct stack_trace *)arg;
+	if (trace->skip == 0) {
+		trace->entries[trace->nr_entries++] = pc;
+		if (trace->nr_entries == trace->max_entries)
+			return true;
+	} else {
+		trace->skip--;
+	}
+
+	return false;
+}
+
+/*
+ * Save stack-backtrace addresses into a stack_trace buffer.
+ */
+void save_stack_trace(struct stack_trace *trace)
+{
+	trace->nr_entries = 0;
+	walk_stackframe(NULL, append_stack_addr, trace);
+}
+EXPORT_SYMBOL(save_stack_trace);
+#endif /* CONFIG_STACKTRACE */
+
 static bool print_pc(unsigned long pc, void *arg)
 {
 	print_ip_sym(pc);
