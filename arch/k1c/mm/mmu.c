@@ -14,6 +14,7 @@
 #include <linux/kernel.h>
 
 #include <asm/mmu.h>
+#include <asm/page_size.h>
 
 #define DUMP_LTLB 0
 #define DUMP_JTLB 1
@@ -118,15 +119,11 @@ void k1c_mmu_dump_jtlb(int dump_all)
 
 void k1c_mmu_setup_initial_mapping(void)
 {
-	unsigned int supported_psize = 0;
-
 	/* Clean error field in MMC */
 	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_E_SHIFT);
 
-	supported_psize = MMC_PMJ_4K | MMC_PMJ_64K | MMC_PMJ_2M | MMC_PMJ_512M;
-
 	k1c_sfr_set_mask(K1C_SFR_PS, K1C_SFR_PS_PMJ_MASK,
-		(supported_psize << K1C_SFR_PS_PMJ_SHIFT));
+		(K1C_SUPPORTED_PSIZE << K1C_SFR_PS_PMJ_SHIFT));
 
 	k1c_mmu_cleanup_jtlb(1);
 

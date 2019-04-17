@@ -12,6 +12,7 @@
 
 #include <asm/tlbflush.h>
 #include <asm/tlb_defs.h>
+#include <asm/page_size.h>
 #include <asm/pgtable.h>
 
 DEFINE_PER_CPU_ALIGNED(uint8_t[MMU_JTLB_SETS], jtlb_current_set_way);
