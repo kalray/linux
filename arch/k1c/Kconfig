@@ -33,6 +33,13 @@ config HAVE_COPY_THREAD_TLS
 config ZONE_DMA32
 	def_bool n
 
+config STACKTRACE_SUPPORT
+	def_bool y
+
+config TRACE_IRQFLAGS_SUPPORT
+	def_bool y
+
+
 config K1C
 	def_bool y
 	select OF
