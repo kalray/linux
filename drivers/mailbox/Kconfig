@@ -126,6 +126,14 @@ config BCM2835_MBOX
 	  the services of the Videocore. Say Y here if you want to use the
 	  BCM2835 Mailbox.
 
+config K1C_MBOX
+	tristate "K1C Mailbox framework support"
+	depends on K1C && OF
+	help
+	  Mailbox implementation for K1C family chips with hardware for interprocessor
+	  communication. Mailboxes are uni-directional and as such can be in tx
+	  or rx mode. Say Y here if you want to use the K1C Mailboxes.
+
 config STI_MBOX
 	tristate "STI Mailbox framework support"
 	depends on ARCH_STI && OF
