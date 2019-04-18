@@ -11017,6 +11017,7 @@ F:	drivers/pci/controller/pcie-k1c-nwl.*
 F:	drivers/irqchip/irq-k1c-*.c
 F:	include/linux/irqchip/irq-k1c-*.h
 F:	include/linux/mfd/k1c-ftu.h
+F:	drivers/mailbox/k1c-mailbox.c
 
 K8TEMP HARDWARE MONITORING DRIVER
 M:	Rudolf Marek <r.marek@assembler.cz>
