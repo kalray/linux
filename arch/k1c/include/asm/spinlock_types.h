@@ -9,20 +9,11 @@
 #ifndef _ASM_K1C_SPINLOCK_TYPES_H
 #define _ASM_K1C_SPINLOCK_TYPES_H
 
-#define RW_LOCK_BIAS		 0x01000000
+#if !defined(__LINUX_SPINLOCK_TYPES_H) && !defined(__ASM_SPINLOCK_H)
+# error "please don't include this file directly"
+#endif
 
-#define __lock_aligned	__aligned(8)
-
-typedef struct arch_spinlock {
-	volatile uint64_t lock;
-} arch_spinlock_t;
-
-#define __ARCH_SPIN_LOCK_UNLOCKED	{ 0 }
-
-typedef struct {
-	volatile uint64_t lock;
-} arch_rwlock_t;
-
-#define __ARCH_RW_LOCK_UNLOCKED		{ RW_LOCK_BIAS }
+#include <asm-generic/qspinlock_types.h>
+#include <asm-generic/qrwlock_types.h>
 
 #endif /* _ASM_K1C_SPINLOCK_TYPES_H */
