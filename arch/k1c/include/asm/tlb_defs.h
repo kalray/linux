@@ -9,6 +9,22 @@
 #ifndef _ASM_K1C_TLB_DEFS_H
 #define _ASM_K1C_TLB_DEFS_H
 
+#include <asm/sfr.h>
+
+/* Architecture specification */
+#define MMC_SB_JTLB 0
+#define MMC_SB_LTLB 1
+
+#define MMU_LTLB_SETS 1
+#define MMU_LTLB_WAYS 16
+
+#define MMU_JTLB_SETS 64
+#define MMU_JTLB_WAYS 4
+
+/* Set is determined using the 6 lsb of virtual page */
+#define MMU_JTLB_SET_MASK (MMU_JTLB_SETS - 1)
+#define MMU_JTLB_WAY_MASK (MMU_JTLB_WAYS - 1)
+
 /* TLB: Entry Status */
 #define TLB_ES_INVALID    0
 #define TLB_ES_PRESENT    1
@@ -78,34 +94,5 @@
 #define LTLB_ENTRY_KERNEL_TEXT	0
 #define LTLB_ENTRY_GDB_PAGE	1
 #define LTLB_ENTRY_EARLY_SMEM	2
-
-#ifndef __ASSEMBLY__
-#include <asm/mmu.h>
-
-static inline struct k1c_tlb_format tlb_mk_entry(
-	void *paddr,
-	void *vaddr,
-	unsigned int ps,
-	unsigned int global,
-	unsigned int pa,
-	unsigned int cp,
-	unsigned int asn,
-	unsigned int es)
-{
-	struct k1c_tlb_format entry;
-
-	/**
-	 * 0 matches the virtual space:
-	 * - either we are virtualized and the hypervisor will set it
-	 * for us when using writetlb
-	 * - Or we are native and the virtual space is 0
-	 */
-	entry.teh_val = TLB_MK_TEH_ENTRY((uintptr_t) vaddr, 0, global, asn);
-	entry.tel_val = TLB_MK_TEL_ENTRY((uintptr_t) paddr, ps, es, cp, pa);
-
-	return entry;
-}
-
-#endif /* __ASSEMBLY__ */
 
 #endif

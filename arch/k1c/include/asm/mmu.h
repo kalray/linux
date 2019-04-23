@@ -10,9 +10,11 @@
 #ifndef _ASM_K1C_MMU_H
 #define _ASM_K1C_MMU_H
 
-#include <asm/sfr.h>
 #include <linux/types.h>
 #include <linux/threads.h>
+
+#include <asm/sfr.h>
+#include <asm/tlb_defs.h>
 
 /*
  * See Documentation/k1c/k1c-mmu.txt for details about the division of the
@@ -23,20 +25,6 @@
 #else
 #error "Only 4Ko page size is supported at this time"
 #endif
-
-/* Architecture specification */
-#define MMC_SB_JTLB 0
-#define MMC_SB_LTLB 1
-
-#define MMU_LTLB_SETS 1
-#define MMU_LTLB_WAYS 16
-
-#define MMU_JTLB_SETS 64
-#define MMU_JTLB_WAYS 4
-
-/* Set is determined using the 6 lsb of virtual page */
-#define MMU_JTLB_SET_MASK 0x3F
-#define MMU_JTLB_WAY_MASK 0x3
 
 /* MMC: Protection Trap Cause */
 #define MMC_PTC_RESERVED 0
@@ -179,6 +167,30 @@ static inline void k1c_mmu_probetlb(void)
 	struct k1c_tlb_format __invalid_entry = K1C_EMPTY_TLB_ENTRY; \
 	k1c_mmu_add_entry(MMC_SB_LTLB, way, __invalid_entry); \
 } while (0)
+
+static inline struct k1c_tlb_format tlb_mk_entry(
+	void *paddr,
+	void *vaddr,
+	unsigned int ps,
+	unsigned int global,
+	unsigned int pa,
+	unsigned int cp,
+	unsigned int asn,
+	unsigned int es)
+{
+	struct k1c_tlb_format entry;
+
+	/**
+	 * 0 matches the virtual space:
+	 * - either we are virtualized and the hypervisor will set it
+	 * for us when using writetlb
+	 * - Or we are native and the virtual space is 0
+	 */
+	entry.teh_val = TLB_MK_TEH_ENTRY((uintptr_t) vaddr, 0, global, asn);
+	entry.tel_val = TLB_MK_TEL_ENTRY((uintptr_t) paddr, ps, es, cp, pa);
+
+	return entry;
+}
 
 extern void k1c_mmu_cleanup_jtlb(int verbose);
 extern void k1c_mmu_setup_initial_mapping(void);
