@@ -61,11 +61,6 @@
 #define PWR_CTRL_GLOBAL_CONFIG_VALUE \
 	(1 << K1C_PWR_CTRL_GLOBAL_SET_PE_EN_SHIFT)
 
-/* MMU related defines */
-#define JTLB_MAX_SETS 63
-#define JTLB_MAX_WAYS 3
-#define LTLB_MAX_WAYS 15
-
 /* Clean error and selected buffer */
 #define MMC_CLEAR_ERROR (K1C_SFR_MMC_E_MASK)
 
@@ -399,7 +394,7 @@ ENTRY(asm_init_mmu)
 	/* Reset the JTLB */
 	select_jtlb $r20
 	;;
-	make $r20 = JTLB_MAX_SETS /* Used to select the set 63->0 */
+	make $r20 = (MMU_JTLB_SETS - 1) /* Used to select the set */
 	make $r21 = 0  /* Used for shifting and as scratch register */
 	;;
 	set $tel = $r21	 /* tel is always equal to 0 */
@@ -410,7 +405,7 @@ ENTRY(asm_init_mmu)
 		;;
 		set $teh = $r21
 		;;
-		make $r22 = JTLB_MAX_WAYS  /* Used to select the way 3->0 */
+		make $r22 = (MMU_JTLB_WAYS - 1) /* Used to select the way */
 		;;
 		loop_jtlb_way:
 			select_way_from_register $r22 $r23 $r24
@@ -431,7 +426,7 @@ ENTRY(asm_init_mmu)
 	clear_ltlb:
 		/* There is only one set that is 0 so we can reuse the same
 		   values for TEH and TEL. */
-		make $r20 = 15
+		make $r20 = (MMU_LTLB_WAYS - 1)
 		;;
 		loop_ltlb_way:
 			select_way_from_register $r20, $r21, $r22
