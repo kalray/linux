@@ -25,6 +25,7 @@
 #include <asm/rm_fw.h>
 #include <asm/page.h>
 #include <asm/sfr.h>
+#include <asm/mmu.h>
 
 /* Magic is found in r0 when some parameters are given to kernel */
 #define K1_PARAM_MAGIC		0x494C314B
@@ -130,7 +131,7 @@ asmlinkage __visible void __init arch_low_level_start(unsigned long r0,
 {
 	void *dt = NULL;
 
-	mmu_early_init();
+	k1c_mmu_early_setup();
 
 	if (r0 == K1_PARAM_MAGIC) {
 		strncpy(boot_command_line, cmdline_ptr, COMMAND_LINE_SIZE);
