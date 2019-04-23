@@ -117,7 +117,7 @@ void k1c_mmu_dump_jtlb(int dump_all)
 	local_irq_restore(flags);
 }
 
-void k1c_mmu_setup_initial_mapping(void)
+void __init k1c_mmu_early_setup(void)
 {
 	/* Clean error field in MMC */
 	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_E_SHIFT);
@@ -126,6 +126,7 @@ void k1c_mmu_setup_initial_mapping(void)
 		(K1C_SUPPORTED_PSIZE << K1C_SFR_PS_PMJ_SHIFT));
 
 	k1c_mmu_cleanup_jtlb(1);
+	k1c_mmu_remove_ltlb_entry(LTLB_ENTRY_EARLY_SMEM);
 
 #ifdef K1C_MMU_DEBUG
 	k1c_mmu_dump_jtlb(1);
