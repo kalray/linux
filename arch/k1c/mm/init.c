@@ -80,17 +80,6 @@ static void __init zone_sizes_init(void)
 	free_area_init_nodes(zones_size);
 }
 
-
-void __init mmu_early_init(void)
-{
-	unsigned long flags;
-
-	/* Invalidate early smem mapping to avoid reboot loops */
-	local_irq_save(flags);
-	k1c_mmu_remove_ltlb_entry(LTLB_ENTRY_EARLY_SMEM);
-	local_irq_restore(flags);
-}
-
 void __init paging_init(void)
 {
 	int i;
@@ -251,7 +240,6 @@ static void __init fixedrange_init(void)
 void __init setup_arch_memory(void)
 {
 	setup_bootmem();
-	k1c_mmu_setup_initial_mapping();
 	paging_init();
 	fixedrange_init();
 }
