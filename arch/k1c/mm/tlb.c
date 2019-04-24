@@ -287,7 +287,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	unsigned int pa;
 	struct k1c_tlb_format tlbe;
 	unsigned int set, way;
-	unsigned int cp;
+	unsigned int cp, ps;
 	struct mm_struct *mm;
 	unsigned long asn;
 	unsigned long flags;
@@ -318,6 +318,9 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	pa = (unsigned int)k1c_access_perms[K1C_ACCESS_PERMS_INDEX(pte_val)];
 
 	cp = pgprot_cache_policy(pte_val);
+
+	BUILD_BUG_ON(K1C_PAGE_SZ_SHIFT != K1C_SFR_TEL_PS_SHIFT);
+	ps = (pte_val & K1C_PAGE_SZ_MASK) >> K1C_PAGE_SZ_SHIFT;
 
 	/* Set page as accessed */
 	pte_val(*ptep) |= _PAGE_ACCESSED;
@@ -352,7 +355,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	tlbe = tlb_mk_entry(
 		(void *)pfn_to_phys(pfn),
 		(void *)address,
-		TLB_DEFAULT_PS,
+		ps,
 		(pte_val & _PAGE_GLOBAL) ? TLB_G_GLOBAL : TLB_G_USE_ASN,
 		pa,
 		cp,
