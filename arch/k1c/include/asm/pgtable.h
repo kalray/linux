@@ -29,6 +29,21 @@
 struct mm_struct;
 struct vm_area_struct;
 
+/*
+ * Hugetlb definitions. Currently we only support huge page of 2Mo with
+ * 4Ko base page size.
+ */
+#define HUGE_MAX_HSTATE		1
+#define HPAGE_SHIFT		PMD_SHIFT
+#define HPAGE_SIZE		BIT(HPAGE_SHIFT)
+#define HPAGE_MASK		(~(HPAGE_SIZE - 1))
+#define HUGETLB_PAGE_ORDER	(HPAGE_SHIFT - PAGE_SHIFT)
+
+extern pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
+				struct page *page, int writable);
+#define arch_make_huge_pte arch_make_huge_pte
+
+/* Vmalloc definitions */
 #define VMALLOC_START	KERNEL_VMALLOC_MAP_BASE
 #define VMALLOC_END	(VMALLOC_START + KERNEL_VMALLOC_MAP_SIZE - 1)
 
@@ -316,6 +331,11 @@ static inline int pte_special(pte_t pte)
 	return pte_val(pte) & _PAGE_SPECIAL;
 }
 
+static inline int pte_huge(pte_t pte)
+{
+	return pte_val(pte) & _PAGE_HUGE;
+}
+
 static inline pte_t pte_mkdirty(pte_t pte)
 {
 	return __pte(pte_val(pte) | _PAGE_DIRTY);
@@ -349,6 +369,11 @@ static inline pte_t pte_mkspecial(pte_t pte)
 static inline pte_t pte_wrprotect(pte_t pte)
 {
 	return __pte(pte_val(pte) & ~(_PAGE_WRITE));
+}
+
+static inline pte_t pte_mkhuge(pte_t pte)
+{
+	return __pte(pte_val(pte) | _PAGE_HUGE);
 }
 
 #include <asm-generic/pgtable.h>
