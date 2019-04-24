@@ -168,10 +168,10 @@ About the format of the PTE entry, as we are not forced by hardware for choices,
 we choose to follow the format described in the RiscV implementation as a
 starting point.
 
-    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
-    | 63 .. 23  | 22 .. 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
-         PFN       Unused    S  UNC DEV  D   A   G   X   W   R   P
+  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
+  | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
+      PFN     Unused   S    PageSZ   H  UNC DEV  D   A   G   X   W   R   P
 
        where:
         P: Present
@@ -184,8 +184,16 @@ starting point.
         D: Dirty
         DEV: Device space mapping
         UNC: Uncached mapping
+        H: Huge page
+        PageSZ: Page size as set in TLB format (0:4Ko, 1:64Ko, 2:2Mo, 3:512Mo)
         S: Soft/Special
         PFN: Page frame number (depends on page size)
+
+Huge bit must be somewhere in the first 12 bits to be able to detect it
+when reading the PMD entry.
+
+PageSZ must be on bit 10 and 11 because it matches the TEL.PS bits. And
+by doing that it is easier in assembly to set the TEL.PS to PageSZ.
 
 Fast TLB refill
 ===============
@@ -231,3 +239,21 @@ When the counter completely wraps, we reset the counter to first cycle value
 (ie cycle = 1). This allows to distinguish context without any ASN and old cycle
 generated value with the same operation (XOR on cycle).
 
+Huge page
+=========
+
+Currently only 3 level page table has been implemented for 4Ko base page size.
+So the page shift is 12 bits, the pmd shift is 21 and the pgdir shift is 30
+bits. This choice implies that for 4Ko base page size we can support only
+2Mo or 1Go size for huge page.
+
+If we implement the 4 level page table for 64Ko base page size it will allow
+to have 256Mo or 8Go.
+
+That means that if we want to support 512Mo for huge page we will need to
+implement a mechanism that will map what has been done on ARM64 with the
+continuous bit. Use several pages for one entry. For example, if we use
+16 entries at the PTE level it will allow to map one entry of 64Ko. And if
+we use 256 entries at the PMD level we will be able to map a huge page of
+512Mo. By doing this we will be able to support 64Ko, 2Mo and 512Mo for a
+4Ko base page size. Today only 2Mo for huge page is supported.
