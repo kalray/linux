@@ -37,8 +37,7 @@
 
 .altmacro
 
-#define TEL_DEFAULT_VALUE  ((ASM_TLB_PS << K1C_SFR_TEL_PS_SHIFT) | \
-			(TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT))
+#define TEL_DEFAULT_VALUE  (TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT)
 
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 .section .rodata
@@ -381,17 +380,32 @@ _restore_regs:
 	make $r7 = 0
 #endif
 	;;
-	/* Load PMD entry offset */
+	/* Load PMD entry offset and keep pointer to the entry for huge page */
+	addx8d $r2 = $r3, $r1
 	ld.xs $r1 = $r3[$r1]
 	/* Compute per_cpu_offset + current way of set address */
 	addd $r5 = $r5, $r7
 	/* Get exception cause for access type handling (page dirtying) */
 	get $r7 = $es
 	;;
-	/* extract PTE offset */
-	extfz $r3 = $r0, (PAGE_SHIFT + 8), PAGE_SHIFT
+	/* check if it is a huge page */
+	extfz $r6 = $r1, _PAGE_HUGE_SHIFT, _PAGE_HUGE_SHIFT
 	/* If pmd entry is null -> out */
 	cb.deqz $r1? _err_out
+	;;
+	/* extract PTE offset */
+	extfz $r3 = $r0, (PAGE_SHIFT + 8), PAGE_SHIFT
+	/*
+	 * If the page is a huge one we already have set the PTE and the
+	 * pointer to the PTE.
+	 */
+	cb.dnez $r6? _pte_is_set
+	;;
+	/* Load PTE entry */
+	ld.xs $r1 = $r3[$r1]
+	addx8d $r2 = $r3, $r1
+	;;
+_pte_is_set:
 	/* Load current way to use for current set */
 	lbz $r0 = jtlb_current_set_way[$r5]
 	/* Clear way and select JTLB */
@@ -399,9 +413,6 @@ _restore_regs:
 	;;
 	/* Keep only the two LSB */
 	andd $r0 = $r0, 0x3
-	/* Load PTE entry */
-	ld.xs $r1 = $r3[$r1]
-	addx8d $r2 = $r3, $r1
 	/* Check if the access was a "write" access */
 	andd $r7 = $r7, (K1C_TRAP_RWX_WRITE << K1C_SFR_ES_RWX_SHIFT)
 	;;
@@ -433,6 +444,15 @@ _restore_regs:
 	extfz $r3 = $r1, K1C_ACCESS_PERM_STOP_BIT, K1C_ACCESS_PERM_START_BIT
 	/* Move FN bits to their place */
 	srld $r6 = $r6, K1C_PFN_SHIFT - PAGE_SHIFT
+	;;
+	/*
+	 * Extract the page size. If it is not a huge page value is 0
+	 * and that is correct for 4Ko page size. But it need to be fixed for
+	 * regular page of 64K.
+	 */
+	andd $r5 = $r1, K1C_PAGE_SZ_MASK
+	;;
+	ord $r6 = $r6, $r5
 	;;
 	/* load access permissions */
 	lbz $r6 = k1c_access_perms[$r3]
