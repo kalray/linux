@@ -4,11 +4,10 @@ import ctypes
 from arch.k1c import constants
 #
 # PTE format:
-#
-#    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
-#    | 63 .. 23  | 22 .. 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-#    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
-#         PFN       Unused    S  UNC DEV  D   A   G   X   W   R   P
+#  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
+#  | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+#  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
+#      PFN     Unused   S   PageSZ    H   U  Dev  D   A   G   X   W   R   P
 
 class pte_bits(ctypes.LittleEndianStructure):
     _fields_ = [
@@ -19,10 +18,12 @@ class pte_bits(ctypes.LittleEndianStructure):
             ("G", ctypes.c_uint8, 1),
             ("A", ctypes.c_uint8, 1),
             ("D", ctypes.c_uint8, 1),
-            ("DEV", ctypes.c_uint8, 1),
-            ("UNC", ctypes.c_uint8, 1),
+            ("Dev", ctypes.c_uint8, 1),
+            ("U", ctypes.c_uint8, 1),
+            ("H", ctypes.c_uint8, 1),
+            ("PageSZ", ctypes.c_uint8, 2),
             ("S", ctypes.c_uint8, 1),
-            ("Unused", ctypes.c_uint16, 13),
+            ("Unused", ctypes.c_uint16, 10),
             ("PFN", ctypes.c_uint64, 41),
         ]
 
@@ -35,6 +36,13 @@ PTRSIZE = 8
 PGD_ENTRIES = 1 << constants.LX_PGDIR_BITS
 PMD_ENTRIES = 1 << constants.LX_PMD_BITS
 PTE_ENTRIES = 1 << constants.LX_PTE_BITS
+
+page_sz_str = {
+    constants.LX_TLB_PS_4K : "4 Ko",
+    constants.LX_TLB_PS_64K: "64 Ko",
+    constants.LX_TLB_PS_2M: "2 Mo",
+    constants.LX_TLB_PS_512M: "512 Mo"
+}
 
 def extract_hexa(s):
     return map(lambda x:int(x, 16), re.findall(r'(0x[0-9a-f]+)',s))
@@ -67,13 +75,17 @@ def get_pte_bits(pte_entry):
     """
     pte_val = Pte()
     pte_val.value = pte_entry
-    pte_str = "\t\tPFN: 0x{:016x}, bits: ".format(pte_val.bf.PFN << constants.LX_PAGE_SHIFT)
+    pte_str = "\t\tPFN: 0x{:016x}, ".format(pte_val.bf.PFN << constants.LX_PAGE_SHIFT)
+    pte_str += "PS: " + page_sz_str[pte_val.bf.PageSZ] + ", bits: "
 
-    for field in pte_val.bf._fields_:
-        if field[0] == "Unused":
-            break
+    ignore_fields = ["PFN", "Unused", "PageSZ"]
+
+    for field in reversed(pte_val.bf._fields_):
+        if field[0] in ignore_fields:
+            continue
+
         if long(getattr(pte_val.bf, field[0])) != 0:
-            pte_str += field[0]
+            pte_str += field[0] + " "
 
     pte_str += "\n"
     return pte_str
@@ -124,10 +136,16 @@ class LxPageTableWalk(gdb.Command):
                 gdb.write("\t[{}] -> Entry[0x{:016x}]\n".format(
                         (pmd_pair[0] - pgd_pair[1])/8,
                         pmd_pair[1]))
-                gdb.write("\t\t> Looking for PTE base 0x{:016x}\n".format(pmd_pair[1]))
-                for pte_pair in do_lookup(pmd_pair[1], PTE_ENTRIES):
-                    gdb.write("\t\t[{}] -> PTE [0x{:016x}]\n".format(
-                            (pte_pair[0] - pmd_pair[1])/8, pte_pair[1]))
-                    gdb.write(get_pte_bits(pte_pair[1]))
+                # Check if the PMD value read is a huge page or a pointer to a
+                # PTE base.
+                if (pmd_pair[1] & constants.LX__PAGE_HUGE):
+                    gdb.write("\t\t> Huge page entry:\n")
+                    gdb.write(get_pte_bits(pmd_pair[1]))
+                else:
+                    gdb.write("\t\t> Looking for PTE base 0x{:016x}\n".format(pmd_pair[1]))
+                    for pte_pair in do_lookup(pmd_pair[1], PTE_ENTRIES):
+                        gdb.write("\t\t[{}] -> PTE [0x{:016x}]\n".format(
+                                (pte_pair[0] - pmd_pair[1])/8, pte_pair[1]))
+                        gdb.write(get_pte_bits(pte_pair[1]))
 
 LxPageTableWalk()

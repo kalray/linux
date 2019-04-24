@@ -7,3 +7,4 @@
 #
 
 obj-y := init.o ioremap.o mmu.o fault.o tlb.o extable.o dma-mapping.o
+obj-$(CONFIG_HUGETLB_PAGE) += hugetlbpage.o
