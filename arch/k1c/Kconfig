@@ -15,6 +15,9 @@ config FIX_EARLYCON_MEM
 config MMU
 	def_bool y
 
+config SYS_SUPPORTS_HUGETLBFS
+	def_bool y
+
 config KALLSYMS_BASE_RELATIVE
         def_bool n
 

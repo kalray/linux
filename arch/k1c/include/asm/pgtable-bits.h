@@ -15,16 +15,26 @@
  * As we don't have any HW to handle page table walk, we can define
  * our own PTE format.
  *
- *    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
- *    | 63 .. 23  | 22 .. 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
- *    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
- *         PFN       Unused    S  UNC DEV  D   A   G   X   W   R   P
+ * PageSZ must be on bit 10 and 11 because it matches the TEL.PS bits. And
+ * by doing that it is easier in assembly to set the TEL.PS to PageSZ.
+ * In other words, K1C_PAGE_SZ_SHIFT == K1C_SFR_TEL_PS_SHIFT.
+ * It is checked by using a BUILD_BUG_ON() in arch/k1c/mm/tlb.c.
+ *
+ * Huge bit must be somewhere in the first 12 bits to be able to detect it
+ * when reading the PMD entry.
+ *
+ *  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
+ *  | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+ *  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
+ *      PFN     Unused   S    PageSZ   H  UNC DEV  D   A   G   X   W   R   P
  *
  * Note: PFN is 40-bits wide. We use 41-bits to ensure that the upper bit is
  *       always set to 0. This is required when shifting PFN to right.
  */
 
-#define _PAGE_GLOBAL_SHIFT	4   /* Global */
+/* Following shift are used in ASM to easily extract bit */
+#define _PAGE_GLOBAL_SHIFT	4
+#define _PAGE_HUGE_SHIFT	9
 
 #define _PAGE_PRESENT   (1 << 0)    /* Present */
 #define _PAGE_READ      (1 << 1)    /* Readable */
@@ -35,13 +45,18 @@
 #define _PAGE_DIRTY     (1 << 6)    /* Set by hardware on any write */
 #define _PAGE_DEVICE    (1 << 7)    /* Device space mapping */
 #define _PAGE_UNCACHED  (1 << 8)    /* Uncached mapping */
-#define _PAGE_SOFT      (1 << 9)    /* Reserved for software */
+#define _PAGE_HUGE      (1 << 9)    /* Huge page */
+#define _PAGE_SOFT      (1 << 12)   /* Reserved for software */
 
 #define _PAGE_SPECIAL   _PAGE_SOFT
 
-/* As the mask is used in assembly, it cannot be generating with GENMASK */
+/* Note: mask used in assembly cannot be generated with GENMASK */
 #define K1C_PFN_SHIFT	23
 #define K1C_PFN_MASK	(~(((1 << K1C_PFN_SHIFT) - 1)))
+
+#define K1C_PAGE_SZ_SHIFT	10
+#define K1C_PAGE_SZ_MASK \
+	(((1 << K1C_SFR_TEL_PS_WIDTH) - 1) << K1C_SFR_TEL_PS_SHIFT)
 
 #define K1C_ACCESS_PERMS_BITS	4
 #define K1C_ACCESS_PERMS_OFFSET	1
