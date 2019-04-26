@@ -222,6 +222,10 @@ void local_flush_tlb_all(void)
 
 	local_irq_save(flags);
 
+	/* Select JTLB and prepare TEL (constant) */
+	k1c_sfr_set(K1C_SFR_TEL, (uint64_t) tlbe.tel_val);
+	k1c_sfr_set_field(K1C_SFR_MMC, SB, MMC_SB_JTLB);
+
 	for (set = 0; set < MMU_JTLB_SETS; set++) {
 		tlbe.teh.pn = set;
 		for (way = 0; way < MMU_JTLB_WAYS; way++) {
@@ -230,7 +234,9 @@ void local_flush_tlb_all(void)
 			 * With 4K pages the set is the value of the 6 lower
 			 * signigicant bits of the page number.
 			 */
-			k1c_mmu_add_entry(MMC_SB_JTLB, way, tlbe);
+			k1c_sfr_set(K1C_SFR_TEH, (uint64_t) tlbe.teh_val);
+			k1c_sfr_set_field(K1C_SFR_MMC, SW, way);
+			k1c_mmu_writetlb();
 
 			if (k1c_mmc_error(k1c_sfr_get(K1C_SFR_MMC)))
 				panic("Failed to initialize JTLB[s:%02d w:%d]",
