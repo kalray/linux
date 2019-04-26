@@ -154,9 +154,28 @@ config SECURE_DAME_HANDLING
 	  /!\ Do not disable unless you want to open a giant breach between
 	  user and kernel /!\
 
+config SMP
+	bool "Symmetric multi-processing support"
+	default n
+	select GENERIC_SMP_IDLE_THREAD
+	select GENERIC_IRQ_IPI
+	select IRQ_DOMAIN_HIERARCHY
+	select IRQ_DOMAIN
+	help
+	  This enables support for systems with more than one CPU. If you have
+	  a system with only one CPU, say N. If you have a system with more
+	  than one CPU, say Y.
+
+	  If you say N here, the kernel will run on uni- and multiprocessor
+	  machines, but will use only one CPU of a multiprocessor machine. If
+	  you say Y here, the kernel will run on many, but not all,
+	  uniprocessor machines. On a uniprocessor machine, the kernel
+	  will run faster if you say N here.
+
 config NR_CPUS
 	int "Maximum number of CPUs"
-	range 2 16
+	range 1 16
+	default "16"
 	depends on SMP
 	help
 	  Kalray support can handle a maximum of 16 CPUs.
