@@ -1,0 +1,36 @@
+SMP
+===
+
+On K1C, 5 clusters are organized as groups of 16 processors + 1
+secure core (RM) for each cluster. These 17 processors are L1$ coherent
+for TCM (tightly Coupled Memory). A mixed hw/sw L2$ is present to have
+cache coherency on DDR as well as TCM.
+The RM manager is not meant to run Linux so, 16 processors are available
+for SMP.
+
+Booting
+=======
+
+When booting the K1C processor, only the RM is woken up. This RM will
+execute a portion of code located in a section named .rm_firmware.
+By default, a simple power off code is embedded in this section.
+To avoid embedding the firmware in kernel sources, the section is patched
+using external tools to add the L2$ firmware (and replace the default firmware).
+Before executing this firmware, the RM boots the PE0. PE0 will then enable L2
+coherency and request will be stalled until RM boots the L2$ firmware.
+
+Locking primitives
+==================
+
+spinlock/rwlock are using the kernel standard queued spinlock/rwlocks.
+These primitives are based on cmpxch and xchg. More particularly, it uses xchg16
+which is implemented as a read modify write with acswap on 32 bit word since
+k1c does not have cmpxchg for size < 32bits.
+
+IPI
+===
+
+An IPI controller allows to communicate between CPUs using a simple
+memory mapped register. This register can simply be written using a mask to
+trigger interrupts directly to the cores matching the mask.
+
