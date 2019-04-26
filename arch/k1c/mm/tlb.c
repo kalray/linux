@@ -4,7 +4,7 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2018 Kalray Inc.
+ * Copyright (C) 2019 Kalray Inc.
  */
 
 #include <linux/mmu_context.h>
@@ -360,3 +360,47 @@ void update_mmu_cache(struct vm_area_struct *vma,
 
 	local_irq_restore(flags);
 }
+
+#ifdef CONFIG_SMP
+
+struct tlb_args {
+	struct vm_area_struct *ta_vma;
+	unsigned long ta_start;
+};
+
+static inline void ipi_flush_tlb_page(void *arg)
+{
+	struct tlb_args *ta = arg;
+
+	local_flush_tlb_page(ta->ta_vma, ta->ta_start);
+}
+
+void
+smp_flush_tlb_page(struct vm_area_struct *vma, unsigned long addr)
+{
+	struct tlb_args ta = {
+		.ta_vma = vma,
+		.ta_start = addr
+	};
+
+	on_each_cpu_mask(mm_cpumask(vma->vm_mm), ipi_flush_tlb_page, &ta, 1);
+}
+EXPORT_SYMBOL(smp_flush_tlb_page);
+
+void
+smp_flush_tlb_mm(struct mm_struct *mm)
+{
+	on_each_cpu_mask(mm_cpumask(mm), (smp_call_func_t)local_flush_tlb_mm,
+			 mm, 1);
+}
+EXPORT_SYMBOL(smp_flush_tlb_mm);
+
+void
+smp_flush_tlb_range(struct vm_area_struct *vma, unsigned long start,
+		unsigned long end)
+{
+	panic("%s: not implemented", __func__);
+}
+EXPORT_SYMBOL(smp_flush_tlb_range);
+
+#endif

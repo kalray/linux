@@ -4,7 +4,7 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc.
+ * Copyright (C) 2019 Kalray Inc.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -18,6 +18,7 @@
 #include <linux/string.h>
 #include <linux/sched.h>
 #include <linux/init.h>
+#include <linux/smp.h>
 
 #include <asm/processor.h>
 #include <asm/hw_irq.h>
@@ -26,6 +27,7 @@
 #include <asm/page.h>
 #include <asm/sfr.h>
 #include <asm/mmu.h>
+#include <asm/smp.h>
 
 /**
  * Magic found in r0 when some parameters are given to kernel
@@ -65,7 +67,7 @@ static void __init setup_user_privilege(void)
  * Everything that need to be setup PER cpu shoudl be put here
  * This function will be called by per-cpu setup routine.
  */
-static void setup_processor(void)
+void __init setup_processor(void)
 {
 	/* Setup exception vector */
 	uint64_t ev_val = (uint64_t) &_exception_start;
@@ -126,6 +128,7 @@ void __init setup_arch(char **cmdline_p)
 	setup_device_tree();
 
 	display_rm_fw_features();
+	smp_init_cpus();
 }
 
 asmlinkage __visible void __init arch_low_level_start(unsigned long r0,
