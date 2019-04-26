@@ -95,4 +95,16 @@
 #define LTLB_ENTRY_GDB_PAGE	1
 #define LTLB_ENTRY_EARLY_SMEM	2
 
+/* MMC: Protection Trap Cause */
+#define MMC_PTC_RESERVED 0
+#define MMC_PTC_READ     1
+#define MMC_PTC_WRITE    2
+#define MMC_PTC_EXECUTE  3
+
+/* MMC: Page size Mask in JTLB */
+#define MMC_PMJ_4K   1
+#define MMC_PMJ_64K  2
+#define MMC_PMJ_2M   4
+#define MMC_PMJ_512M 8
+
 #endif
