@@ -11,7 +11,6 @@
 #define _ASM_K1C_PAGE_SIZE_H
 
 #include <asm/tlb_defs.h>
-#include <asm/mmu.h>
 
 #if defined(CONFIG_K1C_4K_PAGES)
 #define TLB_DEFAULT_PS		TLB_PS_4K
