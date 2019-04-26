@@ -1,9 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2017 Kalray Inc.
+ * Copyright (C) 2019 Kalray Inc.
  */
 
 #include <linux/irqdomain.h>
@@ -16,7 +17,7 @@
 
 #define IT_MASK(__it) (K1C_SFR_ILL_ ## __it ## _MASK)
 #define IT_LEVEL(__it, __level) \
-	(__level << K1C_SFR_ILL_ ## __it ## _SHIFT)
+	(__level##ULL << K1C_SFR_ILL_ ## __it ## _SHIFT)
 
 void do_IRQ(unsigned long hwirq_mask, struct pt_regs *regs)
 {
@@ -51,9 +52,10 @@ void k1c_init_core_irq(void)
 	 * - IT0: Timer 0
 	 * - IT2: Watchdog
 	 * - IT4: APIC IT 1
-	 * - IT5: APIC IT 2
+	 * - IT24: IPI
 	 */
-	uint64_t mask = IT_MASK(IT0) | IT_MASK(IT2) | IT_MASK(IT4);
+	uint64_t mask = IT_MASK(IT0) | IT_MASK(IT2) | IT_MASK(IT4) |
+			IT_MASK(IT24);
 
 	/*
 	 * Specific priorities for ITs:
@@ -62,7 +64,7 @@ void k1c_init_core_irq(void)
 	 * - APIC entries have lowest priority: 1
 	 */
 	uint64_t value = IT_LEVEL(IT0, 0x2) | IT_LEVEL(IT2, 0x3) |
-			IT_LEVEL(IT4, 0x1);
+			IT_LEVEL(IT4, 0x1) | IT_LEVEL(IT24, 0x1);
 
 	k1c_sfr_set_mask(K1C_SFR_ILL, mask, value);
 
