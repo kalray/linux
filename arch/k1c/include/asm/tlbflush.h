@@ -9,6 +9,7 @@
 #ifndef _ASM_K1C_TLBFLUSH_H
 #define _ASM_K1C_TLBFLUSH_H
 
+#include <linux/sched.h>
 #include <linux/printk.h>
 #include <linux/mm_types.h>
 
@@ -23,12 +24,24 @@ extern void local_flush_tlb_kernel_range(unsigned long start,
 					 unsigned long end);
 
 #ifdef CONFIG_SMP
-#define flush_tlb_page()  panic("flush_tlb_all is not implemented for SMP")
-#define flush_tlb_all()   panic("flush_tlb_all is not implemented for SMP")
-#define flush_tlb_mm()    panic("flush_tlb_mm is not implemented for SMP")
-#define flush_tlb_range() panic("flush_tlb_range is not implemented for SMP")
-#define flush_tlb_kernel_range() \
-	panic("flush_tlb_kernel_range is not implemented for SMP")
+extern void smp_flush_tlb_all(void);
+extern void smp_flush_tlb_mm(struct mm_struct *mm);
+extern void smp_flush_tlb_page(struct vm_area_struct *vma, unsigned long addr);
+extern void smp_flush_tlb_range(struct vm_area_struct *vma, unsigned long start,
+			    unsigned long end);
+extern void smp_flush_tlb_kernel_range(unsigned long start, unsigned long end);
+
+static inline void flush_tlb(void)
+{
+	smp_flush_tlb_mm(current->mm);
+}
+
+#define flush_tlb_page         smp_flush_tlb_page
+#define flush_tlb_all          smp_flush_tlb_all
+#define flush_tlb_mm           smp_flush_tlb_mm
+#define flush_tlb_range        smp_flush_tlb_range
+#define flush_tlb_kernel_range smp_flush_tlb_kernel_range
+
 #else
 #define flush_tlb_page         local_flush_tlb_page
 #define flush_tlb_all          local_flush_tlb_all
