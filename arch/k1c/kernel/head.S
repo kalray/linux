@@ -6,6 +6,7 @@
  * Copyright (C) 2018 Kalray Inc
  */
 #include <asm/thread_info.h>
+#include <asm/page_size.h>
 #include <asm/pwr_ctrl.h>
 #include <asm/sfr_defs.h>
 #include <asm/sys_arch.h>
@@ -33,7 +34,7 @@
 			PS_VAL_WFXL(MME, 1) | \
 			PS_VAL_WFXL(MMUP, 1) | \
 			PS_VAL_WFXL(ET, 0) | \
-			PS_VAL_WFXL(PMJ, 0xF)
+			PS_VAL_WFXL(PMJ, K1C_SUPPORTED_PSIZE)
 
 #define PCR_VAL_WFXM(__field, __val) \
 	SFR_SET_VAL_WFXM(PCR, __field, __val)
