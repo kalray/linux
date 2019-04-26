@@ -72,6 +72,9 @@ static inline void get_mmu_context(struct mm_struct *mm, unsigned int cpu)
 static inline void activate_context(struct mm_struct *mm, unsigned int cpu)
 {
 	get_mmu_context(mm, cpu);
+
+	/* Set CPU to be owner of the activated context */
+	cpumask_set_cpu(cpu, mm_cpumask(mm));
 	k1c_sfr_set_field(K1C_SFR_MMC, ASN, mm->context.asn[cpu]);
 }
 
@@ -115,6 +118,21 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 {
 	unsigned int cpu = smp_processor_id();
 	int migrated = next->context.cpu != cpu;
+
+	/**
+	 * Comment taken from arc, but logic is the same for us:
+	 *
+	 * Note that the mm_cpumask is "aggregating" only, we don't clear it
+	 * for the switched-out task, unlike some other arches.
+	 * It is used to enlist cpus for sending TLB flush IPIs and not sending
+	 * it to CPUs where a task once ran-on, could cause stale TLB entry
+	 * re-use, specially for a multi-threaded task.
+	 * e.g. T1 runs on C1, migrates to C3. T2 running on C2 munmaps.
+	 *      For a non-aggregating mm_cpumask, IPI not sent C1, and if T1
+	 *      were to re-migrate to C1, it could access the unmapped region
+	 *      via any existing stale TLB entries.
+	 */
+	cpumask_set_cpu(cpu, mm_cpumask(next));
 
 	if (migrated)
 		/*
