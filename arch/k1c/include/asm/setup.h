@@ -17,6 +17,8 @@ void setup_device_tree(void);
 
 void setup_arch_memory(void);
 
+void k1c_init_mmu(void);
+
 #endif
 
 #endif	/* _ASM_K1C_SETUP_H */
