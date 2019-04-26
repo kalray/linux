@@ -216,10 +216,28 @@ void local_flush_tlb_page(struct vm_area_struct *vma,
 
 void local_flush_tlb_all(void)
 {
+	struct k1c_tlb_format tlbe = K1C_EMPTY_TLB_ENTRY;
+	int set, way;
 	unsigned long flags;
 
 	local_irq_save(flags);
-	k1c_mmu_cleanup_jtlb(0);
+
+	for (set = 0; set < MMU_JTLB_SETS; set++) {
+		tlbe.teh.pn = set;
+		for (way = 0; way < MMU_JTLB_WAYS; way++) {
+			/* Set is selected automatically according to the
+			 * virtual address.
+			 * With 4K pages the set is the value of the 6 lower
+			 * signigicant bits of the page number.
+			 */
+			k1c_mmu_add_entry(MMC_SB_JTLB, way, tlbe);
+
+			if (k1c_mmc_error(k1c_sfr_get(K1C_SFR_MMC)))
+				panic("Failed to initialize JTLB[s:%02d w:%d]",
+				      set, way);
+		}
+	}
+
 	local_irq_restore(flags);
 }
 
