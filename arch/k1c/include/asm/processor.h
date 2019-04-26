@@ -127,9 +127,8 @@ extern void ret_from_fork(void);
 
 static inline void wait_for_interrupt(void)
 {
-	long ilr_val = 0xFFFFFFFFULL;
-
-	__asm__ __volatile__ ("waitit %0" : : "r" (ilr_val));
+	__builtin_k1_await();
+	k1c_sfr_clear_bit(K1C_SFR_WS, K1C_SFR_WS_WU0_SHIFT);
 }
 
 #endif	/* _ASM_K1C_PROCESSOR_H */
