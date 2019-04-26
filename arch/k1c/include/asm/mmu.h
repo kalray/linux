@@ -26,18 +26,6 @@
 #error "Only 4Ko page size is supported at this time"
 #endif
 
-/* MMC: Protection Trap Cause */
-#define MMC_PTC_RESERVED 0
-#define MMC_PTC_READ     1
-#define MMC_PTC_WRITE    2
-#define MMC_PTC_EXECUTE  3
-
-/* MMC: Page size Mask in JTLB */
-#define MMC_PMJ_4K   1
-#define MMC_PMJ_64K  2
-#define MMC_PMJ_2M   4
-#define MMC_PMJ_512M 8
-
 typedef struct mm_context {
 	unsigned long end_brk;
 	unsigned long asn[NR_CPUS];
