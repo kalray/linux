@@ -11,18 +11,18 @@
 #define ASM_K1C_DMA_UCODE_H
 
 #include <linux/types.h>
+#include <linux/firmware.h>
 
 #include "k1c-dma.h"
 
-#include "ucore_firmwares/mppa_dma_mem2mem_stride2stride.h"
-#include "ucore_firmwares/mppa_dma_mem2noc_stride2stride.h"
-#include "ucore_firmwares/mppa_dma_mem2eth.h"
+#define K1C_DMA_MEM2MEM_UCODE_NAME "mem2mem_stride2stride.bin"
+#define K1C_DMA_MEM2ETH_UCODE_NAME "mem2eth.bin"
+#define K1C_DMA_MEM2NOC_UCODE_NAME "mem2noc_stride2stride.bin"
 
-#define MEM2MEM_PRGM_OFFSET   (0)
-#define MEM2NOC_PRGM_OFFSET   (MEM2MEM_PRGM_OFFSET + \
-				ARRAY_SIZE(mppa_dma_mem2mem_stride2stride))
-#define MEM2ETH_PRGM_OFFSET   (MEM2NOC_PRGM_OFFSET + \
-				ARRAY_SIZE(mppa_dma_mem2noc_stride2stride))
+/* k1c processor is byte adressable, DMA is word (64 bits) adressable
+ * Converts a CPU addr to a DMA address
+ */
+#define TO_PM_ADDR(x)	((x) >> 3)
 
 enum k1c_dma_pgrm_id {
 	MEM2ETH_PROGRAM_ID = 13,
@@ -43,7 +43,6 @@ enum k1c_dma_tx_transfer_mode {
  * @asn: ASN
  */
 struct k1c_dma_ucode_tab {
-	u64 pm_start_addr;
 	u64 transfer_mode;
 	u64 global;
 	u64 asn;
@@ -58,8 +57,7 @@ struct k1c_dma_ucode_tab {
  */
 struct k1c_dma_ucode {
 	u64 pgrm_id;
-	void *source_addr;
-	u32 code_size;
+	char *name;
 	struct k1c_dma_ucode_tab tab; /* Config */
 };
 
