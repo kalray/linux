@@ -12,44 +12,39 @@
 #include <linux/interrupt.h>
 #include <linux/slab.h>
 #include <linux/debugfs.h>
+#include <linux/firmware.h>
 
 #include "k1c-dma-ucode.h"
 #include "k1c-dma-regs.h"
 
-static const struct k1c_dma_ucode mem2mem_stride2stride_ucode = {
+static struct k1c_dma_ucode mem2mem_stride2stride_ucode = {
+	.name = K1C_DMA_MEM2MEM_UCODE_NAME,
 	.pgrm_id = MEM2MEM_PROGRAM_ID,
-	.source_addr = mppa_dma_mem2mem_stride2stride,
-	.code_size = sizeof(mppa_dma_mem2mem_stride2stride),
-	.tab.pm_start_addr = MEM2MEM_PRGM_OFFSET,
 	.tab.transfer_mode = K1C_DMA_TX_TRANSFER_MODE_AXI,
 	.tab.global = K1C_DMA_CTX_GLOBAL,
 	.tab.asn = K1C_DMA_ASN,
 	.tab.valid = 1,
 };
 
-static const struct k1c_dma_ucode mem2noc_stride2stride_ucode = {
+static struct k1c_dma_ucode mem2noc_stride2stride_ucode = {
+	.name = K1C_DMA_MEM2NOC_UCODE_NAME,
 	.pgrm_id = MEM2NOC_PROGRAM_ID,
-	.source_addr = mppa_dma_mem2noc_stride2stride,
-	.code_size = sizeof(mppa_dma_mem2noc_stride2stride),
-	.tab.pm_start_addr = MEM2NOC_PRGM_OFFSET,
 	.tab.transfer_mode = K1C_DMA_TX_TRANSFER_MODE_NOC,
 	.tab.global = K1C_DMA_CTX_LOCAL,
 	.tab.asn = K1C_DMA_ASN,
 	.tab.valid = 1,
 };
 
-static const struct k1c_dma_ucode mem2eth_ucode = {
+static struct k1c_dma_ucode mem2eth_ucode = {
+	.name = K1C_DMA_MEM2ETH_UCODE_NAME,
 	.pgrm_id = MEM2ETH_PROGRAM_ID,
-	.source_addr = mppa_dma_mem2eth,
-	.code_size = sizeof(mppa_dma_mem2eth),
-	.tab.pm_start_addr = MEM2ETH_PRGM_OFFSET,
 	.tab.transfer_mode = K1C_DMA_TX_TRANSFER_MODE_NOC,
 	.tab.global = K1C_DMA_CTX_GLOBAL,
 	.tab.asn = K1C_DMA_ASN,
 	.tab.valid = 1,
 };
 
-const struct k1c_dma_ucode *default_ucodes[] = {
+struct k1c_dma_ucode *default_ucodes[] = {
 	&mem2mem_stride2stride_ucode,
 	&mem2noc_stride2stride_ucode,
 	&mem2eth_ucode,
@@ -59,24 +54,41 @@ int k1c_dma_ucode_load(struct k1c_dma_dev *dev,
 		       const struct k1c_dma_ucode *ucode)
 {
 	u64 check_desc, val = 0;
-	const u64 *read_ptr = ucode->source_addr;
-	u64 code_size = ucode->code_size >> 3;
+	const struct firmware *fw;
 	void __iomem *pgrm_table_addr = dev->iobase +
 		K1C_DMA_TX_PGRM_TAB_OFFSET + sizeof(val) * ucode->pgrm_id;
 	u64 *write_addr = dev->iobase + K1C_DMA_TX_PGRM_MEM_OFFSET +
-		(ucode->tab.pm_start_addr << 3);
-	int i;
+		dev->next_pgrm_addr;
+	const u64 *read_ptr;
+	int i, ret;
 
-	if (ucode->pgrm_id >= K1C_DMA_TX_PGRM_TAB_NUMBER)
+	/* Paranoid check */
+	if (!IS_ALIGNED(dev->next_pgrm_addr, 0x8)) {
+		dev_err(dev->dma.dev, "Ucore start adress is not aligned\n");
 		return -EINVAL;
+	}
 
-	if (ucode->source_addr == 0 ||
-		(ucode->code_size & 7U) != 0 ||
-		ucode->tab.pm_start_addr >= K1C_DMA_TX_PGRM_MEM_NUMBER ||
-		(ucode->tab.pm_start_addr + code_size) >=
+	dev_dbg(dev->dma.dev, "Requesting firmware %s", ucode->name);
+	ret = request_firmware(&fw, ucode->name, dev->dma.dev);
+	if (ret < 0)
+		return ret;
+
+	/* Update parameters according to probbed fw informations */
+	read_ptr = (u64 *) fw->data;
+
+	dev_dbg(dev->dma.dev, "Loading ucode %s in dma memory", ucode->name);
+	if (ucode->pgrm_id >= K1C_DMA_TX_PGRM_TAB_NUMBER) {
+		ret = -EINVAL;
+		goto early_exit;
+	}
+
+	if (read_ptr == 0 ||
+		!IS_ALIGNED(fw->size, 0x8) ||
+		TO_PM_ADDR(dev->next_pgrm_addr + fw->size) >
 			K1C_DMA_TX_PGRM_MEM_NUMBER) {
 		dev_err(dev->dma.dev, "Can't write ucode in scratch memory\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto early_exit;
 	}
 
 	/* Check if there is already a ucode */
@@ -87,11 +99,11 @@ int k1c_dma_ucode_load(struct k1c_dma_dev *dev,
 	}
 
 	/* Write the ucode into scrathpad memory */
-	for (i = 0; i < code_size; ++i)
+	for (i = 0; i < TO_PM_ADDR(fw->size); ++i)
 		writeq(read_ptr[i], write_addr++);
 
 	/* Update program table */
-	val |= (ucode->tab.pm_start_addr <<
+	val |= (TO_PM_ADDR(dev->next_pgrm_addr) <<
 		K1C_DMA_TX_PGRM_TAB_PM_START_ADDR_SHIFT);
 	val |= (ucode->tab.transfer_mode <<
 		K1C_DMA_TX_PGRM_TAB_TRANSFER_MODE_SHIFT);
@@ -100,7 +112,14 @@ int k1c_dma_ucode_load(struct k1c_dma_dev *dev,
 	val |= (ucode->tab.valid << K1C_DMA_TX_PGRM_TAB_VALID_SHIFT);
 
 	writeq(val, pgrm_table_addr);
-	return 0;
+
+	/* Update to last written byte to start next ucode at this address */
+	dev->next_pgrm_addr += fw->size;
+
+early_exit:
+	release_firmware(fw);
+
+	return ret;
 }
 
 int k1c_dma_default_ucodes_load(struct k1c_dma_dev *dev)
