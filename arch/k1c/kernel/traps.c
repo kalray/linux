@@ -44,13 +44,33 @@ static const char * const trap_name[] = {
 	"PL_OVERFLOW"
 };
 
-static void default_trap_handler(uint64_t es, uint64_t ea,
-				 struct pt_regs *regs)
+
+static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
+			  int signo, int sigcode)
 {
+	if (user_mode(regs)) {
+		force_sig_fault(signo, sigcode, (void __user *) ea, current);
+		return;
+	}
+
 	show_regs(regs);
+
 	panic("ERROR: TRAP %s received at 0x%.16llx\n",
 	      trap_name[trap_cause(es)], regs->spc);
 }
+
+#define GEN_TRAP_HANDLER(__name, __sig, __code) \
+static void __name ## _trap_handler(uint64_t es, uint64_t ea, \
+				 struct pt_regs *regs) \
+{ \
+	panic_or_kill(es, ea, regs, __sig, __code); \
+}
+
+GEN_TRAP_HANDLER(default, SIGKILL, SI_KERNEL);
+GEN_TRAP_HANDLER(opcode, SIGILL, ILL_ILLOPC);
+GEN_TRAP_HANDLER(privilege, SIGILL, ILL_PRVREG);
+GEN_TRAP_HANDLER(dmisalign, SIGBUS, BUS_ADRALN);
+GEN_TRAP_HANDLER(syserror, SIGBUS, BUS_ADRERR);
 
 static void register_trap_handler(unsigned int trap_nb, trap_handler_func fn)
 {
@@ -87,6 +107,11 @@ void __init trap_init(void)
 	register_trap_handler(K1C_TRAP_WRITETOCLEAN, do_writetoclean);
 #endif
 
+	register_trap_handler(K1C_TRAP_PSYSERROR, syserror_trap_handler);
+	register_trap_handler(K1C_TRAP_DSYSERROR, syserror_trap_handler);
+	register_trap_handler(K1C_TRAP_PRIVILEGE, privilege_trap_handler);
+	register_trap_handler(K1C_TRAP_OPCODE, opcode_trap_handler);
+	register_trap_handler(K1C_TRAP_DMISALIGN, dmisalign_trap_handler);
 	register_trap_handler(K1C_TRAP_VSFR, do_vsfr_fault);
 }
 
