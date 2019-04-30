@@ -151,6 +151,7 @@ struct k1c_dma_dev {
 	spinlock_t lock;
 	struct list_head pending_chan;
 	struct dentry *dbg;
+	u64 next_pgrm_addr;
 };
 
 struct dma_chan *k1c_dma_get_channel(struct k1c_dma_chan_param *param);
