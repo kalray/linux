@@ -102,6 +102,9 @@ void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	if (unlikely(faulthandler_disabled() || !mm))
 		goto no_context;
 
+	/* By default we retry and fault task can be killed */
+	flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
+
 retry:
 	down_read(&mm->mmap_sem);
 
@@ -115,8 +118,6 @@ retry:
 	goto bad_area;
 
 good_area:
-	/* By default we retry and fault task can be killed */
-	flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
 	if (vma->vm_flags & VM_WRITE)
 		flags |= FAULT_FLAG_WRITE;
