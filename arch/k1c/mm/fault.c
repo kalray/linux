@@ -16,6 +16,7 @@
 #include <linux/mm.h>
 
 #include <asm/mmu.h>
+#include <asm/traps.h>
 #include <asm/ptrace.h>
 #include <asm/pgtable.h>
 #include <asm/sfr_defs.h>
@@ -79,9 +80,11 @@ void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	struct task_struct *tsk;
 	struct mm_struct *mm;
 	struct vm_area_struct *vma;
-	unsigned int flags;
+	unsigned long flags, cause, vma_mask;
+	int code = SEGV_MAPERR;
 	int fault;
 
+	cause = k1c_sfr_field_val(es, ES, RWX);
 	tsk = current;
 
 	/* We fault-in kernel-space virtual memory on-demand. The
@@ -118,9 +121,31 @@ retry:
 	goto bad_area;
 
 good_area:
-
-	if (vma->vm_flags & VM_WRITE)
+	/* Handle access type */
+	switch (cause) {
+	case K1C_TRAP_RWX_FETCH:
+		vma_mask = VM_EXEC;
+		break;
+	case K1C_TRAP_RWX_READ:
+		vma_mask = VM_READ;
+		break;
+	case K1C_TRAP_RWX_WRITE:
+		vma_mask = VM_WRITE;
 		flags |= FAULT_FLAG_WRITE;
+		break;
+	/* Atomic are both read/write */
+	case K1C_TRAP_RWX_ATOMIC:
+		vma_mask = VM_WRITE | VM_READ;
+		flags |= FAULT_FLAG_WRITE;
+		break;
+	default:
+		panic("%s: unhandled cause %lu", __func__, cause);
+	}
+
+	if ((vma->vm_flags & vma_mask) != vma_mask) {
+		code = SEGV_ACCERR;
+		goto bad_area;
+	}
 
 	/*
 	 * If for any reason we can not handle the fault we make sure that
@@ -163,8 +188,7 @@ bad_area:
 	up_read(&mm->mmap_sem);
 
 	if (user_mode(regs)) {
-		force_sig_fault(SIGSEGV, SEGV_MAPERR,
-				(void __user *) ea, tsk);
+		force_sig_fault(SIGSEGV, code, (void __user *) ea, tsk);
 		return;
 	}
 
