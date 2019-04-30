@@ -42,6 +42,12 @@
 #define K1C_TRAP_SFRI_WFXM	6
 #define K1C_TRAP_SFRI_RSWAP	7
 
+/* Access type on memory trap */
+#define K1C_TRAP_RWX_FETCH	1
+#define K1C_TRAP_RWX_WRITE	2
+#define K1C_TRAP_RWX_READ	4
+#define K1C_TRAP_RWX_ATOMIC	6
+
 #ifndef __ASSEMBLY__
 
 typedef void (*trap_handler_func) (uint64_t es, uint64_t ea,
