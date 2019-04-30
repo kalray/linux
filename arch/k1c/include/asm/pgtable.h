@@ -235,7 +235,12 @@ static inline void set_pte(pte_t *ptep, pte_t pteval)
 	*ptep = pteval;
 }
 
-#define set_pte_at(mm, addr, ptep, pteval) set_pte(ptep, pteval)
+static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
+			      pte_t *ptep, pte_t pteval)
+{
+	set_pte(ptep, pteval);
+}
+
 #define pte_clear(mm, addr, ptep) set_pte(ptep, __pte(0))
 
 /* Constructs a page table entry */
