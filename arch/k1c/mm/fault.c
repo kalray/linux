@@ -154,9 +154,22 @@ good_area:
 	 */
 	fault = handle_mm_fault(vma, ea, flags);
 
+	/*
+	 * If we need to retry but a fatal signal is pending, handle the
+	 * signal first. We do not need to release the mmap_sem because it
+	 * would already be released in __lock_page_or_retry in mm/filemap.c.
+	 */
+	if (unlikely((fault & VM_FAULT_RETRY) && fatal_signal_pending(current)))
+		return;
+
 	if (unlikely(fault & VM_FAULT_ERROR)) {
-		up_read(&mm->mmap_sem);
-		goto no_context;
+		if (fault & VM_FAULT_OOM)
+			goto out_of_memory;
+		else if (fault & VM_FAULT_SIGSEGV)
+			goto bad_area;
+		else if (fault & VM_FAULT_SIGBUS)
+			goto do_sigbus;
+		BUG();
 	}
 
 	if (flags & FAULT_FLAG_ALLOW_RETRY) {
@@ -207,6 +220,28 @@ no_context:
 	panic("Unable to handle kernel %s at virtual address %016llx\n",
 		 (ea < PAGE_SIZE) ? "NULL pointer dereference" :
 		 "paging request", ea);
+
+out_of_memory:
+	/*
+	 * We ran out of memory, call the OOM killer, and return the userspace
+	 * (which will retry the fault, or kill us if we got oom-killed).
+	 */
+	up_read(&mm->mmap_sem);
+	if (!user_mode(regs))
+		goto no_context;
+	pagefault_out_of_memory();
+	return;
+
+do_sigbus:
+	up_read(&mm->mmap_sem);
+	/* Kernel mode? Handle exceptions or die */
+	if (!user_mode(regs))
+		goto no_context;
+
+	force_sig_fault(SIGBUS, BUS_ADRERR, (void __user *) ea, tsk);
+
+	return;
+
 }
 
 void do_writetoclean(uint64_t es, uint64_t ea, struct pt_regs *regs)
