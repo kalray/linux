@@ -15,6 +15,7 @@ Required properties:
 	"phycore_reg": PCIe phy configuration registers region
 	"ftu_reg": ftu registers region
 	"ecam_reg": configuration space region
+	"pcie_subsys" : pcie subsystem configuration registers region
 - device_type: must be "pci"
 - interrupts: Should contain misc and legacy interrupt number
 - interrupt-names: Must include the following entries:
@@ -33,6 +34,11 @@ Required properties:
 	- #address-cells: specifies the number of cells needed to encode an
 		address. The value must be 0.
 - kalray,nb-lane : define the number of PCIe lane used by the root complex
+- kalray,disable-dame : when not 0, prevent the generation of a DAME error if a
+	PCIe transaction failed. Disabling the DAME keep the system alive even
+	in case of PCIe fatal error which allows to perform an error analysis with
+	AER, but in a production system this might cause some serious errors to
+	be silently ignored.
 
 Example:
 ++++++++
@@ -44,11 +50,13 @@ pcie: pcie@0x112fd00000 {
 	#interrupt-cells = <1>;
 	device_type = "pci";
 	kalray,nb-lane = <8>;
+	kalray,disable-dame = <0>;
 	reg = <0x51 0x2FD00000 0x0 0x40000>, /* Expresso dma bridge register mapping*/
 		  <0x51 0x28100000 0x0 0x40000>, /* Expresso core register mapping */
 		  <0x51 0x28340000 0x0 0x10000>, /* Bar decoder (essentially to disable it)*/
 		  <0x51 0x30000000 0x0 0x10000000>, /* ECAM region mapping */
 		  <0x51 0x28300200 0x0 0x1000>, /* phy core region mapping */
+		  <0x51 0x28350000 0x0 0x1000>, /* pcie subsystem */
 		  <0x40 0x10181000 0x0 0x1000>; /* FTU region mapping */
 
 	reg-names = "dma_bridge_reg", "csr_reg", "bar_decoder_reg", "ecam_reg", "phycore_reg", "ftu_reg";
