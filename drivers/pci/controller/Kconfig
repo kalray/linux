@@ -47,6 +47,18 @@ config PCIE_K1C_NWL
 	 or End Point. The current option selection will only
 	 support root port enabling.
 
+config PCIE_K1C_ERR_INJECT_SYSFS
+	tristate "NWL PCIe core for K1c error injection via SYSFS"
+	depends on PCIE_K1C_NWL
+	help
+	  This will mount in sysfs directory additionnal files which
+	  allows to inject errors directly on the PCIe link.
+
+	  This function shall be used to test appropriate handling of
+	  AER errors by the root complex. This cannot be tested via
+	  the aer-inject user application, real error have to be
+	  generated on the link.
+
 config PCI_FTPCI100
 	bool "Faraday Technology FTPCI100 PCI controller"
 	depends on OF
