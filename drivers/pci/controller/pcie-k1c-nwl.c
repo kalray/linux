@@ -25,12 +25,18 @@
 #include <linux/platform_device.h>
 #include <linux/irqchip/chained_irq.h>
 #include "../pci.h"
+#include "../pcie/portdrv.h"
 #include "pcie-k1c-nwl.h"
 
 #define ROOT_BUS_NO			0
 #define BUS_MAX				255
 #define MAX_EGRESS_TRANSLATION		8
 #define PROG_ID_SHIFT			8
+
+/* PCIe subsys */
+#define PCIE_SUBSYS_SLAVE_ERR		0x00000400
+#define DISABLE_SLAVE_ERR		BIT(0)
+#define ENABLE_SLAVE_ERR		0
 
 /* Bridge core config registers */
 #define BRCFG_PCIE_RX0			0x00000000
@@ -88,9 +94,7 @@
 #define CFG_ENABLE_PM_MSG_FWD		BIT(1)
 #define CFG_ENABLE_INT_MSG_FWD		BIT(2)
 #define CFG_ENABLE_ERR_MSG_FWD		BIT(3)
-#define CFG_ENABLE_MSG_FILTER_MASK	(CFG_ENABLE_PM_MSG_FWD | \
-					CFG_ENABLE_INT_MSG_FWD | \
-					CFG_ENABLE_ERR_MSG_FWD)
+#define CFG_ENABLE_MSG_FILTER_MASK	(0)
 
 /* Misc interrupt status mask bits */
 #define MSGF_MISC_SR_RXMSG_AVAIL	BIT(0)
@@ -99,15 +103,7 @@
 #define MSGF_MISC_SR_MASTER_ERR		BIT(5)
 #define MSGF_MISC_SR_I_ADDR_ERR		BIT(6)
 #define MSGF_MISC_SR_E_ADDR_ERR		BIT(7)
-#define MSGF_MISC_SR_FATAL_AER		BIT(16)
-#define MSGF_MISC_SR_NON_FATAL_AER	BIT(17)
-#define MSGF_MISC_SR_CORR_AER		BIT(18)
-#define MSGF_MISC_SR_UR_DETECT		BIT(20)
-#define MSGF_MISC_SR_NON_FATAL_DEV	BIT(22)
-#define MSGF_MISC_SR_FATAL_DEV		BIT(23)
-#define MSGF_MISC_SR_LINK_DOWN		BIT(24)
-#define MSGF_MSIC_SR_LINK_AUTO_BWIDTH	BIT(25)
-#define MSGF_MSIC_SR_LINK_BWIDTH	BIT(26)
+#define MSGF_MISC_SR_CORE		BIT(16)
 
 #define MSGF_MISC_SR_MASKALL		(MSGF_MISC_SR_RXMSG_AVAIL | \
 					MSGF_MISC_SR_RXMSG_OVER | \
@@ -115,15 +111,7 @@
 					MSGF_MISC_SR_MASTER_ERR | \
 					MSGF_MISC_SR_I_ADDR_ERR | \
 					MSGF_MISC_SR_E_ADDR_ERR | \
-					MSGF_MISC_SR_FATAL_AER | \
-					MSGF_MISC_SR_NON_FATAL_AER | \
-					MSGF_MISC_SR_CORR_AER | \
-					MSGF_MISC_SR_UR_DETECT | \
-					MSGF_MISC_SR_NON_FATAL_DEV | \
-					MSGF_MISC_SR_FATAL_DEV | \
-					MSGF_MISC_SR_LINK_DOWN | \
-					MSGF_MSIC_SR_LINK_AUTO_BWIDTH | \
-					MSGF_MSIC_SR_LINK_BWIDTH)
+					MSGF_MISC_SR_CORE)
 
 /* Legacy interrupt status mask bits */
 #define MSGF_LEG_SR_INTA		BIT(0)
@@ -168,6 +156,24 @@
 #define PHYCORE_DL_LINK_UP_OFFSET	0x24
 #define PHYCORE_DL_LINK_UP_MASK		1
 
+
+#define ERR_INJECT_RATE_MAX		7
+#define ERR_INJECTION_EN		BIT(3)
+
+#ifdef CONFIG_PCIEAER
+#define AER_CAP_ENABLED (CSR_FTL_AER_CAP_ECRC_GEN_CHK_CAPABLE_MASK |\
+			 CSR_FTL_AER_CAP_EN_CORR_INTERNAL_ERROR_MASK |\
+			 CSR_FTL_AER_CAP_EN_COMPLETION_TIMEOUT_MASK |\
+			 CSR_FTL_AER_CAP_EN_COMPLETER_ABORT_MASK |\
+			 CSR_FTL_AER_CAP_EN_UCORR_INTERNAL_ERROR_MASK |\
+			 CSR_FTL_AER_CAP_EN_ATOMICOP_EGRESS_BLOCKED_MASK |\
+			 CSR_FTL_AER_CAP_EN_SURPRISE_DOWN_ERROR_MASK |\
+			 CSR_FTL_AER_CAP_EN_TLP_PREFIX_BLOCKED_MASK |\
+			 CSR_FTL_AER_CAP_V2_MASK)
+#else
+#define AER_CAP_ENABLED (0)
+#endif /* CONFIG_PCIEAER */
+
 /**
  * struct nwl_pcie
  * @dev: pointer to root complex device instance
@@ -176,14 +182,17 @@
  * @bar_decoder_base: virtual address to read/write bar decoder registers
  * @ecam_base: virtual address to read/write to PCIe ECAM region
  * @phycore_base: virtual address to read/write to phy registers
+ * @pcie_subsys: virtual address to read/write pcie subsys registers
  * @phys_breg_base: Physical address Bridge Registers
  * @phys_csr_reg_base: Physical address CSR register
  * @phys_bar_decoder_base: Physical Bar decoder Base
  * @phys_ecam_base: Physical Configuration Base
  * @ftu_regmap: virtual address to read/write system shared registers
  * @nb_lane: number of pcie lane
+ * @disable_dame: disable DAME generation when a PCI transaction failed
  * @irq_intx: legacy irq handler interrupt number
  * @irq_misc: misc irq handler interrupt number
+ * @irq_aer: AER framework interrupt
  * @ecam_value: encode size of ecam region (Cf. § 16.3.3)
  * @last_busno: last bus number
  * @root_busno: root bus number
@@ -197,20 +206,27 @@ struct nwl_pcie {
 	void __iomem *bar_decoder_base;
 	void __iomem *ecam_base;
 	void __iomem *phycore_base;
+	void __iomem *pcie_subsys;
 	phys_addr_t phys_breg_base;
 	phys_addr_t phys_csr_reg_base;
 	phys_addr_t phys_bar_decoder_base;
 	phys_addr_t phys_ecam_base;
 	struct regmap *ftu_regmap;
+	struct pci_host_bridge *bridge;
 	u32 nb_lane;
+	bool disable_dame;
 	int irq_intx;
 	int irq_misc;
+	int irq_aer;
 	u32 ecam_value;
 	u8 last_busno;
 	u8 root_busno;
 	struct irq_domain *legacy_irq_domain;
 	raw_spinlock_t leg_mask_lock;
 };
+
+static void handle_aer_irq(struct nwl_pcie *pcie);
+static void nwl_pcie_aer_init(struct nwl_pcie *pcie, struct pci_bus *bus);
 
 static inline u32 nwl_core_readl(struct nwl_pcie *pcie, u32 off)
 {
@@ -335,6 +351,9 @@ static irqreturn_t nwl_pcie_misc_handler(int irq, void *data)
 	if (!misc_stat)
 		return IRQ_NONE;
 
+	if (misc_stat & MSGF_MISC_SR_RXMSG_AVAIL)
+		dev_err(dev, "Received Message\n");
+
 	if (misc_stat & MSGF_MISC_SR_RXMSG_OVER)
 		dev_err(dev, "Received Message FIFO Overflow\n");
 
@@ -350,29 +369,8 @@ static irqreturn_t nwl_pcie_misc_handler(int irq, void *data)
 	if (misc_stat & MSGF_MISC_SR_E_ADDR_ERR)
 		dev_err(dev, "In Misc Egress address translation error\n");
 
-	if (misc_stat & MSGF_MISC_SR_FATAL_AER)
-		dev_err(dev, "Fatal Error in AER Capability\n");
-
-	if (misc_stat & MSGF_MISC_SR_NON_FATAL_AER)
-		dev_err(dev, "Non-Fatal Error in AER Capability\n");
-
-	if (misc_stat & MSGF_MISC_SR_CORR_AER)
-		dev_err(dev, "Correctable Error in AER Capability\n");
-
-	if (misc_stat & MSGF_MISC_SR_UR_DETECT)
-		dev_err(dev, "Unsupported request Detected\n");
-
-	if (misc_stat & MSGF_MISC_SR_NON_FATAL_DEV)
-		dev_err(dev, "Non-Fatal Error Detected\n");
-
-	if (misc_stat & MSGF_MISC_SR_FATAL_DEV)
-		dev_err(dev, "Fatal Error Detected\n");
-
-	if (misc_stat & MSGF_MSIC_SR_LINK_AUTO_BWIDTH)
-		dev_info(dev, "Link Autonomous Bandwidth Management Status bit set\n");
-
-	if (misc_stat & MSGF_MSIC_SR_LINK_BWIDTH)
-		dev_info(dev, "Link Bandwidth Management Status bit set\n");
+	if (misc_stat & MSGF_MISC_SR_CORE)
+		handle_aer_irq(pcie);
 
 	/* Clear misc interrupt status */
 	nwl_bridge_writel(pcie, misc_stat, MSGF_MISC_STATUS);
@@ -613,10 +611,10 @@ static int nwl_pcie_core_init(struct nwl_pcie *pcie)
 	nwl_core_writel(pcie, CSR_FTL_ARI_CAP_DISABLE_MASK
 		       , CSR_FTL_ARI_CAP);
 
-	/* disable msi cap */
+	/* enable one vector for msi cap */
 	val = nwl_core_readl(pcie, CSR_FTL_MSI_CAP);
 	val &= ~(CSR_FTL_MSI_CAP_MULT_MESSAGE_CAPABLE_MASK);
-	val |= (1 << CSR_FTL_MSI_CAP_DISABLE_SHIFT);
+	val &= ~(1 << CSR_FTL_MSI_CAP_DISABLE_SHIFT);
 	nwl_core_writel(pcie, val, CSR_FTL_MSI_CAP);
 
 	/* disable msix cap */
@@ -628,8 +626,7 @@ static int nwl_pcie_core_init(struct nwl_pcie *pcie)
 
 	/* aer cap */
 	val = nwl_core_readl(pcie, CSR_FTL_AER_CAP);
-	val |= CSR_FTL_AER_CAP_EN_SURPRISE_DOWN_ERROR_MASK;
-	val |= CSR_FTL_AER_CAP_EN_TLP_PREFIX_BLOCKED_MASK;
+	val |= AER_CAP_ENABLED;
 	nwl_core_writel(pcie, val, CSR_FTL_AER_CAP);
 
 	/* hot plug cap*/
@@ -763,9 +760,14 @@ static int nwl_pcie_bridge_init(struct nwl_pcie *pcie)
 	nwl_bridge_writel(pcie, nwl_bridge_readl(pcie, BRCFG_INTERRUPT) |
 			  BRCFG_INTERRUPT_MASK, BRCFG_INTERRUPT);
 
+	/* Dis/enable DAME generation according to settings */
+	val = DISABLE_SLAVE_ERR;
+	if (pcie->disable_dame == false)
+		val = ENABLE_SLAVE_ERR;
+	writel(val, pcie->pcie_subsys + PCIE_SUBSYS_SLAVE_ERR);
+
 	return 0;
 }
-
 
 static int egress_config(struct nwl_pcie *pcie, int trans_id, u64 src_addr,
 			 u64 dst_addr, size_t size)
@@ -844,6 +846,7 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 {
 	struct device *dev = pcie->dev;
 	struct resource *res;
+	u32 dame;
 	int ret;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "bridge_reg");
@@ -876,11 +879,24 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 	if (IS_ERR(pcie->phycore_base))
 		return PTR_ERR(pcie->phycore_base);
 
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "pcie_subsys");
+	pcie->pcie_subsys = devm_ioremap_resource(dev, res);
+	if (IS_ERR(pcie->pcie_subsys))
+		return PTR_ERR(pcie->pcie_subsys);
+
 	ret = of_property_read_u32(pdev->dev.of_node, "kalray,nb-lane",
 				   &pcie->nb_lane);
 	if (ret != 0)
 		return ret;
 	dev_info(dev, "nb_lane : %u\n", pcie->nb_lane);
+
+	ret = of_property_read_u32(pdev->dev.of_node, "kalray,disable-dame",
+				   &dame);
+	pcie->disable_dame = false;
+	if (ret == 0 && dame != 0)
+		pcie->disable_dame = true;
+	dev_info(dev, "disable_dame: %s\n",
+		 pcie->disable_dame ? "true" : "false");
 
 	/* Get intx IRQ number */
 	pcie->irq_intx = platform_get_irq_byname(pdev, "intx");
@@ -915,9 +931,11 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 	if (!bridge)
 		return -ENODEV;
 
+	bridge->native_aer = 1;
 	pcie = pci_host_bridge_priv(bridge);
 
 	pcie->dev = dev;
+	dev_set_drvdata(dev, pcie);
 	pcie->ecam_value = NWL_ECAM_VALUE_DEFAULT;
 
 	err = nwl_pcie_parse_dt(pcie, pdev);
@@ -973,17 +991,206 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 	if (err)
 		goto error;
 
+	pcie->bridge = bridge;
 	bus = bridge->bus;
 
 	pci_assign_unassigned_bus_resources(bus);
 	list_for_each_entry(child, &bus->children, node)
 		pcie_bus_configure_settings(child);
 	pci_bus_add_devices(bus);
+
+	nwl_pcie_aer_init(pcie, bus);
+
 	return 0;
 
 error:
 	pci_free_resource_list(&res);
 	return err;
+}
+
+static char * const dl_stat_bit_desc[] = {
+	"err_aer_receiver_error",
+	"err_aer_bad_tlp",
+	"err_aer_bad_dllp",
+	"err_aer_replay_num_rollover",
+	"err_aer_replay_timer_timeout",
+	"err_aer_dl_protocol_error",
+	"err_aer_surprise_down",
+	"reserved",
+	"reserved",
+	"reserved",
+	"reserved",
+	"reserved",
+	"reserved",
+	"reserved",
+	"reserved",
+	"reserved",
+	"err_aer_tx_replay_ecc1",
+	"err_aer_tx_replay_ecc2",
+	"reserved",
+	"err_aer_tx_par2",
+	"reserved",
+	"info_replay_started",
+	"info_tx_data_underflow",
+	"info_deskew_overflow_error",
+	"info_nak_received",
+	"info_bad_tlp_crc_err",
+	"info_bad_tlp_seq_err",
+	"info_schedule_dupl_ack",
+	"info_bad_tlp_ecrc_err",
+	"info_bad_tlp_malf_err",
+	"info_bad_tlp_phy_err",
+	"info_bad_tlp_null_err",
+};
+
+static void show_core_aer_status(struct nwl_pcie *pcie, unsigned long aer_stat)
+{
+	u32 bit;
+
+	dev_err(pcie->dev, "dl_stat register status = 0x%lx\n", aer_stat);
+	for_each_set_bit(bit, &aer_stat, 32)
+		dev_err(pcie->dev, "[%02d] %s\n", bit, dl_stat_bit_desc[bit]);
+}
+
+static void handle_aer_irq(struct nwl_pcie *pcie)
+{
+	u32 aer_stat;
+
+	nwl_core_writel(pcie, 0, CSR_TLB_DL_INJECT);
+	aer_stat = nwl_core_readl(pcie, CSR_TLB_DL_STAT);
+	if (aer_stat == 0)
+		return;
+
+	show_core_aer_status(pcie, aer_stat);
+#ifdef CONFIG_PCIEAER
+	generic_handle_irq(pcie->irq_aer);
+#endif
+}
+
+
+#ifdef CONFIG_PCIE_K1C_ERR_INJECT_SYSFS
+static ssize_t inject_lcrc_err_rate_store(struct device *device,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	int res;
+	u32 reg_val;
+	struct nwl_pcie *pcie;
+	unsigned long user_val;
+
+	pcie = (struct nwl_pcie *)dev_get_drvdata(device);
+	res = kstrtoul(buf, 0, &user_val);
+	if (res)
+		return res;
+
+	if (user_val > ERR_INJECT_RATE_MAX) {
+		dev_err(pcie->dev, "Injection rate range is [0-%d]\n",
+			ERR_INJECT_RATE_MAX);
+		dev_info(pcie->dev,
+			 "7 means, 1 error then 7 success then repeat\n");
+		return -EINVAL;
+	}
+
+	/* disable injection or it is not possible to change rate */
+	nwl_core_writel(pcie, 0, CSR_TLB_DL_INJECT);
+
+	/*
+	 * set the new injection rate, error injection will automatically
+	 * be disabled when an AER error is received.
+	 */
+	reg_val = ERR_INJECTION_EN | (u32)user_val;
+	nwl_core_writel(pcie, reg_val, CSR_TLB_DL_INJECT);
+
+	return count;
+}
+static DEVICE_ATTR_WO(inject_lcrc_err_rate);
+#endif /* CONFIG_PCIE_K1C_ERR_INJECT_SYSFS */
+
+static ssize_t aer_status_store(struct device *device,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	struct nwl_pcie *pcie;
+
+	pcie = (struct nwl_pcie *)dev_get_drvdata(device);
+	nwl_core_writel(pcie, 0xFFFFFFFF, CSR_TLB_DL_STAT);
+
+	return count;
+}
+
+static ssize_t aer_status_show(struct device *device,
+			       struct device_attribute *attr,
+			       char *msg)
+{
+	u32 bit;
+	unsigned long aer_stat;
+	int count, n;
+	struct nwl_pcie *pcie;
+
+	count = 0;
+	pcie = (struct nwl_pcie *)dev_get_drvdata(device);
+	aer_stat = nwl_core_readl(pcie, CSR_TLB_DL_STAT);
+	for_each_set_bit(bit, &aer_stat, 32) {
+		n = sprintf(msg, "[%02d] %s\n", bit, dl_stat_bit_desc[bit]);
+		if (n < 0)
+			break;
+		count += n;
+		msg += n;
+	}
+
+	if (count == 0)
+		count = sprintf(msg, "all errors cleared\n");
+
+	return count;
+}
+static DEVICE_ATTR_RW(aer_status);
+
+static struct attribute *aer_dbg_attrs[]  = {
+#ifdef CONFIG_PCIE_K1C_ERR_INJECT_SYSFS
+	&dev_attr_inject_lcrc_err_rate.attr,
+#endif
+	&dev_attr_aer_status.attr,
+	NULL
+};
+
+const struct attribute_group aer_dbg_attr_group = {
+	.attrs  = aer_dbg_attrs,
+};
+
+static const struct attribute_group *aer_dbg_attr_groups[] = {
+	&aer_dbg_attr_group,
+	NULL
+};
+
+static void nwl_pcie_aer_init(struct nwl_pcie *pcie, struct pci_bus *bus)
+{
+#ifdef CONFIG_PCIEAER
+	struct pci_dev *dev, *rpdev;
+	struct device *device;
+
+	dev = pci_get_domain_bus_and_slot(pci_domain_nr(bus), 0, 0);
+	if (!dev)
+		return;
+	rpdev = pcie_find_root_port(dev);
+	if (!rpdev)
+		return;
+	device = pcie_port_find_device(rpdev, PCIE_PORT_SERVICE_AER);
+	if (device) {
+		struct pcie_device *edev;
+
+		edev = to_pcie_device(device);
+		pcie->irq_aer = edev->irq;
+	}
+#endif /* CONFIG_PCIEAER*/
+
+	if (sysfs_create_groups(&pcie->dev->kobj, aer_dbg_attr_groups))
+		dev_err(pcie->dev, "failed to create sysfs attributes\n");
+
+	/* disable error injection */
+	nwl_core_writel(pcie, 0, CSR_TLB_DL_INJECT);
+
+	/* clear any previous error status bit */
+	nwl_core_writel(pcie, 0xFFFFFFFF, CSR_TLB_DL_STAT);
 }
 
 static struct platform_driver nwl_pcie_driver = {
