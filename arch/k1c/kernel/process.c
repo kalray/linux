@@ -10,11 +10,13 @@
 #include <linux/ptrace.h>
 #include <linux/printk.h>
 #include <linux/sched/task_stack.h>
+#include <linux/hw_breakpoint.h>
 
 #include <asm/ptrace.h>
 #include <asm/processor.h>
 #include <asm/ptrace.h>
 #include <asm/uaccess.h>
+#include <asm/hw_breakpoint.h>
 
 #define SCALL_NUM_EXIT	"0xfff"
 
@@ -127,6 +129,8 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		(unsigned long) (task_stack_page(p) + THREAD_SIZE);
 	p->thread.ctx_switch.sp = (unsigned long) childregs;
 
+	clear_ptrace_hw_breakpoint(p);
+
 	return 0;
 }
 
@@ -137,9 +141,10 @@ void release_thread(struct task_struct *dead_task)
 void flush_thread(void)
 {
 	/* This function should clear the values of the floating point
-	 * registers and debug registers saved in the TSS segment. For
-	 * Coolidge we do nothing.
+	 * registers and debug registers saved in the TSS segment.
 	 */
+
+	flush_ptrace_hw_breakpoint(current);
 }
 
 void scall_machine_exit(unsigned char value)
