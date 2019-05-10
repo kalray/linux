@@ -19,6 +19,9 @@
 
 #define ES_SYSCALL	0x3
 
+#define K1C_HW_BREAKPOINT_COUNT		2
+#define K1C_HW_WATCHPOINT_COUNT		1
+
 /**
  * When updating pt_regs structure, you need to update this size.
  * This is the expected size of the pt_regs struct.
@@ -152,6 +155,8 @@ struct pt_regs {
 /* ptrace */
 #define PTRACE_GETREGS		12
 #define PTRACE_SETREGS		13
+#define PTRACE_GET_HW_PT_REGS	20
+#define PTRACE_SET_HW_PT_REGS	21
 #define arch_has_single_step()	1
 
 #define DEBUG_CAUSE_BREAKPOINT	0
