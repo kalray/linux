@@ -12,6 +12,7 @@
 #include <asm/mmu.h>
 #include <asm/types.h>
 #include <asm/segment.h>
+#include <asm/ptrace.h>
 
 #define ARCH_HAS_PREFETCH
 #define ARCH_HAS_PREFETCHW
@@ -80,6 +81,13 @@ struct ctx_switch_regs {
 	uint64_t r31;
 };
 
+struct debug_info {
+#ifdef CONFIG_HAVE_HW_BREAKPOINT
+	struct perf_event *ptrace_hbp[K1C_HW_BREAKPOINT_COUNT];
+	struct perf_event *ptrace_hwp[K1C_HW_WATCHPOINT_COUNT];
+#endif
+};
+
 struct thread_struct {
 	uint64_t kernel_sp;
 	mm_segment_t addr_limit;		/* Addr limit */
@@ -87,6 +95,9 @@ struct thread_struct {
 
 	/* Context switch related registers */
 	struct ctx_switch_regs ctx_switch;
+
+	/* debugging */
+	struct debug_info debug;
 } __packed;
 
 #define INIT_THREAD  {							\
