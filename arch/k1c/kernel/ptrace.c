@@ -20,14 +20,186 @@
 #include <linux/uaccess.h>
 #include <linux/syscalls.h>
 #include <linux/signal.h>
+#include <linux/hw_breakpoint.h>
 
 #include <asm/dame.h>
 #include <asm/cacheflush.h>
+#include <asm/hw_breakpoint.h>
+
+#define HW_PT_CMD_GET_CAPS	0
+#define HW_PT_CMD_GET_PT	1
+#define HW_PT_CMD_SET_RESERVE	0
+#define HW_PT_CMD_SET_ENABLE	1
+
+#define hw_pt_cmd(addr) ((addr) & 3)
+#define hw_pt_is_bkp(addr) (((addr) & 4) == K1C_HW_BREAKPOINT_TYPE)
+#define get_hw_pt_idx(addr) ((addr) >> 3)
+#define get_hw_pt_addr(data) ((data)[0])
+#define get_hw_pt_len(data) ((data)[1] >> 1)
+#define hw_pt_is_enabled(data) ((data)[1] & 1)
+
+static void compute_ptrace_hw_pt_rsp(uint64_t *data, struct perf_event *bp)
+{
+	data[0] = bp->attr.bp_addr;
+	data[1] = bp->attr.bp_len >> 1;
+	if (!bp->attr.disabled)
+		data[1] |= 1;
+}
 
 void ptrace_disable(struct task_struct *child)
 {
 	/* nothing to do */
 }
+
+#ifdef CONFIG_HAVE_HW_BREAKPOINT
+static void ptrace_hw_pt_triggered(struct perf_event *bp,
+				   struct perf_sample_data *data,
+				   struct pt_regs *regs)
+{
+	int i, id;
+	struct arch_hw_breakpoint *bkpt = counter_arch_bp(bp);
+
+	if (bp->attr.bp_type & HW_BREAKPOINT_X) {
+		id = K1C_HW_BREAKPOINT_TYPE;
+		for (i = 0; i < K1C_HW_BREAKPOINT_COUNT; i++)
+			if (current->thread.debug.ptrace_hbp[i] == bp)
+				break;
+	} else {
+		id = K1C_HW_WATCHPOINT_TYPE;
+		for (i = 0; i < K1C_HW_WATCHPOINT_COUNT; i++)
+			if (current->thread.debug.ptrace_hwp[i] == bp)
+				break;
+	}
+
+	id |= i << 1;
+	force_sig_ptrace_errno_trap(i, (void __user *) bkpt->addr);
+}
+
+static struct perf_event *ptrace_hw_pt_create(struct task_struct *tsk, int type)
+{
+	struct perf_event_attr attr;
+
+	ptrace_breakpoint_init(&attr);
+
+	/* Initialise fields to sane defaults. */
+	attr.bp_addr	= 0;
+	attr.bp_len	= 1;
+	attr.bp_type	= type;
+	attr.disabled	= 1;
+
+	return register_user_hw_breakpoint(&attr, ptrace_hw_pt_triggered, NULL,
+					   tsk);
+}
+
+/*
+ * Address bit 0..1: command id, bit 2: hardware breakpoint (0)
+ * or watchpoint (1), bits 63..3: register number.
+ * Both PTRACE_GET_HW_PT_REGS and PTRACE_SET_HW_PT_REGS transfer two
+ * 64-bit words: for get capabilities: number of breakpoint (0) and
+ * watchpoints (1), for hardware watchpoint/breakpoint enable: address (0)
+ * and enable + length (1)
+ */
+
+static long ptrace_get_hw_pt_pregs(struct task_struct *child, long addr,
+				   long __user *datap)
+{
+	struct perf_event *bp;
+	u64 user_data[2];
+	int cmd;
+
+	cmd = hw_pt_cmd(addr);
+	if (cmd == HW_PT_CMD_GET_CAPS) {
+		user_data[0] = K1C_HW_BREAKPOINT_COUNT;
+		user_data[1] = K1C_HW_WATCHPOINT_COUNT;
+	} else if (cmd == HW_PT_CMD_GET_PT) {
+		int is_breakpoint = hw_pt_is_bkp(addr);
+		int idx = get_hw_pt_idx(addr);
+
+		if ((is_breakpoint && idx >= K1C_HW_BREAKPOINT_COUNT) ||
+		    (!is_breakpoint && idx >= K1C_HW_WATCHPOINT_COUNT))
+			return -EINVAL;
+
+		if (is_breakpoint)
+			bp = child->thread.debug.ptrace_hbp[idx];
+		else
+			bp = child->thread.debug.ptrace_hwp[idx];
+
+		if (bp) {
+			compute_ptrace_hw_pt_rsp(user_data, bp);
+		} else {
+			user_data[0] = 0;
+			user_data[1] = 0;
+		}
+	} else {
+		return -EINVAL;
+	}
+
+	if (copy_to_user(datap, user_data, sizeof(user_data)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static long ptrace_set_hw_pt_regs(struct task_struct *child, long addr,
+				  long __user *datap)
+{
+	struct perf_event *bp;
+	struct perf_event_attr attr;
+	u64 user_data[2];
+	int is_breakpoint, bp_type, idx, cmd, ret;
+
+	cmd = hw_pt_cmd(addr);
+	is_breakpoint = hw_pt_is_bkp(addr);
+	idx = get_hw_pt_idx(addr);
+	if ((is_breakpoint && idx >= K1C_HW_BREAKPOINT_COUNT) ||
+	    (!is_breakpoint && idx >= K1C_HW_WATCHPOINT_COUNT))
+		return -EINVAL;
+
+	if (copy_from_user(user_data, datap, sizeof(user_data)))
+		return -EFAULT;
+
+	if (cmd == HW_PT_CMD_SET_RESERVE ||
+	    (cmd == HW_PT_CMD_SET_ENABLE && hw_pt_is_enabled(user_data))) {
+		if (is_breakpoint)
+			ret = ptrace_request_hw_breakpoint(idx);
+		else
+			ret = ptrace_request_hw_watchpoint(idx);
+
+		if (cmd == HW_PT_CMD_SET_RESERVE || ret != 0)
+			return ret;
+	}
+
+	if (cmd != HW_PT_CMD_SET_ENABLE)
+		return -EINVAL;
+
+	if (is_breakpoint) {
+		bp = child->thread.debug.ptrace_hbp[idx];
+		bp_type = HW_BREAKPOINT_X;
+	} else {
+		bp = child->thread.debug.ptrace_hwp[idx];
+		bp_type = HW_BREAKPOINT_W;
+	}
+
+	if (!bp) {
+		bp = ptrace_hw_pt_create(child, bp_type ?
+					 bp_type : HW_BREAKPOINT_RW);
+		if (IS_ERR(bp))
+			return PTR_ERR(bp);
+		if (is_breakpoint)
+			child->thread.debug.ptrace_hbp[idx] = bp;
+		else
+			child->thread.debug.ptrace_hwp[idx] = bp;
+	}
+
+	attr = bp->attr;
+	attr.bp_addr = get_hw_pt_addr(user_data);
+	attr.bp_len = get_hw_pt_len(user_data);
+	attr.bp_type = bp_type;
+	attr.disabled = !hw_pt_is_enabled(user_data);
+
+	return modify_user_hw_breakpoint(bp, &attr);
+}
+#endif
 
 long arch_ptrace(struct task_struct *child, long request,
 		unsigned long addr, unsigned long data)
@@ -62,6 +234,14 @@ long arch_ptrace(struct task_struct *child, long request,
 		ret = __copy_from_user(regs, datap,
 				       sizeof(struct user_pt_regs));
 		break;
+#ifdef CONFIG_HAVE_HW_BREAKPOINT
+	case PTRACE_GET_HW_PT_REGS:
+		ret = ptrace_get_hw_pt_pregs(child, addr, datap);
+		break;
+	case PTRACE_SET_HW_PT_REGS:
+		ret = ptrace_set_hw_pt_regs(child, addr, datap);
+		break;
+#endif
 	default:
 		ret = ptrace_request(child, request, addr, data);
 		break;
@@ -148,8 +328,23 @@ void debug_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
 	int debug_cause = debug_dc(es);
 
-	if (debug_cause == DEBUG_CAUSE_STEPI)
-		k1c_stepi();
+	switch (debug_cause) {
+	case DEBUG_CAUSE_STEPI:
+		if (check_hw_watchpoint_stepped(regs))
+			user_disable_single_step(current);
+		else
+			k1c_stepi();
+		break;
+	case DEBUG_CAUSE_BREAKPOINT:
+		check_hw_breakpoint(regs);
+		break;
+	case DEBUG_CAUSE_WATCHPOINT:
+		if (check_hw_watchpoint(regs, ea))
+			user_enable_single_step(current);
+		break;
+	default:
+		break;
+	}
 
 	dame_irq_check(regs);
 }
