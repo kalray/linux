@@ -29,7 +29,6 @@
 typedef struct mm_context {
 	unsigned long end_brk;
 	unsigned long asn[NR_CPUS];
-	int cpu;
 	unsigned long sigpage;
 } mm_context_t;
 
