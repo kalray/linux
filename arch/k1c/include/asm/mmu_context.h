@@ -26,10 +26,12 @@
 
 #include <asm-generic/mm_hooks.h>
 
-#define MMU_ASN_MASK     GENMASK(K1C_SFR_MMC_ASN_WIDTH - 1, 0)
-#define MMU_GET_ASN(asn) ((unsigned int)(asn & MMU_ASN_MASK))
-#define MMU_NO_ASN       UL(0x0)
-#define MMU_FIRST_ASN    UL(0x1)
+#define MM_CTXT_ASN_MASK	GENMASK(K1C_SFR_MMC_ASN_WIDTH - 1, 0)
+#define MM_CTXT_CYCLE_MASK	(~MM_CTXT_ASN_MASK)
+#define MM_CTXT_NO_ASN		UL(0x0)
+#define MM_CTXT_FIRST_CYCLE	(MM_CTXT_ASN_MASK + 1)
+
+#define mm_asn(mm, cpu)		((mm)->context.asn[cpu])
 
 DECLARE_PER_CPU(unsigned long, k1c_asn_cache);
 #define cpu_asn_cache(cpu) per_cpu(k1c_asn_cache, cpu)
@@ -40,42 +42,57 @@ static inline void get_new_mmu_context(struct mm_struct *mm, unsigned int cpu)
 
 	asn++;
 	/* Check if we need to start a new cycle */
-	if (MMU_GET_ASN(asn) == 0) {
+	if ((asn & MM_CTXT_ASN_MASK) == 0) {
 		pr_debug("%s: start new cycle, flush all tlb\n", __func__);
 		local_flush_tlb_all();
-		asn = MMU_FIRST_ASN;
+
+		/*
+		 * Above check for rollover of 9 bit ASN in 64 bit container.
+		 * If the container itself wrapped around, set it to a non zero
+		 * "generation" to distinguish from no context
+		 */
+		if (asn == 0)
+			asn = MM_CTXT_FIRST_CYCLE;
 	}
 
 	cpu_asn_cache(cpu) = asn;
-	mm->context.asn[cpu] = asn;
-	mm->context.cpu = cpu;
+	mm_asn(mm, cpu) = asn;
 
-	pr_debug("%s: mm = 0x%llx: asn_cpu[%d] = %lu\n",
-		 __func__, (unsigned long long)mm, cpu, asn);
+	pr_debug("%s: mm = 0x%llx: cpu[%d], cycle: %lu, asn: %lu\n",
+		 __func__, (unsigned long long)mm, cpu,
+		(asn & MM_CTXT_CYCLE_MASK) >> K1C_SFR_MMC_ASN_WIDTH,
+		asn & MM_CTXT_ASN_MASK);
 }
 
 static inline void get_mmu_context(struct mm_struct *mm, unsigned int cpu)
 {
-	/**
-	 * We check if our ASN is of an older version. If it is the case
-	 * we need to get a new context.
-	 */
-	if (mm) {
-		unsigned long asn = mm->context.asn[cpu];
 
-		if ((asn == MMU_NO_ASN) ||
-		    ((asn ^ cpu_asn_cache(cpu)) & ~MMU_ASN_MASK))
-			get_new_mmu_context(mm, cpu);
-	}
+	unsigned long asn = mm_asn(mm, cpu);
+
+	/*
+	 * Move to new ASN if it was not from current alloc-cycle/generation.
+	 * This is done by ensuring that the generation bits in both
+	 * mm->context.asn and cpu_asn_cache counter are exactly same.
+	 *
+	 * NOTE: this also works for checking if mm has a context since the
+	 * first alloc-cycle/generation is always '1'. MM_CTXT_NO_ASN value
+	 * contains cycle '0', and thus it will match.
+	 */
+	if ((asn ^ cpu_asn_cache(cpu)) & MM_CTXT_CYCLE_MASK)
+		get_new_mmu_context(mm, cpu);
 }
 
 static inline void activate_context(struct mm_struct *mm, unsigned int cpu)
 {
+	unsigned long flags;
+
+	local_irq_save(flags);
+
 	get_mmu_context(mm, cpu);
 
-	/* Set CPU to be owner of the activated context */
-	cpumask_set_cpu(cpu, mm_cpumask(mm));
-	k1c_sfr_set_field(K1C_SFR_MMC, ASN, mm->context.asn[cpu]);
+	k1c_sfr_set_field(K1C_SFR_MMC, ASN, mm_asn(mm, cpu));
+
+	local_irq_restore(flags);
 }
 
 /**
@@ -97,12 +114,9 @@ static inline int init_new_context(struct task_struct *tsk,
 {
 	int cpu;
 
-	for_each_possible_cpu(cpu) {
-		mm->context.asn[cpu] = MMU_NO_ASN;
-		pr_debug("%s: mm at 0x%llx on CPU[%d]", __func__,
-			 (unsigned long long)mm, cpu);
-	}
-	mm->context.cpu = -1; /* process has never run on any core */
+	for_each_possible_cpu(cpu)
+		mm_asn(mm, cpu) = MM_CTXT_NO_ASN;
+
 	return 0;
 }
 
@@ -110,14 +124,13 @@ static inline void destroy_context(struct mm_struct *mm)
 {
 	int cpu = smp_processor_id();
 
-	mm->context.asn[cpu] = MMU_NO_ASN;
+	mm_asn(mm, cpu) = MM_CTXT_NO_ASN;
 }
 
 static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 			     struct task_struct *tsk)
 {
 	unsigned int cpu = smp_processor_id();
-	int migrated = next->context.cpu != cpu;
 
 	/**
 	 * Comment taken from arc, but logic is the same for us:
@@ -134,14 +147,7 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	 */
 	cpumask_set_cpu(cpu, mm_cpumask(next));
 
-	if (migrated)
-		/*
-		 * I'm not sure if we need to flush something like the icache
-		 * as it is done on other architecture
-		 */
-		next->context.cpu = cpu;
-
-	if (migrated || (prev != next))
+	if (prev != next)
 		activate_context(next, cpu);
 }
 
