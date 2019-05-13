@@ -353,15 +353,17 @@ _restore_regs:
 	extfz $r7 = $r7, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
 	/* Load PGD entry offset */
 	ld.xs $r1 = $r3[$r1]
+	/* Extract virt page from ea */
+	andd $r4 = $r0, (~(PAGE_SIZE - 1))
 	/* Load per_cpu_offset */
 #if defined(CONFIG_SMP)
 	make $r5 = __per_cpu_offset
 #endif
 	;;
+	/* extract TLB set from ea (6 lsb of virtual page) */
+	extfz $r5 = $r4, PAGE_SHIFT + 5, PAGE_SHIFT
 	/* extract PMD offset*/
 	extfz $r3 = $r0, (ASM_PMD_SHIFT + ASM_PMD_BITS - 1), ASM_PMD_SHIFT
-	/* Extract virt page from ea */
-	andd $r4 = $r0, (~(PAGE_SIZE - 1))
 	/* If pgd entry is null -> out */
 	cb.deqz $r1? _err_out
 #if defined(CONFIG_SMP)
@@ -372,19 +374,19 @@ _restore_regs:
 	make $r7 = 0
 #endif
 	;;
-	/* extract TLB set from ea (6 lsb of virtual page) */
-	extfz $r5 = $r4, PAGE_SHIFT + 5, PAGE_SHIFT
 	/* Load PMD entry offset */
 	ld.xs $r1 = $r3[$r1]
-	/* Add cpu offset to jtlb_current_set_way */
-	addd $r7 = $r7, jtlb_current_set_way
+	/* Compute per_cpu_offset + current way of set address */
+	addd $r5 = $r5, $r7
+	/* Get exception cause for access type handling (page dirtying) */
+	get $r7 = $es
 	;;
 	/* extract PTE offset */
 	extfz $r3 = $r0, (PAGE_SHIFT + 8), PAGE_SHIFT
 	/* If pmd entry is null -> out */
 	cb.deqz $r1? _err_out
 	/* Load current way to use for current set */
-	lbz $r0 = $r5[$r7]
+	lbz $r0 = jtlb_current_set_way[$r5]
 	/* Clear way and select JTLB */
 	make $r6 = MMC_SEL_JTLB_CLEAR_WAY
 	;;
@@ -393,6 +395,8 @@ _restore_regs:
 	/* Load PTE entry */
 	ld.xs $r1 = $r3[$r1]
 	addx8d $r2 = $r3, $r1
+	/* Check if the access was a "write" access */
+	andd $r7 = $r7, (K1C_TRAP_RWX_WRITE << K1C_SFR_ES_RWX_SHIFT)
 	;;
 	/* Extract page global bit */
 	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT, _PAGE_GLOBAL_SHIFT
@@ -409,11 +413,13 @@ _restore_regs:
 	/* Increment way value, note that we do not care about overflow since
 	 * we only use the two lower byte */
 	addd $r0 = $r0, 1
+	/* If "write" access ($r7 != 0), then set it as dirty */
+	cmoved.dnez $r7? $r7 = _PAGE_DIRTY
 	;;
 	/* Or teh value with global bit */
 	ord $r4 = $r4, $r3
 	/* Store new way */
-	sb $r5[$r7] = $r0
+	sb jtlb_current_set_way[$r5] = $r0
 	/* Clear low bits of phys addr (pte entry) for tel writing */
 	andd $r5 = $r1, (~(PAGE_SIZE - 1))
 	/* Extract access perms from pte entry */
@@ -421,29 +427,32 @@ _restore_regs:
 	;;
 	/* load access permissions */
 	lbz $r6 = k1c_access_perms[$r3]
+	ord $r0 = $r5, TEL_DEFAULT_VALUE
+	/* Add _PAGE_ACCESSED bit to PTE entry for writeback */
+	ord $r7 = $r7, _PAGE_ACCESSED
+	get $r5 = $mmc
+	;;
 	/* Does this page map a device ? */
 	andd $r7 = $r1, _PAGE_DEVICE
-	/* Set page as accessed by setting pte flags */
-	ord $r1 = $r1, _PAGE_ACCESSED
-	ord $r0 = $r5, TEL_DEFAULT_VALUE
-	;;
+	/* OR PTE value with accessed/dirty flags */
+	ord $r1 = $r1, $r7
 	/* Shift PA to correct position */
 	slld $r6 = $r6, K1C_SFR_TEL_PA_SHIFT
-	/* Store updated pte entry */
-	sd 0[$r2] = $r1
-	get $r5 = $mmc
 	/* Set default cache policy */
 	make $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
 	;;
+	/* Store updated pte entry */
+	sd 0[$r2] = $r1
 	/* Does this page map a uncached area ? */
 	andd $r2 = $r1, _PAGE_UNCACHED
 	/* If the page is mapping a device, then set the policy to device */
 	cmoved.dnez $r7? $r3 = (TLB_CP_D_U << K1C_SFR_TEL_CP_SHIFT)
 	/* Prepare tel */
 	ord $r6 = $r0, $r6
+	;;
 	/* Add ASN from mmc */
 	insf $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
-	;;
+	/* Add uncached policy if needed */
 	cmoved.dnez $r2? $r3 = (TLB_CP_U_U << K1C_SFR_TEL_CP_SHIFT)
 	;;
 	/* Add cache policy to entry */
