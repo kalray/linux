@@ -16,7 +16,7 @@
 #include <asm/pgtable.h>
 
 DEFINE_PER_CPU_ALIGNED(uint8_t[MMU_JTLB_SETS], jtlb_current_set_way);
-DEFINE_PER_CPU(unsigned long, k1c_asn_cache);
+DEFINE_PER_CPU(unsigned long, k1c_asn_cache) = MM_CTXT_FIRST_CYCLE;
 
 /* 5 bits are used to index the K1C access permissions. Bytes are used as
  * follow:
@@ -105,6 +105,9 @@ static void clear_jtlb_entry(unsigned long addr,
 	unsigned long mmc_val;
 	int saved_asn;
 
+	/* Sanitize asn */
+	asn &= MM_CTXT_ASN_MASK;
+
 	/* Before probing we need to save the current ASN */
 	mmc_val = k1c_sfr_get(K1C_SFR_MMC);
 	saved_asn = k1c_sfr_field_val(mmc_val, MMC, ASN);
@@ -180,18 +183,9 @@ void local_flush_tlb_mm(struct mm_struct *mm)
 {
 	int cpu = smp_processor_id();
 
-	if (current->active_mm == mm) {
-		unsigned long flags;
-
-		local_irq_save(flags);
-		mm->context.asn[cpu] = MMU_NO_ASN;
-		/* As MMU_NO_ASN is set a new ASN will be given */
+	destroy_context(mm);
+	if (current->active_mm == mm)
 		activate_context(mm, cpu);
-		local_irq_restore(flags);
-	} else {
-		mm->context.asn[cpu] = MMU_NO_ASN;
-		mm->context.cpu = -1;
-	}
 }
 
 void local_flush_tlb_page(struct vm_area_struct *vma,
@@ -203,10 +197,10 @@ void local_flush_tlb_page(struct vm_area_struct *vma,
 	unsigned long flags;
 
 	mm = vma->vm_mm;
-	current_asn = MMU_GET_ASN(mm->context.asn[cpu]);
+	current_asn = mm_asn(mm, cpu);
 
 	/* If mm has no context there is nothing to do */
-	if (current_asn == MMU_NO_ASN)
+	if (current_asn == MM_CTXT_NO_ASN)
 		return;
 
 	local_irq_save(flags);
@@ -259,8 +253,8 @@ void local_flush_tlb_range(struct vm_area_struct *vma,
 
 	local_irq_save(flags);
 
-	current_asn = vma->vm_mm->context.asn[cpu];
-	if (current_asn != MMU_NO_ASN) {
+	current_asn = mm_asn(vma->vm_mm, cpu);
+	if (current_asn != MM_CTXT_NO_ASN) {
 		while (start < end) {
 			clear_jtlb_entry(start, TLB_G_USE_ASN, current_asn);
 			start += PAGE_SIZE;
@@ -303,7 +297,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	unsigned int set, way;
 	unsigned int cp = TLB_CP_W_C;
 	struct mm_struct *mm;
-	unsigned int asn;
+	unsigned long asn;
 	unsigned long flags;
 	int cpu = smp_processor_id();
 
@@ -329,18 +323,6 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	mm = current->active_mm;
 	if (vma && (mm != vma->vm_mm))
 		return;
-
-	/*
-	 * Get the ASN:
-	 * ASN can have no context if address belongs to kernel space. In
-	 * fact as pages are global for kernel space the ASN is ignored
-	 * and can be equal to any value.
-	 */
-	asn = MMU_GET_ASN(mm->context.asn[cpu]);
-	if ((asn == MMU_NO_ASN) && (address < PAGE_OFFSET))
-		panic("%s: ASN [%u] is not properly set for address 0x%lx on CPU %d\n",
-		      __func__, asn, address, cpu);
-
 	pa = (unsigned int)k1c_access_perms[K1C_ACCESS_PERMS_INDEX(pte_val)];
 
 	if (pte_val & _PAGE_DEVICE)
@@ -351,19 +333,32 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	/* Set page as accessed */
 	pte_val(*ptep) |= _PAGE_ACCESSED;
 
+	/*
+	 * Get the ASN:
+	 * ASN can have no context if address belongs to kernel space. In
+	 * fact as pages are global for kernel space the ASN is ignored
+	 * and can be equal to any value.
+	 */
+	asn = mm_asn(mm, cpu);
+
 #ifdef CONFIG_K1C_DEBUG_ASN
 	/*
 	 * For addresses that belong to user space, the value of the ASN
-	 * must match the mmc.asn
+	 * must match the mmc.asn and be non zero
 	 */
 	if (address < PAGE_OFFSET) {
 		unsigned int mmc_asn = k1c_mmc_asn(k1c_sfr_get(K1C_SFR_MMC));
 
-		if (asn != mmc_asn)
-			panic("%s: ASN not synchronized with MMC: asn:%u != mmc.asn:%u\n",
-			      __func__, asn, mmc_asn);
+		if (asn == MM_CTXT_NO_ASN)
+			panic("%s: ASN [%lu] is not properly set for address 0x%lx on CPU %d\n",
+			      __func__, asn, address, cpu);
+
+		if ((asn & MM_CTXT_ASN_MASK) != mmc_asn)
+			panic("%s: ASN not synchronized with MMC: asn:%lu != mmc.asn:%u\n",
+			      __func__, (asn & MM_CTXT_ASN_MASK), mmc_asn);
 	}
 #endif
+	asn &= MM_CTXT_ASN_MASK;
 
 	tlbe = tlb_mk_entry(
 		(void *)pfn_to_phys(pfn),
