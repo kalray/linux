@@ -200,3 +200,33 @@ In order to speed up the process, the following actions are taken:
   4.1 - If entry is not present, take the slowpath
 5 - Refill the tlb properly
 6 - Exit by restoring only a few registers
+
+ASN Handling
+============
+
+Disclaimer: Some part of this are taken from ARC architecture.
+
+K1C MMU provides 9-bit ASN (Address Space Number) in order to tag TLB entries.
+It allows for multiple process with the same virtual space to cohabit without
+the need to flush TLB everytime we context switch.
+k1c implementation to use them is based on other architectures (such as arc
+or xtensa) and uses a wrapping ASN counter containing both cycle/generation and
+asn.
+
++---------+--------+
+|63     10|9      0|
++---------+--------+
+  Cycle      ASN
+
+This ASN counter is incremented monotonously to allocate new ASNs. When the
+counter reaches 511 (9 bit), TLB is completely flushed and a new cycle is
+started. A new allocation cycle, post rollover, could potentially reassign an
+ASN to a different task. Thus the rule is to reassign an ASN when the current
+context cycles does not match the allocation cycle.
+The 64 bit @cpu_asn_cache (and mm->asn) have 9 bits MMU ASN and rest 55 bits
+serve as cycle/generation indicator and natural 64 bit unsigned math
+automagically increments the generation when lower 9 bits rollover.
+When the counter completely wraps, we reset the counter to first cycle value
+(ie cycle = 1). This allows to distinguish context without any ASN and old cycle
+generated value with the same operation (XOR on cycle).
+
