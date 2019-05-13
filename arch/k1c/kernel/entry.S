@@ -46,6 +46,12 @@ stack_error_panic_str_label:
 	.string "Stack has been messed up !"
 #endif
 
+#ifdef CONFIG_K1C_DEBUG_ASN
+.section .rodata
+asn_error_panic_str_label:
+	.string "ASN mismatch !"
+#endif
+
 /**
  * save_quad_regs: Save quad registers in temporary thread area
  * After call, the quad is saved in task_struct.thread.save_area.
@@ -449,6 +455,57 @@ _restore_regs:
 	;;
 	tlbwrite
 	;;
+#ifdef CONFIG_K1C_DEBUG_ASN
+	LOCAL _asn_check_ok, _asn_err
+	get $r1 = $ea
+	;;
+	/* Check if kernel address, if so, there is no ASN */
+	compd.geu $r2 = $r1, PAGE_OFFSET
+	get $r6 = $sr
+	;;
+	cb.dnez $r2? _asn_check_ok
+	;;
+	get $r2 = $pcr
+	/* Load active mm addr */
+	ld $r3 = TASK_ACTIVE_MM[$r6]
+	;;
+	get $r5 = $mmc
+	/* Extract processor ID to compute cpu_offset*/
+	extfz $r2 = $r2, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
+	addd $r3 = $r3, MM_CTXT_ASN
+	;;
+	extfz $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
+	/* Load current asn from active_mm */
+	ld.xs $r3 = $r2[$r3]
+	;;
+	/* Error if ASN is not set */
+	cb.deqz $r3? _asn_err
+	/* Mask $r3 asn cycle part */
+	andd $r5 = $r3, ((1 << K1C_SFR_MMC_ASN_WIDTH) - 1)
+	;;
+	/* Compare asn in $mmc and asn in current task mm */
+	compd.eq $r3 = $r5, $r4
+	;;
+	cb.dnez $r3? _asn_check_ok
+	;;
+_asn_err:
+	/* Restore kenrel stack */
+	ld $r12 = TASK_THREAD_KERNEL_SP[$r6]
+	make $r32 = PS_HWLOOP_ENABLE
+	make $r33 = 0
+	;;
+	/* Clear hw loop exit to disable current loop */
+	set $le = $r33
+	;;
+	/* Reenable hardware loop since some functions might need it */
+	wfxl $ps = $r32
+	;;
+	/* We are fried, die peacefully */
+	make $r0 = asn_error_panic_str_label
+	call panic
+	;;
+_asn_check_ok:
+#endif
 	goto _out
 	;;
 _err_out:
