@@ -106,6 +106,9 @@ int foo(void)
 	/* Fast tlb refill defines */
 	OFFSET(TASK_ACTIVE_MM, task_struct, active_mm);
 	OFFSET(MM_PGD, mm_struct, pgd);
+#ifdef CONFIG_K1C_DEBUG_ASN
+	OFFSET(MM_CTXT_ASN, mm_struct, context.asn);
+#endif
 
 	DEFINE(ASM_PGDIR_SHIFT, PGDIR_SHIFT);
 	DEFINE(ASM_PMD_SHIFT, PMD_SHIFT);
