@@ -14,6 +14,7 @@
 #include <asm/tlb_defs.h>
 #include <asm/page_size.h>
 #include <asm/pgtable.h>
+#include <asm/tlb.h>
 
 DEFINE_PER_CPU_ALIGNED(uint8_t[MMU_JTLB_SETS], jtlb_current_set_way);
 DEFINE_PER_CPU(unsigned long, k1c_asn_cache) = MM_CTXT_FIRST_CYCLE;
@@ -295,7 +296,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	unsigned int pa;
 	struct k1c_tlb_format tlbe;
 	unsigned int set, way;
-	unsigned int cp = TLB_CP_W_C;
+	unsigned int cp;
 	struct mm_struct *mm;
 	unsigned long asn;
 	unsigned long flags;
@@ -325,10 +326,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 		return;
 	pa = (unsigned int)k1c_access_perms[K1C_ACCESS_PERMS_INDEX(pte_val)];
 
-	if (pte_val & _PAGE_DEVICE)
-		cp = TLB_CP_D_U;
-	else if (pte_val & _PAGE_UNCACHED)
-		cp = TLB_CP_U_U;
+	cp = pgprot_cache_policy(pte_val);
 
 	/* Set page as accessed */
 	pte_val(*ptep) |= _PAGE_ACCESSED;
