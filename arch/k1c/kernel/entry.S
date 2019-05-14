@@ -840,6 +840,10 @@ do_syscall:
 	/* Call the syscall handler */
 	icall $r38
 	;;
+	/*
+	 * rt_sigreturn syscall will not take this exit path (see
+	 * sys_rt_sigreturn for more information).
+	 */
 	/* Reload task flags since the syscall might have generated a signal*/
 	get $r36 = $sr
 	;;
@@ -997,7 +1001,39 @@ trace_syscall_exit:
 	;;
 ENDPROC(k1c_syscall_handler)
 
-
+.text
+/**
+ * sys_rt_sigreturn: Special handler for sigreturn
+ * rt_sigreturn is called after invoking a user signal handler (see
+ * user_scall_rt_sigreturn). Since this signal handler can be invoked after
+ * interrupts have been handled, this means we must restore absolutely all user
+ * registers. Normally, this has been done by setup_sigcontext which saved all
+ * user registers on the user stack.
+ * In restore sigcontext, they have been restored onto entry stack (stack to be
+ * restored). However, the standard syscall path do not restore it completely
+ * since only callee-saved registers are restored for fork and al.
+ * Here, we will restore all registers which might have been cloberred.
+ */
+ENTRY(sys_rt_sigreturn)
+	/*
+	 * If syscall tracing is enable (stored in $r37 during syscall
+	 * fastpath), tail-call to trace_exit. If not, tail-call to
+	 * ret_from_kernel.
+	 */
+	cmoved.dnez $r37? $r38 = scall_trace_exit
+	cmoved.deqz $r37? $r38 = ret_from_kernel
+	;;
+	set $ra = $r38
+	;;
+	goto _sys_rt_sigreturn
+	;;
+scall_trace_exit:
+	copyd $r0 = $sp
+	call do_syscall_trace_exit
+	;;
+	goto ret_from_kernel
+	;;
+ENDPROC(sys_rt_sigreturn)
 
 /***********************************************************************
 *                      Context switch
