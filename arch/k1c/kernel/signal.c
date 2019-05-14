@@ -45,7 +45,7 @@ static long restore_sigcontext(struct pt_regs *regs,
 	return err;
 }
 
-SYSCALL_DEFINE0(rt_sigreturn)
+long _sys_rt_sigreturn(void)
 {
 	struct pt_regs *regs = current_pt_regs();
 	struct rt_sigframe __user *frame;
