@@ -6,6 +6,7 @@
  * Copyright (C) 2017 Kalray Inc.
  */
 
+#include <linux/elf.h>
 #include <linux/sched.h>
 #include <linux/ptrace.h>
 #include <linux/printk.h>
@@ -145,6 +146,17 @@ void flush_thread(void)
 	 */
 
 	flush_ptrace_hw_breakpoint(current);
+}
+
+/* Fill in the fpu structure for a core dump.  */
+int dump_fpu(struct pt_regs *regs, elf_fpregset_t *fpu)
+{
+	/*
+	 * On K1C, FPU uses standard registers + $cs which is a common register
+	 * also needed for non-fpu execution also so there is no additional
+	 * registers to dump.
+	 */
+	return 0;
 }
 
 void scall_machine_exit(unsigned char value)
