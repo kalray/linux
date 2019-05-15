@@ -58,8 +58,8 @@ struct vm_area_struct;
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
 /* Page protection bits */
-#define _PAGE_BASE		(_PAGE_PRESENT | _PAGE_USER)
-#define _PAGE_KERNEL		(_PAGE_PRESENT | _PAGE_GLOBAL | \
+#define _PAGE_BASE		(_PAGE_PRESENT)
+#define _PAGE_KERNEL		(_PAGE_BASE | _PAGE_GLOBAL | \
 				 _PAGE_READ | _PAGE_WRITE)
 
 #define PAGE_NONE		__pgprot(0)
