@@ -117,7 +117,8 @@ static inline void pte_free_kernel(struct mm_struct *mm, pte_t *pte)
 
 static inline void pte_free(struct mm_struct *mm, pgtable_t pte)
 {
-	panic("%s is not implemented yet\n", __func__);
+	pgtable_page_dtor(pte);
+	__free_page(pte);
 }
 
 #define __pte_free_tlb(tlb, pte, buf)   \
