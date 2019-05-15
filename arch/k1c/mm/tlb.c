@@ -19,46 +19,37 @@
 DEFINE_PER_CPU_ALIGNED(uint8_t[MMU_JTLB_SETS], jtlb_current_set_way);
 DEFINE_PER_CPU(unsigned long, k1c_asn_cache) = MM_CTXT_FIRST_CYCLE;
 
-/* 5 bits are used to index the K1C access permissions. Bytes are used as
+/*
+ * 4 bits are used to index the K1C access permissions. Bytes are used as
  * follow:
  *
- *   Bit 4      |   Bit 3    |   Bit 2    |   Bit 1     |   Bit 0
- * _PAGE_GLOBAL | _PAGE_USER | _PAGE_EXEC | _PAGE_WRITE | _PAGE_READ
+ *   +---------------+------------+-------------+------------+
+ *   |     Bit 3     |   Bit 2    |   Bit 1     |   Bit 0    |
+ *   |---------------+------------+-------------+------------|
+ *   |  _PAGE_GLOBAL | _PAGE_EXEC | _PAGE_WRITE | _PAGE_READ |
+ *   +---------------+------------+-------------+------------+
  *
- * NOTE: When the page belongs to user we set the same rights to kernel
+ * If _PAGE_GLOBAL is set then the page belongs to the kernel. Otherwise it
+ * belongs to the user. When the page belongs to user we set the same
+ * rights to kernel.
  */
 uint8_t k1c_access_perms[K1C_ACCESS_PERMS_SIZE] = {
 	TLB_PA_NA_NA,
+	TLB_PA_R_R,     /* 1: User R */
 	TLB_PA_NA_NA,
+	TLB_PA_RW_RW,   /* 3: User RW */
 	TLB_PA_NA_NA,
+	TLB_PA_RX_RX,   /* 5: User RX */
 	TLB_PA_NA_NA,
+	TLB_PA_RWX_RWX, /* 7: User RWX */
 	TLB_PA_NA_NA,
+	TLB_PA_NA_R,    /* 9: Kernel R */
 	TLB_PA_NA_NA,
+	TLB_PA_NA_RW,   /* 11: Kernel RW */
 	TLB_PA_NA_NA,
+	TLB_PA_NA_RX,   /* 13: Kernel RX */
 	TLB_PA_NA_NA,
-	TLB_PA_NA_NA,
-	TLB_PA_R_R,		/* 09: User R */
-	TLB_PA_NA_NA,
-	TLB_PA_RW_RW,		/* 11: User RW */
-	TLB_PA_NA_NA,
-	TLB_PA_RX_RX,		/* 13: User RX */
-	TLB_PA_NA_NA,
-	TLB_PA_RWX_RWX,		/* 15: User RWX */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_R,		/* 17: Kernel R */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_RW,		/* 19: Kernel RW */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_RX,		/* 21: Kernel RX */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_RWX,		/* 23: Kernel RWX */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_NA,
-	TLB_PA_NA_NA,
-	TLB_PA_NA_NA,
-	TLB_PA_NA_NA,
-	TLB_PA_NA_NA,
-	TLB_PA_NA_NA,
+	TLB_PA_NA_RWX,  /* 15: Kernel RWX */
 };
 
 #ifdef CONFIG_K1C_DEBUG_TLB_ACCESS_BITS
