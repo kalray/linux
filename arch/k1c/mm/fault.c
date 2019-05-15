@@ -114,8 +114,10 @@ retry:
 	vma = find_vma(mm, ea);
 	if (!vma)
 		goto bad_area;
+	if (likely(vma->vm_start <= ea))
+		goto good_area;
 
-	if (vma->vm_start <= ea)
+	if (vma->vm_flags & VM_GROWSDOWN && !expand_stack(vma, ea))
 		goto good_area;
 
 	goto bad_area;
