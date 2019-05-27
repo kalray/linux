@@ -52,7 +52,7 @@ uint8_t k1c_access_perms[K1C_ACCESS_PERMS_SIZE] = {
 	TLB_PA_NA_RWX,  /* 15: Kernel RWX */
 };
 
-#ifdef CONFIG_K1C_DEBUG_TLB_ACCESS_BITS
+#ifdef CONFIG_K1C_DEBUG_TLB_ACCESS
 
 static DEFINE_PER_CPU_ALIGNED(struct k1c_tlb_access_t[K1C_TLB_ACCESS_SIZE],
 		       k1c_tlb_access_rb);
