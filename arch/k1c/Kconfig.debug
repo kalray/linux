@@ -39,4 +39,13 @@ config DEBUG_EXCEPTION_STACK
 	  handling to see if stack when exiting is the same as the one
 	  when entering exception handler.
 
+config DEBUG_SFR_SET_MASK
+	bool "Enable sfr set_mask debugging"
+	default n
+	help
+	  Verify that values written using k1_sfr_set_mask are matching the
+	  mask. This ensure that no extra bits of sfr will be overridden by some
+	  incorrectly truncated values. This can lead to huge problems by
+	  modifying important bits in system registers.
+
 endmenu
