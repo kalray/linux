@@ -71,6 +71,7 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 					 _PAGE_EXEC | _PAGE_WRITE)
 
 #define PAGE_KERNEL		__pgprot(_PAGE_KERNEL)
+#define PAGE_KERNEL_NOCACHE	__pgprot(_PAGE_KERNEL | _PAGE_UNCACHED)
 #define PAGE_DEVICE		__pgprot(_PAGE_KERNEL | _PAGE_DEVICE)
 
 #define PAGE_COPY		PAGE_READ
