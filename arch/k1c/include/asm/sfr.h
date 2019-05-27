@@ -34,9 +34,10 @@ static inline uint64_t make_sfr_val(uint64_t mask, uint64_t value)
 }
 
 static inline void
-k1c_sfr_set_mask(unsigned char sfr, uint64_t mask, uint64_t value)
+__k1c_sfr_set_mask(unsigned char sfr, uint64_t mask, uint64_t value)
 {
 	uint64_t wf_val;
+
 	/* Least significant bits */
 	if (mask & 0xFFFFFFFF) {
 		wf_val = make_sfr_val(mask, value);
@@ -51,6 +52,17 @@ k1c_sfr_set_mask(unsigned char sfr, uint64_t mask, uint64_t value)
 		wfxm(sfr, wf_val);
 	}
 }
+
+#ifdef CONFIG_DEBUG_SFR_SET_MASK
+# define k1c_sfr_set_mask(__sfr, __mask, __value) \
+	do { \
+		BUG_ON(((__value) & (__mask)) != (__value)); \
+		__k1c_sfr_set_mask(__sfr, __mask, __value); \
+	} while (0)
+
+#else
+# define k1c_sfr_set_mask __k1c_sfr_set_mask
+#endif
 
 #define k1c_sfr_set_field(sfr, field, value) \
 	k1c_sfr_set_mask(sfr, sfr ## _ ## field ## _MASK, \
