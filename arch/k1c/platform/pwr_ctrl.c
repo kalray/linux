@@ -17,9 +17,6 @@
 
 #include <asm/pwr_ctrl.h>
 
-#define PWR_CTRL_WUP_SET_OFFSET  \
-		(K1C_PWR_CTRL_VEC_OFFSET + K1C_PWR_CTRL_VEC_WUP_SET_OFFSET)
-
 struct k1c_pwr_ctrl {
 	void __iomem *regs;
 };
