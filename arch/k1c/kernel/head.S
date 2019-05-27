@@ -226,26 +226,10 @@ gdb_mmu_enabled:
 	;;
 clear_bss:
 	/* Clear BSS */
-	make $r22 = __bss_stop
-	make $r21 = __bss_start
+	make $r0 = __bss_start
+	make $r1 = __bss_stop
+	call asm_memzero
 	;;
-	sbfd $r22 = $r21, $r22
-	make $r24 = 0
-	make $r25 = 0
-	;;
-	make $r26 = 0
-	make $r27 = 0
-	;;
-	/* Divide by 32 for hardware loop */
-	srld $r22, $r22, 5
-	;;
-	/* Clear bss with hardware loop */
-	loopdo $r22, clear_bss_done
-		;;
-		so 0[$r21] = $r24r25r26r27
-		addd $r21 = $r21, 32
-		;;
-	clear_bss_done:
 	/* Copy firmware feature in DDR to be accessible in kernel */
 	make $r20 = rm_firmware_features
 	make $r21 = rm_firmware_features_vm
@@ -274,6 +258,32 @@ clear_bss:
 	igoto $r20
 	;;
 ENDPROC(k1c_start)
+
+/**
+ * asm_memzero - Clear a memory zone with zeroes
+ * $r0 is the start of memory zone (must be align on 32 bytes boundary)
+ * $r1 is the end of memory zone (must be align on 32 bytes boundary)
+ */
+ENTRY(asm_memzero)
+	sbfd $r32 = $r0, $r1
+	make $r36 = 0
+	make $r37 = 0
+	;;
+	make $r38 = 0
+	make $r39 = 0
+	/* Divide by 32 for hardware loop */
+	srld $r32, $r32, 5
+	;;
+	/* Clear memory with hardware loop */
+	loopdo $r32, clear_mem_done
+		;;
+		so 0[$r0] = $r36r37r38r39
+		addd $r0 = $r0, 32
+		;;
+	clear_mem_done:
+	ret
+	;;
+ENDPROC(asm_memzero)
 
 /**
  * This function is called by firmware after init is done.
