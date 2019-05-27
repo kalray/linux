@@ -49,6 +49,10 @@ static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
 			  int signo, int sigcode)
 {
 	if (user_mode(regs)) {
+		if (signo == SIGKILL) {
+			force_sig(signo, current);
+			return;
+		}
 		force_sig_fault(signo, sigcode, (void __user *) ea, current);
 		return;
 	}
