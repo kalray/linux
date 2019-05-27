@@ -18,6 +18,16 @@
 #define PHYS_OFFSET		CONFIG_K1C_PHYS_OFFSET
 #define PAGE_OFFSET		CONFIG_K1C_PAGE_OFFSET
 
+#define VA_TO_PA_OFFSET		(PHYS_OFFSET - PAGE_OFFSET)
+#define PA_TO_VA_OFFSET		(PAGE_OFFSET - PHYS_OFFSET)
+
+/*
+ * These macros are specifically written for assembly. They are useful for
+ * converting symbols above PAGE_OFFSET to their physical addresses.
+ */
+#define __PA(x)	(x + VA_TO_PA_OFFSET)
+#define __VA(x)	(x + PA_TO_VA_OFFSET)
+
 /*
  * PFN starts at 0 if physical address starts at 0x0. As it is not the case
  * for the k1 we need to apply an offset to the calculated PFN.
@@ -63,8 +73,8 @@ typedef struct page *pgtable_t;
 #define __pte(x)	((pte_t) { (x) })
 #define __pgprot(x)	((pgprot_t) { (x) })
 
-#define __pa(x)	((unsigned long)(x) - PAGE_OFFSET + PHYS_OFFSET)
-#define __va(x)	((void *)((unsigned long) (x) + PAGE_OFFSET - PHYS_OFFSET))
+#define __pa(x)	((unsigned long)(x) + VA_TO_PA_OFFSET)
+#define __va(x)	((void *)((unsigned long) (x) + PA_TO_VA_OFFSET))
 
 #define phys_to_pfn(phys)	(PFN_DOWN(phys))
 #define pfn_to_phys(pfn)	(PFN_PHYS(pfn))
