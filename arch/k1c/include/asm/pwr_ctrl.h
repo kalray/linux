@@ -27,4 +27,12 @@ void k1c_pwr_ctrl_cpu_poweron(unsigned int cpu);
 #define K1C_PWR_CTRL_GLOBAL_SET_OFFSET     0x10
 #define K1C_PWR_CTRL_GLOBAL_SET_PE_EN_SHIFT           0x1
 
+#define PWR_CTRL_WUP_SET_OFFSET  \
+		(K1C_PWR_CTRL_VEC_OFFSET + \
+		 K1C_PWR_CTRL_VEC_WUP_SET_OFFSET)
+
+#define PWR_CTRL_GLOBAL_CONFIG_OFFSET \
+		(K1C_PWR_CTRL_GLOBAL_OFFSET + \
+		 K1C_PWR_CTRL_GLOBAL_SET_OFFSET)
+
 #endif /* _ASM_K1C_PWR_CTRL_H */
