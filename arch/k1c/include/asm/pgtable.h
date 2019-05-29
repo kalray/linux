@@ -247,7 +247,8 @@ static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 /* Constructs a page table entry */
 static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
 {
-	return __pte((pfn << PAGE_SHIFT) | pgprot_val(prot));
+	return __pte(((pfn << K1C_PFN_SHIFT) & K1C_PFN_MASK) |
+		     pgprot_val(prot));
 }
 
 /* Builds a page table entry by combining a page descriptor and a group of
@@ -282,7 +283,7 @@ static inline pte_t *pte_offset_kernel(pmd_t *pmd, unsigned long addr)
 /* Yields the page frame number (PFN) of a page table entry */
 static inline unsigned long pte_pfn(pte_t pte)
 {
-	return (pte_val(pte) >> PAGE_SHIFT);
+	return ((pte_val(pte) & K1C_PFN_MASK) >> K1C_PFN_SHIFT);
 }
 
 static inline int pte_present(pte_t pte)
