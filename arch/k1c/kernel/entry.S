@@ -422,19 +422,21 @@ _restore_regs:
 	addd $r0 = $r0, 1
 	/* If "write" access ($r7 != 0), then set it as dirty */
 	cmoved.dnez $r7? $r7 = _PAGE_DIRTY
+	/* Clear bits not related to FN in the pte entry for TEL writing */
+	andd $r6 = $r1, K1C_PFN_MASK
 	;;
 	/* Or teh value with global bit */
 	ord $r4 = $r4, $r3
 	/* Store new way */
 	sb jtlb_current_set_way[$r5] = $r0
-	/* Clear low bits of phys addr (pte entry) for tel writing */
-	andd $r5 = $r1, (~(PAGE_SIZE - 1))
 	/* Extract access perms from pte entry */
 	extfz $r3 = $r1, K1C_ACCESS_PERM_STOP_BIT, K1C_ACCESS_PERM_START_BIT
+	/* Move FN bits to their place */
+	srld $r6 = $r6, K1C_PFN_SHIFT - PAGE_SHIFT
 	;;
 	/* load access permissions */
 	lbz $r6 = k1c_access_perms[$r3]
-	ord $r0 = $r5, TEL_DEFAULT_VALUE
+	ord $r0 = $r6, TEL_DEFAULT_VALUE
 	/* Add _PAGE_ACCESSED bit to PTE entry for writeback */
 	ord $r7 = $r7, _PAGE_ACCESSED
 	get $r5 = $mmc
