@@ -4,9 +4,11 @@ import ctypes
 from arch.k1c import constants
 #
 # PTE format:
-# | 63   | 11..9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0
-#   PFN     res   UNC DEV  D   A   G   X   W   R   V
 #
+#    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
+#    | 63 .. 23  | 22 .. 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+#    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
+#         PFN       Unused    S  UNC DEV  D   A   G   X   W   R   P
 
 class pte_bits(ctypes.LittleEndianStructure):
     _fields_ = [
@@ -19,8 +21,9 @@ class pte_bits(ctypes.LittleEndianStructure):
             ("D", ctypes.c_uint8, 1),
             ("DEV", ctypes.c_uint8, 1),
             ("UNC", ctypes.c_uint8, 1),
-            ("res", ctypes.c_uint8, 3),
-            ("pfn", ctypes.c_uint64, 52),
+            ("S", ctypes.c_uint8, 1),
+            ("Unused", ctypes.c_uint16, 13),
+            ("PFN", ctypes.c_uint64, 41),
         ]
 
 class Pte(ctypes.Union):
@@ -64,10 +67,10 @@ def get_pte_bits(pte_entry):
     """
     pte_val = Pte()
     pte_val.value = pte_entry
-    pte_str = "\t\tPFN: 0x{:016x}, bits: ".format(pte_val.bf.pfn << constants.LX_PAGE_SHIFT)
+    pte_str = "\t\tPFN: 0x{:016x}, bits: ".format(pte_val.bf.PFN << constants.LX_PAGE_SHIFT)
 
     for field in pte_val.bf._fields_:
-        if field[0] == "res":
+        if field[0] == "Unused":
             break
         if long(getattr(pte_val.bf, field[0])) != 0:
             pte_str += field[0]
