@@ -12,21 +12,20 @@
 
 /*
  * Protection bit definition
- * As we don't have any hw to handle page table walk, we can define
+ * As we don't have any HW to handle page table walk, we can define
  * our own PTE format.
- * This implementation is copied from RiscV implementation as a start
- * point. We added some new fields to match the k1c needs.
+ *
+ *    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
+ *    | 63 .. 23  | 22 .. 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+ *    +-----------+----------+---+---+---+---+---+---+---+---+---+---+
+ *         PFN       Unused    S  UNC DEV  D   A   G   X   W   R   P
+ *
+ * Note: PFN is 40-bits wide. We use 41-bits to ensure that the upper bit is
+ *       always set to 0. This is required when shifting PFN to right.
  */
 
-#define _PAGE_GLOBAL_SHIFT	4 /* Global */
+#define _PAGE_GLOBAL_SHIFT	4   /* Global */
 
-/*
- * PTE format:
- *  +-----------+---------+---+---+---+---+---+---+---+---+---+
- *  | 63 ... 12 | 11 .. 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
- *  +-----------+---------+---+---+---+---+---+---+---+---+---+
- *       PFN       Unused  UNC DEV  D   A   G   X   W   R   P
- */
 #define _PAGE_PRESENT   (1 << 0)    /* Present */
 #define _PAGE_READ      (1 << 1)    /* Readable */
 #define _PAGE_WRITE     (1 << 2)    /* Writable */
@@ -39,6 +38,10 @@
 #define _PAGE_SOFT      (1 << 9)    /* Reserved for software */
 
 #define _PAGE_SPECIAL   _PAGE_SOFT
+
+/* As the mask is used in assembly, it cannot be generating with GENMASK */
+#define K1C_PFN_SHIFT	23
+#define K1C_PFN_MASK	(~(((1 << K1C_PFN_SHIFT) - 1)))
 
 #define K1C_ACCESS_PERMS_BITS	4
 #define K1C_ACCESS_PERMS_OFFSET	1
