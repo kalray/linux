@@ -169,9 +169,9 @@ we choose to follow the format described in the RiscV implementation as a
 starting point.
 
     +-----------+----------+---+---+---+---+---+---+---+---+---+---+
-    | 63 ... 12 | 11 .. 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+    | 63 .. 23  | 22 .. 10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
     +-----------+----------+---+---+---+---+---+---+---+---+---+---+
-         PFN       Unused   UNC DEV  D   A   G   U   X   W   R   P
+         PFN       Unused    S  UNC DEV  D   A   G   X   W   R   P
 
        where:
         P: Present
@@ -184,6 +184,7 @@ starting point.
         D: Dirty
         DEV: Device space mapping
         UNC: Uncached mapping
+        S: Soft/Special
         PFN: Page frame number (depends on page size)
 
 Fast TLB refill
