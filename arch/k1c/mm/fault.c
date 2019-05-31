@@ -219,9 +219,17 @@ no_context:
 	if (fixup_exception(regs))
 		return;
 
-	panic("Unable to handle kernel %s at virtual address %016llx\n",
+	/*
+	 * Oops. The kernel tried to access some bad page. We'll have to
+	 * terminate things with extreme prejudice.
+	 */
+	bust_spinlocks(1);
+	pr_alert(CUT_HERE "Unable to handle kernel %s at virtual address %016llx\n",
 		 (ea < PAGE_SIZE) ? "NULL pointer dereference" :
 		 "paging request", ea);
+	die(regs, ea, "Oops");
+	bust_spinlocks(0);
+	do_exit(SIGKILL);
 
 out_of_memory:
 	/*
