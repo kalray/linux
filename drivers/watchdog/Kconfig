@@ -1666,6 +1666,20 @@ config SIEMENS_SIMATIC_IPC_WDT
 	  To compile this driver as a module, choose M here: the module will be
 	  called simatic-ipc-wdt.
 
+# K1C Architecture
+
+config K1C_WATCHDOG
+	tristate "k1c watchdog support"
+	depends on K1C
+	select WATCHDOG_CORE
+	help
+	  A device driver for k1c core watchdog.
+
+	  k1c Watchdog is located on each core. This driver will handle watchdog
+	  reloading via IRQ for kernel side and manually reloaded for user
+	  handling. On expiration, an IRQ will be sent to the cluster RM core
+	  which will handle it.
+
 # M68K Architecture
 
 config M54xx_WATCHDOG
