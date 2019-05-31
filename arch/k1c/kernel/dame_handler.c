@@ -8,6 +8,7 @@
  */
 
 #include <linux/of.h>
+#include <linux/bug.h>
 #include <linux/init.h>
 #include <linux/of_irq.h>
 #include <linux/hardirq.h>
@@ -53,7 +54,7 @@ irqreturn_t dame_irq_handler(int irq, void *dev_id)
 		force_sig_fault(SIGBUS, BUS_ADRERR,
 				(void __user *) NULL, current);
 	} else {
-		panic("DAME error encountered while in kernel !!!!\n");
+		die(regs, 0, "DAME error encountered while in kernel !!!!\n");
 	}
 
 	return IRQ_HANDLED;
