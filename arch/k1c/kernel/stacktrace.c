@@ -48,6 +48,7 @@ static int notrace unwind_frame(unsigned long stack_page,
 
 
 static void notrace walk_stackframe(struct task_struct *task,
+				    struct pt_regs *regs,
 				    bool (*fn)(unsigned long, void *),
 				    void *arg)
 {
@@ -55,7 +56,12 @@ static void notrace walk_stackframe(struct task_struct *task,
 	unsigned long addr, stack_page;
 	int ret;
 
-	if (task == NULL || task == current) {
+	if (regs) {
+		/* Task has been switched_to */
+		frame.fp = regs->fp;
+		frame.ra = regs->ra;
+		stack_page = ALIGN_DOWN(regs->r12, THREAD_SIZE);
+	} else if (task == NULL || task == current) {
 		frame.fp = (unsigned long) __builtin_frame_address(0);
 		frame.ra = (unsigned long) walk_stackframe;
 		stack_page = ALIGN_DOWN(get_current_sp(), THREAD_SIZE);
@@ -94,6 +100,7 @@ static int __init kstack_setup(char *s)
 __setup("kstack=", kstack_setup);
 
 static void notrace walk_stackframe(struct task_struct *task,
+				    struct pt_regs *regs,
 				    bool (*fn)(unsigned long, void *),
 				    void *arg)
 {
@@ -101,7 +108,9 @@ static void notrace walk_stackframe(struct task_struct *task,
 	unsigned long addr;
 	unsigned long *sp;
 
-	if (task == NULL || task == current)
+	if (regs)
+		sp = regs->sp;
+	else if (task == NULL || task == current)
 		sp = (unsigned long *) get_current_sp();
 	else
 		sp = (unsigned long *) thread_saved_sp(task);
@@ -152,7 +161,7 @@ bool append_stack_addr(unsigned long pc, void *arg)
 void save_stack_trace(struct stack_trace *trace)
 {
 	trace->nr_entries = 0;
-	walk_stackframe(NULL, append_stack_addr, trace);
+	walk_stackframe(NULL, NULL, append_stack_addr, trace);
 }
 EXPORT_SYMBOL(save_stack_trace);
 #endif /* CONFIG_STACKTRACE */
@@ -161,6 +170,12 @@ static bool print_pc(unsigned long pc, void *arg)
 {
 	print_ip_sym(pc);
 	return false;
+}
+
+void show_stacktrace(struct task_struct *task, struct pt_regs *regs)
+{
+	pr_info("Call Trace:\n");
+	walk_stackframe(task, regs, print_pc, NULL);
 }
 
 /*
@@ -187,8 +202,7 @@ void show_stack(struct task_struct *task, unsigned long *sp)
 	}
 	pr_cont("\n");
 
-	pr_info("\nCall Trace:\n");
-	walk_stackframe(task, print_pc, NULL);
+	show_stacktrace(task, NULL);
 }
 
 static bool find_wchan(unsigned long pc, void *arg)
@@ -224,7 +238,7 @@ unsigned long get_wchan(struct task_struct *task)
 		return 0;
 
 	if (likely(task && task != current && task->state != TASK_RUNNING))
-		walk_stackframe(task, find_wchan, &pc);
+		walk_stackframe(task, NULL, find_wchan, &pc);
 
 	put_task_stack(task);
 

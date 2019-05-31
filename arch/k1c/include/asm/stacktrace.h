@@ -27,4 +27,6 @@ static inline bool on_stack_page(unsigned long stack_page, unsigned long sp)
 	return (sp >= low && sp < high);
 }
 
+void show_stacktrace(struct task_struct *task, struct pt_regs *regs);
+
 #endif /* _ASM_K1C_STACKTRACE_H */
