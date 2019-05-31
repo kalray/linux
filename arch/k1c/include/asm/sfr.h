@@ -84,6 +84,9 @@ k1c_sfr_clear_bit(unsigned char sfr, unsigned char bit)
 			  (((_val) & K1C_SFR_ ## _sfr ## _ ## _field ## _MASK) \
 			  >> K1C_SFR_ ## _sfr ## _ ## _field ## _SHIFT)
 
+#define k1c_sfr_bit(_sfr, _field) \
+	BIT_ULL(K1C_SFR_ ## _sfr ## _ ## _field ## _SHIFT)
+
 #endif
 
 #endif	/* _ASM_K1C_SFR_DEFS_H */
