@@ -11020,6 +11020,7 @@ F:	drivers/irqchip/irq-k1c-*.c
 F:	include/linux/irqchip/irq-k1c-*.h
 F:	include/linux/mfd/k1c-ftu.h
 F:	drivers/mailbox/k1c-mailbox.c
+F:	drivers/watchdog/k1c_wdt.c
 
 K8TEMP HARDWARE MONITORING DRIVER
 M:	Rudolf Marek <r.marek@assembler.cz>
