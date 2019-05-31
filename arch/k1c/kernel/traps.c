@@ -9,6 +9,9 @@
 #include <linux/context_tracking.h>
 #include <linux/sched/task_stack.h>
 #include <linux/sched/debug.h>
+#include <linux/uaccess.h>
+#include <linux/kdebug.h>
+#include <linux/module.h>
 #include <linux/printk.h>
 #include <linux/init.h>
 #include <linux/ptrace.h>
@@ -16,6 +19,9 @@
 #include <asm/dame.h>
 #include <asm/traps.h>
 #include <asm/ptrace.h>
+#include <asm/stacktrace.h>
+
+static DEFINE_SPINLOCK(die_lock);
 
 static trap_handler_func trap_handler_table[K1C_TRAP_COUNT] = { NULL };
 
@@ -44,6 +50,38 @@ static const char * const trap_name[] = {
 	"PL_OVERFLOW"
 };
 
+void die(struct pt_regs *regs, unsigned long ea, const char *str)
+{
+	static int die_counter;
+	int ret;
+
+	oops_enter();
+
+	spin_lock_irq(&die_lock);
+	console_verbose();
+	bust_spinlocks(1);
+
+	pr_emerg("%s [#%d]\n", str, ++die_counter);
+	print_modules();
+	show_regs(regs);
+
+	if (!user_mode(regs))
+		show_stacktrace(NULL, regs);
+
+	ret = notify_die(DIE_OOPS, str, regs, ea, 0, SIGSEGV);
+
+	bust_spinlocks(0);
+	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
+	spin_unlock_irq(&die_lock);
+	oops_exit();
+
+	if (in_interrupt())
+		panic("Fatal exception in interrupt");
+	if (panic_on_oops)
+		panic("Fatal exception");
+	if (ret != NOTIFY_STOP)
+		do_exit(SIGSEGV);
+}
 
 static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
 			  int signo, int sigcode)
@@ -57,10 +95,47 @@ static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
 		return;
 	}
 
-	show_regs(regs);
-
-	panic("ERROR: TRAP %s received at 0x%.16llx\n",
+	pr_alert(CUT_HERE "ERROR: TRAP %s received at 0x%.16llx\n",
 	      trap_name[trap_cause(es)], regs->spc);
+	die(regs, ea, "Oops");
+	do_exit(SIGKILL);
+}
+
+#ifdef CONFIG_GENERIC_BUG
+int is_valid_bugaddr(unsigned long pc)
+{
+	bug_insn_t insn;
+
+	if (!__kernel_text_address(pc))
+		return 0;
+
+	if (probe_kernel_address((bug_insn_t *)pc, insn))
+		return 0;
+
+	return (insn == BUG_INSN);
+}
+#endif /* CONFIG_GENERIC_BUG */
+
+static void opcode_trap_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
+{
+#ifdef CONFIG_GENERIC_BUG
+	if (!user_mode(regs)) {
+		enum bug_trap_type type;
+
+		type = report_bug(regs->spc, regs);
+		switch (type) {
+		case BUG_TRAP_TYPE_NONE:
+			break;
+		case BUG_TRAP_TYPE_WARN:
+			/* Skip over BUG */
+			regs->spc += sizeof(bug_insn_t);
+			return;
+		case BUG_TRAP_TYPE_BUG:
+			die(regs, ea, "Kernel BUG");
+		}
+	}
+#endif /* CONFIG_GENERIC_BUG */
+	panic_or_kill(es, ea, regs, SIGILL, ILL_ILLOPC);
 }
 
 #define GEN_TRAP_HANDLER(__name, __sig, __code) \
@@ -71,7 +146,6 @@ static void __name ## _trap_handler(uint64_t es, uint64_t ea, \
 }
 
 GEN_TRAP_HANDLER(default, SIGKILL, SI_KERNEL);
-GEN_TRAP_HANDLER(opcode, SIGILL, ILL_ILLOPC);
 GEN_TRAP_HANDLER(privilege, SIGILL, ILL_PRVREG);
 GEN_TRAP_HANDLER(dmisalign, SIGBUS, BUS_ADRALN);
 GEN_TRAP_HANDLER(syserror, SIGBUS, BUS_ADRERR);
