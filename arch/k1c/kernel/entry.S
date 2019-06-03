@@ -819,20 +819,6 @@ check_trace:
 	/* Clear frame pointer for kernel */
 	make $fp = 0
 	;;
-	/* Save callee registers (from $r18 to $31). Even if it's not needed
-	 * for the syscall return path, they are needed for child process.
-	 * Indeed, when forking we want it to have the same registers contents
-	 * as its parent. These registers will then be restored in
-	 * ret_from_fork.
-	 */
-	sq PT_R18R19[$sp] = $r18r19
-	;;
-	so PT_Q20[$sp] = $r20r21r22r23
-	;;
-	so PT_Q24[$sp] = $r24r25r26r27
-	;;
-	so PT_Q28[$sp] = $r28r29r30r31
-	;;
 	/* Enable hwloop and interrupts
 	 * Note that we have to reenable interrupts after saving context
 	 * to avoid losing registers content */
@@ -1049,6 +1035,27 @@ scall_trace_exit:
 	;;
 ENDPROC(sys_rt_sigreturn)
 
+/**
+ * __sys_clone: slow path handler for clone
+ *
+ * Save callee registers (from $r18 to $31) since they are needed for
+ * child process when restoring it.
+ * Indeed, when forking we want it to have the same registers contents
+ * as its parent. These registers will then be restored in
+ * ret_from_fork.
+ * This slow path saves them out of the fast path to avoid bloating all syscall
+ * just for one special case.
+ */
+ENTRY(__sys_clone)
+	save_callee
+	;;
+	/*
+	 * Use goto since we want sys_clone to "ret" to the previous caller.
+	 * This allows to simply go back in the normal syscall fastpath
+	 */
+	goto sys_clone
+	;;
+ENDPROC(__sys_clone)
 /***********************************************************************
 *                      Context switch
 ***********************************************************************/
