@@ -146,3 +146,84 @@ When handling a signal, the path is the following:
         | User app | @func
         |  (user)  |
         +----------+
+
+Registers handling
+==================
+
+Registers are handled differently regarding the exception paths.
+
+Interrupts and traps
+--------------------
+
+When interrupt and traps are triggered, we only save the caller-saved registers.
+Indeed, we rely on the fact that C code will save and restore callee-saved and
+hence, there is no need to save them. This path is the following:
+
+     +------------+          +-----------+        +---------------+
+IT   | Save caller| C Call   | Execute C |  Ret   | Restore caller| Ret from IT
++--->+   saved    +--------->+  handler  +------->+     saved     +----->
+     | registers  |          +-----------+        |   registers   |
+     +------------+                               +---------------+
+
+However, when returning to user, we check if there is work_pending. If a signal
+is pending and there is a signal handler to be called, then we need all
+registers to be saved on the stack in the pt_regs before executing the signal
+handler and restored after that. Since we only saved caller-saved registers, we
+need to also save callee-saved registers to restore them correctly when
+returning to user. This path is the following (a bit more complicated !):
+
+      +------------+
+      | Save caller|          +-----------+  Ret   +------------+
+ IT   |   saved    | C Call   | Execute C | to asm | Check work |
+ +--->+ registers  +--------->+  handler  +------->+   pending  |
+      | to pt_regs |          +-----------+        +--+---+-----+
+      +------------+                                  |   |
+                        Work pending                  |   | No work pending
+         +--------------------------------------------+   |
+         |                                                |
+         |                                   +------------+
+         v                                   |
+  +------+------+                            v
+  | Save callee |                    +-------+-------+
+  |   saved     |                    | Restore caller|  RFE from IT
+  | registers   |                    |     saved     +------->
+  | to pt_regs  |                    |   registers   |
+  +--+-------+--+                    | from pt_regs  |
+     |       |                       +-------+-------+
+     |       |         +---------+           ^
+     |       |         | Execute |           |
+     |       +-------->+ needed  +-----------+
+     |                 |  work   |
+     |                 +---------+
+     |Signal handler ?
+     v
++----+----------+ RFE to user +-------------+       +--------------+
+|   Copy all    | handler     |  Execute    |  ret  | rt_sigreturn |
+|   registers   +------------>+ user signal +------>+ trampoline   |
+| from pt_regs  |             |  handler    |       |  to kernel   |
+| to user stack |             +-------------+       +------+-------+
++---------------+                                          |
+                         syscall rt_sigreturn              |
+         +-------------------------------------------------+
+         |
+         v
++--------+-------+                      +-------------+
+|   Recopy all   |                      | Restore all |  RFE
+| registers from +--------------------->+    saved    +------->
+|   user stack   |       Return         |  registers  |
+|   to pt_regs   |    from sigreturn    |from pt_regs |
++----------------+  (via ret_from_fork) +-------------+
+
+
+Syscalls
+--------
+As explained before, for syscalls, we can use whatever callee-saved registers
+we want since syscall are seen as a "classic" call from ABI pov.
+Only different path is the one for clone. For this path, since the child expects
+to find same callee-registers content than his parent, we must save them before
+executing the clone syscall and restore them after that for the child. This is
+done via a redefinition of __sys_clone in assembly which will be called in place
+of the standard sys_clone. This new call will save callee saved registers
+in pt_regs. Parent will return using the syscall standard path. Freshly spawned
+child however will be woken up via ret_from_fork which will restore all
+registers (even if caller saved are not needed).
