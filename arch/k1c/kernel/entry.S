@@ -530,7 +530,6 @@ _err_out:
 _out:
 .endm
 
-
 /***********************************************************************
 *                Exception vectors trampolines
 ***********************************************************************/
@@ -855,22 +854,11 @@ do_syscall:
 	/* used to store if trace system */
 	cb.dnez $r37? trace_syscall_exit
 	;;
-check_work_pending:
 	/* Do we have work pending ? */
 	andd $r2 = $r38, _TIF_WORK_MASK
 	;;
-	/* If no work pending, directly jump to ret_to_user */
-	cb.deqz $r2? ret_to_user
-	;;
-	/*
-	 * Work pending can potentially call a signal handler and then return
-	 * via rt_sigreturn. Return path will be different (restore all regs)
-	 * and hence all registers are needed to be saved.
-	 */
-	save_callee
-	;;
-	copyd $r0 = $sp
-	call work_pending
+	/* If no work pending, directly continue to ret_to_user */
+	cb.dnez $r2? check_work_pending
 	;;
 ret_to_user:
 #ifdef CONFIG_SECURE_DAME_HANDLING
@@ -950,6 +938,20 @@ ret_to_user:
 	;;
 
 /* Slow paths handling */
+check_work_pending:
+	/*
+	 * Work pending can potentially call a signal handler and then return
+	 * via rt_sigreturn. Return path will be different (restore all regs)
+	 * and hence all registers are needed to be saved.
+	 */
+	save_callee
+	;;
+	copyd $r0 = $sp
+	call work_pending
+	;;
+	goto ret_to_user
+	;;
+
 invalid_scall:
 	/* Out of bound syscall, set $r38 = not implemented do_syscall func */
 	make $r38 = sys_ni_syscall
