@@ -95,6 +95,18 @@ asn_error_panic_str_label:
 	;;
 .endm
 
+/* Save callee registers on stack */
+.macro save_callee
+	sq PT_R18R19[$sp] = $r18r19
+	;;
+	so PT_Q20[$sp] = $r20r21r22r23
+	;;
+	so PT_Q24[$sp] = $r24r25r26r27
+	;;
+	so PT_Q28[$sp] = $r28r29r30r31
+	;;
+.endm
+
 /**
  * Save registers for entry in kernel space.
  * sp_reg should point to the original stack pointer when entering kernel space
@@ -133,44 +145,38 @@ asn_error_panic_str_label:
 	so PT_Q0[$sp] = $r0r1r2r3
 	copyd $r61 = $r13
 	;;
-	so PT_Q16[$sp] = $r16r17r18r19
+	sq PT_R16R17[$sp] = $r16r17
 	make $r10 = 0x0
 	get $r5 = $le
 	copyd $r62 = $r14
 	;;
-	so PT_Q20[$sp] = $r20r21r22r23
+	so PT_Q32[$sp] = $r32r33r34r35
 	/* Since we are going to enable hardware loop, we must be careful
 	 * and reset le (loop exit) to avoid any exploit and return to
 	 * user with kernel mode */
 	set $le = $r10
 	copyd $r63 = $r15
 	;;
-	so PT_Q24[$sp] = $r24r25r26r27
+	so PT_Q36[$sp] = $r36r37r38r39
 	get $r0 = $cs
 	;;
-	so PT_Q28[$sp] = $r28r29r30r31
+	so PT_Q40[$sp] = $r40r41r42r43
 	get $r1 = $spc
 	;;
-	so PT_Q32[$sp] = $r32r33r34r35
+	so PT_Q44[$sp] = $r44r45r46r47
 	get $r2 = $sps
 	;;
-	so PT_Q36[$sp] = $r36r37r38r39
+	so PT_Q48[$sp] = $r48r49r50r51
 	get $r3 = $es
 	;;
-	so PT_Q40[$sp] = $r40r41r42r43
+	so PT_Q52[$sp] = $r52r53r54r55
 	get $r7 = $ra
 	;;
-	so PT_Q44[$sp] = $r44r45r46r47
+	so PT_Q56[$sp] = $r56r57r58r59
 	get $r4 = $lc
 	;;
-	so PT_Q48[$sp] = $r48r49r50r51
-	;;
-	so PT_Q52[$sp] = $r52r53r54r55
-	get $r6 = $ls
-	;;
-	so PT_Q56[$sp] = $r56r57r58r59
-	;;
 	so PT_Q12[$sp] = $r60r61r62r63
+	get $r6 = $ls
 	;;
 	so PT_CS_SPC_SPS_ES[$sp] = $r0r1r2r3
 	;;
@@ -233,6 +239,13 @@ _check_ok:
 	 */
 	cb.deqz $r5? _restore_regs
 	;;
+	/*
+	 * Work pending can potentially call a signal handler and then return
+	 * via rt_sigreturn. Return path will be different (restore all regs)
+	 * and hence all registers are needed to be saved.
+	 */
+	save_callee
+	;;
 	call work_pending
 	;;
 _restore_regs:
@@ -278,30 +291,24 @@ _restore_regs:
 	 */
 	andd $r13 = $r13, $r14
 	;;
-	lo $r36r37r38r39 = PT_Q36[$sp]
+	lq $r16r17 = PT_R16R17[$sp]
 	set $le = $r5
 	;;
 	lo $r32r33r34r35 = PT_Q32[$sp]
 	set $ls = $r6
 	;;
-	lo $r28r29r30r31 = PT_Q28[$sp]
+	lo $r36r37r38r39 = PT_Q36[$sp]
 	set $ra = $r7
 	;;
-	lo $r24r25r26r27 = PT_Q24[$sp]
+	lo $r8r9r10r11 = PT_Q8[$sp]
 	set $cs = $r0
 	;;
-	lo $r20r21r22r23 = PT_Q20[$sp]
+	lo $r4r5r6r7 = PT_Q4[$sp]
 	set $spc = $r1
 	;;
-	lo $r16r17r18r19 = PT_Q16[$sp]
+	lo $r0r1r2r3 = PT_Q0[$sp]
 	;;
 	wfxl $sps = $r13
-	;;
-	lo $r8r9r10r11 = PT_Q8[$sp]
-	;;
-	lo $r4r5r6r7 = PT_Q4[$sp]
-	;;
-	lo $r0r1r2r3 = PT_Q0[$sp]
 	;;
 	lo $r12r13r14r15 = PT_Q12[$sp]
 .endm
@@ -869,6 +876,13 @@ check_work_pending:
 	/* If no work pending, directly jump to ret_to_user */
 	cb.deqz $r2? ret_to_user
 	;;
+	/*
+	 * Work pending can potentially call a signal handler and then return
+	 * via rt_sigreturn. Return path will be different (restore all regs)
+	 * and hence all registers are needed to be saved.
+	 */
+	save_callee
+	;;
 	copyd $r0 = $sp
 	call work_pending
 	;;
@@ -1075,6 +1089,19 @@ ENTRY(ret_from_fork)
 	call do_syscall_trace_exit
 	;;
 ret_from_kernel:
+	/*
+	 * When returning from a fork, the child will take this path.
+	 * Since we did not restore callee in restore_regs_after_exception, we
+	 * must do it before.
+	 */
+	lo $r28r29r30r31 = PT_Q28[$sp]
+	;;
+	lo $r24r25r26r27 = PT_Q24[$sp]
+	;;
+	lo $r20r21r22r23 = PT_Q20[$sp]
+	;;
+	lq $r18r19 = PT_R18R19[$sp]
+	;;
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	/**
 	* Debug code expect entry stack to be stored at current $sp.
