@@ -101,6 +101,13 @@ int foo(void)
 	OFFSET(CTX_SWITCH_Q28, task_struct, thread.ctx_switch.r28);
 	OFFSET(CTX_SWITCH_FP, task_struct, thread.ctx_switch.fp);
 
+#ifdef CONFIG_ENABLE_TCA
+	OFFSET(CTX_SWITCH_TCA_REGS, task_struct, thread.ctx_switch.tca_regs[0]);
+	OFFSET(CTX_SWITCH_TCA_REGS_SAVED, task_struct,
+					thread.ctx_switch.tca_regs_saved);
+	DEFINE(TCA_REG_SIZE, sizeof(struct tca_reg));
+#endif
+
 	/* Save area offset */
 	OFFSET(TASK_THREAD_SAVE_AREA, task_struct, thread.save_area);
 
