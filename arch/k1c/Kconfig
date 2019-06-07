@@ -150,6 +150,14 @@ config SECURE_DAME_HANDLING
 	  /!\ Do not disable unless you want to open a giant breach between
 	  user and kernel /!\
 
+config ENABLE_TCA
+	bool "Enable TCA coprocessor support"
+	default y
+	help
+	  This option enables TCA coprocessor support. It will allow the user to
+	  use the coprocessor and save registers on context switch if used.
+	  Registers content will also be cleared when switching.
+
 config SMP
 	bool "Symmetric multi-processing support"
 	default n
