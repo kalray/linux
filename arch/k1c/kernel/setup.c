@@ -84,6 +84,13 @@ void __init setup_processor(void)
 	/* Clear performance monitor 0 */
 	k1c_sfr_set_mask(K1C_SFR_PMC, K1C_SFR_PMC_PM0C_WFXL_MASK, 0);
 
+#ifdef CONFIG_ENABLE_TCA
+	/* Enable TCA (COE = Coprocessor Enable) */
+	k1c_sfr_set_bit(K1C_SFR_PCR, K1C_SFR_PCR_COE_SHIFT);
+#else
+	k1c_sfr_clear_bit(K1C_SFR_PCR, K1C_SFR_PCR_COE_SHIFT);
+#endif
+
 	/*
 	 * On k1c, we have speculative accesses which differ from normal
 	 * accesses by the fact their trapping policy is directed by mmc.sne
