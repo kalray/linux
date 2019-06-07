@@ -1062,6 +1062,120 @@ ENDPROC(__sys_clone)
 *                      Context switch
 ***********************************************************************/
 
+#define SAVE_TCA_REG(__reg_num, __task_reg, __zero_reg1, __zero_reg2) \
+	sv (CTX_SWITCH_TCA_REGS + (__reg_num * TCA_REG_SIZE))[__task_reg] = \
+							$a##__reg_num ;\
+	movetq $a##__reg_num##.lo = __zero_reg1, __zero_reg2 ;\
+	movetq $a##__reg_num##.hi = __zero_reg1, __zero_reg2 ;\
+	;;
+
+.macro save_tca_regs task_reg zero_reg1 zero_reg2
+	SAVE_TCA_REG(0, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(1, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(2, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(3, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(4, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(5, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(6, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(7, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(8, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(9, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(10, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(11, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(12, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(13, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(14, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(15, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(16, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(17, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(18, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(19, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(20, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(21, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(22, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(23, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(24, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(25, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(26, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(27, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(28, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(29, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(30, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(31, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(32, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(33, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(34, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(35, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(36, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(37, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(38, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(39, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(40, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(41, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(42, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(43, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(44, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(45, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(46, \task_reg, \zero_reg1, \zero_reg2)
+	SAVE_TCA_REG(47, \task_reg, \zero_reg1, \zero_reg2)
+.endm
+
+#define RESTORE_TCA_REG(__reg_num, __task_reg) \
+	lv $a##__reg_num = (CTX_SWITCH_TCA_REGS + (__reg_num * TCA_REG_SIZE)) \
+								[__task_reg] ;\
+	;;
+
+.macro restore_tca_regs task_reg
+	RESTORE_TCA_REG(0, \task_reg)
+	RESTORE_TCA_REG(1, \task_reg)
+	RESTORE_TCA_REG(2, \task_reg)
+	RESTORE_TCA_REG(3, \task_reg)
+	RESTORE_TCA_REG(4, \task_reg)
+	RESTORE_TCA_REG(5, \task_reg)
+	RESTORE_TCA_REG(6, \task_reg)
+	RESTORE_TCA_REG(7, \task_reg)
+	RESTORE_TCA_REG(8, \task_reg)
+	RESTORE_TCA_REG(9, \task_reg)
+	RESTORE_TCA_REG(10, \task_reg)
+	RESTORE_TCA_REG(11, \task_reg)
+	RESTORE_TCA_REG(12, \task_reg)
+	RESTORE_TCA_REG(13, \task_reg)
+	RESTORE_TCA_REG(14, \task_reg)
+	RESTORE_TCA_REG(15, \task_reg)
+	RESTORE_TCA_REG(16, \task_reg)
+	RESTORE_TCA_REG(17, \task_reg)
+	RESTORE_TCA_REG(18, \task_reg)
+	RESTORE_TCA_REG(19, \task_reg)
+	RESTORE_TCA_REG(20, \task_reg)
+	RESTORE_TCA_REG(21, \task_reg)
+	RESTORE_TCA_REG(22, \task_reg)
+	RESTORE_TCA_REG(23, \task_reg)
+	RESTORE_TCA_REG(24, \task_reg)
+	RESTORE_TCA_REG(25, \task_reg)
+	RESTORE_TCA_REG(26, \task_reg)
+	RESTORE_TCA_REG(27, \task_reg)
+	RESTORE_TCA_REG(28, \task_reg)
+	RESTORE_TCA_REG(29, \task_reg)
+	RESTORE_TCA_REG(30, \task_reg)
+	RESTORE_TCA_REG(31, \task_reg)
+	RESTORE_TCA_REG(32, \task_reg)
+	RESTORE_TCA_REG(33, \task_reg)
+	RESTORE_TCA_REG(34, \task_reg)
+	RESTORE_TCA_REG(35, \task_reg)
+	RESTORE_TCA_REG(36, \task_reg)
+	RESTORE_TCA_REG(37, \task_reg)
+	RESTORE_TCA_REG(38, \task_reg)
+	RESTORE_TCA_REG(39, \task_reg)
+	RESTORE_TCA_REG(40, \task_reg)
+	RESTORE_TCA_REG(41, \task_reg)
+	RESTORE_TCA_REG(42, \task_reg)
+	RESTORE_TCA_REG(43, \task_reg)
+	RESTORE_TCA_REG(44, \task_reg)
+	RESTORE_TCA_REG(45, \task_reg)
+	RESTORE_TCA_REG(46, \task_reg)
+	RESTORE_TCA_REG(47, \task_reg)
+.endm
+
 .text
 /*
  * When entering in ret_from_kernel_thread, r20 and r21 where set by
@@ -1148,9 +1262,25 @@ ENTRY(__switch_to)
 	;;
 	so CTX_SWITCH_Q28[$r0] = $r28r29r30r31
 	copyd $r17 = $sp
+	get $r2 = $cs
 	;;
 	so CTX_SWITCH_RA_SP_R18_R19[$r0] = $r16r17r18r19
+	/* Extract XMF bit which means coprocessor was used by user */
+	andd $r3 = $r2, K1C_SFR_CS_XMF_MASK
 	;;
+#ifdef CONFIG_ENABLE_TCA
+	make $r4 = 0
+	make $r5 = 0
+	make $r6 = 1
+	cb.dnez $r3? save_tca_registers
+	/* Check if next task needs TCA registers to be restored */
+	ld $r7 = CTX_SWITCH_TCA_REGS_SAVED[$r1]
+	;;
+check_restore_tca:
+	cb.dnez $r7? restore_tca_registers
+	;;
+restore_fast_path:
+#endif
 	/* Restore next task context */
 	lo $r16r17r18r19 = CTX_SWITCH_RA_SP_R18_R19[$r1]
 	;;
@@ -1167,6 +1297,22 @@ ENTRY(__switch_to)
 	;;
 	ret
 	;;
+#ifdef CONFIG_ENABLE_TCA
+save_tca_registers:
+	save_tca_regs $r0 $r4 $r5
+	;;
+	/* Indicates that we saved the TCA context */
+	sb CTX_SWITCH_TCA_REGS_SAVED[$r0] = $r6
+	goto check_restore_tca
+	;;
+restore_tca_registers:
+	restore_tca_regs $r1
+	;;
+	/* Clear TCA registers saved hint */
+	sb CTX_SWITCH_TCA_REGS_SAVED[$r1] = $r5
+	goto restore_fast_path
+	;;
+#endif
 ENDPROC(__switch_to)
 
 
