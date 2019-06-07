@@ -44,6 +44,16 @@ extern char _exception_start;
 
 #define SAVE_AREA_SIZE	8
 
+#define TCA_REG_COUNT	48
+
+/* TCA registers are 256 bits wide */
+struct tca_reg {
+	uint64_t x;
+	uint64_t y;
+	uint64_t z;
+	uint64_t t;
+};
+
 /**
  * According to k1c ABI, the following registers are callee-saved:
  * fp (r14) r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31.
@@ -79,6 +89,11 @@ struct ctx_switch_regs {
 	uint64_t r29;
 	uint64_t r30;
 	uint64_t r31;
+
+#ifdef CONFIG_ENABLE_TCA
+	struct tca_reg tca_regs[TCA_REG_COUNT];
+	uint8_t tca_regs_saved;
+#endif
 };
 
 struct debug_info {
