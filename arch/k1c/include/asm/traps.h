@@ -69,6 +69,9 @@ extern void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs);
 extern void do_writetoclean(uint64_t es, uint64_t ea, struct pt_regs *regs);
 #endif
 
+void user_do_sig(struct pt_regs *regs, int signo, int code,
+	unsigned long addr, struct task_struct *tsk);
+
 #endif /* __ASSEMBLY__ */
 
 #endif
