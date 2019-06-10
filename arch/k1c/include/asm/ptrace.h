@@ -146,8 +146,6 @@ struct pt_regs {
 	 */
 };
 
-#define user_stack_pointer(regs)	((regs)->sp)
-#define instruction_pointer(regs)	((regs)->spc)
 #define pl(__reg) k1c_sfr_field_val(__reg, PS, PL)
 
 /* Privilege level is relative in $sps, so 1 indicates current PL + 1 */
@@ -188,5 +186,15 @@ static inline unsigned long get_current_sp(void)
 
 extern char *user_scall_rt_sigreturn_end;
 extern char *user_scall_rt_sigreturn;
+
+static inline unsigned long instruction_pointer(struct pt_regs *regs)
+{
+	return regs->spc;
+}
+
+static inline unsigned long user_stack_pointer(struct pt_regs *regs)
+{
+	return regs->sp;
+}
 
 #endif	/* _ASM_K1C_PTRACE_H */
