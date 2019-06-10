@@ -203,7 +203,7 @@ bad_area:
 	up_read(&mm->mmap_sem);
 
 	if (user_mode(regs)) {
-		force_sig_fault(SIGSEGV, code, (void __user *) ea, tsk);
+		user_do_sig(regs, SIGSEGV, code, ea, tsk);
 		return;
 	}
 
@@ -248,7 +248,7 @@ do_sigbus:
 	if (!user_mode(regs))
 		goto no_context;
 
-	force_sig_fault(SIGBUS, BUS_ADRERR, (void __user *) ea, tsk);
+	user_do_sig(regs, SIGBUS, BUS_ADRERR, ea, tsk);
 
 	return;
 
