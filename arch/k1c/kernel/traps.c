@@ -21,6 +21,8 @@
 #include <asm/ptrace.h>
 #include <asm/stacktrace.h>
 
+int show_unhandled_signals = 1;
+
 static DEFINE_SPINLOCK(die_lock);
 
 static trap_handler_func trap_handler_table[K1C_TRAP_COUNT] = { NULL };
@@ -83,15 +85,29 @@ void die(struct pt_regs *regs, unsigned long ea, const char *str)
 		do_exit(SIGSEGV);
 }
 
+void user_do_sig(struct pt_regs *regs, int signo, int code,
+	unsigned long addr, struct task_struct *tsk)
+{
+	if (show_unhandled_signals && unhandled_signal(tsk, signo)
+	    && printk_ratelimit()) {
+		pr_info("%s[%d]: unhandled signal %d code 0x%x at 0x%lx",
+			tsk->comm, task_pid_nr(tsk), signo, code, addr);
+		print_vma_addr(KERN_CONT " in ", instruction_pointer(regs));
+		pr_cont("\n");
+		show_regs(regs);
+	}
+	if (signo == SIGKILL) {
+		force_sig(signo, tsk);
+		return;
+	}
+	force_sig_fault(signo, code, (void __user *) addr, tsk);
+}
+
 static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
 			  int signo, int sigcode)
 {
 	if (user_mode(regs)) {
-		if (signo == SIGKILL) {
-			force_sig(signo, current);
-			return;
-		}
-		force_sig_fault(signo, sigcode, (void __user *) ea, current);
+		user_do_sig(regs, signo, sigcode, ea, current);
 		return;
 	}
 
