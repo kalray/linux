@@ -49,18 +49,19 @@ long _sys_rt_sigreturn(void)
 {
 	struct pt_regs *regs = current_pt_regs();
 	struct rt_sigframe __user *frame;
+	struct task_struct *task;
 	sigset_t set;
 
 	current->restart_block.fn = do_no_restart_syscall;
+
+	frame = (struct rt_sigframe __user *) user_stack_pointer(regs);
 
 	/*
 	 * Stack is not aligned but should be !
 	 * User probably did some malicious things.
 	 */
-	if (regs->sp & STACK_ALIGN_MASK)
+	if (user_stack_pointer(regs) & STACK_ALIGN_MASK)
 		goto badframe;
-
-	frame = (struct rt_sigframe __user *)regs->sp;
 
 	if (!access_ok(frame, sizeof(*frame)))
 		goto badframe;
@@ -80,7 +81,15 @@ long _sys_rt_sigreturn(void)
 	return regs->r0;
 
 badframe:
-	force_sig(SIGSEGV, current);
+	task = current;
+	if (show_unhandled_signals) {
+		pr_info_ratelimited(
+			"%s[%d]: bad frame in %s: frame=%p pc=%p sp=%p\n",
+			task->comm, task_pid_nr(task), __func__,
+			frame, (void *) instruction_pointer(regs),
+			(void *) user_stack_pointer(regs));
+	}
+	force_sig(SIGSEGV, task);
 	return 0;
 }
 
