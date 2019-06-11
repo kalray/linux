@@ -53,3 +53,4 @@ generic-y += user.h
 generic-y += vga.h
 generic-y += word-at-a-time.h
 generic-y += local64.h
+generic-y += xor.h
