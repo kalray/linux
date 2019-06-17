@@ -244,16 +244,10 @@ Huge page
 
 Currently only 3 level page table has been implemented for 4Ko base page size.
 So the page shift is 12 bits, the pmd shift is 21 and the pgdir shift is 30
-bits. This choice implies that for 4Ko base page size we can support only
-2Mo or 1Go size for huge page.
+bits. This choice implies that for 4Ko base page size if we use a PMD as a huge
+page the size will be 2Mo and if we use a PUD as a huge page it will be 1Go.
 
-If we implement the 4 level page table for 64Ko base page size it will allow
-to have 256Mo or 8Go.
-
-That means that if we want to support 512Mo for huge page we will need to
-implement a mechanism that will map what has been done on ARM64 with the
-continuous bit. Use several pages for one entry. For example, if we use
-16 entries at the PTE level it will allow to map one entry of 64Ko. And if
-we use 256 entries at the PMD level we will be able to map a huge page of
-512Mo. By doing this we will be able to support 64Ko, 2Mo and 512Mo for a
-4Ko base page size. Today only 2Mo for huge page is supported.
+To support other huge page sizes (64Ko and 512Mo) we need to use several
+contiguous entries in the page table. For huge page of 64Ko we will need to
+use 16 entries in the PTE and for a huge page of 512Mo it means that 256
+entries in PMD will be used.
