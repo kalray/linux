@@ -30,10 +30,16 @@ struct mm_struct;
 struct vm_area_struct;
 
 /*
- * Hugetlb definitions. Currently we only support huge page of 2Mo with
- * 4Ko base page size.
+ * Hugetlb definitions. All sizes are supported (64Ko, 2Mo and 512Mo).
  */
-#define HUGE_MAX_HSTATE		1
+#if defined(CONFIG_K1C_4K_PAGES)
+#define HUGE_MAX_HSTATE		3
+#elif defined(CONFIG_K1C_64K_PAGES)
+#define HUGE_MAX_HSTATE		2
+#else
+#error "Unsupported page size"
+#endif
+
 #define HPAGE_SHIFT		PMD_SHIFT
 #define HPAGE_SIZE		BIT(HPAGE_SHIFT)
 #define HPAGE_MASK		(~(HPAGE_SIZE - 1))
