@@ -11,9 +11,19 @@
 #define _ASM_K1C_HUGETLB_H
 
 #include <asm/pgtable.h>
+
+#define __HAVE_ARCH_HUGE_SET_HUGE_PTE_AT
+#define __HAVE_ARCH_HUGE_PTEP_GET_AND_CLEAR
+
 #include <asm-generic/hugetlb.h>
 
 #define pmd_mkhuge(pmd)	(__pmd(pmd_val(pmd) | _PAGE_HUGE))
+
+extern void set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
+			    pte_t *ptep, pte_t pte);
+
+extern pte_t huge_ptep_get_and_clear(struct mm_struct *mm,
+				     unsigned long addr, pte_t *ptep);
 
 static inline int is_hugepage_only_range(struct mm_struct *mm,
 					 unsigned long addr,
