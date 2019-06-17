@@ -13,7 +13,7 @@
 #include <asm/tlb_defs.h>
 
 #if defined(CONFIG_HUGETLB_PAGE)
-#define HUGE_PAGE_SIZE (MMC_PMJ_2M)
+#define HUGE_PAGE_SIZE (MMC_PMJ_64K | MMC_PMJ_2M | MMC_PMJ_512M)
 #else
 #define HUGE_PAGE_SIZE (0)
 #endif
