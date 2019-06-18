@@ -3,6 +3,12 @@
     "linux_checkpatch": {
       "type": "checkpatch",
       "bin": ["./scripts/checkpatch.pl"]
+    },
+    "linux_coccinelle": {
+      "type": "script-and-regex",
+      "include": "(\\.(c)$)",
+      "script-and-regex.script": "sh -c 'make coccicheck MODE=report M=\"$0\"'",
+      "script-and-regex.regex": "/^(.*):(?P<line>[0-9]*):([0-9]*)-([0-9]*): (?P<severity>[A-Z]*): (?P<message>.*)$/m"
     }
   }
 }
