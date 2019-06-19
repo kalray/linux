@@ -128,6 +128,19 @@ config DA8XX_REMOTEPROC
 	  It's safe to say n here if you're not interested in multimedia
 	  offloading.
 
+config K1C_REMOTEPROC
+	tristate "K1C Remoteproc support"
+	depends on K1C
+	select MAILBOX
+	select K1C_MBOX
+	select MFD_SYSCON
+	help
+	  Say Y here to support k1c remote clusters via the remote
+	  processor framework.
+
+	  It's safe to say N here if you're not interested in the k1c clusters
+	  or just want to use a bare minimum kernel.
+
 config KEYSTONE_REMOTEPROC
 	tristate "Keystone Remoteproc support"
 	depends on ARCH_KEYSTONE
