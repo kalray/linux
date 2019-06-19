@@ -10,9 +10,11 @@
 #ifndef _ASM_K1C_MMU_H
 #define _ASM_K1C_MMU_H
 
+#include <linux/bug.h>
 #include <linux/types.h>
 #include <linux/threads.h>
 
+#include <asm/page.h>
 #include <asm/sfr.h>
 #include <asm/tlb_defs.h>
 
@@ -155,6 +157,16 @@ static inline void k1c_mmu_probetlb(void)
 	k1c_mmu_add_entry(MMC_SB_LTLB, way, __invalid_entry); \
 } while (0)
 
+static inline int get_page_size_shift(int ps)
+{
+	/*
+	 * Use the same assembly trick using sbmm to directly get the page size
+	 * shift using a constant which encodes all page size shifts
+	 */
+	return __builtin_k1_sbmm8(K1C_PS_SHIFT_MATRIX,
+				  K1C_SBMM_BYTE_SEL << ps);
+}
+
 static inline struct k1c_tlb_format tlb_mk_entry(
 	void *paddr,
 	void *vaddr,
@@ -166,15 +178,19 @@ static inline struct k1c_tlb_format tlb_mk_entry(
 	unsigned int es)
 {
 	struct k1c_tlb_format entry;
+	u64 mask = ULONG_MAX << get_page_size_shift(ps);
 
-	/**
+	BUG_ON(ps >= (1 << K1C_SFR_TEL_PS_WIDTH));
+
+	/*
 	 * 0 matches the virtual space:
 	 * - either we are virtualized and the hypervisor will set it
 	 * for us when using writetlb
 	 * - Or we are native and the virtual space is 0
 	 */
-	entry.teh_val = TLB_MK_TEH_ENTRY((uintptr_t) vaddr, 0, global, asn);
-	entry.tel_val = TLB_MK_TEL_ENTRY((uintptr_t) paddr, ps, es, cp, pa);
+	entry.teh_val = TLB_MK_TEH_ENTRY((uintptr_t)vaddr & mask, 0, global,
+					 asn);
+	entry.tel_val = TLB_MK_TEL_ENTRY((uintptr_t)paddr, ps, es, cp, pa);
 
 	return entry;
 }
