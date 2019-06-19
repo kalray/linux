@@ -20,6 +20,8 @@
 #include <asm/traps.h>
 #include <asm/unistd.h>
 
+#define MMU_SET_MASK		((1 << K1C_SFR_MMC_SS_WIDTH) - 1)
+
 /* Mask to replicate data from 32bits LSB to MSBs */
 #define REPLICATE_32_MASK 0x0804020108040201
 
@@ -359,15 +361,11 @@ _restore_regs:
 	extfz $r7 = $r7, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
 	/* Load PGD entry offset */
 	ld.xs $r1 = $r3[$r1]
-	/* Extract virt page from ea */
-	andd $r4 = $r0, (~(PAGE_SIZE - 1))
 	/* Load per_cpu_offset */
 #if defined(CONFIG_SMP)
 	make $r5 = __per_cpu_offset
 #endif
 	;;
-	/* extract TLB set from ea (6 lsb of virtual page) */
-	extfz $r5 = $r4, PAGE_SHIFT + 5, PAGE_SHIFT
 	/* extract PMD offset*/
 	extfz $r3 = $r0, (ASM_PMD_SHIFT + ASM_PMD_BITS - 1), ASM_PMD_SHIFT
 	/* If pgd entry is null -> out */
@@ -383,10 +381,6 @@ _restore_regs:
 	/* Load PMD entry offset and keep pointer to the entry for huge page */
 	addx8d $r2 = $r3, $r1
 	ld.xs $r1 = $r3[$r1]
-	/* Compute per_cpu_offset + current way of set address */
-	addd $r5 = $r5, $r7
-	/* Get exception cause for access type handling (page dirtying) */
-	get $r7 = $es
 	;;
 	/* check if it is a huge page */
 	extfz $r6 = $r1, _PAGE_HUGE_SHIFT, _PAGE_HUGE_SHIFT
@@ -406,12 +400,45 @@ _restore_regs:
 	addx8d $r2 = $r3, $r1
 	;;
 _pte_is_set:
+	/*
+	 * From now on, we have the pte value in $r1 so we can extract the page
+	 * size. This value is stored as it is expected by the MMU (ie between
+	 * 0 and 3).
+	 * Note that page size value is located at the same place as in $tel
+	 * and this is checked at build time so we can use TEL_PS defines.
+	 */
+	extfz $r5 = $r1, K1C_SFR_END(TEL_PS), K1C_SFR_START(TEL_PS)
+	make $r4 = K1C_PS_SHIFT_MATRIX
+	make $r6 = K1C_SBMM_BYTE_SEL
+	;;
+	/* Generate the byte selection for sbmm */
+	slld $r6 = $r6, $r5
+	;;
+	/* Get the shift value */
+	sbmm8 $r5 = $r4, $r6
+	make $r6 = 0xFFFFFFFFFFFFFFFF
+	;;
+	/* extract TLB set from ea (6 lsb of virtual page) */
+	srld $r5 = $r0, $r5
+	/* Generate ea masking according to page shift */
+	slld $r6 = $r6, $r5
+	;;
+	/* Mask to get the set value */
+	andd $r5 = $r5, MMU_SET_MASK
+	/* Extract virt page from ea */
+	andd $r4 = $r0, $r6
+	;;
+	/* Compute per_cpu_offset + current way of set address */
+	addd $r5 = $r5, $r7
+	/* Get exception cause for access type handling (page dirtying) */
+	get $r7 = $es
+	;;
 	/* Load current way to use for current set */
 	lbz $r0 = jtlb_current_set_way[$r5]
 	/* Clear way and select JTLB */
 	make $r6 = MMC_SEL_JTLB_CLEAR_WAY
 	;;
-	/* Keep only the two LSB */
+	/* Keep only the two LSB for way value */
 	andd $r0 = $r0, 0x3
 	/* Check if the access was a "write" access */
 	andd $r7 = $r7, (K1C_TRAP_RWX_WRITE << K1C_SFR_ES_RWX_SHIFT)

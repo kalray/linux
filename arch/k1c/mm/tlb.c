@@ -291,6 +291,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	struct mm_struct *mm;
 	unsigned long asn;
 	unsigned long flags;
+	unsigned int shifted_addr;
 	int cpu = smp_processor_id();
 
 	if (unlikely(ptep == NULL))
@@ -362,9 +363,11 @@ void update_mmu_cache(struct vm_area_struct *vma,
 		asn,
 		TLB_ES_A_MODIFIED);
 
+	shifted_addr = address >> get_page_size_shift(ps);
+	set = shifted_addr & MMU_JTLB_SET_MASK;
+
 	local_irq_save(flags);
-	/* Compute way to use to store the new translation */
-	set = (address >> PAGE_SHIFT) & MMU_JTLB_SET_MASK;
+
 	way = get_cpu_var(jtlb_current_set_way)[set]++;
 	put_cpu_var(jtlb_current_set_way);
 
