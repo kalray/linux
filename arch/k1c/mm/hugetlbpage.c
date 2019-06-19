@@ -11,7 +11,6 @@
 #include <linux/hugetlb.h>
 
 #define K1C_PAGE_2M        UL(TLB_PS_2M)
-#define K1C_PAGE_2M_SHIFT  21
 
 pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
 			 struct page *page, int writable)

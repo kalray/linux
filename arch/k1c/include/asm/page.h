@@ -34,6 +34,42 @@
  */
 #define ARCH_PFN_OFFSET	((unsigned long)(PHYS_OFFSET >> PAGE_SHIFT))
 
+/*
+ * Define _SHIFT, _SIZE and _MASK corresponding of the different page
+ * sizes of the K1C.
+ */
+#define K1C_PAGE_4K_SHIFT 12
+#define K1C_PAGE_4K_SIZE  BIT(K1C_PAGE_4K_SHIFT)
+#define K1C_PAGE_4K_MASK  (~(K1C_PAGE_4K_SIZE - 1))
+
+#define K1C_PAGE_64K_SHIFT 16
+#define K1C_PAGE_64K_SIZE  BIT(K1C_PAGE_64K_SHIFT)
+#define K1C_PAGE_64K_MASK  (~(K1C_PAGE_64K_SIZE - 1))
+
+#define K1C_PAGE_2M_SHIFT 21
+#define K1C_PAGE_2M_SIZE  BIT(K1C_PAGE_2M_SHIFT)
+#define K1C_PAGE_2M_MASK  (~(K1C_PAGE_2M_SIZE - 1))
+
+#define K1C_PAGE_512M_SHIFT  29
+#define K1C_PAGE_512M_SIZE  BIT(K1C_PAGE_512M_SHIFT)
+#define K1C_PAGE_512M_MASK  (~(K1C_PAGE_512M_SIZE - 1))
+
+/* Encode all page shift into one 32bit constant for sbmm */
+#define K1C_PS_SHIFT_MATRIX	((K1C_PAGE_512M_SHIFT << 24) | \
+				 (K1C_PAGE_2M_SHIFT << 16) | \
+				 (K1C_PAGE_64K_SHIFT << 8) | \
+				 (K1C_PAGE_4K_SHIFT))
+
+/*
+ * Select a byte using sbmm8. When shifted by one bit left, we get the next
+ * byte.
+ * For instance using this default constant with sbmm yields the value between
+ * first byte of the double word.
+ * If constant is shifted by 1, the value is now 0x0000000000000002ULL and this
+ * yield the second byte and so on, and so on !
+ */
+#define K1C_SBMM_BYTE_SEL	0x01
+
 #ifndef __ASSEMBLY__
 
 #include <linux/string.h>
