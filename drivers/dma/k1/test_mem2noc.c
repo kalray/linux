@@ -33,13 +33,13 @@ int test_mem2noc1(struct k1c_dma_noc_test_dev *dev)
 	int i, ret = 0;
 	enum k1c_dma_dir_type dir;
 	struct tbuf *rx_b, *tx_b;
-	struct k1c_dma_chan_param param;
 	int nb_buf[K1C_DMA_DIR_TYPE_MAX] = {NB_BUF, NB_BUF};
 	struct k1c_dma_slave_cfg cfg = {
 		.cfg = {
 			.direction = DMA_MEM_TO_DEV, // DEPRECATED
 			.dst_addr = 0, // NOT USED
 		},
+		.trans_type = K1C_DMA_TYPE_MEM2NOC,
 		.noc_route = 0x8,  /* 0x8 loopback */
 		.qos_id = QOS_ID,
 		.global = K1C_DMA_CTX_GLOBAL,
@@ -54,25 +54,19 @@ int test_mem2noc1(struct k1c_dma_noc_test_dev *dev)
 	// Channels RX, TX
 	for (dir = 0; dir < K1C_DMA_DIR_TYPE_MAX; ++dir) {
 		for (i = 0; i < NB_TRANSFERS; ++i) {
-			param.dir = dir;
-			param.rx_tag = RX_TAG + i;
-			param.trans_type = K1C_DMA_TYPE_MEM2NOC;
-			// Allocate NB_TRANSFERS rx_job_queue in the same cache
-			param.rx_cache_id = 0;
-			dev_dbg(dev->dev, "get channel %d, rx_tag %llu, param.dir %d\n",
-				i, param.rx_tag, param.dir);
-			chan[dir][i] = k1c_dma_get_channel(&param);
+			chan[dir][i] =
+				of_dma_request_slave_channel(dev->dev->of_node,
+				(dir == K1C_DMA_DIR_TYPE_RX ? "rx" : "tx"));
 			if (!chan[dir][i]) {
 				dev_err(dev->dev, "dma request dir: %d chan[%d] failed\n",
 					dir, i);
 				return -EINVAL;
 			}
-		}
-	}
-
-	dev_dbg(dev->dev, "slave config\n");
-	for (dir = 0; dir < K1C_DMA_DIR_TYPE_MAX; ++dir) {
-		for (i = 0; i < NB_TRANSFERS; ++i) {
+			cfg.dir = dir;
+			cfg.rx_tag = RX_TAG + i;
+			// Allocate NB_TRANSFERS rx_job_queue in the same cache
+			dev_dbg(dev->dev, "Config channel %d, rx_tag %d, dir %d\n",
+				i, cfg.rx_tag, cfg.dir);
 			ret = dmaengine_slave_config(chan[dir][i], &cfg.cfg);
 			if (ret) {
 				dev_err(dev->dev, "slave config dir: %d chan[%d] failed (%d)\n",

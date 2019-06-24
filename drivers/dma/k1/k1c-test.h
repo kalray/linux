@@ -11,6 +11,7 @@
 #define K1C_DMA_TEST_H
 
 #include <linux/platform_device.h>
+#include <linux/of_dma.h>
 
 /* K1C_DMA_TEST_TX_BUFF_SIZE initial buffer size used for buf (un)alignement */
 #define K1C_DMA_TEST_TX_BUFF_SIZE    (129)
