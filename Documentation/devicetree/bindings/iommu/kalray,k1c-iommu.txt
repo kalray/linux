@@ -7,7 +7,7 @@ Required properties:
 - reg               : Base address and size of the IOMMU.
 - interrupts        : List describing the wired interrupt sources.
 - interrupt-names   : To be described
-- #iommu-cells      : Should be <0>
+- #iommu-cells      : Should be <1>
 		      See the generic IOMMU binding described in
                         devicetree/bindings/pci/pci-iommu.txt
 
@@ -22,7 +22,7 @@ Example:
         interrupt-names = "rx_nomapping", "rx_protection", "rx_parity",
                           "tx_nomapping", "tx_protection", "tx_parity";
         interrupt-parent = <&apic_gic>;
-        #iommu-cells = <0>;
+        #iommu-cells = <1>;
     };
 
 Example with devices that use this iommu:
@@ -34,7 +34,7 @@ Example with devices that use this iommu:
             dma-channels = <64>;
             dma-requests = <127>;
             msi-parent = <&apic_mailbox>;
-            iommus = <&iommu_noc>;
+            iommus = <&iommu_noc 12>;  // ASN 12 is used
     };
 
     test_dmaengine@0 {
@@ -42,5 +42,15 @@ Example with devices that use this iommu:
             dmas = <&dma_noc 1>;
             dma-names = "k1c-dma-noc";
             cluster-rx = <2>;  // rx_tag to cluster
-            iommus = <&iommu_noc>;
+            iommus = <&iommu_noc 12>; // ASN 12 is used
+    };
+
+Example with a PCI device:
+    pcie: pcie@512fd00000 {
+            compatible = "kalray,k1c-pcie-rc";
+            ....
+            //iommu-map = <0x0 &iommu_pci ASN_NUM 0x10000>;  // all requester id map to ASN_NUM
+            iommu-map = <0x0 &iommu_pci 0x0 0x10000>;  // all requester id map to ASN 0
+            iommu-map-mask = <0x0000>;
+            ....
     };
