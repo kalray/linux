@@ -9,6 +9,7 @@
 #ifndef _UAPI_ASM_K1C_PTRACE_H
 #define _UAPI_ASM_K1C_PTRACE_H
 
+#include <linux/types.h>
 /*
  * User-mode register state for core dumps, ptrace, sigcontext
  *
@@ -101,5 +102,14 @@ struct user_pt_regs {
 	unsigned long spc;
 };
 
+/* TCA registers structure exposed to user */
+struct user_tca_regs {
+	struct {
+		__u64 x;
+		__u64 y;
+		__u64 z;
+		__u64 t;
+	} regs[48];
+};
 
 #endif /* _UAPI_ASM_K1C_PTRACE_H */
