@@ -21,7 +21,7 @@ Example:
 		 dma-requests = <32>;
 		 msi-parent = <&apic_mailbox>;
 		 memory-region = <&dma_noc_reserved>;
-		 iommus = <&iommu_noc>;
+		 iommus = <&iommu_noc 12>;
 	};
 
 * DMA client
