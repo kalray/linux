@@ -13,5 +13,5 @@ test_dmaengine@0 {
 	compatible = "kalray,k1c-dma-noc-test";
 	dmas = <&dma_noc 1>;
 	dma-names = "k1c-dma-noc";
-	iommus = <&iommu_noc>;
+	iommus = <&iommu_noc 12>;
 };
