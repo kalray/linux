@@ -6,17 +6,42 @@ Required properties:
 - compatible: Should be "kalray,k1c-dma-noc"
 - reg: DMA NOC registers and length
 - dma-channels: number of used channels
-- dma-requests: max number of request per channel
+- dma-requests: max number of requests per channel
 - msi-parent: mailbox use for MSI
+- memory-region: optional reserved region for dma queue allocation
+- iommus: optional iommu
 
 Example:
 
-/* DMA NOC*/
-dma_noc: dma_noc@0x800000 {
-	 compatible = "kalray,k1c-dma-noc";
-	 #dma-cells = <1>;
-	 reg = <0 0x1800000 0 0x100000>;
-	 dma-channels = <64>;
-	 dma-requests = <127>;
-	 msi-parent = <&apic_mailbox>;
- };
+	dma_noc: dma_noc@0x800000 {
+		 compatible = "kalray,k1c-dma-noc";
+		 #dma-cells = <1>;
+		 reg = <0 0x1800000 0 0x100000>;
+		 dma-channels = <128>;
+		 dma-requests = <32>;
+		 msi-parent = <&apic_mailbox>;
+		 memory-region = <&dma_noc_reserved>;
+		 iommus = <&iommu_noc>;
+	};
+
+* DMA client
+
+DMA clients connected to the Kalray DMA NOC controller must use the format
+described in the dma.txt file, using a one-cell specifier for each channel:
+
+1. Channel id (for RX channel, it also specifies the rx_tag of the channel)
+
+Usage :
+  - dmas: <&dma_noc id> arg id is the channel id per direction
+  - dma-names: direction "rx"/"tx"
+
+Example:
+
+	mac: mac@10050000 {
+		dmas = <&dma_noc 1>,  <&dma_noc 1>;
+		dma-names = "rx", "tx";
+	};
+
+Channel can then be requested using:
+   of_dma_request_slave_channel(of_node, (dir == K1C_DMA_DIR_TYPE_RX ? "rx" : "tx"));
+

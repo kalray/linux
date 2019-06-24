@@ -153,12 +153,6 @@ int test_mem2dev1(struct k1c_dma_noc_test_dev *dev,
 	dma_cookie_t cookie[K1C_DMA_DIR_TYPE_MAX][NB_BUF];
 	int j, dir, ret = 0;
 	struct tbuf *rx_b, *tx_b;
-	struct k1c_dma_chan_param param = {
-		.rx_tag = RX_TAG,
-		.dir = K1C_DMA_DIR_TYPE_RX,
-		.trans_type = K1C_DMA_TYPE_MEM2ETH,
-		.rx_cache_id = 0
-	};
 	int nb_buf[K1C_DMA_DIR_TYPE_MAX] = {nb_rx_buf, nb_tx_buf};
 	dma_cookie_t *tx_cid[K1C_DMA_DIR_TYPE_MAX] = {
 		&cookie[K1C_DMA_DIR_TYPE_RX][0], &cookie[K1C_DMA_DIR_TYPE_TX][0]
@@ -168,6 +162,8 @@ int test_mem2dev1(struct k1c_dma_noc_test_dev *dev,
 			.direction = DMA_MEM_TO_DEV, // DEPRECATED
 			.dst_addr = 0, // NOT USED
 		},
+		.rx_tag = RX_TAG,
+		.trans_type = K1C_DMA_TYPE_MEM2ETH,
 		.noc_route = 0x8,  /* 0x8 loopback */
 		.qos_id = QOS_ID,
 		.global = K1C_DMA_CTX_GLOBAL,
@@ -186,8 +182,9 @@ int test_mem2dev1(struct k1c_dma_noc_test_dev *dev,
 
 	// Channels RX, TX
 	for (dir = 0; dir < K1C_DMA_DIR_TYPE_MAX; ++dir) {
-		param.dir = dir;
-		chan[dir] = k1c_dma_get_channel(&param);
+		cfg.dir = dir;
+		chan[dir] = of_dma_request_slave_channel(dev->dev->of_node,
+				(dir == K1C_DMA_DIR_TYPE_RX ? "rx" : "tx"));
 		if (!chan[dir]) {
 			dev_err(dev->dev, "dma request chan[%d] failed\n", dir);
 			return -EINVAL;

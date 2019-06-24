@@ -520,25 +520,30 @@ static void k1c_dma_rx_queues_stop(struct k1c_dma_phy *phy)
 		k1c_dma_jobq_writeq(phy, 1ULL, K1C_DMA_RX_JOB_Q_STOP_OFFSET);
 }
 
-int k1c_dma_init_queues(struct k1c_dma_phy *phy,
+int k1c_dma_init_rx_queues(struct k1c_dma_phy *phy,
 		enum k1c_dma_transfer_type trans_type)
 {
 	int ret = 0;
 
 	k1c_dma_stop_queues(phy);
-	if (phy->dir == K1C_DMA_DIR_TYPE_RX) {
-		if (trans_type == K1C_DMA_TYPE_MEM2ETH) {
-			ret = k1c_dma_pkt_rx_job_queue_init(phy);
-			if (!ret)
-				ret = k1c_dma_pkt_rx_channel_queue_init(phy);
-		} else if (trans_type == K1C_DMA_TYPE_MEM2NOC) {
-			ret = k1c_dma_fifo_rx_channel_queue_init(phy);
-		}
-	} else {
-		ret = k1c_dma_tx_job_queue_init(phy);
+	if (trans_type == K1C_DMA_TYPE_MEM2ETH) {
+		ret = k1c_dma_pkt_rx_job_queue_init(phy);
 		if (!ret)
-			ret = k1c_dma_tx_completion_init(phy);
-	}
+			ret = k1c_dma_pkt_rx_channel_queue_init(phy);
+	} else if (trans_type == K1C_DMA_TYPE_MEM2NOC)
+		ret = k1c_dma_fifo_rx_channel_queue_init(phy);
+
+	return ret;
+}
+
+int k1c_dma_init_tx_queues(struct k1c_dma_phy *phy)
+{
+	int ret = 0;
+
+	k1c_dma_stop_queues(phy);
+	ret = k1c_dma_tx_job_queue_init(phy);
+	if (!ret)
+		ret = k1c_dma_tx_completion_init(phy);
 	return ret;
 }
 
