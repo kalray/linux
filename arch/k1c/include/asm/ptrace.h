@@ -155,8 +155,6 @@ struct pt_regs {
 #define debug_dc(es) k1c_sfr_field_val((es), ES, DC)
 
 /* ptrace */
-#define PTRACE_GETREGS		12
-#define PTRACE_SETREGS		13
 #define PTRACE_GET_HW_PT_REGS	20
 #define PTRACE_SET_HW_PT_REGS	21
 #define arch_has_single_step()	1
