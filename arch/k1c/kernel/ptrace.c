@@ -13,6 +13,7 @@
  */
 
 #include <linux/sched.h>
+#include <linux/sched.h>
 #include <linux/audit.h>
 #include <linux/tracehook.h>
 #include <linux/thread_info.h>
@@ -20,6 +21,7 @@
 #include <linux/uaccess.h>
 #include <linux/syscalls.h>
 #include <linux/signal.h>
+#include <linux/regset.h>
 #include <linux/hw_breakpoint.h>
 
 #include <asm/dame.h>
@@ -37,6 +39,13 @@
 #define get_hw_pt_addr(data) ((data)[0])
 #define get_hw_pt_len(data) ((data)[1] >> 1)
 #define hw_pt_is_enabled(data) ((data)[1] & 1)
+
+enum k1c_regset {
+	REGSET_GPR,
+#ifdef CONFIG_ENABLE_TCA
+	REGSET_TCA,
+#endif
+};
 
 static void compute_ptrace_hw_pt_rsp(uint64_t *data, struct perf_event *bp)
 {
@@ -201,39 +210,106 @@ static long ptrace_set_hw_pt_regs(struct task_struct *child, long addr,
 }
 #endif
 
+static int k1c_gpr_get(struct task_struct *target,
+			 const struct user_regset *regset,
+			 unsigned int pos, unsigned int count,
+			 void *kbuf, void __user *ubuf)
+{
+	struct user_pt_regs *regs = &task_pt_regs(target)->user_regs;
+
+	return user_regset_copyout(&pos, &count, &kbuf, &ubuf, regs, 0, -1);
+}
+
+static int k1c_gpr_set(struct task_struct *target,
+			 const struct user_regset *regset,
+			 unsigned int pos, unsigned int count,
+			 const void *kbuf, const void __user *ubuf)
+{
+	struct user_pt_regs *regs = &task_pt_regs(target)->user_regs;
+
+	return user_regset_copyin(&pos, &count, &kbuf, &ubuf, regs, 0, -1);
+}
+
+#ifdef CONFIG_ENABLE_TCA
+static int k1c_tca_reg_get(struct task_struct *target,
+			 const struct user_regset *regset,
+			 unsigned int pos, unsigned int count,
+			 void *kbuf, void __user *ubuf)
+{
+	struct ctx_switch_regs *ctx_regs = &target->thread.ctx_switch;
+	struct tca_reg *regs = ctx_regs->tca_regs;
+	int ret;
+
+	if (!ctx_regs->tca_regs_saved)
+		ret = user_regset_copyout_zero(&pos, &count, &kbuf, &ubuf,
+					       0, -1);
+	else
+		ret = user_regset_copyout(&pos, &count, &kbuf, &ubuf, regs,
+					  0, -1);
+
+	return ret;
+}
+
+static int k1c_tca_reg_set(struct task_struct *target,
+			 const struct user_regset *regset,
+			 unsigned int pos, unsigned int count,
+			 const void *kbuf, const void __user *ubuf)
+{
+	struct ctx_switch_regs *ctx_regs = &target->thread.ctx_switch;
+	struct tca_reg *regs = ctx_regs->tca_regs;
+	int ret;
+
+	if (!ctx_regs->tca_regs_saved)
+		ret = user_regset_copyin_ignore(&pos, &count, &kbuf, &ubuf,
+						0, -1);
+	else
+		ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf, regs,
+					 0, -1);
+
+	return ret;
+}
+#endif
+
+static const struct user_regset k1c_user_regset[] = {
+	[REGSET_GPR] = {
+		.core_note_type = NT_PRSTATUS,
+		.n = ELF_NGREG,
+		.size = sizeof(elf_greg_t),
+		.align = sizeof(elf_greg_t),
+		.get = &k1c_gpr_get,
+		.set = &k1c_gpr_set,
+	},
+#ifdef CONFIG_ENABLE_TCA
+	[REGSET_TCA] = {
+		.core_note_type = NT_K1C_TCA,
+		.n = TCA_REG_COUNT,
+		.size = sizeof(struct tca_reg),
+		.align = sizeof(struct tca_reg),
+		.get = &k1c_tca_reg_get,
+		.set = &k1c_tca_reg_set,
+	},
+#endif
+};
+
+static const struct user_regset_view user_k1c_view = {
+	.name = "k1c",
+	.e_machine = EM_KALRAY,
+	.regsets = k1c_user_regset,
+	.n = ARRAY_SIZE(k1c_user_regset)
+};
+
+const struct user_regset_view *task_user_regset_view(struct task_struct *task)
+{
+	return &user_k1c_view;
+}
+
 long arch_ptrace(struct task_struct *child, long request,
 		unsigned long addr, unsigned long data)
 {
-	int ret = -EIO;
-
-	struct pt_regs *regs = task_pt_regs(child);
+	int ret;
 	unsigned long __user *datap = (unsigned long __user *) data;
 
-	pr_debug("%s 0x%lx, addr 0x%lx, data 0x%lx\n",
-		 __func__, request, addr, data);
-
 	switch (request) {
-	case PTRACE_PEEKTEXT:	/* read word at location addr */
-	case PTRACE_PEEKDATA:
-		ret = generic_ptrace_peekdata(child, addr, data);
-		break;
-	case PTRACE_PEEKUSR:
-		if (!IS_ALIGNED(addr, sizeof(uint64_t)) ||
-		    addr + sizeof(uint64_t) > sizeof(struct user_pt_regs))
-			break;
-		ret = put_user(*(uint64_t *) ((char *) regs + addr), datap);
-		break;
-	case PTRACE_POKETEXT:	/* write the word at location addr */
-	case PTRACE_POKEDATA:
-		ret = generic_ptrace_pokedata(child, addr, data);
-		break;
-	case PTRACE_GETREGS:
-		ret = __copy_to_user(datap, regs, sizeof(struct user_pt_regs));
-		break;
-	case PTRACE_SETREGS:
-		ret = __copy_from_user(regs, datap,
-				       sizeof(struct user_pt_regs));
-		break;
 #ifdef CONFIG_HAVE_HW_BREAKPOINT
 	case PTRACE_GET_HW_PT_REGS:
 		ret = ptrace_get_hw_pt_pregs(child, addr, datap);
