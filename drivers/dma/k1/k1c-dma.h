@@ -41,6 +41,7 @@ struct k1c_dma_hw_job {
  * @txd: Pointer to  of HW transfer descriptors
  * @nb_txd: Number of transfer descriptors
  * @size: Total descriptor size including all sg elements (in bytes)
+ * @len:  Actual descriptor size written by dma (in bytes)
  * @phy: Pointer to hw phy (RX or TX)
  * @dir: Direction for descriptor
  * @route: Actual route for transfer desc
@@ -52,6 +53,7 @@ struct k1c_dma_desc {
 	struct virt_dma_desc vd;
 	struct list_head txd_pending;
 	size_t size;
+	size_t len;
 	struct k1c_dma_phy *phy;
 	enum dma_transfer_direction dir;
 	u64 route;
@@ -76,6 +78,17 @@ struct k1c_dma_slave_cfg {
 	u8  global;
 	u16 asn;
 	u8  hw_vchan;
+};
+
+/**
+ * struct k1c_callback_param - Extended callback param
+ * Purpose is get buffer length actually written by dma
+ * @cb_param: descriptor callback_param
+ * @len: actual length of the completed descriptor
+ */
+struct k1c_callback_param {
+	void *cb_param;
+	size_t len;
 };
 
 /**
