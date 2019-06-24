@@ -193,8 +193,11 @@ void k1c_dma_stop_queues(struct k1c_dma_phy *phy);
 int k1c_dma_allocate_queues(struct k1c_dma_phy *phy,
 			    struct k1c_dma_job_queue_list *jobq_list,
 			    enum k1c_dma_transfer_type trans_type);
-int k1c_dma_init_queues(struct k1c_dma_phy *phy,
+
+int k1c_dma_init_rx_queues(struct k1c_dma_phy *phy,
 		enum k1c_dma_transfer_type trans_type);
+int k1c_dma_init_tx_queues(struct k1c_dma_phy *phy);
+
 int k1c_dma_fifo_rx_channel_queue_post_init(struct k1c_dma_phy *phy,
 					    u64 buf_paddr, u64 buf_size);
 

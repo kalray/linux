@@ -143,25 +143,25 @@ static int k1c_dma_start_sg_eth_tx(struct k1c_dma_desc *desc)
 
 /**
  * k1c_dma_start_desc() - Push job descriptor depending on the job type
- * @desc: the job descriptor to start (may include multiple hw transfer desc)
+ * @desc: the job descriptor to start
  *
- * This function is a wrapper calling the proper sg_start functions depending on
- * transfer type
+ * This function is a wrapper calling the proper sg_start functions depending
+ * on channel transfer type
  */
 int k1c_dma_start_desc(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 {
 	int ret = 0;
 	struct k1c_dma_dev *dev = c->dev;
-	struct k1c_dma_chan_param *param = &(c->param);
+	enum k1c_dma_transfer_type type = c->cfg.trans_type;
 
-	if (param->trans_type == K1C_DMA_TYPE_MEM2MEM)
+	if (type == K1C_DMA_TYPE_MEM2MEM)
 		ret = k1c_dma_start_sg_mem2mem(desc);
-	else if (param->trans_type == K1C_DMA_TYPE_MEM2ETH) {
+	else if (type == K1C_DMA_TYPE_MEM2ETH) {
 		if (desc->dir == DMA_MEM_TO_DEV)
 			ret = k1c_dma_start_sg_eth_tx(desc);
 		else if (desc->dir == DMA_DEV_TO_MEM)
 			ret = k1c_dma_start_sg_eth_rx(desc);
-	} else if (param->trans_type == K1C_DMA_TYPE_MEM2NOC) {
+	} else if (type == K1C_DMA_TYPE_MEM2NOC) {
 		if (desc->dir == DMA_MEM_TO_DEV)
 			ret = k1c_dma_start_sg_noc_tx(desc);
 		else if (desc->dir == DMA_DEV_TO_MEM)
@@ -266,7 +266,7 @@ static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
 		return;
 
 	if (phy->dir == K1C_DMA_DIR_TYPE_RX &&
-	    c->param.trans_type == K1C_DMA_TYPE_MEM2ETH) {
+	    c->cfg.trans_type == K1C_DMA_TYPE_MEM2ETH) {
 		struct k1c_dma_pkt_full_desc pkt;
 
 		do {
@@ -419,20 +419,21 @@ struct k1c_dma_phy *k1c_dma_get_phy(struct k1c_dma_dev *dev,
 				    struct k1c_dma_chan *c)
 {
 	struct k1c_dma_phy *p, *phy = NULL;
-	enum k1c_dma_dir_type dir = c->param.dir;
+	enum k1c_dma_dir_type dir = c->cfg.dir;
 	int nb_phy = k1c_dma_get_phy_nb(dir);
 	int i = 0;
 
 	spin_lock(&dev->lock);
-	if (dir == K1C_DMA_DIR_TYPE_RX &&
-	    c->param.rx_tag < K1C_DMA_RX_CHANNEL_NUMBER) {
-		for (i = 0; i < nb_phy; ++i) {
-			p = &dev->phy[dir][i];
-			/* rx_tag is equivalent to Rx fifo id */
-			if (unlikely(p->hw_id == c->param.rx_tag)) {
-				if (!p->used)
-					phy = p;
-				break;
+	if (dir == K1C_DMA_DIR_TYPE_RX) {
+		if (c->cfg.rx_tag < K1C_DMA_RX_CHANNEL_NUMBER) {
+			for (i = 0; i < nb_phy; ++i) {
+				p = &dev->phy[dir][i];
+				/* rx_tag is equivalent to Rx fifo id */
+				if (unlikely(p->hw_id == c->cfg.rx_tag)) {
+					if (!p->used)
+						phy = p;
+					break;
+				}
 			}
 		}
 	} else {
@@ -450,7 +451,7 @@ struct k1c_dma_phy *k1c_dma_get_phy(struct k1c_dma_dev *dev,
 			  dir, phy->hw_id);
 		phy->used = 1;
 		phy->comp_count = 0;
-		phy->rx_cache_id = c->param.rx_cache_id;
+		phy->rx_cache_id = c->cfg.rx_cache_id;
 	}
 	spin_unlock(&dev->lock);
 	return phy;
@@ -458,10 +459,11 @@ struct k1c_dma_phy *k1c_dma_get_phy(struct k1c_dma_dev *dev,
 
 void k1c_dma_release_phy(struct k1c_dma_dev *dev, struct k1c_dma_phy *phy)
 {
-	enum k1c_dma_dir_type dir = phy->dir;
+	if (!phy)
+		return;
 
 	dev_dbg(dev->dma.dev, "%s dir: %d hw_id: %d\n", __func__,
-		dir, phy->hw_id);
+		phy->dir, phy->hw_id);
 	spin_lock(&dev->lock);
 	k1c_dma_release_queues(phy, &dev->jobq_list);
 	phy->used = 0;
@@ -476,20 +478,20 @@ void k1c_dma_release_phy(struct k1c_dma_dev *dev, struct k1c_dma_phy *phy)
  * Initialize hw queues depending on transfer direction and type
  */
 static int k1c_dma_slave_config(struct dma_chan *chan,
-				     struct dma_slave_config *cfg)
+				struct dma_slave_config *cfg)
 {
 	struct k1c_dma_chan *c = to_k1c_dma_chan(chan);
-	struct k1c_dma_dev *dev = c->dev;
+	struct device *dev = c->dev->dma.dev;
 
 	/* Get extended slave config */
 	struct k1c_dma_slave_cfg *slave_cfg = container_of(cfg,
 					 struct k1c_dma_slave_cfg, cfg);
 
-	if (!c->phy) {
-		dev_err(dev->dma.dev, "No phy set");
-		return -ENODEV;
-	}
-	c->cfg = *slave_cfg;
+	/* Copy config */
+	if (!c->hw_init_done)
+		c->cfg = *slave_cfg;
+	else
+		dev_err(dev, "%s Attempt to reset configuration\n", __func__);
 
 	return 0;
 }
@@ -523,9 +525,10 @@ static int k1c_dma_alloc_chan_resources(struct dma_chan *chan)
 	struct k1c_dma_desc *desc;
 	struct k1c_dma_hw_job *hw_job;
 	unsigned long flags;
-	int i, ret = -ENODEV;
+	int i;
 
 	INIT_LIST_HEAD(&c->desc_running);
+	c->hw_init_done = 0;
 	c->txd_cache = KMEM_CACHE(k1c_dma_hw_job,
 				  SLAB_PANIC | SLAB_HWCACHE_ALIGN);
 	if (!c->txd_cache)
@@ -552,30 +555,8 @@ static int k1c_dma_alloc_chan_resources(struct dma_chan *chan)
 		spin_unlock_irqrestore(&c->vc.lock, flags);
 	}
 
-	/* As of now, sets one TX phy per channel by default */
-	c->phy = k1c_dma_get_phy(dev, c);
-	if (c->phy == NULL) {
-		dev_err(dmadev->dev, "No phy available\n");
-		goto err_mem;
-	}
-	spin_lock(&dev->lock);
-	ret = k1c_dma_allocate_queues(c->phy, &dev->jobq_list,
-				      c->param.trans_type);
-	spin_unlock(&dev->lock);
-	if (ret)
-		goto err_mem_release_phy;
-
-	/* Done for default init of hw queues */
-	ret = k1c_dma_init_queues(c->phy, c->param.trans_type);
-	if (ret) {
-		dev_err(dmadev->dev, "Unable to init queues\n");
-		goto err_mem_release_phy;
-	}
-
 	return 0;
 
-err_mem_release_phy:
-	k1c_dma_release_phy(dev, c->phy);
 err_mem:
 	c->phy = NULL;
 err_kmemcache:
@@ -681,18 +662,18 @@ int k1c_dma_get_route_id(struct k1c_dma_phy *phy,
 
 /**
  * k1c_dma_setup_route() - Set up route for desc based on config params
+ * @c: channel with configuration
  * @desc: the descriptor containing the route
- * @cfg: channl configuration
  */
-int k1c_dma_setup_route(struct k1c_dma_chan *c, struct k1c_dma_desc *desc,
-						struct k1c_dma_slave_cfg *cfg)
+int k1c_dma_setup_route(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 {
 	int ret = 0;
 	struct k1c_dma_dev *dev = c->dev;
+	struct k1c_dma_slave_cfg *cfg = &c->cfg;
 
 	desc->route = cfg->noc_route;
 	desc->route |=
-	((u64)(c->param.rx_tag & 0x3FU) << K1C_DMA_NOC_RT_RX_TAG_SHIFT) |
+	((u64)(cfg->rx_tag & 0x3FU)     << K1C_DMA_NOC_RT_RX_TAG_SHIFT) |
 	((u64)(cfg->qos_id & 0xFU)      << K1C_DMA_NOC_RT_QOS_ID_SHIFT) |
 	((u64)(cfg->global & 0x1U)      << K1C_DMA_NOC_RT_GLOBAL_SHIFT) |
 	((u64)(cfg->asn & 0x1FFU)       << K1C_DMA_NOC_RT_ASN_SHIFT)    |
@@ -721,20 +702,21 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 		size_t len, unsigned long flags)
 {
 	struct k1c_dma_chan *c = to_k1c_dma_chan(chan);
-	struct device *dev = c->dev->dma.dev;
+	struct k1c_dma_dev *d = c->dev;
+	struct device *dev = d->dma.dev;
 	struct virt_dma_chan *vc = &c->vc;
 	struct k1c_dma_desc *desc;
-	struct k1c_dma_slave_cfg *config = &c->cfg;
 	struct k1c_dma_tx_job *txd;
 	struct k1c_dma_hw_job *hw_job;
 	unsigned long f;
+	int ret = 0;
 
 	if (!src || !dst) {
-		dev_err(dev, "memcpy transfer requires both src and dst addr\n");
+		dev_err(dev, "Memcpy requires both src and dst addr\n");
 		return NULL;
 	}
 	if (!len) {
-		dev_err(dev, "transfer length must be > 0\n");
+		dev_err(dev, "Transfer length must be > 0\n");
 		return NULL;
 	}
 
@@ -742,18 +724,46 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 	if (!desc)
 		return NULL;
 
+	if (!c->hw_init_done) {
+		c->cfg.dir = K1C_DMA_DIR_TYPE_TX;
+		c->cfg.trans_type = K1C_DMA_TYPE_MEM2MEM;
+		c->cfg.cfg.direction = DMA_MEM_TO_MEM;
+		c->cfg.noc_route = 0;
+		c->cfg.qos_id = 0;
+		c->cfg.global = K1C_DMA_CTX_GLOBAL;
+		c->cfg.asn = K1C_DMA_ASN;
+		c->cfg.hw_vchan = 0;
+		c->phy = k1c_dma_get_phy(d, c);
+		if (c->phy == NULL) {
+			dev_err(dev, "No phy available\n");
+			goto err;
+		}
+		spin_lock(&d->lock);
+		ret = k1c_dma_allocate_queues(c->phy, &d->jobq_list,
+					      K1C_DMA_TYPE_MEM2MEM);
+		spin_unlock(&d->lock);
+		if (ret) {
+			dev_err(dev, "Unable to alloc queues\n");
+			k1c_dma_release_phy(d, c->phy);
+			goto err;
+		}
+
+		/* Init TX queues only for mem2mem */
+		ret = k1c_dma_init_tx_queues(c->phy);
+		if (ret) {
+			dev_err(dev, "Unable to init queues\n");
+			k1c_dma_release_phy(d, c->phy);
+			goto err;
+		}
+		c->hw_init_done = 1;
+	}
+
 	/* Fill cfg and desc here no slave cfg method using memcpy */
 	desc->phy = c->phy;
 	desc->dir = DMA_MEM_TO_MEM;
-	config->cfg.direction = DMA_MEM_TO_MEM;
-	config->noc_route = 0;
-	config->qos_id = 0;
-	config->global = K1C_DMA_CTX_GLOBAL;
-	config->asn = K1C_DMA_ASN;
-	config->hw_vchan = 0;
 
 	/* Map to mem2mem route */
-	if (k1c_dma_setup_route(c, desc, config)) {
+	if (k1c_dma_setup_route(c, desc)) {
 		dev_err(dev, "Can't setup mem2mem route\n");
 		goto err;
 	}
@@ -802,14 +812,16 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 		void *context)
 {
 	struct k1c_dma_chan *c = to_k1c_dma_chan(chan);
-	struct device *dev = c->dev->dma.dev;
+	struct k1c_dma_dev *d = c->dev;
+	struct device *dev = d->dma.dev;
 	struct virt_dma_chan *vc = &c->vc;
 	struct k1c_dma_desc *desc;
 	struct k1c_dma_tx_job *txd;
 	struct k1c_dma_hw_job *hw_job;
 	struct scatterlist *sgent;
-	int i = 0;
 	unsigned long flags;
+	enum k1c_dma_dir_type dir = c->cfg.dir;
+	int i = 0, ret = 0;
 
 	if (sg_len > K1C_DMA_MAX_TXD) {
 		dev_err(dev, "Too many requested transfers (limit: %d)!\n",
@@ -823,19 +835,16 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 		return NULL;
 	}
 
-	if ((direction == DMA_DEV_TO_MEM &&
-	     c->phy->dir != K1C_DMA_DIR_TYPE_RX) ||
-	    (direction == DMA_MEM_TO_DEV &&
-	     c->phy->dir != K1C_DMA_DIR_TYPE_TX)) {
-		dev_err(dev, "Invalid DMA dir != hw %d!\n",
-			direction);
+	if ((direction == DMA_DEV_TO_MEM && dir != K1C_DMA_DIR_TYPE_RX) ||
+	    (direction == DMA_MEM_TO_DEV && dir != K1C_DMA_DIR_TYPE_TX)) {
+		dev_err(dev, "Invalid DMA dir != hw %d!\n", direction);
 		return NULL;
 	}
 
-	if (c->phy->dir == K1C_DMA_DIR_TYPE_RX &&
-	    c->param.trans_type == K1C_DMA_TYPE_MEM2NOC) {
+	if (dir == K1C_DMA_DIR_TYPE_RX &&
+	    c->cfg.trans_type == K1C_DMA_TYPE_MEM2NOC) {
 		if (sg_len > 1) {
-			dev_err(dev, "Only one buffer per channel allowed for NOC RX channels, consider using dmaengine_prep_slave_single or packet mode\n");
+			dev_err(dev, "Only one buffer per channel allowed for NOC RX channels\n");
 			return NULL;
 		}
 	}
@@ -844,9 +853,39 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 	if (!desc)
 		return NULL;
 
+	if (!c->hw_init_done) {
+		c->phy = k1c_dma_get_phy(d, c);
+		if (c->phy == NULL) {
+			dev_err(dev, "No phy available\n");
+			goto err;
+		}
+
+		spin_lock(&d->lock);
+		ret = k1c_dma_allocate_queues(c->phy, &d->jobq_list,
+					      c->cfg.trans_type);
+		spin_unlock(&d->lock);
+		if (ret)
+			goto err;
+
+		if (dir == K1C_DMA_DIR_TYPE_RX)
+			ret = k1c_dma_init_rx_queues(c->phy, c->cfg.trans_type);
+		else
+			ret = k1c_dma_init_tx_queues(c->phy);
+
+		if (ret) {
+			dev_err(dev, "Unable to init queues\n");
+			k1c_dma_release_phy(d, c->phy);
+			goto err;
+		}
+		c->hw_init_done = 1;
+	}
+
+	if (c->phy->rx_cache_id != c->cfg.rx_cache_id)
+		dev_warn(dev, "RX cache_id mismatch!\n");
+
 	desc->dir = direction;
 	if (desc->dir == DMA_MEM_TO_DEV) {
-		if (k1c_dma_setup_route(c, desc, &c->cfg))
+		if (k1c_dma_setup_route(c, desc))
 			goto err;
 	}
 	desc->phy = c->phy;
@@ -867,17 +906,17 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 		txd->nb = 1;
 		txd->comp_q_id = desc->phy->hw_id;
 		txd->route_id = desc->route_id;
-		dev_dbg(dev, "%s txd.base: 0x%llx .len: %lld\n", __func__,
-			txd->src_dma_addr, txd->len);
+		dev_dbg(dev, "%s txd.base: 0x%llx .len: %lld\n",
+			__func__, txd->src_dma_addr, txd->len);
 	}
 	if (desc->phy->dir == K1C_DMA_DIR_TYPE_RX &&
-			c->param.trans_type == K1C_DMA_TYPE_MEM2NOC) {
+			c->cfg.trans_type == K1C_DMA_TYPE_MEM2NOC) {
 		dev_dbg(dev, "Finishing alloc RX channel[%d] paddr: 0x%llx\n",
 				c->phy->hw_id, sg_dma_address(sgl));
 		if (k1c_dma_fifo_rx_channel_queue_post_init(desc->phy,
 							sg_dma_address(sgl),
 							sg_dma_len(sgl)) != 0) {
-			dev_err(dev, "Unable to allocate RX channel\n");
+			dev_err(dev, "Unable to alloc RX channel\n");
 			goto err;
 		}
 	}
@@ -914,8 +953,8 @@ struct k1c_dma_chan *k1c_dma_chan_init(struct k1c_dma_dev *dev)
 		snprintf(name, K1C_STR_LEN,
 			 "k1c-dma-chan#%02d", dev->dma.chancnt);
 		chan_dbg = debugfs_create_dir(name, dev->dbg);
-		debugfs_create_u64("rx_tag", 0444, chan_dbg, &c->param.rx_tag);
-		debugfs_create_u32("dir", 0444, chan_dbg, &c->param.dir);
+		debugfs_create_u8("rx_tag", 0444, chan_dbg, &c->cfg.rx_tag);
+		debugfs_create_u32("dir", 0444, chan_dbg, &c->cfg.dir);
 	}
 	return c;
 }
@@ -993,6 +1032,31 @@ static bool k1c_dma_filter_fn(struct dma_chan *chan, void *param)
 struct of_dma_filter_info k1c_dma_info = {
 	.filter_fn = k1c_dma_filter_fn
 };
+
+struct dma_chan *k1c_dma_xlate(struct of_phandle_args *dma_spec,
+				     struct of_dma *ofdma)
+{
+	struct dma_device *dev = ofdma->of_dma_data;
+	struct k1c_dma_chan_param param;
+	dma_cap_mask_t mask;
+
+	/* args = chan_id */
+	if (!dev || dma_spec->args_count != 1)
+		return NULL;
+
+	if (dma_spec->args[0] > min(K1C_DMA_RX_CHANNEL_NUMBER,
+				    K1C_DMA_TX_JOB_QUEUE_NUMBER))
+		return NULL;
+
+	param.id = dma_spec->args[0];
+
+	dma_cap_zero(mask);
+	dma_cap_set(DMA_PRIVATE, mask);
+	dma_cap_set(DMA_MEMCPY, mask);
+	dma_cap_set(DMA_SLAVE, mask);
+
+	return dma_request_channel(mask, k1c_dma_filter_fn, &param);
+}
 
 static int k1c_dma_probe(struct platform_device *pdev)
 {
@@ -1143,12 +1207,11 @@ static int k1c_dma_probe(struct platform_device *pdev)
 
 	/* Device-tree DMA controller registration */
 	k1c_dma_info.dma_cap = dma->cap_mask;
-	ret = of_dma_controller_register(node_to_parse,
-					 of_dma_simple_xlate, &k1c_dma_info);
-	if (ret) {
+	ret = of_dma_controller_register(node_to_parse, k1c_dma_xlate, dma);
+	if (ret)
 		dev_warn(&pdev->dev, "%s: failed to register DMA controller\n",
 				 __func__);
-	}
+
 	dev_info(&pdev->dev, "%s : %d %d\n", __func__,
 			 dev->dma_channels, dev->dma_requests);
 	return 0;
@@ -1207,31 +1270,6 @@ static struct platform_driver k1c_dma_driver = {
 	.probe = k1c_dma_probe,
 	.remove = k1c_dma_remove,
 };
-
-/**
- * dma_get_slave_channel - try to get specific channel exclusively
- * @param: filter function parameter (allow to request one specific RX)
- */
-struct dma_chan *k1c_dma_get_channel(struct k1c_dma_chan_param *param)
-{
-	dma_cap_mask_t mask;
-
-	if (param->rx_tag >= K1C_DMA_RX_CHANNEL_NUMBER) {
-		pr_err("RX_TAG > %d\n", K1C_DMA_RX_CHANNEL_NUMBER);
-		return NULL;
-	}
-	if (param->rx_cache_id >= K1C_DMA_RX_JOB_CACHE_NUMBER) {
-		pr_err("RX cache_id > %d\n", K1C_DMA_RX_JOB_CACHE_NUMBER);
-		return NULL;
-	}
-	dma_cap_zero(mask);
-	dma_cap_set(DMA_SLAVE, mask);
-	dma_cap_set(DMA_MEMCPY, mask);
-	dma_cap_set(DMA_PRIVATE, mask);
-
-	return dma_request_channel(mask, k1c_dma_filter_fn, param);
-}
-EXPORT_SYMBOL_GPL(k1c_dma_get_channel);
 
 module_platform_driver(k1c_dma_driver);
 MODULE_LICENSE("GPL");
