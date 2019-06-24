@@ -287,15 +287,11 @@ static int k1c_dma_test_probe(struct platform_device *pdev)
 {
 	struct k1c_dma_noc_test_dev *dev;
 	struct dma_chan *chan;
-	struct k1c_dma_chan_param param = {.rx_tag = 0,
-		.dir = K1C_DMA_DIR_TYPE_TX,
-		.trans_type = K1C_DMA_TYPE_MEM2ETH
-	};
 	int i, ret = 0;
 
 	dmaengine_get();
 
-	chan = k1c_dma_get_channel(&param);
+	chan = of_dma_request_slave_channel(pdev->dev.of_node, "tx");
 	if (!chan) {
 		pr_warn("%s : No DMA channel found\n", __func__);
 		return -EPROBE_DEFER;
