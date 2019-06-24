@@ -193,16 +193,36 @@ struct k1c_iommu_hw {
 };
 
 /**
+ * struct k1c_iommu_group - K1C IOMMU group
+ * @list: used to link list
+ * @group: the generic IOMMU group
+ * @asn: ASN associated to the group
+ *
+ * As we want to have on ASN per device associated to the IOMMU we will have
+ * one group per device. This structure is used to link all groups associated
+ * to the IOMMU device.
+ */
+struct k1c_iommu_group {
+	struct list_head list;
+	struct iommu_group *group;
+	u32 asn;
+};
+
+/**
  * struct k1c_iommu_drvdata - Store information relative to the IOMMU driver
+ * @groups: list of K1C IOMMU groups associated with this IOMMU
+ * @domains: list of K1C domains associated to this IOMMU
+ * @lock: lock used to manipulate structure like list in a mutex way
  * @dev: the device associated to this IOMMU
  * @iommu: the core representation of the IOMMU instance
- * @group: the group associated with this IOMMU
  * @iommu_hw: hardware IOMMUs managed by the driver
  */
 struct k1c_iommu_drvdata {
+	struct list_head groups;
+	struct list_head domains;
+	struct mutex lock;
 	struct device *dev;
 	struct iommu_device iommu;
-	struct iommu_group *group;
 	struct k1c_iommu_hw iommu_hw[K1C_IOMMU_NB_TYPE];
 };
 
@@ -210,17 +230,31 @@ struct k1c_iommu_drvdata {
  * struct k1c_iommu_domain - k1c iommu domain
  * @domain: generic domain
  * @iommu: iommu device data for all iommus in the domain
- * @lock: lock used when attaching/detaching the domain.
+ * @asn: ASN associated to the domain
+ * @lock: lock used when attaching/detaching the domain
  */
 struct k1c_iommu_domain {
+	struct list_head list;
 	struct iommu_domain domain;
 	struct k1c_iommu_drvdata *iommu;
+	u32 asn;
 	spinlock_t lock;
 };
 
 /*****************************************************************************
  * Internal functions
  *****************************************************************************/
+
+/**
+ * asn_is_invalid() - check ASN validity
+ * @asn: ASN to be checked
+ *
+ * Return: true if ASN is invalid, false otherwise
+ */
+static inline bool asn_is_invalid(u32 asn)
+{
+	return (asn & ~(K1C_IOMMU_TEH_ASN_MASK));
+}
 
 /**
  * teh_to_set() - return the set according to TEH entry
@@ -554,9 +588,10 @@ static struct k1c_iommu_domain *to_k1c_domain(struct iommu_domain *dom)
  * invalidate_tlb_entry() - set the entry status to invalid if found
  * @iommu_hw: the hardware iommu used
  * @iova: the address we want to remove
+ * @asn: address space number
  */
 static void invalidate_tlb_entry(struct k1c_iommu_hw *iommu_hw,
-				 unsigned long iova)
+				 unsigned long iova, u32 asn)
 {
 	struct k1c_iommu_tlb_entry entry = {.tel_val = 0, .teh_val = 0};
 	unsigned int way;
@@ -579,8 +614,8 @@ static void invalidate_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 	for (way = 0; way < iommu_hw->ways; way++) {
 		entry = iommu_hw->tlb_cache[set][way];
 
-		/* TODO: support ASN. Until that we just compare PN value */
-		if (entry.teh.pn == (iova >> K1C_IOMMU_PN_SHIFT)) {
+		if ((entry.teh.pn == (iova >> K1C_IOMMU_PN_SHIFT)) &&
+		    (entry.teh.asn == asn)) {
 			entry.tel.es = K1C_IOMMU_ES_INVALID;
 			write_tlb_entry(iommu_hw, way, &entry);
 			/* Nothing more to do */
@@ -782,28 +817,34 @@ static void unregister_iommu_irqs(struct platform_device *pdev)
  * @hw: table of IOMMU hw pointers
  * @paddr: physical address
  * @iova: bus address
+ * @asn: address space number (aka ASID)
  *
  * Return: 0 in case of success, negative value otherwise.
  */
 static int map_page_in_tlb(struct k1c_iommu_hw *hw[K1C_IOMMU_NB_TYPE],
 			   phys_addr_t paddr,
-			   dma_addr_t iova)
+			   dma_addr_t iova,
+			   u32 asn)
 {
 	struct k1c_iommu_tlb_entry entry = {.teh_val = 0, .tel_val = 0};
 	int i, set, way;
 
 	entry.teh.pn  = iova >> K1C_IOMMU_PN_SHIFT;
 	entry.teh.ps  = K1C_IOMMU_PS_4K;
-	entry.teh.g   = K1C_IOMMU_G_GLOBAL;
-	entry.teh.asn = 0x0; /* TODO: manage ASN */
+	entry.teh.g   = K1C_IOMMU_G_USE_ASN;
+	entry.teh.asn = asn;
 
 	entry.tel.fn = paddr >> K1C_IOMMU_PN_SHIFT;
 	entry.tel.pa = K1C_IOMMU_PA_RW;
 	entry.tel.es = K1C_IOMMU_ES_VALID;
 
+	if (asn_is_invalid(asn)) {
+		pr_err("%s: ASN %d is not valid\n", __func__, asn);
+		return -EINVAL;
+	}
+
 	/* IOMMU RX and TX have the same number of sets */
 	set = teh_to_set(&entry.teh, hw[K1C_IOMMU_RX]->sets);
-
 	if (set < 0) {
 		pr_err("%s: invalid set returned from 0x%lx",
 		       __func__, (unsigned long)iova);
@@ -1063,6 +1104,9 @@ k1c_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 	}
 
 	k1c_domain->iommu = iommu_dev;
+	k1c_domain->asn = dev->iommu_fwspec->ids[0];
+
+	list_add_tail(&k1c_domain->list, &iommu_dev->domains);
 
 	/*
 	 * Finalize domain must be called after setting k1c_domain->iommu that
@@ -1102,6 +1146,7 @@ static size_t k1c_iommu_unmap(struct iommu_domain *domain,
 	struct k1c_iommu_hw *iommu_hw[K1C_IOMMU_NB_TYPE];
 	unsigned long num_pages;
 	unsigned long start;
+	u32 asn;
 	int i;
 
 	k1c_domain = to_k1c_domain(domain);
@@ -1113,9 +1158,11 @@ static size_t k1c_iommu_unmap(struct iommu_domain *domain,
 	num_pages = iommu_num_pages(iova, size, K1C_IOMMU_4K_SIZE);
 
 	start = iova;
+	asn = k1c_domain->asn;
+
 	for (i = 0; i < num_pages; i++) {
-		invalidate_tlb_entry(iommu_hw[K1C_IOMMU_RX], start);
-		invalidate_tlb_entry(iommu_hw[K1C_IOMMU_TX], start);
+		invalidate_tlb_entry(iommu_hw[K1C_IOMMU_RX], start, asn);
+		invalidate_tlb_entry(iommu_hw[K1C_IOMMU_TX], start, asn);
 		start += K1C_IOMMU_4K_SIZE;
 	}
 
@@ -1157,7 +1204,8 @@ static int k1c_iommu_map(struct iommu_domain *domain,
 
 	start = paddr & K1C_IOMMU_4K_MASK;
 	for (i = 0; i < num_pages; i++) {
-		ret = map_page_in_tlb(iommu_hw, start, (dma_addr_t)iova);
+		ret = map_page_in_tlb(iommu_hw, start, (dma_addr_t)iova,
+				      k1c_domain->asn);
 		if (ret) {
 			pr_err("%s: failed to map 0x%lx -> 0x%lx (err %d)\n",
 			       __func__, iova, (unsigned long)start, ret);
@@ -1192,6 +1240,7 @@ static int k1c_iommu_match_node(struct device *dev, const void *data)
 static int k1c_iommu_add_device(struct device *dev)
 {
 	struct device *iommu_dev;
+	struct k1c_iommu_drvdata *k1c_iommu_dev;
 	struct iommu_group *group;
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 
@@ -1205,10 +1254,12 @@ static int k1c_iommu_add_device(struct device *dev)
 	if (!iommu_dev)
 		return -ENODEV;
 
-	fwspec->iommu_priv = dev_get_drvdata(iommu_dev);
+	k1c_iommu_dev = dev_get_drvdata(iommu_dev);
 	put_device(iommu_dev);
-	if (!fwspec->iommu_priv)
+	if (!k1c_iommu_dev)
 		return -ENODEV;
+
+	fwspec->iommu_priv = k1c_iommu_dev;
 
 	group = iommu_group_get_for_dev(dev);
 	if (IS_ERR(group))
@@ -1307,21 +1358,41 @@ static struct iommu_group *k1c_iommu_device_group(struct device *dev)
 {
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 	struct k1c_iommu_drvdata *iommu_dev;
+	struct k1c_iommu_group *group;
 
 	if (!fwspec || !fwspec->iommu_priv)
 		return ERR_PTR(-ENODEV);
 
 	iommu_dev = (struct k1c_iommu_drvdata *)fwspec->iommu_priv;
 
-	if (iommu_dev->group) {
-		iommu_group_ref_get(iommu_dev->group);
-	} else {
-		iommu_dev->group = iommu_group_alloc();
-		if (IS_ERR(iommu_dev->group))
-			dev_err(dev, "failed to allocate group for device");
+	mutex_lock(&iommu_dev->lock);
+
+	list_for_each_entry(group, &iommu_dev->groups, list)
+		if (group->asn == fwspec->ids[0]) {
+			mutex_unlock(&iommu_dev->lock);
+			return group->group;
+		}
+
+	group = devm_kzalloc(iommu_dev->dev, sizeof(*group), GFP_KERNEL);
+	if (!group) {
+		mutex_unlock(&iommu_dev->lock);
+		return NULL;
 	}
 
-	return iommu_dev->group;
+	INIT_LIST_HEAD(&group->list);
+	group->asn = fwspec->ids[0];
+	group->group = iommu_group_alloc();
+	if (IS_ERR(group->group)) {
+		devm_kfree(iommu_dev->dev, group);
+		mutex_unlock(&iommu_dev->lock);
+		dev_err(dev, "failed to allocate group for device");
+		return NULL;
+	}
+
+	list_add_tail(&group->list, &iommu_dev->groups);
+	mutex_unlock(&iommu_dev->lock);
+
+	return group->group;
 }
 
 /**
@@ -1336,9 +1407,28 @@ static struct iommu_group *k1c_iommu_device_group(struct device *dev)
 static int k1c_iommu_of_xlate(struct device *dev,
 			      struct of_phandle_args *spec)
 {
-	/* Need to be implemented for real */
-	return 0;
+	int ret;
+	u32 asn;
+
+	if (spec->args_count != 1) {
+		dev_err(dev, "ASN not provided\n");
+		return -EINVAL;
+	}
+
+	/* Set the ASN to the device */
+	asn = spec->args[0];
+	if (asn_is_invalid(asn)) {
+		dev_err(dev, "ASN %u is not valid\n", asn);
+		return -EINVAL;
+	}
+
+	ret = iommu_fwspec_add_ids(dev, &asn, 1);
+	if (ret)
+		dev_err(dev, "Failed to set ASN %d\n", asn);
+
+	return ret;
 }
+
 static const struct iommu_ops k1c_iommu_ops = {
 	.domain_alloc = k1c_iommu_domain_alloc,
 	.domain_free = k1c_iommu_domain_free,
@@ -1382,7 +1472,11 @@ static int k1c_iommu_probe(struct platform_device *pdev)
 	if (!drvdata)
 		return -ENOMEM;
 
+	mutex_init(&drvdata->lock);
 	drvdata->dev = dev;
+
+	INIT_LIST_HEAD(&drvdata->groups);
+	INIT_LIST_HEAD(&drvdata->domains);
 
 	/* Configure structure and HW of RX and TX IOMMUs */
 	for (i = 0; i < K1C_IOMMU_NB_TYPE; i++) {
