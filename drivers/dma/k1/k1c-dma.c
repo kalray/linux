@@ -208,6 +208,11 @@ static void k1c_dma_complete(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 {
 	dev_dbg(c->dev->dma.dev, "Complete desc: 0x%lx\n", (uintptr_t)desc);
 	list_del_init(&desc->vd.node);
+	if (desc->vd.tx.callback_param) {
+		struct k1c_callback_param *p = desc->vd.tx.callback_param;
+
+		p->len = desc->len;
+	}
 	vchan_cookie_complete(&desc->vd);
 }
 
@@ -278,8 +283,10 @@ static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
 					break;
 				}
 				if (!k1c_dma_check_rx_comp(dev, desc, &pkt)) {
-					if (list_empty(&desc->txd_pending))
+					if (list_empty(&desc->txd_pending)) {
+						desc->len += pkt.byte;
 						k1c_dma_complete(c, desc);
+					}
 					break;
 				}
 			}
@@ -290,8 +297,10 @@ static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
 			if (list_empty(&desc->vd.node))
 				break;
 			// Assuming TX fifo is in static mode
-			if (desc->last_job_id <= k1c_dma_get_comp_count(phy))
+			if (desc->last_job_id <= k1c_dma_get_comp_count(phy)) {
+				desc->len = desc->size;
 				k1c_dma_complete(c, desc);
+			}
 		}
 	}
 }
@@ -363,13 +372,13 @@ static enum dma_status k1c_dma_tx_status(struct dma_chan *chan,
 {
 	enum dma_status ret = DMA_ERROR;
 	struct k1c_dma_chan *c = to_k1c_dma_chan(chan);
+	unsigned long flags;
+	struct virt_dma_desc *vd = NULL;
+	struct k1c_dma_desc *desc;
 	size_t bytes = 0;
 
 	ret = dma_cookie_status(chan, cookie, txstate);
 	if (ret != DMA_COMPLETE) {
-		unsigned long flags;
-		struct virt_dma_desc *vd;
-		struct k1c_dma_desc *desc;
 		struct k1c_dma_dev *dev = c->dev;
 
 		if (!c->phy) {
@@ -611,6 +620,8 @@ static struct k1c_dma_desc *k1c_dma_get_desc(struct k1c_dma_chan *c)
 	spin_unlock_irqrestore(&c->vc.lock, flags);
 	desc->last_job_id = 0;
 	desc->err = 0;
+	desc->size = 0;
+	desc->len = 0;
 	INIT_LIST_HEAD(&desc->txd_pending);
 	return desc;
 }
