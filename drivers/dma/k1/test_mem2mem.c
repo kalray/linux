@@ -30,10 +30,6 @@ int test_mem2mem(struct k1c_dma_noc_test_dev *dev)
 	int i, j, dir, ret = 0;
 	struct test_comp sts;
 	struct tbuf *rx_b, *tx_b = 0;
-	struct k1c_dma_chan_param param = {.rx_tag = 0,
-		.dir = K1C_DMA_DIR_TYPE_TX,
-		.trans_type = K1C_DMA_TYPE_MEM2MEM,
-		.rx_cache_id = 0};
 
 	init_waitqueue_head(&sts.wait);
 	ret = k1c_dma_check_no_tbuf_pending(dev);
@@ -41,7 +37,7 @@ int test_mem2mem(struct k1c_dma_noc_test_dev *dev)
 		return ret;
 
 	for (i = 0; i < DMA_MEMTEST_NB_CHAN; i++) {
-		chan[i] = k1c_dma_get_channel(&param);
+		chan[i] = of_dma_request_slave_channel(dev->dev->of_node, "tx");
 		if (!chan[i]) {
 			pr_err("%s : dma_request_chan%d failed\n",
 			       __func__, i);
