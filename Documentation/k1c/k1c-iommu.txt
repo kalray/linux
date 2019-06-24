@@ -162,6 +162,13 @@ stall one. So when an interrupt occurs it is managed by the driver. All others
 interrupts that occurs are stored and the IOMMU is stalled. When driver cleans
 the first interrupt others will be managed one by one.
 
+### ASN (Address space number)
+
+This is also know as ASID in some other architecture. Each device will have a
+given ASN that will be given through the device tree. As address space is
+managed at the IOMMU domain level we will use one group and one domain per ID.
+ASN are coded with 9-bits.
+
 Device tree
 -----------
 
