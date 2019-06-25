@@ -6,6 +6,7 @@
  * Copyright (C) 2017 Kalray Inc.
  */
 
+#include <linux/export.h>
 #include <linux/types.h>
 
 void *memcpy(void *dest, const void *src, size_t n)
@@ -66,3 +67,5 @@ void *memcpy(void *dest, const void *src, size_t n)
 
 	return dest;
 }
+EXPORT_SYMBOL(memcpy);
+
