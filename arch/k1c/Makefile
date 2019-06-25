@@ -20,6 +20,7 @@ LIBGCC	:= $(shell $(CC) $(KBUILD_CFLAGS) --print-libgcc-file-name)
 DEFAULT_OPTS := -nostdlib -fno-builtin
 KBUILD_CFLAGS += $(DEFAULT_OPTS)
 KBUILD_AFLAGS += $(DEFAULT_OPTS)
+KBUILD_CFLAGS_MODULE += -mfarcall
 
 KBUILD_LDFLAGS += -m elf64k1
 
