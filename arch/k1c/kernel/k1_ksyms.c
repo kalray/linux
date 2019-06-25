@@ -16,11 +16,9 @@
  */
 #define DECLARE_EXPORT(name)	extern void name(void); EXPORT_SYMBOL(name)
 
-DECLARE_EXPORT(__divsi3);
 DECLARE_EXPORT(__moddi3);
-DECLARE_EXPORT(__modsi3);
-DECLARE_EXPORT(__udivmoddi4);
-DECLARE_EXPORT(__udivsi3);
 DECLARE_EXPORT(__umoddi3);
-DECLARE_EXPORT(__umodsi3);
-DECLARE_EXPORT(__muldi3);
+DECLARE_EXPORT(__divdi3);
+DECLARE_EXPORT(__udivdi3);
+DECLARE_EXPORT(__multi3);
+

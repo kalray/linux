@@ -6,6 +6,7 @@
  * Copyright (C) 2017 Kalray Inc.
  */
 
+#include <linux/export.h>
 #include <linux/types.h>
 
 
@@ -56,3 +57,5 @@ void *memset(void *s, int c, size_t n)
 
 	return s;
 }
+EXPORT_SYMBOL(memset);
+
