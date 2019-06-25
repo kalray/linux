@@ -94,6 +94,7 @@ config K1C
 	select PERF_EVENTS
 	select HAVE_PERF_EVENTS
 	select HAVE_HW_BREAKPOINT
+	select MODULES_USE_ELF_RELA
 
 config PGTABLE_LEVELS
 	int
