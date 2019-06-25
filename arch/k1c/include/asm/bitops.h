@@ -197,6 +197,10 @@ static inline void clear_bit(int nr, volatile unsigned long *addr)
 	__atomic_op(nr, addr, &, __NOT);
 }
 
+#include <asm-generic/bitops/lock.h>
+#include <asm-generic/bitops/non-atomic.h>
+#include <asm-generic/bitops/le.h>
+
 #endif
 
 #endif
