@@ -13,7 +13,8 @@
 /*
  * Protection bit definition
  * As we don't have any HW to handle page table walk, we can define
- * our own PTE format.
+ * our own PTE format. In order to make things easier, we are trying to match
+ * some parts of $tel and $teh.
  *
  * PageSZ must be on bit 10 and 11 because it matches the TEL.PS bits. And
  * by doing that it is easier in assembly to set the TEL.PS to PageSZ.
@@ -23,43 +24,51 @@
  * Huge bit must be somewhere in the first 12 bits to be able to detect it
  * when reading the PMD entry.
  *
- *  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
- *  | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
- *  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
- *      PFN     Unused   S    PageSZ   H  UNC DEV  D   A   G   X   W   R   P
+ *  +---------+--------+----+--------+---+---+---+---+---+---+------+---+---+
+ *  | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3..2 | 1 | 0 |
+ *  +---------+--------+----+--------+---+---+---+---+---+---+------+---+---+
+ *      PFN     Unused   S    PageSZ   H   G   X   W   R   D    CP    A   P
  *
  * Note: PFN is 40-bits wide. We use 41-bits to ensure that the upper bit is
  *       always set to 0. This is required when shifting PFN to right.
  */
 
 /* Following shift are used in ASM to easily extract bit */
-#define _PAGE_GLOBAL_SHIFT	4
+#define _PAGE_PERMS_SHIFT	5
+#define _PAGE_GLOBAL_SHIFT	8
 #define _PAGE_HUGE_SHIFT	9
 
 #define _PAGE_PRESENT   (1 << 0)    /* Present */
-#define _PAGE_READ      (1 << 1)    /* Readable */
-#define _PAGE_WRITE     (1 << 2)    /* Writable */
-#define _PAGE_EXEC      (1 << 3)    /* Executable */
-#define _PAGE_GLOBAL    (1 << _PAGE_GLOBAL_SHIFT)    /* Global */
-#define _PAGE_ACCESSED  (1 << 5)    /* Set by hardware on any access */
-#define _PAGE_DIRTY     (1 << 6)    /* Set by hardware on any write */
-#define _PAGE_DEVICE    (1 << 7)    /* Device space mapping */
-#define _PAGE_UNCACHED  (1 << 8)    /* Uncached mapping */
-#define _PAGE_HUGE      (1 << 9)    /* Huge page */
+#define _PAGE_ACCESSED  (1 << 1)    /* Set by tlb refill code on any access */
+/* Bits 2 - 3 reserved for cache policy */
+#define _PAGE_DIRTY     (1 << 4)    /* Set by tlb refill code on any write */
+#define _PAGE_READ      (1 << _PAGE_PERMS_SHIFT)    /* Readable */
+#define _PAGE_WRITE     (1 << 6)    /* Writable */
+#define _PAGE_EXEC      (1 << 7)    /* Executable */
+#define _PAGE_GLOBAL    (1 << _PAGE_GLOBAL_SHIFT)  /* Global */
+#define _PAGE_HUGE      (1 << _PAGE_HUGE_SHIFT)    /* Huge page */
+/* Bits 10 - 11 reserved for page size */
 #define _PAGE_SOFT      (1 << 12)   /* Reserved for software */
 
 #define _PAGE_SPECIAL   _PAGE_SOFT
+
 
 /* Note: mask used in assembly cannot be generated with GENMASK */
 #define K1C_PFN_SHIFT	23
 #define K1C_PFN_MASK	(~(((1 << K1C_PFN_SHIFT) - 1)))
 
 #define K1C_PAGE_SZ_SHIFT	10
-#define K1C_PAGE_SZ_MASK \
-	(((1 << K1C_SFR_TEL_PS_WIDTH) - 1) << K1C_SFR_TEL_PS_SHIFT)
+#define K1C_PAGE_SZ_MASK	K1C_SFR_TEL_PS_MASK
+
+#define K1C_PAGE_CP_SHIFT	2
+#define K1C_PAGE_CP_MASK	K1C_SFR_TEL_CP_MASK
+
+#define _PAGE_CACHED	(TLB_CP_W_C << K1C_PAGE_CP_SHIFT)
+#define _PAGE_UNCACHED	(TLB_CP_U_U << K1C_PAGE_CP_SHIFT)
+#define _PAGE_DEVICE	(TLB_CP_D_U << K1C_PAGE_CP_SHIFT)
 
 #define K1C_ACCESS_PERMS_BITS	4
-#define K1C_ACCESS_PERMS_OFFSET	1
+#define K1C_ACCESS_PERMS_OFFSET	_PAGE_PERMS_SHIFT
 #define K1C_ACCESS_PERMS_SIZE	(1 << K1C_ACCESS_PERMS_BITS)
 
 #define K1C_ACCESS_PERM_START_BIT	K1C_ACCESS_PERMS_OFFSET
