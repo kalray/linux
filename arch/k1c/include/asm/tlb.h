@@ -17,13 +17,7 @@ static void tlb_flush(struct mmu_gather *tlb);
 
 static inline unsigned int pgprot_cache_policy(unsigned long flags)
 {
-	if (flags & _PAGE_DEVICE)
-		return TLB_CP_D_U;
-
-	if (flags & _PAGE_UNCACHED)
-		return TLB_CP_U_U;
-
-	return TLB_CP_W_C;
+	return (flags & K1C_PAGE_CP_MASK) >> K1C_PAGE_CP_SHIFT;
 }
 
 #endif /* _ASM_K1C_TLB_H */
