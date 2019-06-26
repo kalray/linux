@@ -4,22 +4,21 @@ import ctypes
 from arch.k1c import constants
 #
 # PTE format:
-#  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
-#  | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-#  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
-#      PFN     Unused   S   PageSZ    H   U  Dev  D   A   G   X   W   R   P
+#  +---------+--------+----+--------+---+---+---+---+---+---+------+---+---+
+#  | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3..2 | 1 | 0 |
+#  +---------+--------+----+--------+---+---+---+---+---+---+------+---+---+
+#      PFN     Unused   S    PageSZ   H   G   X   W   R   D    CP    A   P
 
 class pte_bits(ctypes.LittleEndianStructure):
     _fields_ = [
             ("P", ctypes.c_uint8, 1),
+            ("A", ctypes.c_uint8, 1),
+            ("CP", ctypes.c_uint8, 2),
+            ("D", ctypes.c_uint8, 1),
             ("R", ctypes.c_uint8, 1),
             ("W", ctypes.c_uint8, 1),
             ("X", ctypes.c_uint8, 1),
             ("G", ctypes.c_uint8, 1),
-            ("A", ctypes.c_uint8, 1),
-            ("D", ctypes.c_uint8, 1),
-            ("Dev", ctypes.c_uint8, 1),
-            ("U", ctypes.c_uint8, 1),
             ("H", ctypes.c_uint8, 1),
             ("PageSZ", ctypes.c_uint8, 2),
             ("S", ctypes.c_uint8, 1),
