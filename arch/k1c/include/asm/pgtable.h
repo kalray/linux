@@ -79,8 +79,8 @@ extern pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
 /* Page protection bits */
-#define _PAGE_BASE		(_PAGE_PRESENT)
-#define _PAGE_KERNEL		(_PAGE_BASE | _PAGE_GLOBAL | \
+#define _PAGE_BASE		(_PAGE_PRESENT | _PAGE_CACHED)
+#define _PAGE_KERNEL		(_PAGE_PRESENT | _PAGE_GLOBAL | \
 				 _PAGE_READ | _PAGE_WRITE)
 
 #define PAGE_NONE		__pgprot(0)
@@ -91,7 +91,7 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define PAGE_WRITE_EXEC		__pgprot(_PAGE_BASE | _PAGE_READ |	\
 					 _PAGE_EXEC | _PAGE_WRITE)
 
-#define PAGE_KERNEL		__pgprot(_PAGE_KERNEL)
+#define PAGE_KERNEL		__pgprot(_PAGE_KERNEL | _PAGE_CACHED)
 #define PAGE_KERNEL_NOCACHE	__pgprot(_PAGE_KERNEL | _PAGE_UNCACHED)
 #define PAGE_DEVICE		__pgprot(_PAGE_KERNEL | _PAGE_DEVICE)
 
