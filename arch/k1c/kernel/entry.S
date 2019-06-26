@@ -314,271 +314,6 @@ _restore_regs:
 	lo $r12r13r14r15 = PT_Q12[$sp]
 .endm
 
-/**
- * Fast TLB refill routine
- * $r0 = $ea
- * $r1 = task mm value
- * Return 1 if refill was successful or 0 if not.
- *
- * On k1c, we do not have hardware page walking, hence, TLB refill is
- * done using the core on no-mapping traps.
- * This routine must be as fast as possible to avoid wasting CPU time.
- * For that purpose, it is called directly from trap_handle after saving
- * only 8 registers ($r0 -> $r7) in a dedicated buffer.
- * This allows to avoid computing a complete task switching in order
- * to greatly reduce the refill time.
- *
- * We refill the JTLB which contains 128 sets with 4 way each.
- * Currently, the way selection is done using a round robin algorithm.
- *
- * The refill is using the basic flow:
- * 1 -	Walk the page table to find the TLB entry to add (virtual to
- *	physical)
- * 2 -	Compute the TLB entry to be written (convert PTE to TLB entry)
- * 3 - 	Compute the target set (0 -> 127) for the new TLB entry
- *	This is done by extracting the 6 lsb of page number
- * 4 -	Get the current way to be used which is selected using a
-	simple round robin
- * 5 -	Mark the original PTE entry as _PAGE_ACCESSED
- * 6 -	Commit the new tlb entry
- *
- * Since we are a VLIW core, a lot of this operation can be done
- * simultaneously by packing bundles.
- *
- */
-.macro macro_tlb_refill
-	LOCAL _err_out, _out, _page_readable, _write_entry, _no_rights
-	/* extract PGD offset */
-	extfz $r3 = $r0, (ASM_PGDIR_SHIFT + ASM_PGDIR_BITS - 1), ASM_PGDIR_SHIFT
-	/* is mm NULL ? */
-	cb.deqz $r1? _err_out
-	;;
-	get $r7 = $pcr
-	/* Load pgd base address into $r1 */
-	ld $r1 = MM_PGD[$r1]
-	;;
-	/* Extract processor ID to compute cpu_offset*/
-	extfz $r7 = $r7, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
-	/* Load PGD entry offset */
-	ld.xs $r1 = $r3[$r1]
-	/* Load per_cpu_offset */
-#if defined(CONFIG_SMP)
-	make $r5 = __per_cpu_offset
-#endif
-	;;
-	/* extract PMD offset*/
-	extfz $r3 = $r0, (ASM_PMD_SHIFT + ASM_PMD_BITS - 1), ASM_PMD_SHIFT
-	/* If pgd entry is null -> out */
-	cb.deqz $r1? _err_out
-#if defined(CONFIG_SMP)
-	/* Load cpu offset */
-	ld.xs $r7 = $r7[$r5]
-#else
-	/* Force cpu offset to 0 */
-	make $r7 = 0
-#endif
-	;;
-	/* Load PMD entry offset and keep pointer to the entry for huge page */
-	addx8d $r2 = $r3, $r1
-	ld.xs $r1 = $r3[$r1]
-	;;
-	/* check if it is a huge page */
-	extfz $r6 = $r1, _PAGE_HUGE_SHIFT, _PAGE_HUGE_SHIFT
-	/* If pmd entry is null -> out */
-	cb.deqz $r1? _err_out
-	;;
-	/* extract PTE offset */
-	extfz $r3 = $r0, (PAGE_SHIFT + 8), PAGE_SHIFT
-	/*
-	 * If the page is a huge one we already have set the PTE and the
-	 * pointer to the PTE.
-	 */
-	cb.dnez $r6? _pte_is_set
-	;;
-	/* Load PTE entry */
-	ld.xs $r1 = $r3[$r1]
-	addx8d $r2 = $r3, $r1
-	;;
-_pte_is_set:
-	/*
-	 * From now on, we have the pte value in $r1 so we can extract the page
-	 * size. This value is stored as it is expected by the MMU (ie between
-	 * 0 and 3).
-	 * Note that page size value is located at the same place as in $tel
-	 * and this is checked at build time so we can use TEL_PS defines.
-	 */
-	extfz $r5 = $r1, K1C_SFR_END(TEL_PS), K1C_SFR_START(TEL_PS)
-	make $r4 = K1C_PS_SHIFT_MATRIX
-	make $r6 = K1C_SBMM_BYTE_SEL
-	;;
-	/* Generate the byte selection for sbmm */
-	slld $r6 = $r6, $r5
-	;;
-	/* Get the shift value */
-	sbmm8 $r5 = $r4, $r6
-	make $r6 = 0xFFFFFFFFFFFFFFFF
-	;;
-	/* extract TLB set from ea (6 lsb of virtual page) */
-	srld $r5 = $r0, $r5
-	/* Generate ea masking according to page shift */
-	slld $r6 = $r6, $r5
-	;;
-	/* Mask to get the set value */
-	andd $r5 = $r5, MMU_SET_MASK
-	/* Extract virt page from ea */
-	andd $r4 = $r0, $r6
-	;;
-	/* Compute per_cpu_offset + current way of set address */
-	addd $r5 = $r5, $r7
-	/* Get exception cause for access type handling (page dirtying) */
-	get $r7 = $es
-	;;
-	/* Load current way to use for current set */
-	lbz $r0 = jtlb_current_set_way[$r5]
-	/* Clear way and select JTLB */
-	make $r6 = MMC_SEL_JTLB_CLEAR_WAY
-	;;
-	/* Keep only the two LSB for way value */
-	andd $r0 = $r0, 0x3
-	/* Check if the access was a "write" access */
-	andd $r7 = $r7, (K1C_TRAP_RWX_WRITE << K1C_SFR_ES_RWX_SHIFT)
-	;;
-	/* Extract page global bit */
-	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT, _PAGE_GLOBAL_SHIFT
-	/* Set the TLB way in $mmc value, add 32 bits to be in the set part */
-	insf $r6 = $r0, K1C_SFR_END(MMC_SW) + 32, K1C_SFR_START(MMC_SW) + 32
-	/* If bit 0 of pte entry is 0, then entry is not present */
-	cb.even $r1? _err_out
-	;;
-	/* Prepare MMC */
-	wfxl $mmc, $r6
-	;;
-	/* Shift global bit (if any) to its position */
-	slld $r3 = $r3, K1C_SFR_TEH_G_SHIFT
-	/* Increment way value, note that we do not care about overflow since
-	 * we only use the two lower byte */
-	addd $r0 = $r0, 1
-	/* If "write" access ($r7 != 0), then set it as dirty */
-	cmoved.dnez $r7? $r7 = _PAGE_DIRTY
-	/* Clear bits not related to FN in the pte entry for TEL writing */
-	andd $r6 = $r1, K1C_PFN_MASK
-	;;
-	/* Or teh value with global bit */
-	ord $r4 = $r4, $r3
-	/* Store new way */
-	sb jtlb_current_set_way[$r5] = $r0
-	/* Extract access perms from pte entry */
-	extfz $r3 = $r1, K1C_ACCESS_PERM_STOP_BIT, K1C_ACCESS_PERM_START_BIT
-	/* Move FN bits to their place */
-	srld $r6 = $r6, K1C_PFN_SHIFT - PAGE_SHIFT
-	;;
-	/*
-	 * Extract the page size. If it is not a huge page value is 0
-	 * and that is correct for 4Ko page size. But it need to be fixed for
-	 * regular page of 64K.
-	 */
-	andd $r5 = $r1, K1C_PAGE_SZ_MASK
-	;;
-	ord $r6 = $r6, $r5
-	;;
-	/* load access permissions */
-	lbz $r6 = k1c_access_perms[$r3]
-	ord $r0 = $r6, TEL_DEFAULT_VALUE
-	/* Add _PAGE_ACCESSED bit to PTE entry for writeback */
-	ord $r7 = $r7, _PAGE_ACCESSED
-	get $r5 = $mmc
-	;;
-	/* Does this page map a device ? */
-	andd $r7 = $r1, _PAGE_DEVICE
-	/* OR PTE value with accessed/dirty flags */
-	ord $r1 = $r1, $r7
-	/* Shift PA to correct position */
-	slld $r6 = $r6, K1C_SFR_TEL_PA_SHIFT
-	/* Set default cache policy */
-	make $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
-	;;
-	/* Store updated pte entry */
-	sd 0[$r2] = $r1
-	/* Does this page map a uncached area ? */
-	andd $r2 = $r1, _PAGE_UNCACHED
-	/* If the page is mapping a device, then set the policy to device */
-	cmoved.dnez $r7? $r3 = (TLB_CP_D_U << K1C_SFR_TEL_CP_SHIFT)
-	/* Prepare tel */
-	ord $r6 = $r0, $r6
-	;;
-	/* Add ASN from mmc */
-	insf $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
-	/* Add uncached policy if needed */
-	cmoved.dnez $r2? $r3 = (TLB_CP_U_U << K1C_SFR_TEL_CP_SHIFT)
-	;;
-	/* Add cache policy to entry */
-	ord $r6 = $r6, $r3
-	set $teh = $r4
-	;;
-	set $tel = $r6
-	make $r0 = 1
-	;;
-	tlbwrite
-	;;
-#ifdef CONFIG_K1C_DEBUG_ASN
-	LOCAL _asn_check_ok, _asn_err
-	get $r1 = $ea
-	;;
-	/* Check if kernel address, if so, there is no ASN */
-	compd.geu $r2 = $r1, PAGE_OFFSET
-	get $r6 = $sr
-	;;
-	cb.dnez $r2? _asn_check_ok
-	;;
-	get $r2 = $pcr
-	/* Load active mm addr */
-	ld $r3 = TASK_ACTIVE_MM[$r6]
-	;;
-	get $r5 = $mmc
-	/* Extract processor ID to compute cpu_offset*/
-	extfz $r2 = $r2, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
-	addd $r3 = $r3, MM_CTXT_ASN
-	;;
-	extfz $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
-	/* Load current asn from active_mm */
-	ld.xs $r3 = $r2[$r3]
-	;;
-	/* Error if ASN is not set */
-	cb.deqz $r3? _asn_err
-	/* Mask $r3 asn cycle part */
-	andd $r5 = $r3, ((1 << K1C_SFR_MMC_ASN_WIDTH) - 1)
-	;;
-	/* Compare asn in $mmc and asn in current task mm */
-	compd.eq $r3 = $r5, $r4
-	;;
-	cb.dnez $r3? _asn_check_ok
-	;;
-_asn_err:
-	/* Restore kenrel stack */
-	ld $r12 = TASK_THREAD_KERNEL_SP[$r6]
-	make $r32 = PS_HWLOOP_ENABLE
-	make $r33 = 0
-	;;
-	/* Clear hw loop exit to disable current loop */
-	set $le = $r33
-	;;
-	/* Reenable hardware loop since some functions might need it */
-	wfxl $ps = $r32
-	;;
-	/* We are fried, die peacefully */
-	make $r0 = asn_error_panic_str_label
-	call panic
-	;;
-_asn_check_ok:
-#endif
-	goto _out
-	;;
-_err_out:
-	make $r0 = 0
-	;;
-_out:
-.endm
-
 /***********************************************************************
 *                Exception vectors trampolines
 ***********************************************************************/
@@ -653,9 +388,297 @@ ENTRY(k1c_trap_handler):
 	/* Load mm addr */
 	ld $r1 = TASK_ACTIVE_MM[$r2]
 	/* if nomapping trap, try fast_refill */
-	cb.odd $r3? fast_refill
+	cb.even $r3? trap_slow_path
 	;;
-slow_path:
+	/*
+	 * Fast TLB refill routine, when entering this path,
+	 * $r0 = $ea
+	 * $r1 = task mm value
+	 *
+	 * On k1c, we do not have hardware page walking, hence, TLB refill is
+	 * done using the core on no-mapping traps.
+	 * This routine must be as fast as possible to avoid wasting CPU time.
+	 * For that purpose, it is called directly from trap_handle after saving
+	 * only 8 registers ($r0 -> $r7) in a dedicated buffer.
+	 * This allows to avoid computing a complete task switching in order
+	 * to greatly reduce the refill time.
+	 *
+	 * We refill the JTLB which contains 128 sets with 4 way each.
+	 * Currently, the way selection is done using a round robin algorithm.
+	 *
+	 * The refill is using the basic flow:
+	 * 1 -	Walk the page table to find the TLB entry to add (virtual to
+	 *	physical)
+	 * 2 -	Compute the TLB entry to be written (convert PTE to TLB entry)
+	 * 3 - 	Compute the target set (0 -> 127) for the new TLB entry
+	 *	This is done by extracting the 6 lsb of page number
+	 * 4 -	Get the current way to be used which is selected using a
+		simple round robin
+	 * 5 -	Mark PTE entry as _PAGE_ACCESSED (and optionally PAGE_DIRTY)
+	 * 6 -	Commit the new tlb entry
+	 *
+	 * Since we are a VLIW core, a lot of this operation can be done
+	 * simultaneously by packing bundles.
+	 *
+	 */
+	;;
+	/* Save more registers to be comfy */
+	so (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2] = $r4r5r6r7
+	/* extract PGD offset */
+	extfz $r3 = $r0, (ASM_PGDIR_SHIFT + ASM_PGDIR_BITS - 1), ASM_PGDIR_SHIFT
+	/* is mm NULL ? */
+	cb.deqz $r1? refill_err_out
+	;;
+	get $r7 = $pcr
+	/* Load pgd base address into $r1 */
+	ld $r1 = MM_PGD[$r1]
+	;;
+	/* Extract processor ID to compute cpu_offset*/
+	extfz $r7 = $r7, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
+	/* Load PGD entry offset */
+	ld.xs $r1 = $r3[$r1]
+	/* Load per_cpu_offset */
+#if defined(CONFIG_SMP)
+	make $r5 = __per_cpu_offset
+#endif
+	;;
+	/* extract PMD offset*/
+	extfz $r3 = $r0, (ASM_PMD_SHIFT + ASM_PMD_BITS - 1), ASM_PMD_SHIFT
+	/* If pgd entry is null -> out */
+	cb.deqz $r1? refill_err_out
+#if defined(CONFIG_SMP)
+	/* Load cpu offset */
+	ld.xs $r7 = $r7[$r5]
+#else
+	/* Force cpu offset to 0 */
+	make $r7 = 0
+#endif
+	;;
+	/* Load PMD entry offset and keep pointer to the entry for huge page */
+	addx8d $r2 = $r3, $r1
+	ld.xs $r1 = $r3[$r1]
+	;;
+	/* check if it is a huge page */
+	extfz $r6 = $r1, _PAGE_HUGE_SHIFT, _PAGE_HUGE_SHIFT
+	/* If pmd entry is null -> out */
+	cb.deqz $r1? refill_err_out
+	;;
+	/* extract PTE offset */
+	extfz $r3 = $r0, (PAGE_SHIFT + 8), PAGE_SHIFT
+	/*
+	 * If the page is a huge one we already have set the PTE and the
+	 * pointer to the PTE.
+	 */
+	cb.dnez $r6? pte_is_set
+	;;
+	/* Load PTE entry */
+	ld.xs $r1 = $r3[$r1]
+	addx8d $r2 = $r3, $r1
+	;;
+pte_is_set:
+	/*
+	 * From now on, we have the pte value in $r1 so we can extract the page
+	 * size. This value is stored as it is expected by the MMU (ie between
+	 * 0 and 3).
+	 * Note that page size value is located at the same place as in $tel
+	 * and this is checked at build time so we can use TEL_PS defines.
+	 */
+	extfz $r5 = $r1, K1C_SFR_END(TEL_PS), K1C_SFR_START(TEL_PS)
+	make $r4 = K1C_PS_SHIFT_MATRIX
+	make $r6 = K1C_SBMM_BYTE_SEL
+	;;
+	/* Generate the byte selection for sbmm */
+	slld $r6 = $r6, $r5
+	;;
+	/* Get the shift value */
+	sbmm8 $r5 = $r4, $r6
+	make $r6 = 0xFFFFFFFFFFFFFFFF
+	;;
+	/* extract TLB set from ea (6 lsb of virtual page) */
+	srld $r5 = $r0, $r5
+	/* Generate ea masking according to page shift */
+	slld $r6 = $r6, $r5
+	;;
+	/* Mask to get the set value */
+	andd $r5 = $r5, MMU_SET_MASK
+	/* Extract virt page from ea */
+	andd $r4 = $r0, $r6
+	;;
+	/* Compute per_cpu_offset + current way of set address */
+	addd $r5 = $r5, $r7
+	/* Get exception cause for access type handling (page dirtying) */
+	get $r7 = $es
+	;;
+	/* Load current way to use for current set */
+	lbz $r0 = jtlb_current_set_way[$r5]
+	/* Clear way and select JTLB */
+	make $r6 = MMC_SEL_JTLB_CLEAR_WAY
+	;;
+	/* Keep only the two LSB for way value */
+	andd $r0 = $r0, 0x3
+	/* Check if the access was a "write" access */
+	andd $r7 = $r7, (K1C_TRAP_RWX_WRITE << K1C_SFR_ES_RWX_SHIFT)
+	;;
+	/* Extract page global bit */
+	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT, _PAGE_GLOBAL_SHIFT
+	/* Set the TLB way in $mmc value, add 32 bits to be in the set part */
+	insf $r6 = $r0, K1C_SFR_END(MMC_SW) + 32, K1C_SFR_START(MMC_SW) + 32
+	/* If bit 0 of pte entry is 0, then entry is not present */
+	cb.even $r1? refill_err_out
+	;;
+	/* Prepare MMC */
+	wfxl $mmc, $r6
+	;;
+	/* Shift global bit (if any) to its position */
+	slld $r3 = $r3, K1C_SFR_TEH_G_SHIFT
+	/* Increment way value, note that we do not care about overflow since
+	 * we only use the two lower byte */
+	addd $r0 = $r0, 1
+	/* If "write" access ($r7 != 0), then set it as dirty */
+	cmoved.dnez $r7? $r7 = _PAGE_DIRTY
+	/* Clear bits not related to FN in the pte entry for TEL writing */
+	andd $r6 = $r1, K1C_PFN_MASK
+	;;
+	/* Or teh value with global bit */
+	ord $r4 = $r4, $r3
+	/* Store new way */
+	sb jtlb_current_set_way[$r5] = $r0
+	/* Extract access perms from pte entry */
+	extfz $r3 = $r1, K1C_ACCESS_PERM_STOP_BIT, K1C_ACCESS_PERM_START_BIT
+	/* Move FN bits to their place */
+	srld $r6 = $r6, K1C_PFN_SHIFT - PAGE_SHIFT
+	;;
+	/*
+	 * Extract the page size. If it is not a huge page value is 0
+	 * and that is correct for 4Ko page size. But it need to be fixed for
+	 * regular page of 64K.
+	 */
+	andd $r5 = $r1, K1C_PAGE_SZ_MASK
+	;;
+	ord $r6 = $r6, $r5
+	;;
+	/* load access permissions */
+	lbz $r6 = k1c_access_perms[$r3]
+	ord $r0 = $r6, TEL_DEFAULT_VALUE
+	/* Add _PAGE_ACCESSED bit to PTE entry for writeback */
+	ord $r7 = $r7, _PAGE_ACCESSED
+	get $r5 = $mmc
+	;;
+	/* Does this page map a device ? */
+	andd $r7 = $r1, _PAGE_DEVICE
+	/* OR PTE value with accessed/dirty flags */
+	ord $r1 = $r1, $r7
+	/* Shift PA to correct position */
+	slld $r6 = $r6, K1C_SFR_TEL_PA_SHIFT
+	/* Set default cache policy */
+	make $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
+	;;
+	/* Store updated pte entry */
+	sd 0[$r2] = $r1
+	/* Does this page map a uncached area ? */
+	andd $r2 = $r1, _PAGE_UNCACHED
+	/* If the page is mapping a device, then set the policy to device */
+	cmoved.dnez $r7? $r3 = (TLB_CP_D_U << K1C_SFR_TEL_CP_SHIFT)
+	/* Prepare tel */
+	ord $r6 = $r0, $r6
+	;;
+	/* Add ASN from mmc */
+	insf $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
+	/* Add uncached policy if needed */
+	cmoved.dnez $r2? $r3 = (TLB_CP_U_U << K1C_SFR_TEL_CP_SHIFT)
+	/* Get current task pointer for register restoration */
+	get $r0 = $sr
+	;;
+	/* Add cache policy to entry */
+	ord $r6 = $r6, $r3
+	set $teh = $r4
+	;;
+	set $tel = $r6
+	;;
+	tlbwrite
+	;;
+#ifdef CONFIG_K1C_DEBUG_ASN
+	goto asn_check
+	;;
+asn_check_ok:
+#endif
+	/* Restore additionnal registers */
+	lo $r4r5r6r7 = (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r0]
+	;;
+	/* Restore registers */
+	lo $r0r1r2r3 = TASK_THREAD_SAVE_AREA[$r0]
+	;;
+	rfe
+	;;
+
+#ifdef CONFIG_K1C_DEBUG_ASN
+/*
+ * When entering this path $r0 = $sr.
+ * WARNING: Do not clobber it here if you don't want to mess up with registers
+ * restoration above.
+ */
+asn_check:
+	get $r1 = $ea
+	;;
+	/* Check if kernel address, if so, there is no ASN */
+	compd.geu $r2 = $r1, PAGE_OFFSET
+	;;
+	cb.dnez $r2? asn_check_ok
+	;;
+	get $r2 = $pcr
+	/* Load active mm addr */
+	ld $r3 = TASK_ACTIVE_MM[$r0]
+	;;
+	get $r5 = $mmc
+	/* Extract processor ID to compute cpu_offset*/
+	extfz $r2 = $r2, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
+	addd $r3 = $r3, MM_CTXT_ASN
+	;;
+	extfz $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
+	/* Load current asn from active_mm */
+	ld.xs $r3 = $r2[$r3]
+	;;
+	/* Error if ASN is not set */
+	cb.deqz $r3? asn_check_err
+	/* Mask $r3 asn cycle part */
+	andd $r5 = $r3, ((1 << K1C_SFR_MMC_ASN_WIDTH) - 1)
+	;;
+	/* Compare asn in $mmc and asn in current task mm */
+	compd.eq $r3 = $r5, $r4
+	;;
+	cb.dnez $r3? asn_check_ok
+	;;
+asn_check_err:
+	/* Restore kenrel stack */
+	ld $r12 = TASK_THREAD_KERNEL_SP[$r0]
+	make $r32 = PS_HWLOOP_ENABLE
+	make $r33 = 0
+	;;
+	/* Clear hw loop exit to disable current loop */
+	set $le = $r33
+	;;
+	/* Reenable hardware loop since some functions might need it */
+	wfxl $ps = $r32
+	;;
+	/* We are fried, die peacefully */
+	make $r0 = asn_error_panic_str_label
+	call panic
+	;;
+#endif
+
+/* Error path for TLB refill */
+refill_err_out:
+	get $r2 = $sr
+	;;
+	/*
+	 * Restore additionnal registers which were clobbered.
+	 * No need to restore $r0r1r2r3 since this is handled in
+	 * save_regs_for_exception.
+	 */
+	lo $r4r5r6r7 = (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2]
+	;;
+	/* Simply continue on the standard path after error */
+trap_slow_path:
 	switch_stack $r1 $r2 trap_save_regs
 	;;
 trap_save_regs:
@@ -673,23 +696,6 @@ trap_save_regs:
 	call trap_handler
 	;;
 	restore_regs_after_exception
-	;;
-	rfe
-	;;
-fast_refill:
-	/* Save more registers to be comfy */
-	so (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2] = $r4r5r6r7
-	macro_tlb_refill
-	;;
-	get $r2 = $sr
-	;;
-	/* Was TLB refill successful ? */
-	cb.deqz $r0? slow_path
-	/* Retore additionnal registers */
-	lo $r4r5r6r7 = (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2]
-	;;
-	/* Restore registers */
-	lo $r0r1r2r3 = TASK_THREAD_SAVE_AREA[$r2]
 	;;
 	rfe
 	;;
