@@ -548,12 +548,8 @@ pte_is_set:
 	/* Move FN bits to their place */
 	srld $r6 = $r6, K1C_PFN_SHIFT - PAGE_SHIFT
 	;;
-	/*
-	 * Extract the page size. If it is not a huge page value is 0
-	 * and that is correct for 4Ko page size. But it need to be fixed for
-	 * regular page of 64K.
-	 */
-	andd $r5 = $r1, K1C_PAGE_SZ_MASK
+	/* Extract the page size + cache policy */
+	andd $r5 = $r1, (K1C_PAGE_SZ_MASK | K1C_PAGE_CP_MASK)
 	;;
 	ord $r6 = $r6, $r5
 	;;
@@ -564,33 +560,21 @@ pte_is_set:
 	ord $r7 = $r7, _PAGE_ACCESSED
 	get $r5 = $mmc
 	;;
-	/* Does this page map a device ? */
-	andd $r7 = $r1, _PAGE_DEVICE
 	/* OR PTE value with accessed/dirty flags */
 	ord $r1 = $r1, $r7
 	/* Shift PA to correct position */
 	slld $r6 = $r6, K1C_SFR_TEL_PA_SHIFT
-	/* Set default cache policy */
-	make $r3 = (TLB_CP_W_C << K1C_SFR_TEL_CP_SHIFT)
 	;;
 	/* Store updated pte entry */
 	sd 0[$r2] = $r1
-	/* Does this page map a uncached area ? */
-	andd $r2 = $r1, _PAGE_UNCACHED
-	/* If the page is mapping a device, then set the policy to device */
-	cmoved.dnez $r7? $r3 = (TLB_CP_D_U << K1C_SFR_TEL_CP_SHIFT)
 	/* Prepare tel */
 	ord $r6 = $r0, $r6
 	;;
 	/* Add ASN from mmc */
 	insf $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
-	/* Add uncached policy if needed */
-	cmoved.dnez $r2? $r3 = (TLB_CP_U_U << K1C_SFR_TEL_CP_SHIFT)
 	/* Get current task pointer for register restoration */
 	get $r0 = $sr
 	;;
-	/* Add cache policy to entry */
-	ord $r6 = $r6, $r3
 	set $teh = $r4
 	;;
 	set $tel = $r6
