@@ -162,6 +162,7 @@ struct k1c_iommu_mtn_entry {
 /**
  * struct k1c_iommu_hw - k1c IOMMU hardware device
  * @dev: link to IOMMU that manages this hardware IOMMU
+ * @drvdata: link the structure k1c_iommu_drvdata
  * @name: the name of the IOMMU (ie "rx" or "tx")
  * @base: base address of the memory mapped registers
  * @ways: number of ways for this IOMMU
@@ -177,6 +178,7 @@ struct k1c_iommu_mtn_entry {
  */
 struct k1c_iommu_hw {
 	struct device *dev;
+	struct k1c_iommu_drvdata *drvdata;
 	const char *name;
 	void __iomem *base;
 	unsigned int ways;
@@ -649,6 +651,25 @@ static int find_empty_way(struct k1c_iommu_hw *iommu_hw, int set)
 }
 
 /**
+ * find_dom_from_asn() - find a domain according to the ASN
+ * @drvdata: data associated to the IOMMU device
+ * @asn: the ASN to be checked
+ *
+ * Return: pointer to k1c domain if it exists, NULL otherwise
+ */
+static struct k1c_iommu_domain *
+find_dom_from_asn(struct k1c_iommu_drvdata *drvdata, u32 asn)
+{
+	struct k1c_iommu_domain *k1c_domain;
+
+	list_for_each_entry(k1c_domain, &drvdata->domains, list)
+		if (asn == k1c_domain->asn)
+			return k1c_domain;
+
+	return NULL;
+}
+
+/**
  * iommu_irq_handler() - the irq handler
  * @irq: the number of the IRQ
  * @hw_id: the IOMMU HW device that has registered the IRQ
@@ -661,8 +682,11 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 	int i;
 
 	for (i = 0; i < K1C_IOMMU_IRQ_NB_TYPE; i++) {
+		struct k1c_iommu_domain *k1c_domain;
 		u64 reg;
 		unsigned long addr;
+		int asn, flags, rwb;
+		int ret;
 
 		if (iommu_hw->irqs[i] != irq)
 			continue;
@@ -677,17 +701,26 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 		reg = readq(iommu_hw->base + K1C_IOMMU_IRQ_OFFSET +
 			    k1c_iommu_irq_status2_off[i]);
 
-		/*
-		 * Value to get ASN, RWB and flags are the same for all IRQs
-		 * so we can use the nomapping one for all kinds of interrupts.
-		 */
-		dev_dbg(iommu_hw->dev, "%s: %s fault at 0x%lx on IOMMU %s (0x%lx) [ASN = %llu, RWB = %llu, FLAGS = %llu]\n",
-			__func__,
-			k1c_iommu_irq_names[i], addr,
-			iommu_hw->name, (unsigned long) iommu_hw,
-			K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_IRQ_NOMAPPING_ASN),
-			K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_IRQ_NOMAPPING_RWB),
-			K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_IRQ_NOMAPPING_FLAGS));
+		asn = K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_IRQ_NOMAPPING_ASN);
+		flags = K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_IRQ_NOMAPPING_FLAGS);
+		rwb = K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_IRQ_NOMAPPING_RWB);
+
+		k1c_domain = find_dom_from_asn(iommu_hw->drvdata, asn);
+		if (k1c_domain) {
+			ret = report_iommu_fault(&k1c_domain->domain,
+						 iommu_hw->dev, addr, flags);
+			if (ret && ret != -ENOSYS)
+				dev_err(iommu_hw->dev, "report_iommu_fault() failed with error %d\n",
+					ret);
+		}
+
+		if (!k1c_domain || ret == -ENOSYS)
+			dev_err_ratelimited(iommu_hw->dev,
+					    "%s fault at 0x%lx on IOMMU %s (0x%lx) [ASN=%d RWB=0x%x FLAGS=0x%x]\n",
+					    k1c_iommu_irq_names[i],
+					    addr, iommu_hw->name,
+					    (unsigned long) iommu_hw,
+					    asn, rwb, flags);
 
 		/* Write register to clear flags and reset IRQ line */
 		writeq(0x0, iommu_hw->base + K1C_IOMMU_IRQ_OFFSET +
@@ -1486,6 +1519,7 @@ static int k1c_iommu_probe(struct platform_device *pdev)
 		iommu_hw = &drvdata->iommu_hw[i];
 
 		iommu_hw->dev = dev;
+		iommu_hw->drvdata = drvdata;
 		iommu_hw->name = k1c_iommu_names[i];
 
 		/* Configure IRQs */
