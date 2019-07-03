@@ -22,3 +22,4 @@ DECLARE_EXPORT(__divdi3);
 DECLARE_EXPORT(__udivdi3);
 DECLARE_EXPORT(__multi3);
 
+DECLARE_EXPORT(clear_page);
