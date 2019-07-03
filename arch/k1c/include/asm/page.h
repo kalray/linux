@@ -135,10 +135,7 @@ static inline bool pfn_valid(unsigned long pfn)
 		(pfn < (ARCH_PFN_OFFSET + max_mapnr)));
 }
 
-static inline void clear_page(void *page)
-{
-	memset(page, 0, PAGE_SIZE);
-}
+extern void clear_page(void *to);
 
 static inline void copy_page(void *to, void *from)
 {
