@@ -16,13 +16,8 @@
 #include <asm/page.h>
 #include <asm/pgtable-bits.h>
 
-#if CONFIG_PGTABLE_LEVELS == 2
-#include <asm/pgtable-2levels.h>
-#elif CONFIG_PGTABLE_LEVELS == 3
-#include <asm/pgtable-3levels.h>
-#else
-#error "Page table levels is not configured"
-#endif  /* CONFIG_PGTABLE_LEVELS == 3 */
+#define __ARCH_USE_5LEVEL_HACK
+#include <asm-generic/pgtable-nopud.h>
 
 #include <asm/mem_map.h>
 
@@ -54,17 +49,24 @@ extern pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
 #define VMALLOC_END	(VMALLOC_START + KERNEL_VMALLOC_MAP_SIZE - 1)
 
 /* Also used by GDB script to go through the page table */
-#define PGDIR_BITS	_PGDIR_BITS
-#define PMD_BITS	_PMD_BITS
-#define PTE_BITS	_PTE_BITS
+#define PGDIR_BITS	(VA_MAX_BITS - PGDIR_SHIFT)
+#define PMD_BITS	(PGDIR_SHIFT - PMD_SHIFT)
+#define PTE_BITS	(PMD_SHIFT - PAGE_SHIFT)
 
 /* Size of region mapped by a page global directory */
-#define PGDIR_SIZE      _BITUL(PGDIR_SHIFT)
+#define PGDIR_SIZE      BIT(PGDIR_SHIFT)
 #define PGDIR_MASK      (~(PGDIR_SIZE - 1))
+
+/* Size of region mapped by a page middle directory */
+#define PMD_SIZE        BIT(PMD_SHIFT)
+#define PMD_MASK        (~(PMD_SIZE - 1))
 
 /* Number of entries in the page global directory */
 #define PAGES_PER_PGD	2
 #define PTRS_PER_PGD	(PAGES_PER_PGD * PAGE_SIZE / sizeof(pgd_t))
+
+/* Number of entries in the page middle directory */
+#define PTRS_PER_PMD    (PAGE_SIZE / sizeof(pmd_t))
 
 /* Number of entries in the page table */
 #define PTRS_PER_PTE    (PAGE_SIZE / sizeof(pte_t))
@@ -164,6 +166,41 @@ static inline pgd_t *pgd_offset(const struct mm_struct *mm, unsigned long addr)
 /* Locate an entry in the kernel page global directory */
 #define pgd_offset_k(addr)      pgd_offset(&init_mm, (addr))
 
+/**
+ * PUD
+ *
+ * As we manage a three level page table the call to set_pud is used to fill
+ * PGD.
+ */
+static inline void set_pud(pud_t *pudp, pud_t pmd)
+{
+	*pudp = pmd;
+}
+
+static inline void pud_populate(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
+{
+	set_pud(pud, __pud((unsigned long)pmd));
+}
+
+static inline int pud_none(pud_t pud)
+{
+	return !pud_val(pud);
+}
+
+static inline int pud_bad(pud_t pud)
+{
+	return !pud_val(pud);
+}
+static inline int pud_present(pud_t pud)
+{
+	return pud_val(pud) != 0UL;
+}
+
+static inline void pud_clear(pud_t *pud)
+{
+	set_pud(pud, __pud(0));
+}
+
 /**********************
  * PMD definitions:
  *   - set_pmd
@@ -228,6 +265,19 @@ static inline void pmd_clear(pmd_t *pmdp)
 static inline struct page *pmd_page(pmd_t pmd)
 {
 	return virt_to_page(pmd_val(pmd));
+}
+
+#define pmd_ERROR(e) \
+	pr_err("%s:%d: bad pmd %016lx.\n", __FILE__, __LINE__, pmd_val(e))
+
+static inline unsigned long pmd_index(unsigned long addr)
+{
+	return ((addr) >> PMD_SHIFT) & (PTRS_PER_PMD - 1);
+}
+
+static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
+{
+	return (pmd_t *)pud_val(*pud) + pmd_index(addr);
 }
 
 /**********************
