@@ -34,6 +34,15 @@
  */
 #define ARCH_PFN_OFFSET	((unsigned long)(PHYS_OFFSET >> PAGE_SHIFT))
 
+#if defined(CONFIG_K1C_4K_PAGES)
+/* Maximum usable bit using with 4K pages and current page table layout */
+#define VA_MAX_BITS	40
+#define PGDIR_SHIFT     30
+#define PMD_SHIFT       21
+#else
+#error "64K page not supported yet"
+#endif
+
 /*
  * Define _SHIFT, _SIZE and _MASK corresponding of the different page
  * sizes of the K1C.
@@ -79,7 +88,10 @@ typedef struct {
 	unsigned long pgd;
 } pgd_t;
 
-/* As pmd_t is for 3 level page table it is defined in pgtable-3levels.h */
+/* Page Middle Directory entry */
+typedef struct {
+	unsigned long pmd;
+} pmd_t;
 
 /* Page Table entry */
 typedef struct {
@@ -97,7 +109,7 @@ typedef struct page *pgtable_t;
  * Macros to access entry values
  */
 #define pgd_val(x)	((x).pgd)
-/* pmd_val(x) is defined in pgtable-3levels.h */
+#define pmd_val(x)	((x).pmd)
 #define pte_val(x)	((x).pte)
 #define pgprot_val(x)	((x).pgprot)
 
@@ -105,7 +117,7 @@ typedef struct page *pgtable_t;
  * Macro to create entry from value
  */
 #define __pgd(x)	((pgd_t) { (x) })
-/* __pmd(x) is defined in pgtable-3levels.h */
+#define __pmd(x)	((pmd_t) { (x) })
 #define __pte(x)	((pte_t) { (x) })
 #define __pgprot(x)	((pgprot_t) { (x) })
 
