@@ -458,124 +458,108 @@ ENTRY(k1c_trap_handler):
 	addx8d $r2 = $r3, $r1
 	ld.xs $r1 = $r3[$r1]
 	;;
-	/* check if it is a huge page */
-	extfz $r6 = $r1, _PAGE_HUGE_SHIFT, _PAGE_HUGE_SHIFT
+	/* Check if it is a huge page (2Mb or 512Mb in PMD table)*/
+	andd $r6 = $r1, _PAGE_HUGE
 	/* If pmd entry is null -> out */
 	cb.deqz $r1? refill_err_out
-	;;
 	/* extract PTE offset */
 	extfz $r3 = $r0, (PAGE_SHIFT + 8), PAGE_SHIFT
+	;;
 	/*
 	 * If the page is a huge one we already have set the PTE and the
 	 * pointer to the PTE.
 	 */
-	cb.dnez $r6? pte_is_set
+	cb.dnez $r6? is_huge_page
 	;;
 	/* Load PTE entry */
 	ld.xs $r1 = $r3[$r1]
 	addx8d $r2 = $r3, $r1
 	;;
-pte_is_set:
-	/*
-	 * From now on, we have the pte value in $r1 so we can extract the page
-	 * size. This value is stored as it is expected by the MMU (ie between
-	 * 0 and 3).
-	 * Note that page size value is located at the same place as in $tel
-	 * and this is checked at build time so we can use TEL_PS defines.
-	 */
-	extfz $r5 = $r1, K1C_SFR_END(TEL_PS), K1C_SFR_START(TEL_PS)
-	make $r4 = K1C_PS_SHIFT_MATRIX
-	make $r6 = K1C_SBMM_BYTE_SEL
+	/* Check if it is a huge page (64Kb in PTE table) */
+	andd $r6 = $r1, _PAGE_HUGE
 	;;
-	/* Generate the byte selection for sbmm */
-	slld $r6 = $r6, $r5
+	/* Check if PTE entry is for a huge page */
+	cb.dnez $r6? is_huge_page
 	;;
-	/* Get the shift value */
-	sbmm8 $r5 = $r4, $r6
-	make $r6 = 0xFFFFFFFFFFFFFFFF
+	/* 4K: Extract set value */
+	extfz $r0 = $r1, (PAGE_SHIFT + K1C_SFR_MMC_SS_WIDTH - 1), PAGE_SHIFT
+	/* 4K: Extract virt page from ea */
+	andd $r4 = $r0, PAGE_MASK
 	;;
-	/* extract TLB set from ea (6 lsb of virtual page) */
-	srld $r5 = $r0, $r5
-	/* Generate ea masking according to page shift */
-	slld $r6 = $r6, $r5
-	;;
-	/* Mask to get the set value */
-	andd $r5 = $r5, MMU_SET_MASK
-	/* Extract virt page from ea */
-	andd $r4 = $r0, $r6
-	;;
+/*
+ * This path expects the following:
+ * - $r0 = set index
+ * - $r1 = pte entry
+ * - $r2 = pte entry address
+ * - $r4 = virtual page address
+ */
+pte_prepared:
 	/* Compute per_cpu_offset + current way of set address */
-	addd $r5 = $r5, $r7
+	addd $r5 = $r0, $r7
 	/* Get exception cause for access type handling (page dirtying) */
 	get $r7 = $es
-	;;
-	/* Load current way to use for current set */
-	lbz $r0 = jtlb_current_set_way[$r5]
 	/* Clear way and select JTLB */
 	make $r6 = MMC_SEL_JTLB_CLEAR_WAY
 	;;
-	/* Keep only the two LSB for way value */
-	andd $r0 = $r0, 0x3
+	/* Load current way to use for current set */
+	lbz $r0 = jtlb_current_set_way[$r5]
 	/* Check if the access was a "write" access */
 	andd $r7 = $r7, (K1C_TRAP_RWX_WRITE << K1C_SFR_ES_RWX_SHIFT)
 	;;
-	/* Extract page global bit */
-	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT, _PAGE_GLOBAL_SHIFT
+	/* If bit PRESENT of pte entry is 0, then entry is not present */
+	cb.even $r1? refill_err_out
 	/* Set the TLB way in $mmc value, add 32 bits to be in the set part */
 	insf $r6 = $r0, K1C_SFR_END(MMC_SW) + 32, K1C_SFR_START(MMC_SW) + 32
-	/* If bit 0 of pte entry is 0, then entry is not present */
-	cb.even $r1? refill_err_out
+	/* Extract page global bit */
+	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT, _PAGE_GLOBAL_SHIFT
+	/* Increment way value, note that we do not care about overflow since
+	 * we only use the two lower byte */
+	addd $r0 = $r0, 1
 	;;
 	/* Prepare MMC */
 	wfxl $mmc, $r6
 	;;
-	/* Shift global bit (if any) to its position */
-	slld $r3 = $r3, K1C_SFR_TEH_G_SHIFT
-	/* Increment way value, note that we do not care about overflow since
-	 * we only use the two lower byte */
-	addd $r0 = $r0, 1
+	/* Insert global bit (if any) to its position into $teh value */
+	insf $r4 = $r3, K1C_SFR_TEH_G_SHIFT, K1C_SFR_TEH_G_SHIFT
 	/* If "write" access ($r7 != 0), then set it as dirty */
 	cmoved.dnez $r7? $r7 = _PAGE_DIRTY
 	/* Clear bits not related to FN in the pte entry for TEL writing */
 	andd $r6 = $r1, K1C_PFN_MASK
-	;;
-	/* Or teh value with global bit */
-	ord $r4 = $r4, $r3
 	/* Store new way */
 	sb jtlb_current_set_way[$r5] = $r0
+	;;
 	/* Extract access perms from pte entry */
 	extfz $r3 = $r1, K1C_ACCESS_PERM_STOP_BIT, K1C_ACCESS_PERM_START_BIT
 	/* Move FN bits to their place */
 	srld $r6 = $r6, K1C_PFN_SHIFT - PAGE_SHIFT
-	;;
 	/* Extract the page size + cache policy */
 	andd $r5 = $r1, (K1C_PAGE_SZ_MASK | K1C_PAGE_CP_MASK)
 	;;
+	/* Add page size + cache policy to $tel value */
 	ord $r6 = $r6, $r5
+	/* Get $mmc to get current ASN */
+	get $r0 = $mmc
+	/* Add _PAGE_ACCESSED bit to PTE entry for writeback */
+	ord $r7 = $r7, _PAGE_ACCESSED
 	;;
+	/* Add ASN from mmc into future $teh value */
+	insf $r4 = $r0, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
 	/* load access permissions */
 	lbz $r6 = k1c_access_perms[$r3]
 	ord $r0 = $r6, TEL_DEFAULT_VALUE
-	/* Add _PAGE_ACCESSED bit to PTE entry for writeback */
-	ord $r7 = $r7, _PAGE_ACCESSED
-	get $r5 = $mmc
 	;;
 	/* OR PTE value with accessed/dirty flags */
 	ord $r1 = $r1, $r7
 	/* Shift PA to correct position */
 	slld $r6 = $r6, K1C_SFR_TEL_PA_SHIFT
+	set $teh = $r4
 	;;
 	/* Store updated pte entry */
 	sd 0[$r2] = $r1
 	/* Prepare tel */
 	ord $r6 = $r0, $r6
-	;;
-	/* Add ASN from mmc */
-	insf $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
 	/* Get current task pointer for register restoration */
 	get $r0 = $sr
-	;;
-	set $teh = $r4
 	;;
 	set $tel = $r6
 	;;
@@ -593,6 +577,51 @@ asn_check_ok:
 	lo $r0r1r2r3 = TASK_THREAD_SAVE_AREA[$r0]
 	;;
 	rfe
+	;;
+
+is_huge_page:
+	/*
+	 * When entering this path:
+	 * - $r0 = $ea
+	 * - $r1 = pte entry
+	 * - $r7 = cpu offset for tlb_current_set_way
+	 *
+	 * From now on, we have the pte value in $r1 so we can extract the page
+	 * size. This value is stored as it is expected by the MMU (ie between
+	 * 0 and 3).
+	 * Note that page size value is located at the same place as in $tel
+	 * and this is checked at build time so we can use TEL_PS defines.
+	 * In this codepath, we will extract the set and mask exception address
+	 * and align virt and phys address with what the hardware expect.
+	 * Indeed, MMU expect lsb of the virtual and physycal address to be 0
+	 * according to page size.
+	 * This means that for 4K pages, the 12 lsb must be 0, for 64K
+	 * pages, the 16 lsb must be 0 and so on.
+	 */
+	extfz $r5 = $r1, K1C_SFR_END(TEL_PS), K1C_SFR_START(TEL_PS)
+	/* Compute the mask to extract set and mask exception address */
+	make $r4 = K1C_PS_SHIFT_MATRIX
+	make $r6 = K1C_SBMM_BYTE_SEL
+	;;
+	/* Generate the byte selection for sbmm */
+	slld $r6 = $r6, $r5
+	;;
+	/* Get the shift value */
+	sbmm8 $r5 = $r4, $r6
+	make $r4 = 0xFFFFFFFFFFFFFFFF
+	;;
+	/* extract TLB set from ea (6 lsb of virtual page) */
+	srld $r5 = $r0, $r5
+	/* Generate ea masking according to page shift */
+	slld $r4 = $r4, $r5
+	;;
+	/* Mask to get the set value */
+	andd $r0 = $r5, MMU_SET_MASK
+	/* Extract virt page from ea */
+	andd $r4 = $r0, $r4
+	;;
+	/* Returned to fast path */
+	goto pte_prepared
 	;;
 
 #ifdef CONFIG_K1C_DEBUG_ASN
