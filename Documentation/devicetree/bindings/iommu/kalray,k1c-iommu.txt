@@ -11,6 +11,11 @@ Required properties:
 		      See the generic IOMMU binding described in
                         devicetree/bindings/pci/pci-iommu.txt
 
+Optional properties:
+
+- maybe-initialized: Should be used if the IOMMU may be initialized before
+                     the IOMMU device driver is probed.
+
 Example:
     iommu_noc: iommu_noc@0 {
         compatible = "kalray,k1c-iommu";
@@ -53,4 +58,12 @@ Example with a PCI device:
             iommu-map = <0x0 &iommu_pci 0x0 0x10000>;  // all requester id map to ASN 0
             iommu-map-mask = <0x0000>;
             ....
+    };
+
+Example with a firmware initializes before the probe:
+
+    iommu_cluster: iommu_cluster@0 {
+        compatible = "kalray,k1c-iommu";
+        ...
+        maybe-initialized;
     };
