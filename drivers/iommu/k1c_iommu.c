@@ -315,7 +315,8 @@ static void print_tlb_entry(int set, int way, struct k1c_iommu_tlb_entry *entry)
  * @way: the way to use
  * @entry: will contain the value read
  *
- * Lock must not be taken when calling this function.
+ * It is to the function that is calling read_tlb_entry() to ensure that access
+ * is atomic.
  */
 static void read_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 			   unsigned int set,
@@ -344,7 +345,8 @@ static void read_tlb_entry(struct k1c_iommu_hw *iommu_hw,
  * operation to be sure that the TLB has been updated. It also updates the
  * TLB software cache.
  *
- * Lock must not be taken when calling this function.
+ * It is to the function that is calling write_tlb_entry() to ensure that access
+ * is atomic.
  */
 static void write_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 			    unsigned int way,
@@ -378,12 +380,48 @@ static void write_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 }
 
 /**
+ * update_tlb_cache() - Read the IOMMU and update the TLB cache
+ * @iommu_hw: the HW iommu that we want to reset
+ *
+ * This function reads the IOMMU and update TLB cache according to entries that
+ * are already present. If a global entry is detected we failed because we
+ * cannot guaranty that there won't be multimapping. Current implementation
+ * expects that all entries have an ASN and is not global.
+ * This function is only called when the IOMMU is probed so there is no need to
+ * take lock for updating the TLB cache.
+ *
+ * Return: 0 in case of success, a negative value otherwise
+ */
+static int update_tlb_cache(struct k1c_iommu_hw *iommu_hw)
+{
+	struct k1c_iommu_tlb_entry entry;
+	unsigned int set, way;
+
+	for (set = 0; set < iommu_hw->sets; set++)
+		for (way = 0; way < iommu_hw->ways; way++) {
+			read_tlb_entry(iommu_hw, set, way, &entry);
+
+			if (entry.teh.g) {
+				dev_err(iommu_hw->dev, "IOMMU %s: failed to update TLB cache, global entry are not supported\n",
+					iommu_hw->name);
+				return -1;
+			}
+
+			iommu_hw->tlb_cache[set][way] = entry;
+		}
+
+	return 0;
+}
+
+/**
  * reset_tlb() - reset the software and the hardware TLB cache
  * @iommu_hw: the HW iommu that we want to reset
  *
  * This function reset the TLB. The set is computed automatically from PN and
  * the page size must be valid. As we support 4Ko we can let the PS field equal
  * to 0.
+ *
+ * Return: nothing
  */
 static void reset_tlb(struct k1c_iommu_hw *iommu_hw)
 {
@@ -746,10 +784,11 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 /**
  * setup_hw_iommu() - configure the IOMMU hardware device
  * @iommu_hw: the HW IOMMU device that we want to initialize
+ * @ctrl_reg: the control register value for the IOMMU
  *
  * Return: 0 in case of success, another value otherwise.
  */
-static int setup_hw_iommu(struct k1c_iommu_hw *iommu_hw)
+static int setup_hw_iommu(struct k1c_iommu_hw *iommu_hw, u64 ctrl_reg)
 {
 	struct device *dev = iommu_hw->dev;
 	unsigned int i;
@@ -792,14 +831,43 @@ static int setup_hw_iommu(struct k1c_iommu_hw *iommu_hw)
 	/* Enable IRQs that has been registered */
 	writeq(reg, iommu_hw->base + K1C_IOMMU_IRQ_OFFSET);
 
+	writeq(ctrl_reg, iommu_hw->base + K1C_IOMMU_GENERAL_CTRL_OFFSET);
+
+	reg = readq(iommu_hw->base + K1C_IOMMU_GENERAL_CTRL_OFFSET);
+	if (ctrl_reg != reg) {
+		dev_err(dev, "IOMMU %s: failed to write control register (0x%016llx != 0x%016llx\n",
+			iommu_hw->name, ctrl_reg, reg);
+		return -ENODEV;
+	}
+
+	dev_info(dev, "IOMMU %s (0x%lx) initialized (GC reg = 0x%016llx)\n",
+		 iommu_hw->name, (unsigned long)iommu_hw, reg);
+
+	return 0;
+}
+
+/**
+ * init_ctrl_reg() - Initialize the control register for IOMMU
+ *
+ * This function initializes the control register to:
+ *  - Enable the IOMMU
+ *  - In case of errors set the behavior of all traps to stall.
+ *  - Set page size
+ *
+ * Return: the initialized register
+ */
+static u64 init_ctrl_reg(void)
+{
+	u64 reg;
+
 	/*
 	 * Set "general control" register:
 	 *  - Enable the IOMMU
 	 *  - In case of errors set the behavior to stall.
-	 *  - Select 4K pages since kernel is only supported this size for now
-	 *    and we don't use other size.
+	 *  - Set page size
 	 */
-	reg = K1C_IOMMU_SET_FIELD(1, K1C_IOMMU_GENERAL_CTRL_ENABLE);
+	reg = K1C_IOMMU_SET_FIELD(K1C_IOMMU_ENABLED,
+				  K1C_IOMMU_GENERAL_CTRL_ENABLE);
 	reg |= K1C_IOMMU_SET_FIELD(K1C_IOMMU_STALL,
 				   K1C_IOMMU_GENERAL_CTRL_NOMAPPING_BEHAVIOR);
 	reg |= K1C_IOMMU_SET_FIELD(K1C_IOMMU_STALL,
@@ -809,13 +877,42 @@ static int setup_hw_iommu(struct k1c_iommu_hw *iommu_hw)
 	reg |= K1C_IOMMU_SET_FIELD((K1C_IOMMU_PMJ_4K | K1C_IOMMU_PMJ_64K),
 				   K1C_IOMMU_GENERAL_CTRL_PMJ);
 
-	writeq(reg, iommu_hw->base + K1C_IOMMU_GENERAL_CTRL_OFFSET);
+	return reg;
+}
+
+/**
+ * update_ctrl_reg() - Update the control register for IOMMU
+ * @iommu_hw: the HW IOMMU device that owns the control register
+ * @reg_ptr: a pointer to a u64
+ *
+ * This function updates the control register. It is used when the IOMMU is
+ * already enabled and we want to add all features enabled when calling
+ * init_crl_reg().
+ *
+ * Return: the status of the IOMMU
+ */
+static int update_ctrl_reg(struct k1c_iommu_hw *iommu_hw, u64 *reg_ptr)
+{
+	u64 reg;
+	int ret;
 
 	reg = readq(iommu_hw->base + K1C_IOMMU_GENERAL_CTRL_OFFSET);
-	dev_info(dev, "IOMMU %s (0x%lx) initialized (GC reg = 0x%016llx)\n",
-		 iommu_hw->name, (unsigned long)iommu_hw, reg);
+	if (K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_GENERAL_CTRL_ENABLE))
+		ret = K1C_IOMMU_ENABLED;
+	else
+		ret = K1C_IOMMU_DISABLED;
 
-	return 0;
+	/* Init reg with our default values */
+	*reg_ptr = init_ctrl_reg();
+
+	/*
+	 * Update the control register with former reg if IOMMU is already
+	 * enabled.
+	 */
+	if (ret == K1C_IOMMU_ENABLED)
+		*reg_ptr |= reg;
+
+	return ret;
 }
 
 /**
@@ -1497,6 +1594,7 @@ static int k1c_iommu_probe(struct platform_device *pdev)
 	struct device *dev;
 	struct k1c_iommu_drvdata *drvdata;
 	unsigned int i, j, ret;
+	bool maybe_init;
 
 	dev = &pdev->dev;
 
@@ -1511,10 +1609,14 @@ static int k1c_iommu_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&drvdata->groups);
 	INIT_LIST_HEAD(&drvdata->domains);
 
+	maybe_init = of_property_read_bool(dev->of_node,
+			"kalray,maybe-initialized");
+
 	/* Configure structure and HW of RX and TX IOMMUs */
 	for (i = 0; i < K1C_IOMMU_NB_TYPE; i++) {
 		struct resource *res;
 		struct k1c_iommu_hw *iommu_hw;
+		u64 ctrl_reg;
 
 		iommu_hw = &drvdata->iommu_hw[i];
 
@@ -1562,9 +1664,35 @@ static int k1c_iommu_probe(struct platform_device *pdev)
 			return -ENODEV;
 		}
 
-		/* Initialize HW: IOMMU must be reset before enbling it */
-		reset_tlb(iommu_hw);
-		setup_hw_iommu(iommu_hw);
+
+		if (maybe_init) {
+			/*
+			 * If IOMMU is initialized before we probe it we need to
+			 * check if the IOMMU is really enabled or not.
+			 * If it is enabled we need to update the TLB cache
+			 * with values already there and update the control
+			 * register with former value (it is important to keep
+			 * PMJ coherent for example). It works because we don't
+			 * do any refill and so we are sure that entries won't
+			 * be evicted so the firmware will always work. This
+			 * also means that the firmware won't modify any
+			 * entries.
+			 */
+			ret = update_ctrl_reg(iommu_hw, &ctrl_reg);
+			if (ret == K1C_IOMMU_DISABLED)
+				/*
+				 * IOMMU was not enabled so reset it and
+				 * continue. ctrl_reg has been initialized.
+				 */
+				reset_tlb(iommu_hw);
+			else if (update_tlb_cache(iommu_hw) < 0)
+				return -ENODEV;
+		} else {
+			ctrl_reg = init_ctrl_reg();
+			reset_tlb(iommu_hw);
+		}
+
+		setup_hw_iommu(iommu_hw, ctrl_reg);
 	}
 
 	/* Ensure that both IOMMU have the same number of sets */
