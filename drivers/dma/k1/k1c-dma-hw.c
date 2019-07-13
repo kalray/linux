@@ -176,6 +176,8 @@ static int k1c_dma_fifo_rx_channel_queue_init(struct k1c_dma_phy *phy)
 {
 	/* Desactivate it, we need the RX buffer adress before running it */
 	k1c_dma_q_writeq(phy, 0, K1C_DMA_RX_CHAN_ACTIVATED_OFFSET);
+	/* Wait for channel to be deactivated */
+	wmb();
 
 	dev_dbg(phy->dev, "%s Enabling rx_channel[%d] qbase: 0x%llx\n",
 		__func__, phy->hw_id, (u64) phy->q.base);
@@ -226,8 +228,6 @@ k1c_dma_fifo_rx_channel_queue_post_init(struct k1c_dma_phy *phy, u64 buf_paddr,
 	dev_dbg(phy->dev, "RX hw_queue[%d] buf_paddr: 0x%llx buf_size: %lld\n",
 			phy->hw_id, buf_paddr, buf_size);
 
-	/* Wait for queue config to be written */
-	wmb();
 	/* Activate once conifguration is done and commited in memory */
 	k1c_dma_q_writeq(phy, 1, K1C_DMA_RX_CHAN_ACTIVATED_OFFSET);
 	return 0;
@@ -272,8 +272,7 @@ static int k1c_dma_pkt_rx_channel_queue_init(struct k1c_dma_phy *phy)
 			K1C_DMA_RX_CHAN_COMP_Q_NOTIF_ARG_OFFSET);
 	k1c_dma_q_writeq_relaxed(phy, K1C_DMA_ASN,
 			K1C_DMA_RX_CHAN_COMP_Q_ASN_OFFSET);
-	/* Wait for queue config to be written */
-	wmb();
+
 	/* Activate once conifguration is done and commited in memory */
 	k1c_dma_q_writeq(phy, 1ULL, K1C_DMA_RX_CHAN_ACTIVATED_OFFSET);
 
@@ -323,8 +322,7 @@ int k1c_dma_pkt_rx_job_queue_init(struct k1c_dma_phy *phy)
 			K1C_DMA_RX_JOB_Q_CACHE_ID_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, K1C_DMA_ASN,
 			K1C_DMA_RX_JOB_Q_ASN_OFFSET);
-	/* Wait for queue config to be written */
-	wmb();
+
 	/* Activate once conifguration is done and commited in memory */
 	k1c_dma_jobq_writeq(phy, 1ULL, K1C_DMA_RX_JOB_Q_ACTIVATE_OFFSET);
 
@@ -359,7 +357,6 @@ int k1c_dma_pkt_rx_queue_push_desc(struct k1c_dma_phy *phy,
 
 	fifo_addr[write_offset + 0] = pkt_paddr;
 	fifo_addr[write_offset + 1] = pkt_len;
-	wmb(); /* Wait pkt to be written */
 
 	dev_dbg(phy->dev, "%s pkt_paddr: 0x%llx len: %lld jobq_queue_id: %d ticket: %lld\n",
 		__func__, pkt_paddr, pkt_len,
@@ -442,8 +439,7 @@ int k1c_dma_tx_job_queue_init(struct k1c_dma_phy *phy)
 			K1C_DMA_TX_JOB_Q_ASN_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, K1C_DMA_THREAD_ID,
 			K1C_DMA_TX_JOB_Q_THREAD_ID_OFFSET);
-	/* Wait for queue config to be written */
-	wmb();
+
 	/* Activate once configuration is done and commited in memory */
 	k1c_dma_jobq_writeq(phy, 1ULL, K1C_DMA_TX_JOB_Q_ACTIVATE_OFFSET);
 	return 0;
@@ -487,8 +483,7 @@ int k1c_dma_tx_completion_init(struct k1c_dma_phy *phy)
 			K1C_DMA_TX_COMP_Q_NOTIF_ADDR_OFFSET);
 	k1c_dma_compq_writeq_relaxed(phy, phy->msi_data,
 			K1C_DMA_TX_COMP_Q_NOTIF_ARG_OFFSET);
-	/* Wait for queue config to be written */
-	wmb();
+
 	/* Activate once conifguration is done and commited in memory */
 	k1c_dma_compq_writeq(phy, 1ULL, K1C_DMA_TX_COMP_Q_ACTIVATE_OFFSET);
 	ret = readq_poll_timeout(phy->compq.base +
@@ -882,7 +877,6 @@ static int k1c_dma_push_job_fast(struct k1c_dma_phy *phy,
 	for (i = 0; i < K1C_DMA_UC_NB_PARAMS; ++i)
 		fifo_addr[write_offset + i] = p->param[i];
 	fifo_addr[write_offset + K1C_DMA_UC_NB_PARAMS] = p->config;
-	wmb(); /* Wait for queue config to be written */
 
 	write_count_next = write_count + 1;
 	k1c_dma_jobq_writeq(phy, write_count_next,
