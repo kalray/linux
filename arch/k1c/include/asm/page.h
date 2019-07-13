@@ -148,11 +148,7 @@ static inline bool pfn_valid(unsigned long pfn)
 }
 
 extern void clear_page(void *to);
-
-static inline void copy_page(void *to, void *from)
-{
-	memcpy(to, from, PAGE_SIZE);
-}
+extern void copy_page(void *to, void *from);
 
 static inline void clear_user_page(void *page, unsigned long vaddr,
 				struct page *pg)
