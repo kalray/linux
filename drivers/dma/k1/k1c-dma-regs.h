@@ -22,6 +22,7 @@
 #define K1C_DMA_TX_COMPLETION_QUEUE_NUMBER   (64)
 #define K1C_DMA_TX_PGRM_MEM_NUMBER           (128)
 #define K1C_DMA_TX_PGRM_TAB_NUMBER           (16)
+#define K1C_DMA_ASN_MASK                     (0x1FF)
 
 /* RX channels */
 #define K1C_DMA_RX_CHAN_OFFSET 0x0
