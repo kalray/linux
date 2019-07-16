@@ -10,16 +10,12 @@
 #ifndef K1C_DMA_HW_H
 #define K1C_DMA_HW_H
 
-#define K1C_DMA_ASN       (0ULL)
+#include "k1c-dma-regs.h"
+
 #define K1C_DMA_CACHE_ID  (1ULL)
 #define K1C_DMA_THREAD_ID (1ULL)
 
-#include "k1c-dma-regs.h"
-
-enum k1c_dma_global_mode {
-	K1C_DMA_CTX_LOCAL = 0,
-	K1C_DMA_CTX_GLOBAL = 1, /* Bypass asn check */
-};
+#define K1C_DMA_ASN_GLOBAL (31)
 
 enum k1c_dma_dir_type {
 	K1C_DMA_DIR_TYPE_RX = 0,
@@ -119,6 +115,7 @@ struct k1c_dma_pkt_full_desc {
  * @used: Corresponding HW queue actually used (!= 0)
  * @hw_id: default: -1, [0, 63] if assigned
  * @rx_cache_id: rx cache associated to rx job queue [0, 3]
+ * @asn: device specific asn for iommu / hw
  */
 struct k1c_dma_phy {
 	struct device *dev;
@@ -135,8 +132,8 @@ struct k1c_dma_phy {
 	int used;
 	int hw_id;
 	int rx_cache_id;
+	u32 asn;
 };
-
 
 /*
  * DMA Tx Completion queue descriptor by field
@@ -160,6 +157,8 @@ struct k1c_dma_tx_job_desc {
 	u8 reserved0;
 	u64 reserved1;
 };
+
+int is_asn_global(u32 asn);
 
 /* RX queues */
 int k1c_dma_pkt_rx_queue_push_desc(struct k1c_dma_phy *phy, u64 pkt_paddr,

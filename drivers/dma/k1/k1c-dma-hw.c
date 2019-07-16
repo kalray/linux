@@ -168,6 +168,11 @@ static inline u64 k1c_dma_compq_readq(struct k1c_dma_phy *phy, u64 off)
 	return readq(phy->compq.base + off);
 }
 
+int is_asn_global(u32 asn)
+{
+	return test_bit(K1C_DMA_ASN_GLOBAL, (unsigned long *)&asn);
+}
+
 /**
  * k1c_dma_fifo_rx_channel_queue_init() - Allocate and initialize RX queue
  * @param phy pointer to physical description
@@ -202,8 +207,8 @@ static int k1c_dma_fifo_rx_channel_queue_init(struct k1c_dma_phy *phy)
 			K1C_DMA_RX_CHAN_COMP_Q_NOTIF_ADDR_OFFSET);
 	k1c_dma_q_writeq_relaxed(phy, phy->msi_data,
 			K1C_DMA_RX_CHAN_COMP_Q_NOTIF_ARG_OFFSET);
-	k1c_dma_q_writeq_relaxed(phy, K1C_DMA_ASN,
-			K1C_DMA_RX_CHAN_COMP_Q_ASN_OFFSET);
+	k1c_dma_q_writeq_relaxed(phy, phy->asn,
+				 K1C_DMA_RX_CHAN_COMP_Q_ASN_OFFSET);
 	/* Wait for queue config to be written */
 	wmb();
 
@@ -270,10 +275,9 @@ static int k1c_dma_pkt_rx_channel_queue_init(struct k1c_dma_phy *phy)
 			K1C_DMA_RX_CHAN_COMP_Q_NOTIF_ADDR_OFFSET);
 	k1c_dma_q_writeq_relaxed(phy, phy->msi_data,
 			K1C_DMA_RX_CHAN_COMP_Q_NOTIF_ARG_OFFSET);
-	k1c_dma_q_writeq_relaxed(phy, K1C_DMA_ASN,
-			K1C_DMA_RX_CHAN_COMP_Q_ASN_OFFSET);
-
-	/* Activate once conifguration is done and commited in memory */
+	k1c_dma_q_writeq_relaxed(phy, phy->asn,
+				 K1C_DMA_RX_CHAN_COMP_Q_ASN_OFFSET);
+	/* Activate once configuration is done and commited in memory */
 	k1c_dma_q_writeq(phy, 1ULL, K1C_DMA_RX_CHAN_ACTIVATED_OFFSET);
 
 	return 0;
@@ -320,10 +324,8 @@ int k1c_dma_pkt_rx_job_queue_init(struct k1c_dma_phy *phy)
 			K1C_DMA_RX_JOB_Q_NOTIF_MODE_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, K1C_DMA_CACHE_ID,
 			K1C_DMA_RX_JOB_Q_CACHE_ID_OFFSET);
-	k1c_dma_jobq_writeq_relaxed(phy, K1C_DMA_ASN,
-			K1C_DMA_RX_JOB_Q_ASN_OFFSET);
-
-	/* Activate once conifguration is done and commited in memory */
+	k1c_dma_jobq_writeq_relaxed(phy, phy->asn, K1C_DMA_RX_JOB_Q_ASN_OFFSET);
+	/* Activate once configuration is done and commited in memory */
 	k1c_dma_jobq_writeq(phy, 1ULL, K1C_DMA_RX_JOB_Q_ACTIVATE_OFFSET);
 
 	return 0;
@@ -435,8 +437,7 @@ int k1c_dma_tx_job_queue_init(struct k1c_dma_phy *phy)
 			K1C_DMA_TX_JOB_Q_NOTIF_ADDR_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, phy->msi_data,
 			K1C_DMA_TX_JOB_Q_NOTIF_ARG_OFFSET);
-	k1c_dma_jobq_writeq_relaxed(phy, K1C_DMA_ASN,
-			K1C_DMA_TX_JOB_Q_ASN_OFFSET);
+	k1c_dma_jobq_writeq_relaxed(phy, phy->asn, K1C_DMA_TX_JOB_Q_ASN_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, K1C_DMA_THREAD_ID,
 			K1C_DMA_TX_JOB_Q_THREAD_ID_OFFSET);
 
@@ -452,6 +453,7 @@ int k1c_dma_tx_completion_init(struct k1c_dma_phy *phy)
 {
 	int ret = 0;
 	u64 status = 0;
+	u16 global = is_asn_global(phy->asn);
 
 	/* check tx job completion queue is not used */
 	ret = readq_poll_timeout(phy->compq.base +
@@ -470,10 +472,10 @@ int k1c_dma_tx_completion_init(struct k1c_dma_phy *phy)
 	/* With  static mode + field none , sa = 0, nb_log2 = 0 */
 	k1c_dma_compq_writeq_relaxed(phy, 0, K1C_DMA_TX_COMP_Q_SA_OFFSET);
 	k1c_dma_compq_writeq_relaxed(phy, 0, K1C_DMA_TX_COMP_Q_NB_LOG2_OFFSET);
-	k1c_dma_compq_writeq_relaxed(phy, K1C_DMA_CTX_GLOBAL,
-			K1C_DMA_TX_COMP_Q_GLOBAL_OFFSET);
-	k1c_dma_compq_writeq_relaxed(phy,
-			K1C_DMA_ASN, K1C_DMA_TX_COMP_Q_ASN_OFFSET);
+	k1c_dma_compq_writeq_relaxed(phy, global,
+				     K1C_DMA_TX_COMP_Q_GLOBAL_OFFSET);
+	k1c_dma_compq_writeq_relaxed(phy, phy->asn,
+				     K1C_DMA_TX_COMP_Q_ASN_OFFSET);
 	k1c_dma_compq_writeq_relaxed(phy, K1C_DMA_TX_COMPL_FIELD_NONE,
 			K1C_DMA_TX_COMP_Q_FIELD_EN_OFFSET);
 	k1c_dma_compq_writeq_relaxed(phy, 0, K1C_DMA_TX_COMP_Q_WP_OFFSET);
