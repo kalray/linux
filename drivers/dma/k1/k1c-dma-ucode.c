@@ -21,8 +21,6 @@ static struct k1c_dma_ucode mem2mem_stride2stride_ucode = {
 	.name = K1C_DMA_MEM2MEM_UCODE_NAME,
 	.pgrm_id = MEM2MEM_PROGRAM_ID,
 	.tab.transfer_mode = K1C_DMA_TX_TRANSFER_MODE_AXI,
-	.tab.global = K1C_DMA_CTX_GLOBAL,
-	.tab.asn = K1C_DMA_ASN,
 	.tab.valid = 1,
 };
 
@@ -30,8 +28,6 @@ static struct k1c_dma_ucode mem2noc_stride2stride_ucode = {
 	.name = K1C_DMA_MEM2NOC_UCODE_NAME,
 	.pgrm_id = MEM2NOC_PROGRAM_ID,
 	.tab.transfer_mode = K1C_DMA_TX_TRANSFER_MODE_NOC,
-	.tab.global = K1C_DMA_CTX_LOCAL,
-	.tab.asn = K1C_DMA_ASN,
 	.tab.valid = 1,
 };
 
@@ -39,8 +35,6 @@ static struct k1c_dma_ucode mem2eth_ucode = {
 	.name = K1C_DMA_MEM2ETH_UCODE_NAME,
 	.pgrm_id = MEM2ETH_PROGRAM_ID,
 	.tab.transfer_mode = K1C_DMA_TX_TRANSFER_MODE_NOC,
-	.tab.global = K1C_DMA_CTX_GLOBAL,
-	.tab.asn = K1C_DMA_ASN,
 	.tab.valid = 1,
 };
 
@@ -107,8 +101,8 @@ int k1c_dma_ucode_load(struct k1c_dma_dev *dev,
 		K1C_DMA_TX_PGRM_TAB_PM_START_ADDR_SHIFT);
 	val |= (ucode->tab.transfer_mode <<
 		K1C_DMA_TX_PGRM_TAB_TRANSFER_MODE_SHIFT);
-	val |= (ucode->tab.global << K1C_DMA_TX_PGRM_TAB_GLOBAL_SHIFT);
-	val |= (ucode->tab.asn << K1C_DMA_TX_PGRM_TAB_ASN_SHIFT);
+	val |= (is_asn_global(dev->asn) << K1C_DMA_TX_PGRM_TAB_GLOBAL_SHIFT);
+	val |= (dev->asn << K1C_DMA_TX_PGRM_TAB_ASN_SHIFT);
 	val |= (ucode->tab.valid << K1C_DMA_TX_PGRM_TAB_VALID_SHIFT);
 
 	writeq(val, pgrm_table_addr);
