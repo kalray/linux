@@ -24,7 +24,6 @@
 #define K1C_DMA_MAX_REQUESTS      (127)
 #define K1C_DMA_MAX_TXD           (8)
 
-
 /**
  * struct k1c_dma_hw_job - HW transfer descriptor
  * @txd: actual job descriptor
@@ -64,15 +63,15 @@ struct k1c_dma_desc {
 
 /**
  * struct k1c_dma_slave_cfg - Extended slave configuration structure for channel
- * @cfg: dma engine channel config
+ * @cfg: Dma engine channel config
  * @dir: RX / TX
- * @trans_type: transfer type for dma-noc
+ * @trans_type: Transfer type for dma-noc
  * @noc_route: Transfer route
  * @qos_id: qos
  * @global: Global mode
  * @asn: ASN
  * @hw_vchan: Hw vchan requested [0, 1]
- * @rx_cache_id: rx cache associated to rx job queue [0, 3]
+ * @rx_cache_id: Rx cache associated to rx job queue [0, 3]
  */
 struct k1c_dma_slave_cfg {
 	struct dma_slave_config cfg;
@@ -111,6 +110,14 @@ struct k1c_dma_chan_param {
 };
 
 /**
+ * enum k1c_dma_state - bitfield for channel state
+ * @K1C_DMA_HW_INIT_DONE: allocation and init of hw queues done
+ */
+enum k1c_dma_state {
+	K1C_DMA_HW_INIT_DONE,
+};
+
+/**
  * struct k1c_dma_chan
  * @vc: Pointer to virt-dma chan
  * @dev: Pointer to dma-noc device
@@ -121,7 +128,7 @@ struct k1c_dma_chan_param {
  * @node: For pending_chan list
  * @cfg: Chan config after slave_config
  * @param: Param for chan filtering/request (before slave_config)
- * @hw_init_done: allocation and init of hw queues done
+ * @state: bitfield of channel states
  */
 struct k1c_dma_chan {
 	struct virt_dma_chan vc;
@@ -135,7 +142,7 @@ struct k1c_dma_chan {
 	struct list_head node;
 	struct k1c_dma_slave_cfg cfg;
 	struct k1c_dma_chan_param param;
-	int    hw_init_done;
+	unsigned long state;
 };
 
 /**
