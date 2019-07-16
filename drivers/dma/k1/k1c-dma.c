@@ -488,7 +488,7 @@ static int k1c_dma_slave_config(struct dma_chan *chan,
 					 struct k1c_dma_slave_cfg, cfg);
 
 	/* Copy config */
-	if (!c->hw_init_done)
+	if (!test_bit(K1C_DMA_HW_INIT_DONE, &c->state))
 		c->cfg = *slave_cfg;
 	else
 		dev_err(dev, "%s Attempt to reset configuration\n", __func__);
@@ -528,7 +528,8 @@ static int k1c_dma_alloc_chan_resources(struct dma_chan *chan)
 	int i;
 
 	INIT_LIST_HEAD(&c->desc_running);
-	c->hw_init_done = 0;
+
+	c->state = 0;
 	c->txd_cache = KMEM_CACHE(k1c_dma_hw_job,
 				  SLAB_PANIC | SLAB_HWCACHE_ALIGN);
 	if (!c->txd_cache)
@@ -724,7 +725,7 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 	if (!desc)
 		return NULL;
 
-	if (!c->hw_init_done) {
+	if (!test_and_set_bit(K1C_DMA_HW_INIT_DONE, &c->state)) {
 		c->cfg.dir = K1C_DMA_DIR_TYPE_TX;
 		c->cfg.trans_type = K1C_DMA_TYPE_MEM2MEM;
 		c->cfg.cfg.direction = DMA_MEM_TO_MEM;
@@ -736,7 +737,7 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 		c->phy = k1c_dma_get_phy(d, c);
 		if (c->phy == NULL) {
 			dev_err(dev, "No phy available\n");
-			goto err;
+			goto err_hw_init;
 		}
 		spin_lock(&d->lock);
 		ret = k1c_dma_allocate_queues(c->phy, &d->jobq_list,
@@ -745,7 +746,7 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 		if (ret) {
 			dev_err(dev, "Unable to alloc queues\n");
 			k1c_dma_release_phy(d, c->phy);
-			goto err;
+			goto err_hw_init;
 		}
 
 		/* Init TX queues only for mem2mem */
@@ -753,9 +754,8 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 		if (ret) {
 			dev_err(dev, "Unable to init queues\n");
 			k1c_dma_release_phy(d, c->phy);
-			goto err;
+			goto err_hw_init;
 		}
-		c->hw_init_done = 1;
 	}
 
 	/* Fill cfg and desc here no slave cfg method using memcpy */
@@ -791,6 +791,8 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 
 	return vchan_tx_prep(vc, &desc->vd, flags);
 
+err_hw_init:
+	clear_bit(K1C_DMA_HW_INIT_DONE, &c->state);
 err:
 	k1c_dma_release_desc(&desc->vd);
 	return NULL;
@@ -853,11 +855,11 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 	if (!desc)
 		return NULL;
 
-	if (!c->hw_init_done) {
+	if (!test_and_set_bit(K1C_DMA_HW_INIT_DONE, &c->state)) {
 		c->phy = k1c_dma_get_phy(d, c);
 		if (c->phy == NULL) {
 			dev_err(dev, "No phy available\n");
-			goto err;
+			goto err_hw_init;
 		}
 
 		spin_lock(&d->lock);
@@ -865,7 +867,7 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 					      c->cfg.trans_type);
 		spin_unlock(&d->lock);
 		if (ret)
-			goto err;
+			goto err_hw_init;
 
 		if (dir == K1C_DMA_DIR_TYPE_RX)
 			ret = k1c_dma_init_rx_queues(c->phy, c->cfg.trans_type);
@@ -875,9 +877,8 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 		if (ret) {
 			dev_err(dev, "Unable to init queues\n");
 			k1c_dma_release_phy(d, c->phy);
-			goto err;
+			goto err_hw_init;
 		}
-		c->hw_init_done = 1;
 	}
 
 	if (c->phy->rx_cache_id != c->cfg.rx_cache_id)
@@ -923,6 +924,8 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 
 	return vchan_tx_prep(vc, &desc->vd, tx_flags);
 
+err_hw_init:
+	clear_bit(K1C_DMA_HW_INIT_DONE, &c->state);
 err:
 	k1c_dma_release_desc(&desc->vd);
 	return NULL;
