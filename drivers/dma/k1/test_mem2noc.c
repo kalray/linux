@@ -42,8 +42,6 @@ int test_mem2noc1(struct k1c_dma_noc_test_dev *dev)
 		.trans_type = K1C_DMA_TYPE_MEM2NOC,
 		.noc_route = 0x8,  /* 0x8 loopback */
 		.qos_id = QOS_ID,
-		.global = K1C_DMA_CTX_GLOBAL,
-		.asn = K1C_DMA_ASN,
 		.hw_vchan = 0,
 	};
 

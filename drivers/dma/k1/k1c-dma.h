@@ -68,8 +68,6 @@ struct k1c_dma_desc {
  * @trans_type: Transfer type for dma-noc
  * @noc_route: Transfer route
  * @qos_id: qos
- * @global: Global mode
- * @asn: ASN
  * @hw_vchan: Hw vchan requested [0, 1]
  * @rx_cache_id: Rx cache associated to rx job queue [0, 3]
  */
@@ -80,8 +78,6 @@ struct k1c_dma_slave_cfg {
 	u64 noc_route;
 	u8  rx_tag;
 	u8  qos_id;
-	u8  global;
-	u16 asn;
 	u8  hw_vchan;
 	u8  rx_cache_id;
 };
@@ -160,6 +156,7 @@ struct k1c_dma_chan {
  * @desc_cache: Descriptor cache
  * @pending_chan: Awaiting dma channels
  * @dbg: dbg fs
+ * @asn: device specific asn for iommu / hw
  *
  * One dev per rx/tx channels
  */
@@ -177,6 +174,7 @@ struct k1c_dma_dev {
 	struct list_head pending_chan;
 	struct dentry *dbg;
 	u64 next_pgrm_addr;
+	u32 asn;
 };
 
 int k1c_dma_request_msi(struct platform_device *pdev);
