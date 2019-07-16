@@ -32,7 +32,6 @@
 #include "k1c-dma-regs.h"
 #include "k1c-dma-ucode.h"
 
-#define K1C_STR_LEN 32
 
 static inline struct k1c_dma_chan *to_k1c_dma_chan(struct dma_chan *chan)
 {
@@ -1222,17 +1221,25 @@ static int k1c_dma_probe(struct platform_device *pdev)
 		goto err_nodev;
 	}
 
+	ret = k1c_dma_sysfs_init(dma);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to init sysfs\n");
+		goto err_sysfs;
+	}
+
 	/* Device-tree DMA controller registration */
 	k1c_dma_info.dma_cap = dma->cap_mask;
 	ret = of_dma_controller_register(node_to_parse, k1c_dma_xlate, dma);
 	if (ret)
-		dev_warn(&pdev->dev, "%s: failed to register DMA controller\n",
+		dev_warn(&pdev->dev, "%s: Failed to register DMA controller\n",
 				 __func__);
 
 	dev_info(&pdev->dev, "%s : %d %d\n", __func__,
 			 dev->dma_channels, dev->dma_requests);
 	return 0;
 
+err_sysfs:
+	dma_async_device_unregister(dma);
 err_nodev:
 	debugfs_remove_recursive(dev->dbg);
 	k1c_dma_free_msi(pdev);
@@ -1264,6 +1271,7 @@ static int k1c_dma_remove(struct platform_device *pdev)
 	struct k1c_dma_dev *dev = platform_get_drvdata(pdev);
 
 	debugfs_remove_recursive(dev->dbg);
+	k1c_dma_sysfs_remove(&dev->dma);
 	of_dma_controller_free(pdev->dev.of_node);
 	dma_async_device_unregister(&dev->dma);
 	tasklet_kill(&dev->task);
