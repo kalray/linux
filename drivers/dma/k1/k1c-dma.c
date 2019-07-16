@@ -16,6 +16,7 @@
 #include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/iommu.h>
 #include <linux/mm.h>
 #include <linux/interrupt.h>
 #include <linux/of.h>
@@ -671,13 +672,14 @@ int k1c_dma_setup_route(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 	int ret = 0;
 	struct k1c_dma_dev *dev = c->dev;
 	struct k1c_dma_slave_cfg *cfg = &c->cfg;
+	int global = is_asn_global(c->phy->asn);
 
 	desc->route = cfg->noc_route;
 	desc->route |=
 	((u64)(cfg->rx_tag & 0x3FU)     << K1C_DMA_NOC_RT_RX_TAG_SHIFT) |
 	((u64)(cfg->qos_id & 0xFU)      << K1C_DMA_NOC_RT_QOS_ID_SHIFT) |
-	((u64)(cfg->global & 0x1U)      << K1C_DMA_NOC_RT_GLOBAL_SHIFT) |
-	((u64)(cfg->asn & 0x1FFU)       << K1C_DMA_NOC_RT_ASN_SHIFT)    |
+	((u64)(global & 0x1U)           << K1C_DMA_NOC_RT_GLOBAL_SHIFT) |
+	((u64)(c->phy->asn & K1C_DMA_ASN_MASK) << K1C_DMA_NOC_RT_ASN_SHIFT) |
 	((u64)(cfg->hw_vchan & 0x1)     << K1C_DMA_NOC_RT_VCHAN_SHIFT)  |
 	((u64)(1)                       << K1C_DMA_NOC_RT_VALID_SHIFT);
 	spin_lock(&dev->lock);
@@ -731,8 +733,6 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 		c->cfg.cfg.direction = DMA_MEM_TO_MEM;
 		c->cfg.noc_route = 0;
 		c->cfg.qos_id = 0;
-		c->cfg.global = K1C_DMA_CTX_GLOBAL;
-		c->cfg.asn = K1C_DMA_ASN;
 		c->cfg.hw_vchan = 0;
 		c->phy = k1c_dma_get_phy(d, c);
 		if (c->phy == NULL) {
@@ -1000,6 +1000,7 @@ static int k1c_dma_allocate_phy(struct k1c_dma_dev *dev)
 			p->used = 0;
 			p->dev = dev->dma.dev;
 			p->comp_count = 0;
+			p->asn = dev->asn;
 		}
 		dev->phy[j] = phy;
 	}
@@ -1132,6 +1133,19 @@ static int k1c_dma_probe(struct platform_device *pdev)
 	tasklet_init(&dev->task, k1c_dma_task, (unsigned long)dev);
 	memset(&dev->jobq_list, 0, sizeof(dev->jobq_list));
 
+	/* If using iommu disable global mode */
+	if (!iommu_get_domain_for_dev(&pdev->dev)) {
+		set_bit(K1C_DMA_ASN_GLOBAL, (unsigned long *)&dev->asn);
+	} else {
+		struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(&pdev->dev);
+
+		if (fwspec && fwspec->num_ids) {
+			dev->asn = fwspec->ids[0];
+		} else {
+			dev_err(&pdev->dev, "Failed to iommu asn\n");
+			return -ENODEV;
+		}
+	}
 	dev_cnt++;
 
 	/* DMA struct fields */
