@@ -33,6 +33,12 @@
 #define MAX_EGRESS_TRANSLATION		8
 #define PROG_ID_SHIFT			8
 
+/* Kalray controllers */
+#define MODE_RC				1
+#define CTRL_NUM_MAX			7
+#define RC_X16_ASN_OFFSET		0x400
+#define MODE_EP_RC_OFFSET		0x420
+
 /* PCIe subsys */
 #define PCIE_SUBSYS_SLAVE_ERR		0x00000400
 #define DISABLE_SLAVE_ERR		BIT(0)
@@ -188,6 +194,7 @@
  * @phys_bar_decoder_base: Physical Bar decoder Base
  * @phys_ecam_base: Physical Configuration Base
  * @ftu_regmap: virtual address to read/write system shared registers
+ * @ctrl_num: index of controller from 0 up to 7
  * @nb_lane: number of pcie lane
  * @disable_dame: disable DAME generation when a PCI transaction failed
  * @irq_intx: legacy irq handler interrupt number
@@ -212,7 +219,9 @@ struct nwl_pcie {
 	phys_addr_t phys_bar_decoder_base;
 	phys_addr_t phys_ecam_base;
 	struct regmap *ftu_regmap;
+	struct regmap *mst_asn_regmap;
 	struct pci_host_bridge *bridge;
+	u32 ctrl_num;
 	u32 nb_lane;
 	bool disable_dame;
 	int irq_intx;
@@ -545,6 +554,39 @@ static void csr_pcie_lane_cfg(struct nwl_pcie *pcie)
 
 	nwl_core_writel(pcie, ltssm_rx_det, CSR_TLB_LTSSM_RX_DET);
 	nwl_core_writel(pcie, initial, CSR_FTL_INITIAL);
+}
+
+static int pcie_asn_init(struct nwl_pcie *pcie)
+{
+	int ret;
+	u32 rc_offset;
+
+	pcie->mst_asn_regmap = syscon_regmap_lookup_by_phandle(
+					pcie->dev->of_node,
+					"kalray,mst-asn-dev");
+	if (IS_ERR(pcie->mst_asn_regmap)) {
+		ret = PTR_ERR(pcie->mst_asn_regmap);
+		return ret;
+	}
+
+	rc_offset = RC_X16_ASN_OFFSET;
+	rc_offset += sizeof(u32) * pcie->ctrl_num;
+
+	ret = regmap_write(pcie->mst_asn_regmap, rc_offset, pcie->ctrl_num);
+	if (ret) {
+		dev_err(pcie->dev, "regmap_write ASN failed, err = %d\n", ret);
+		return ret;
+	}
+
+	rc_offset = MODE_EP_RC_OFFSET;
+	rc_offset += sizeof(u32) * pcie->ctrl_num;
+	ret = regmap_write(pcie->mst_asn_regmap, rc_offset, MODE_RC);
+	if (ret) {
+		dev_err(pcie->dev, "regmap_write mode failed, err = %d\n", ret);
+		return ret;
+	}
+
+	return 0;
 }
 
 static int nwl_pcie_core_init(struct nwl_pcie *pcie)
@@ -884,6 +926,16 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 	if (IS_ERR(pcie->pcie_subsys))
 		return PTR_ERR(pcie->pcie_subsys);
 
+	ret = of_property_read_u32(pdev->dev.of_node, "kalray,ctrl-num",
+				   &pcie->ctrl_num);
+	if (ret != 0)
+		return ret;
+	if (pcie->ctrl_num > CTRL_NUM_MAX) {
+		dev_err(dev, "PCIe rc num range is [0-%u]\n", CTRL_NUM_MAX);
+		return -EINVAL;
+	}
+	dev_dbg(dev, "PCIe rc num : %u\n", pcie->ctrl_num);
+
 	ret = of_property_read_u32(pdev->dev.of_node, "kalray,nb-lane",
 				   &pcie->nb_lane);
 	if (ret != 0)
@@ -945,6 +997,12 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 	}
 
 	bar_decoder_init(pcie);
+
+	err = pcie_asn_init(pcie);
+	if (err) {
+		dev_err(dev, "ASN initialization failed\n");
+		return err;
+	}
 
 	err = nwl_pcie_core_init(pcie);
 	if (err) {
