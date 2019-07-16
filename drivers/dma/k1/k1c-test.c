@@ -288,6 +288,7 @@ static int k1c_dma_test_probe(struct platform_device *pdev)
 	struct k1c_dma_noc_test_dev *dev;
 	struct dma_chan *chan;
 	int i, ret = 0;
+	struct device_node *np;
 
 	dmaengine_get();
 
@@ -301,6 +302,19 @@ static int k1c_dma_test_probe(struct platform_device *pdev)
 	dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
 	if (!dev)
 		return -ENODEV;
+
+	np = of_parse_phandle(pdev->dev.of_node, "dmas", 0);
+	if (!np) {
+		pr_err("Failed to get dma\n");
+		return ret;
+	}
+
+	/* Setup dma + iommu ops */
+	ret = of_dma_configure(&pdev->dev, np, true);
+	if (ret) {
+		pr_err("Failed to configure dma\n");
+		return ret;
+	}
 	platform_set_drvdata(pdev, dev);
 	dev->dev = &pdev->dev;
 

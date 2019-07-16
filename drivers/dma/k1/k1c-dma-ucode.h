@@ -39,13 +39,9 @@ enum k1c_dma_tx_transfer_mode {
  * struct k1c_dma_ucode_tab - micro code table
  * @pm_start_addr: Dest ucode start addr
  * @transfer_mode: NOC/AXI
- * @global: Global param (bypass asn check)
- * @asn: ASN
  */
 struct k1c_dma_ucode_tab {
 	u64 transfer_mode;
-	u64 global;
-	u64 asn;
 	u64 valid;          /* Enable ucode entry */
 };
 
