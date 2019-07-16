@@ -16,6 +16,8 @@
 
 #include "k1c-dma-hw.h"
 
+#define K1C_STR_LEN               (32)
+
 #define K1C_DMA_QUEUE_STOPPED     (0x0)
 #define K1C_DMA_QUEUE_RUNNING     (0x1)
 #define K1C_DMA_QUEUE_SWITCH_OFF  (0x2)
@@ -124,6 +126,7 @@ enum k1c_dma_state {
  * @node: For pending_chan list
  * @cfg: Chan config after slave_config
  * @param: Param for chan filtering/request (before slave_config)
+ * @kobj: used for sysfs
  * @state: bitfield of channel states
  */
 struct k1c_dma_chan {
@@ -138,6 +141,7 @@ struct k1c_dma_chan {
 	struct list_head node;
 	struct k1c_dma_slave_cfg cfg;
 	struct k1c_dma_chan_param param;
+	struct kobject kobj;
 	unsigned long state;
 };
 
@@ -179,5 +183,8 @@ struct k1c_dma_dev {
 
 int k1c_dma_request_msi(struct platform_device *pdev);
 void k1c_dma_free_msi(struct platform_device *pdev);
+
+int k1c_dma_sysfs_init(struct dma_device *dma);
+void k1c_dma_sysfs_remove(struct dma_device *dma);
 
 #endif /* ASM_K1C_DMA_H */
