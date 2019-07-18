@@ -189,6 +189,62 @@ The detailed path is the following:
      that have been setup by start_thread by restoring regs stored on
      stack
 
+L2$ handling
+============
+
+On k1c, the L2$ is handled by a firmware running on the RM. This firmware needs
+various information to be aware of its configuration and communicate with the
+kernel. In order to do that, when firmware is starting, the device tree is given
+as parameter along with the "registers" zone. This zone is simply a memory area
+where data are exchanged between kernel <-> L2$. When some commands are written
+to it, the kernel sends an interrupt using a mailbox.
+If the L2$ node is not present in the device tree, then, the RM will directly go
+into sleeping.
+
+Boot diagram:
+
+           RM                       PE 0
+                          +
+       +---------+        |
+       |  Boot   |        |
+       +----+----+        |
+            |             |
+            v             |
+      +-----+-----+       |
+      |  Prepare  |       |
+      | L2 shared |       |
+      |  memory   |       |
+      |(registers)|       |
+      +-----+-----+       |
+            |             |      +-----------+
+            +------------------->+   Boot    |
+            |             |      +-----+-----+
+            v             |            |
+   +--------+---------+   |            |
+   | L2 firmware      |   |            |
+   | parameters:      |   |            |
+   | r0 = registers   |   |            |
+   | r1 = DTB         |   |            |
+   +--------+---------+   |            |
+            |             |            |
+            v             |            |
+    +-------+--------+    |     +------+------+
+    |  L2 firmware   |    |     | Wait for L2 |
+    |   execution    |    |     | to be ready |
+    +-------+--------+    |     +------+------+
+            |             |            |
+     +------v-------+     |            v
+     | L2 requests  |     |     +------+------+
++--->+   handling   |     |     |   Enable    |
+|    +-------+------+     |     | L2 caching  |
+|            |            |     +------+------+
+|            |            |            |
++------------+            +            v
+
+
+Since this driver is started early (before SMP boot), A lot of drivers are not
+yet probed (mailboxes, iommu, etc) and thus can not be used.
+
 Building
 ========
 
