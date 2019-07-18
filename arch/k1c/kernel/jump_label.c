@@ -63,8 +63,9 @@ static int patch_jump_label_stop_machine(void *data)
 		while (atomic_read(&ip->cpu_count) <= num_online_cpus())
 			cpu_relax();
 
-		/* Simply invalidate I-cache to reload from memory */
-		inval_icache_range(insn_addr, insn_addr + JUMP_LABEL_NOP_SIZE);
+		/* Simply invalidate L1 I-cache to reload from L2 or memory */
+		l1_inval_icache_range(insn_addr,
+				      insn_addr + JUMP_LABEL_NOP_SIZE);
 	}
 	return 0;
 }
