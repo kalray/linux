@@ -149,16 +149,8 @@ static int k1c_dma_test_init_tbuf(struct k1c_dma_noc_test_dev *dev,
 	if (ret < 0)
 		return ret;
 	t->dir = (dir == K1C_DMA_DIR_TYPE_RX ? DMA_FROM_DEVICE :
-		  DMA_FROM_DEVICE);
-	if (dev->alloc_from_dma_area == 0)
-		t->paddr = dma_map_single(dev->dev, t->vaddr, t->sz, t->dir);
-	if (!t->vaddr || !t->paddr) {
-		dev_err(dev->dev, "Failed to allocate test buf\n");
-		return -ENOMEM;
-	}
-	INIT_LIST_HEAD(&t->node);
-	dev_dbg(dev->dev, "Alloc test_buf@0x%lx p 0x%llx size: %ld\n",
-		 (uintptr_t)t->vaddr, (u64)t->paddr, t->sz);
+		  DMA_TO_DEVICE);
+
 	if (dir == K1C_DMA_DIR_TYPE_RX)
 		memset(t->vaddr, (t->sz & 0xFFU), t->sz * sizeof(*t->vaddr));
 	else {
@@ -168,6 +160,15 @@ static int k1c_dma_test_init_tbuf(struct k1c_dma_noc_test_dev *dev,
 		for (j = 0; j < t->sz; ++j)
 			t->vaddr[j] = c + j;
 	}
+	if (dev->alloc_from_dma_area == 0)
+		t->paddr = dma_map_single(dev->dev, t->vaddr, t->sz, t->dir);
+	if (!t->vaddr || !t->paddr) {
+		dev_err(dev->dev, "Failed to allocate test buf\n");
+		return -ENOMEM;
+	}
+	INIT_LIST_HEAD(&t->node);
+	dev_dbg(dev->dev, "Alloc test_buf@0x%lx p 0x%llx size: %ld\n",
+		 (uintptr_t)t->vaddr, (u64)t->paddr, t->sz);
 
 	// t->sts.status = 0;
 	// init_waitqueue_head(&t->sts.wait);
