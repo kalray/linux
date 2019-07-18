@@ -234,9 +234,18 @@ int test_mem2dev1(struct k1c_dma_noc_test_dev *dev,
 	}
 	rx_b = list_first_entry_or_null(&dev->buf_list[K1C_DMA_DIR_TYPE_RX],
 					struct tbuf, node);
+	if (!rx_b) {
+		ret = -1;
+		goto exit;
+	}
 	list_for_each_entry(tx_b, &dev->buf_list[K1C_DMA_DIR_TYPE_TX], node) {
-		if (!rx_b ||
-		    k1c_dma_test_cmp_buffer(rx_b->vaddr,
+		if (dev->alloc_from_dma_area == 0) {
+			dma_sync_single_for_cpu(dev->dev, rx_b->paddr,
+						rx_b->sz, DMA_FROM_DEVICE);
+			dma_sync_single_for_cpu(dev->dev, tx_b->paddr,
+						tx_b->sz, DMA_TO_DEVICE);
+		}
+		if (k1c_dma_test_cmp_buffer(rx_b->vaddr,
 					    tx_b->vaddr, tx_b->sz)) {
 			ret = -1;
 			break;
