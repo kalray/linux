@@ -317,6 +317,37 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	;;
 ENDPROC(asm_rm_cfg_pwr_ctrl)
 
+#define request_ownership(__pl) ;\
+	make $r21 = SYO_WFXL_VALUE_##__pl ;\
+	;; ;\
+	wfxl $syow = $r21 ;\
+	;; ;\
+	make $r21 = HTO_WFXL_VALUE_##__pl ;\
+	;; ;\
+	wfxl $htow = $r21 ;\
+	;; ;\
+	make $r21 = MO_WFXL_VALUE_##__pl ;\
+	make $r22 = MO_WFXM_VALUE_##__pl ;\
+	;; ;\
+	wfxl $mow = $r21 ;\
+	;; ;\
+	wfxm $mow = $r22 ;\
+	;; ;\
+	make $r21 = ITO_WFXL_VALUE_##__pl ;\
+	make $r22 = ITO_WFXM_VALUE_##__pl ;\
+	;; ;\
+	wfxl $itow = $r21 ;\
+	;; ;\
+	wfxm $itow = $r22 ;\
+	;; ;\
+	make $r21 = PSO_WFXL_VALUE_##__pl ;\
+	make $r22 = PSO_WFXM_VALUE_##__pl ;\
+	;; ;\
+	wfxl $psow = $r21 ;\
+	;; ;\
+	wfxm $psow = $r22 ;\
+	;;
+
 /**
  * Initialize privilege level for Kernel
  */
@@ -328,47 +359,25 @@ ENTRY(asm_init_pl)
 	 */
 	extfz $r20 = $r21, K1C_SFR_END(PS_PL), K1C_SFR_START(PS_PL)
 	;;
-	/* If our pviliege level is not 0 (ie we are already in a less
-	 * privilege level, then, somebody take care of setting the
-	 * ring settings for us and we can return directly
+	/* If our privilege level is 0, then we need to lower in execution level
+	 * to ring 1 in order to let the debug routines be inserted at runtime
+	 * by the JTAG. In both case, we will request the resources we need for
+	 * linux to run.
 	 */
 	cb.deqz $r20? delegate_pl
+	;;
+	/*
+	 * When someone is already above us, request the resources we need to
+	 * run the kernel. No need to request double exception or ECC traps for
+	 * instance. When doing so, the more privileged level will trap for
+	 * permission and delegate us the required resources.
+	 */
+	request_ownership(PL_CUR)
 	;;
 	ret
 	;;
 delegate_pl:
-	make $r21 = SYO_WFXL_VALUE
-	;;
-	wfxl $syow = $r21
-	;;
-	make $r21 = HTO_WFXL_VALUE
-	;;
-	wfxl $htow = $r21
-	;;
-	make $r21 = DO_WFXL_VALUE
-	;;
-	wfxl $dow = $r21
-	;;
-	make $r21 = MO_WFXL_VALUE
-	make $r22 = MO_WFXM_VALUE
-	;;
-	wfxl $mow = $r21
-	;;
-	wfxm $mow = $r22
-	;;
-	make $r21 = ITO_WFXL_VALUE
-	make $r22 = ITO_WFXM_VALUE
-	;;
-	wfxl $itow = $r21
-	;;
-	wfxm $itow = $r22
-	;;
-	make $r21 = PSO_WFXL_VALUE
-	make $r22 = PSO_WFXM_VALUE
-	;;
-	wfxl $psow = $r21
-	;;
-	wfxm $psow = $r22
+	request_ownership(PL_CUR_PLUS_1)
 	;;
 	/* Copy our $ps into $sps for 1:1 restoration */
 	get $r22 = $ps
@@ -376,7 +385,7 @@ delegate_pl:
 	/* We will return to $ra after rfe */
 	get $r21 = $ra
 	/* Set privilege level to +1 is $sps */
-	addd $r22 = $r22, PL_KERNEL_REL_LEVEL
+	addd $r22 = $r22, PL_CUR_PLUS_1
 	;;
 	set $spc = $r21
 	;;
