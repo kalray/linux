@@ -15,153 +15,181 @@
  * Privilege level stuff
  */
 
-/* Relative kernel level (+1 from current privilege level) */
-#define PL_KERNEL_REL_LEVEL	1
+/*
+ * When manipulating ring levels, we always use relative values. This means that
+ * settings a resource owner to value 1 means "Current privilege level + 1.
+ * Setting it to 0 means "Current privilege level"
+ */
+#define PL_CUR_PLUS_1	1
+#define PL_CUR		0
 
 /**
  * Syscall owner configuration
  */
-#define SYO_WFXL_OWN(__field) \
-	SFR_SET_VAL_WFXL(SYO, __field, PL_KERNEL_REL_LEVEL)
+#define SYO_WFXL_OWN(__field, __pl) \
+	SFR_SET_VAL_WFXL(SYO, __field, __pl)
 
-#define SYO_WFXL_VALUE (SYO_WFXL_OWN(Q0) | \
-			SYO_WFXL_OWN(Q1) | \
-			SYO_WFXL_OWN(Q2) | \
-			SYO_WFXL_OWN(Q3))
+#define SYO_WFXL_VALUE(__pl) (SYO_WFXL_OWN(Q0, __pl) | \
+			      SYO_WFXL_OWN(Q1, __pl) | \
+			      SYO_WFXL_OWN(Q2, __pl) | \
+			      SYO_WFXL_OWN(Q3, __pl))
+
+#define SYO_WFXL_VALUE_PL_CUR_PLUS_1	SYO_WFXL_VALUE(PL_CUR_PLUS_1)
+#define SYO_WFXL_VALUE_PL_CUR		SYO_WFXL_VALUE(PL_CUR)
 
 /**
  * hardware trap owner configuration
  */
-#define HTO_WFXL_OWN(__field) \
-	SFR_SET_VAL_WFXL(HTO, __field, PL_KERNEL_REL_LEVEL)
+#define HTO_WFXL_OWN(__field, __pl) \
+	SFR_SET_VAL_WFXL(HTO, __field, __pl)
 
-#define HTO_WFXL_VALUE	(HTO_WFXL_OWN(OPC) | \
-			HTO_WFXL_OWN(DMIS) | \
-			HTO_WFXL_OWN(PSYS) | \
-			HTO_WFXL_OWN(DSYS) | \
-			HTO_WFXL_OWN(DECCG) | \
-			HTO_WFXL_OWN(SECCG) | \
-			HTO_WFXL_OWN(NOMAP) | \
-			HTO_WFXL_OWN(PROT) | \
-			HTO_WFXL_OWN(W2CL) | \
-			HTO_WFXL_OWN(A2CL) | \
-			HTO_WFXL_OWN(DE) | \
-			HTO_WFXL_OWN(VSFR) | \
-			HTO_WFXL_OWN(PLO))
+
+#define HTO_WFXL_VALUE_BASE(__pl)	(HTO_WFXL_OWN(OPC, __pl) | \
+					 HTO_WFXL_OWN(DMIS, __pl) | \
+					 HTO_WFXL_OWN(PSYS, __pl) | \
+					 HTO_WFXL_OWN(DSYS, __pl) | \
+					 HTO_WFXL_OWN(NOMAP, __pl) | \
+					 HTO_WFXL_OWN(PROT, __pl) | \
+					 HTO_WFXL_OWN(W2CL, __pl) | \
+					 HTO_WFXL_OWN(A2CL, __pl) | \
+					 HTO_WFXL_OWN(VSFR, __pl) | \
+					 HTO_WFXL_OWN(PLO, __pl))
+
+/*
+ * When alone on the processor, we need to request all traps or the processor
+ * will die badly without any information at all by jumping to the more
+ * privilege level even if nobody is there.
+ */
+#define HTO_WFXL_VALUE_PL_CUR_PLUS_1	(HTO_WFXL_VALUE_BASE(PL_CUR_PLUS_1) | \
+					 HTO_WFXL_OWN(DECCG, PL_CUR_PLUS_1) | \
+					 HTO_WFXL_OWN(SECCG, PL_CUR_PLUS_1) | \
+					 HTO_WFXL_OWN(DE, PL_CUR_PLUS_1))
+
+#define HTO_WFXL_VALUE_PL_CUR		HTO_WFXL_VALUE_BASE(PL_CUR)
 
 /**
  * Interrupt owner configuration
  */
-#define ITO_WFXL_OWN(__field) \
-	SFR_SET_VAL_WFXL(ITO, __field, PL_KERNEL_REL_LEVEL)
+#define ITO_WFXL_OWN(__field, __pl) \
+	SFR_SET_VAL_WFXL(ITO, __field, __pl)
 
-#define ITO_WFXL_VALUE	(ITO_WFXL_OWN(IT0) | \
-			ITO_WFXL_OWN(IT1) | \
-			ITO_WFXL_OWN(IT2) | \
-			ITO_WFXL_OWN(IT3) | \
-			ITO_WFXL_OWN(IT4) | \
-			ITO_WFXL_OWN(IT5) | \
-			ITO_WFXL_OWN(IT6) | \
-			ITO_WFXL_OWN(IT7) | \
-			ITO_WFXL_OWN(IT8) | \
-			ITO_WFXL_OWN(IT9) | \
-			ITO_WFXL_OWN(IT10) | \
-			ITO_WFXL_OWN(IT11) | \
-			ITO_WFXL_OWN(IT12) | \
-			ITO_WFXL_OWN(IT13) | \
-			ITO_WFXL_OWN(IT14) | \
-			ITO_WFXL_OWN(IT15))
+#define ITO_WFXL_VALUE(__pl)	(ITO_WFXL_OWN(IT0, __pl) | \
+				 ITO_WFXL_OWN(IT1, __pl) | \
+				 ITO_WFXL_OWN(IT2, __pl) | \
+				 ITO_WFXL_OWN(IT3, __pl) | \
+				 ITO_WFXL_OWN(IT4, __pl) | \
+				 ITO_WFXL_OWN(IT5, __pl) | \
+				 ITO_WFXL_OWN(IT6, __pl) | \
+				 ITO_WFXL_OWN(IT7, __pl) | \
+				 ITO_WFXL_OWN(IT8, __pl) | \
+				 ITO_WFXL_OWN(IT9, __pl) | \
+				 ITO_WFXL_OWN(IT10, __pl) | \
+				 ITO_WFXL_OWN(IT11, __pl) | \
+				 ITO_WFXL_OWN(IT12, __pl) | \
+				 ITO_WFXL_OWN(IT13, __pl) | \
+				 ITO_WFXL_OWN(IT14, __pl) | \
+				 ITO_WFXL_OWN(IT15, __pl))
 
-#define ITO_WFXM_OWN(__field) \
-	SFR_SET_VAL_WFXM(ITO, __field, PL_KERNEL_REL_LEVEL)
+#define ITO_WFXL_VALUE_PL_CUR_PLUS_1	ITO_WFXL_VALUE(PL_CUR_PLUS_1)
+#define ITO_WFXL_VALUE_PL_CUR		ITO_WFXL_VALUE(PL_CUR)
 
-#define ITO_WFXM_VALUE (ITO_WFXM_OWN(IT16) | \
-			ITO_WFXM_OWN(IT17) | \
-			ITO_WFXM_OWN(IT18) | \
-			ITO_WFXM_OWN(IT19) | \
-			ITO_WFXM_OWN(IT20) | \
-			ITO_WFXM_OWN(IT21) | \
-			ITO_WFXM_OWN(IT22) | \
-			ITO_WFXM_OWN(IT23) | \
-			ITO_WFXM_OWN(IT24) | \
-			ITO_WFXM_OWN(IT25) | \
-			ITO_WFXM_OWN(IT26) | \
-			ITO_WFXM_OWN(IT27) | \
-			ITO_WFXM_OWN(IT28) | \
-			ITO_WFXM_OWN(IT29) | \
-			ITO_WFXM_OWN(IT30) | \
-			ITO_WFXM_OWN(IT31))
+#define ITO_WFXM_OWN(__field, __pl) \
+	SFR_SET_VAL_WFXM(ITO, __field, __pl)
 
-/**
- * Debug owner configuration
- */
-#define DO_WFXL_OWN(__field) \
-	SFR_SET_VAL_WFXL(DO, __field, PL_KERNEL_REL_LEVEL)
+#define ITO_WFXM_VALUE(__pl) (ITO_WFXM_OWN(IT16, __pl) | \
+			      ITO_WFXM_OWN(IT17, __pl) | \
+			      ITO_WFXM_OWN(IT18, __pl) | \
+			      ITO_WFXM_OWN(IT19, __pl) | \
+			      ITO_WFXM_OWN(IT20, __pl) | \
+			      ITO_WFXM_OWN(IT21, __pl) | \
+			      ITO_WFXM_OWN(IT22, __pl) | \
+			      ITO_WFXM_OWN(IT23, __pl) | \
+			      ITO_WFXM_OWN(IT24, __pl) | \
+			      ITO_WFXM_OWN(IT25, __pl) | \
+			      ITO_WFXM_OWN(IT26, __pl) | \
+			      ITO_WFXM_OWN(IT27, __pl) | \
+			      ITO_WFXM_OWN(IT28, __pl) | \
+			      ITO_WFXM_OWN(IT29, __pl) | \
+			      ITO_WFXM_OWN(IT30, __pl) | \
+			      ITO_WFXM_OWN(IT31, __pl))
 
-#define DO_WFXL_VALUE	(DO_WFXL_OWN(B1) | \
-			DO_WFXL_OWN(W1))
+#define ITO_WFXM_VALUE_PL_CUR_PLUS_1	ITO_WFXM_VALUE(PL_CUR_PLUS_1)
+#define ITO_WFXM_VALUE_PL_CUR		ITO_WFXM_VALUE(PL_CUR)
 
 /**
  * Misc owner configuration
  */
-#define MO_WFXL_OWN(__field) \
-	SFR_SET_VAL_WFXL(MO, __field, PL_KERNEL_REL_LEVEL)
+#define MO_WFXL_OWN(__field, __pl) \
+	SFR_SET_VAL_WFXL(MO, __field, __pl)
 
-#define MO_WFXL_VALUE	(MO_WFXL_OWN(MMI) | \
-			MO_WFXL_OWN(RFE) | \
-			MO_WFXL_OWN(STOP) | \
-			MO_WFXL_OWN(SYNC) | \
-			MO_WFXL_OWN(PCR) | \
-			MO_WFXL_OWN(MSG) | \
-			MO_WFXL_OWN(MEN) | \
-			MO_WFXL_OWN(MES) | \
-			MO_WFXL_OWN(CSIT) | \
-			MO_WFXL_OWN(T0) | \
-			MO_WFXL_OWN(T1) | \
-			MO_WFXL_OWN(WD) | \
-			MO_WFXL_OWN(PM0) | \
-			MO_WFXL_OWN(PM1) | \
-			MO_WFXL_OWN(PM2) | \
-			MO_WFXL_OWN(PM3))
+#define MO_WFXL_VALUE(__pl)	(MO_WFXL_OWN(MMI, __pl) | \
+				 MO_WFXL_OWN(RFE, __pl) | \
+				 MO_WFXL_OWN(STOP, __pl) | \
+				 MO_WFXL_OWN(SYNC, __pl) | \
+				 MO_WFXL_OWN(PCR, __pl) | \
+				 MO_WFXL_OWN(MSG, __pl) | \
+				 MO_WFXL_OWN(MEN, __pl) | \
+				 MO_WFXL_OWN(MES, __pl) | \
+				 MO_WFXL_OWN(CSIT, __pl) | \
+				 MO_WFXL_OWN(T0, __pl) | \
+				 MO_WFXL_OWN(T1, __pl) | \
+				 MO_WFXL_OWN(WD, __pl) | \
+				 MO_WFXL_OWN(PM0, __pl) | \
+				 MO_WFXL_OWN(PM1, __pl) | \
+				 MO_WFXL_OWN(PM2, __pl) | \
+				 MO_WFXL_OWN(PM3, __pl))
 
-#define MO_WFXM_OWN(__field) \
-	SFR_SET_VAL_WFXM(MO, __field, PL_KERNEL_REL_LEVEL)
+#define MO_WFXL_VALUE_PL_CUR_PLUS_1	MO_WFXL_VALUE(PL_CUR_PLUS_1)
+#define MO_WFXL_VALUE_PL_CUR		MO_WFXL_VALUE(PL_CUR)
 
-#define MO_WFXM_VALUE	(MO_WFXM_OWN(PMIT))
+#define MO_WFXM_OWN(__field, __pl) \
+	SFR_SET_VAL_WFXM(MO, __field, __pl)
+
+#define MO_WFXM_VALUE(__pl)	(MO_WFXM_OWN(PMIT, __pl))
+
+#define MO_WFXM_VALUE_PL_CUR_PLUS_1	MO_WFXM_VALUE(PL_CUR_PLUS_1)
+#define MO_WFXM_VALUE_PL_CUR		MO_WFXM_VALUE(PL_CUR)
 
 /**
  * $ps owner configuration
  */
-#define PSO_WFXL_OWN(__field) \
-	SFR_SET_VAL_WFXL(PSO, __field, PL_KERNEL_REL_LEVEL)
+#define PSO_WFXL_OWN(__field, __pl) \
+	SFR_SET_VAL_WFXL(PSO, __field, __pl)
 
-#define PSO_WFXL_VALUE	(PSO_WFXL_OWN(PL0) | \
-			PSO_WFXL_OWN(PL1) | \
-			PSO_WFXL_OWN(ET) | \
-			PSO_WFXL_OWN(HTD) | \
-			PSO_WFXL_OWN(IE) | \
-			PSO_WFXL_OWN(HLE) | \
-			PSO_WFXL_OWN(SRE) | \
-			PSO_WFXL_OWN(ICE) | \
-			PSO_WFXL_OWN(USE) | \
-			PSO_WFXL_OWN(DCE) | \
-			PSO_WFXL_OWN(MME) | \
-			PSO_WFXL_OWN(IL0) | \
-			PSO_WFXL_OWN(IL1) | \
-			PSO_WFXL_OWN(VS0) | \
-			PSO_WFXL_OWN(VS1))
+#define PSO_WFXL_BASE_VALUE(__pl)	(PSO_WFXL_OWN(PL0, __pl) | \
+					 PSO_WFXL_OWN(PL1, __pl) | \
+					 PSO_WFXL_OWN(ET, __pl) | \
+					 PSO_WFXL_OWN(HTD, __pl) | \
+					 PSO_WFXL_OWN(IE, __pl) | \
+					 PSO_WFXL_OWN(HLE, __pl) | \
+					 PSO_WFXL_OWN(SRE, __pl) | \
+					 PSO_WFXL_OWN(ICE, __pl) | \
+					 PSO_WFXL_OWN(USE, __pl) | \
+					 PSO_WFXL_OWN(DCE, __pl) | \
+					 PSO_WFXL_OWN(MME, __pl) | \
+					 PSO_WFXL_OWN(IL0, __pl) | \
+					 PSO_WFXL_OWN(IL1, __pl) | \
+					 PSO_WFXL_OWN(VS0, __pl))
+/* Request additionnal VS1 when alone */
+#define PSO_WFXL_VALUE_PL_CUR_PLUS_1	(PSO_WFXL_BASE_VALUE(PL_CUR_PLUS_1) | \
+					 PSO_WFXL_OWN(VS1, PL_CUR_PLUS_1))
+#define PSO_WFXL_VALUE_PL_CUR		PSO_WFXL_BASE_VALUE(PL_CUR)
 
-#define PSO_WFXM_OWN(__field) \
-	SFR_SET_VAL_WFXM(PSO, __field, PL_KERNEL_REL_LEVEL)
+#define PSO_WFXM_OWN(__field, __pl) \
+	SFR_SET_VAL_WFXM(PSO, __field, __pl)
 
-#define PSO_WFXM_VALUE	(PSO_WFXM_OWN(V64) | \
-			PSO_WFXM_OWN(L2E)  | \
-			PSO_WFXM_OWN(SME)  | \
-			PSO_WFXM_OWN(SMR)  | \
-			PSO_WFXM_OWN(PMJ0) | \
-			PSO_WFXM_OWN(PMJ1) | \
-			PSO_WFXM_OWN(PMJ2) | \
-			PSO_WFXM_OWN(PMJ3) | \
-			PSO_WFXM_OWN(MMUP))
+#define PSO_WFXM_VALUE(__pl)	(PSO_WFXM_OWN(V64, __pl) | \
+				 PSO_WFXM_OWN(L2E, __pl)  | \
+				 PSO_WFXM_OWN(SME, __pl)  | \
+				 PSO_WFXM_OWN(SMR, __pl)  | \
+				 PSO_WFXM_OWN(PMJ0, __pl) | \
+				 PSO_WFXM_OWN(PMJ1, __pl) | \
+				 PSO_WFXM_OWN(PMJ2, __pl) | \
+				 PSO_WFXM_OWN(PMJ3, __pl) | \
+				 PSO_WFXM_OWN(MMUP, __pl))
+
+/* Request additionnal VS1 */
+#define PSO_WFXM_VALUE_PL_CUR_PLUS_1	PSO_WFXM_VALUE(PL_CUR_PLUS_1)
+#define PSO_WFXM_VALUE_PL_CUR		PSO_WFXM_VALUE(PL_CUR)
 
 #endif /* _ASM_K1C_PRIVILEGE_H */
