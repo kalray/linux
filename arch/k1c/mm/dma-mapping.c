@@ -14,11 +14,10 @@
 
 void arch_dma_prep_coherent(struct page *page, size_t size)
 {
-	unsigned long start = (unsigned long) page_address(page);
-	unsigned long end = start + size;
+	unsigned long addr = (unsigned long) page_to_phys(page);
 
 	/* Flush pending data and invalidate pages */
-	flush_inval_dcache_range(start, end);
+	wbinval_dcache_range(addr, size);
 }
 
 /**
@@ -35,17 +34,14 @@ void arch_dma_prep_coherent(struct page *page, size_t size)
 void arch_sync_dma_for_device(struct device *dev, phys_addr_t paddr,
 			      size_t size, enum dma_data_direction dir)
 {
-	unsigned long start = (unsigned long) phys_to_virt(paddr);
-	unsigned long end = start + size;
-
 	switch (dir) {
 	case DMA_FROM_DEVICE:
-		inval_dcache_range(start, end);
+		inval_dcache_range(paddr, size);
 		break;
 
 	case DMA_TO_DEVICE:
 	case DMA_BIDIRECTIONAL:
-		flush_dcache_range(start, end);
+		wb_dcache_range(paddr, size);
 		break;
 
 	default:
@@ -56,9 +52,6 @@ void arch_sync_dma_for_device(struct device *dev, phys_addr_t paddr,
 void arch_sync_dma_for_cpu(struct device *dev, phys_addr_t paddr,
 			   size_t size, enum dma_data_direction dir)
 {
-	unsigned long start = (unsigned long) phys_to_virt(paddr);
-	unsigned long end = start + size;
-
 	switch (dir) {
 	case DMA_TO_DEVICE:
 	/* k1c does not do speculative loads by itself */
@@ -66,7 +59,7 @@ void arch_sync_dma_for_cpu(struct device *dev, phys_addr_t paddr,
 		break;
 
 	case DMA_BIDIRECTIONAL:
-		inval_dcache_range(start, end);
+		inval_dcache_range(paddr, size);
 		break;
 
 	default:
