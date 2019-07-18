@@ -44,7 +44,8 @@ When the kernel boots, it checks if the current privilege level is 0
 almost all resources to PL1 and use a RFE to lower its execution
 privilege level (see asm_delegate_pl in head.S).
 If the current PL is already different from 0, then it means somebody
-already delegated us privileges and put us in a lower PL.
+is above us and we need to request resource to inform it we need them. It will
+then either delegate them to us directly or virtualize the delegation.
 All privileges levels have their set of banked registers (ps, ea, sps,
 sr, etc) which contain privilege level specific values.
 $sr (system reserved) is banked and will hold the current task_struct.
