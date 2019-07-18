@@ -21,6 +21,7 @@
 #include <linux/smp.h>
 
 #include <asm/processor.h>
+#include <asm/l2_cache.h>
 #include <asm/hw_irq.h>
 #include <asm/setup.h>
 #include <asm/rm_fw.h>
@@ -29,17 +30,12 @@
 #include <asm/mmu.h>
 #include <asm/smp.h>
 
-/* Magic is found in r0 when some parameters are given to kernel */
-#define K1_PARAM_MAGIC		0x494C314B
-
 struct screen_info screen_info;
 
 unsigned long memory_start;
 EXPORT_SYMBOL(memory_start);
 unsigned long memory_end;
 EXPORT_SYMBOL(memory_end);
-
-unsigned long rm_firmware_features_vm;
 
 static void __init setup_user_privilege(void)
 {
@@ -109,13 +105,6 @@ void __init setup_processor(void)
 	setup_user_privilege();
 }
 
-static void display_rm_fw_features(void)
-{
-	bool l2_en = rm_firmware_features_vm & K1C_FW_FEATURE_L2;
-
-	pr_info("L2 cache %sabled\n", l2_en ? "en" : "dis");
-}
-
 void __init setup_arch(char **cmdline_p)
 {
 	*cmdline_p = boot_command_line;
@@ -132,7 +121,6 @@ void __init setup_arch(char **cmdline_p)
 
 	setup_device_tree();
 
-	display_rm_fw_features();
 	smp_init_cpus();
 }
 

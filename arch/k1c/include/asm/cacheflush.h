@@ -10,6 +10,9 @@
 #define _ASM_K1C_CACHEFLUSH_H
 
 #include <linux/mm.h>
+#include <linux/io.h>
+
+#include <asm/l2_cache.h>
 
 #define ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE 0
 
@@ -26,39 +29,64 @@
 #define flush_dcache_mmap_lock(mapping)         do { } while (0)
 #define flush_dcache_mmap_unlock(mapping)       do { } while (0)
 
-static inline
-void inval_dcache_range(unsigned long start, unsigned long end)
-{
-	unsigned long addr;
-	unsigned long size = end - start;
+#define l1_inval_dcache_all __builtin_k1_dinval
+#define k1c_fence __builtin_k1_fence
+#define l1_inval_icache_all __builtin_k1_iinval
 
+/**
+ * L1 is indexed by virtual addresses and as such, invalidation takes virtual
+ * addresses as arguments.
+ */
+static inline
+void l1_inval_dcache_range(unsigned long vaddr, unsigned long size)
+{
+	unsigned long end = vaddr + size;
+
+	/* Then inval L1 */
 	if (size >= K1C_DCACHE_INVAL_SIZE) {
 		__builtin_k1_dinval();
 		return;
 	}
 
-	for (addr = start; addr <= end; addr += K1C_DCACHE_LINE_SIZE)
-		__builtin_k1_dinvall((void *) addr);
+	for (; vaddr <= end; vaddr += K1C_DCACHE_LINE_SIZE)
+		__builtin_k1_dinvall((void *) vaddr);
 }
 
 static inline
-void flush_dcache_range(unsigned long start, unsigned long end)
+void inval_dcache_range(phys_addr_t paddr, unsigned long size)
 {
-	/* Fence to ensure all write are committed to memory */
-	__builtin_k1_fence();
+	/*
+	 * Inval L2 first to avoid refilling from cached L2 values.
+	 * If L2 cache is not enabled, it will return false and hence, we will
+	 * fall back on L1 invalidation.
+	 */
+	if (!l2_cache_inval_range(paddr, size))
+		l1_inval_dcache_range((unsigned long) phys_to_virt(paddr),
+				      size);
 }
 
 static inline
-void flush_inval_dcache_range(unsigned long start, unsigned long end)
+void wb_dcache_range(phys_addr_t paddr, unsigned long size)
 {
-	/* Write back all data */
-	flush_dcache_range(start, end);
-	/* Then invalidate */
-	inval_dcache_range(start, end);
+	/* Fence to ensure all write are committed */
+	k1c_fence();
+
+	l2_cache_wb_range(paddr, size);
 }
 
 static inline
-void inval_icache_range(unsigned long start, unsigned long end)
+void wbinval_dcache_range(phys_addr_t paddr, unsigned long size)
+{
+	/* Fence to ensure all write are committed */
+	k1c_fence();
+
+	if (!l2_cache_wbinval_range(paddr, size))
+		l1_inval_dcache_range((unsigned long) phys_to_virt(paddr),
+				      size);
+}
+
+static inline
+void l1_inval_icache_range(unsigned long start, unsigned long end)
 {
 	unsigned long addr;
 	unsigned long size = end - start;
@@ -78,10 +106,10 @@ void inval_icache_range(unsigned long start, unsigned long end)
 static inline
 void sync_dcache_icache(unsigned long start, unsigned long end)
 {
-	/* Fence to ensure all write are committed to memory */
-	__builtin_k1_fence();
-	/* Then invalidate the icache to reload from memory */
-	inval_icache_range(start, end);
+	/* Fence to ensure all write are committed to L2 */
+	k1c_fence();
+	/* Then invalidate the L1 icache to reload from L2 */
+	l1_inval_icache_range(start, end);
 }
 
 static inline
