@@ -79,7 +79,7 @@ void k1c_update_tlb_access(int type)
 #endif
 
 /**
- * clear_jtlb_entry() - clear an entry in JTLB if it exists
+ * clear_tlb_entry() - clear an entry in TLB if it exists
  * @addr: the address used to set TEH.PN
  * @global: is page global or not
  * @asn: ASN used if page is not global
@@ -89,7 +89,7 @@ void k1c_update_tlb_access(int type)
  *
  * Return: nothing
  */
-static void clear_jtlb_entry(unsigned long addr,
+static void clear_tlb_entry(unsigned long addr,
 			     unsigned int global,
 			     unsigned int asn)
 {
@@ -136,13 +136,10 @@ static void clear_jtlb_entry(unsigned long addr,
 		goto restore_asn;
 	}
 
-	/*
-	 * At this point a matching entry has been found and MMC.{SB,SS,SW}
-	 * are set. So just clear it after ensuring that entry doesn't belong
-	 * to the LTLB.
-	 */
-	if (k1c_mmc_sb(mmc_val) == MMC_SB_LTLB)
-		panic("%s: Trying to clean an entry in LTLB\n", __func__);
+	/* We surely don't want to flush fixed LTLB entries or we are fried */
+	if (k1c_mmc_sb(mmc_val) == MMC_SB_LTLB &&
+	    k1c_mmc_sw(mmc_val) < LTLB_ENTRY_FIXED_COUNT)
+		goto restore_asn;
 
 	/*
 	 * At this point the probe found an entry. TEL and TEH have correct
@@ -196,7 +193,7 @@ void local_flush_tlb_page(struct vm_area_struct *vma,
 		return;
 
 	local_irq_save(flags);
-	clear_jtlb_entry(addr, TLB_G_USE_ASN, current_asn);
+	clear_tlb_entry(addr, TLB_G_USE_ASN, current_asn);
 	local_irq_restore(flags);
 }
 
@@ -248,7 +245,7 @@ void local_flush_tlb_range(struct vm_area_struct *vma,
 	current_asn = mm_asn(vma->vm_mm, cpu);
 	if (current_asn != MM_CTXT_NO_ASN) {
 		while (start < end) {
-			clear_jtlb_entry(start, TLB_G_USE_ASN, current_asn);
+			clear_tlb_entry(start, TLB_G_USE_ASN, current_asn);
 			start += PAGE_SIZE;
 		}
 	}
@@ -272,7 +269,11 @@ void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
 	local_irq_save(flags);
 
 	while (start < end) {
-		clear_jtlb_entry(start, TLB_G_GLOBAL, 0);
+		/*
+		 * When in kernel, use dummy asn 42 to be able to catch any
+		 * problem easily if ASN is not restored properly.
+		 */
+		clear_tlb_entry(start, TLB_G_GLOBAL, 42);
 		start += PAGE_SIZE;
 	}
 
