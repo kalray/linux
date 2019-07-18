@@ -10,6 +10,7 @@
 #include <asm/thread_info.h>
 #include <asm/sys_arch.h>
 #include <asm/cache.h>
+#include <asm/rm_fw.h>
 #include <asm/page.h>
 #include <asm/fixmap.h>
 
@@ -61,6 +62,14 @@ SECTIONS
 		KEEP(*(.rm_firmware.default));
 		/* Force minimum size */
 		. = __rm_firmware_start + RM_FIRMWARE_SIZE;
+		__rm_firmware_end = .;
+
+		/* Registers for RM firmware */
+		. = ALIGN(PAGE_SIZE);
+		__rm_firmware_regs_start = .;
+		/* Force minimum size */
+		. = __rm_firmware_regs_start + RM_FIRMWARE_REGS_SIZE;
+		__rm_firmware_regs_end = .;
 	}
 
 	. = PAGE_OFFSET;

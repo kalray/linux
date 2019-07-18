@@ -11,6 +11,9 @@
 
 #include <asm-generic/setup.h>
 
+/* Magic is found in r0 when some parameters are given to kernel */
+#define K1_PARAM_MAGIC		0x494C314B
+
 #ifndef __ASSEMBLY__
 
 void setup_device_tree(void);
