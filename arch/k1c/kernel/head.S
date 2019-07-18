@@ -14,6 +14,7 @@
 #include <asm/tlb_defs.h>
 #include <asm/mem_map.h>
 #include <asm/rm_fw.h>
+#include <asm/setup.h>
 
 #include <linux/linkage.h>
 #include <linux/init.h>
@@ -47,7 +48,7 @@
 #define WS_WFXL_VALUE		(WS_ENABLE_WU2)
 
 /* SMP stuff */
-#define RM_PID_MASK		((16) << K1C_SFR_PCR_PID_SHIFT)
+#define RM_PID_MASK		((K1C_RM_ID) << K1C_SFR_PCR_PID_SHIFT)
 
 #define PWR_CTRL_ADDR 0xA40000
 
@@ -180,27 +181,8 @@ init_core:
 	set $ev = $r27
 	;;
 	wfxm $pcr = $r26
-	make $r27 = rm_firmware_features
 	;;
-	/* Load firmware features */
-	ld $r26 = 0[$r27]
-	;;
-	/* Check L2$ bit of firmware features */
-	andd $r28 = $r26, K1C_FW_FEATURE_L2
-	;;
-	cb.deqz $r28? setup_ps
-	;;
-	/* Else, enable L2$ in $ps value */
-	ord $r25 = $r25, PS_VAL_WFXL(L2E, 1)
-	;;
-setup_ps:
 	wfxl $ps = $r25
-	;;
-	dinval
-	;;
-	iinval
-	;;
-	fence
 	;;
 	/* Use as break point for debugging purpose.
 	   See Documentation/k1c/k1c.txt for more details. */
@@ -222,15 +204,6 @@ clear_bss:
 	make $r1 = __bss_stop
 	call asm_memzero
 	;;
-	/* Copy firmware feature in DDR to be accessible in kernel */
-	make $r20 = rm_firmware_features
-	make $r21 = rm_firmware_features_vm
-	;;
-	/* Load flat mem firmware features */
-	ld $r26 = 0[$r20]
-	;;
-	/* Store them in the vm copy */
-	sd 0[$r21] = $r26
 	/* Setup stack */
 	make $r40 = init_thread_union
 	make $r41 = init_task
@@ -278,41 +251,44 @@ ENTRY(asm_memzero)
 ENDPROC(asm_memzero)
 
 /**
- * This function is called by firmware after init is done.
- * First argument ($r0) is the list of features supported by firmware
- */
-ENTRY(firmware_init_done)
-	/* Store firmware features */
-	make $r1 = rm_firmware_features
-	;;
-	sd 0[$r1] = $r0
-	;;
-	make $r0 = PWR_CTRL_ADDR
-	/* PE 0 start (1 << cpu) */
-	make $r1 = 1
-	;;
-	/* Start PE0 ! */
-	sd PWR_CTRL_WUP_SET_OFFSET[$r0] = $r1
-	;;
-	ret
-	;;
-ENDPROC(firmware_init_done)
-
-/**
  * Configure the power controller to be accessible by PEs and start the
  * rm firmware
  */
 ENTRY(asm_rm_cfg_pwr_ctrl)
+	/* Enable hwloop for memzero */
+	make $r32 = PS_VAL_WFXL(HLE, 1)
+	;;
+	wfxl $ps = $r32
+	;;
+	/* Clear L2 registers */
+	make $r0 = __rm_firmware_regs_start
+	make $r1 = __rm_firmware_regs_end
+	call asm_memzero
+	;;
 	make $r26 = PWR_CTRL_ADDR
 	make $r27 = PWR_CTRL_GLOBAL_CONFIG_VALUE
 	;;
 	/* Set PE enable in power controller */
 	sd PWR_CTRL_GLOBAL_CONFIG_OFFSET[$r26] = $r27
 	;;
-	/* Go to firmware */
-	make $r20 = rm_firmware
+	/* Start PE 0 (1 << cpu) */
+	make $r27 = 1
 	;;
-	make $r0 = firmware_init_done
+	/* Wake up PE0 */
+	sd PWR_CTRL_WUP_SET_OFFSET[$r26] = $r27
+	;;
+	/* Load device tree for RM firmware  */
+	make $r21 = __PA(__dtb_start)
+	/* Check if magic is in $r0, if so, device tree to use is in $r2 */
+	compd.eq $r20 = $r0, K1_PARAM_MAGIC
+	;;
+	cmoved.dnez $r20? $r21 = $r2
+	;;
+	/* Go to firmware */
+	make $r20 = __rm_firmware_start
+	make $r0 = __rm_firmware_regs_start
+	copyd $r1 = $r21
+	;;
 	igoto $r20
 	;;
 ENDPROC(asm_rm_cfg_pwr_ctrl)
@@ -490,6 +466,17 @@ ENDPROC(asm_init_mmu)
  */
 ENTRY(smp_secondary_start)
 #ifdef CONFIG_SMP
+	dinval
+	;;
+	iinval
+	;;
+	barrier
+	;;
+	/* Enable L2$ in $ps since it is mandatory for SMP */
+	make $r25 = PS_VAL_WFXL(L2E, 1)
+	;;
+	wfxl $ps = $r25
+	;;
 	make $r25 = __cpu_up_task_pointer
 	make $r26 = __cpu_up_stack_pointer
 	;;
@@ -520,33 +507,12 @@ ENTRY(proc_power_off)
 ENDPROC(proc_power_off)
 
 /**
- * Storage for rm firmware features
- */
-rm_firmware_features:
-	.dword 0x0
-
-/**
  * This code will be put in rm_firmware section by default.
  * If the rm_firmware section is overridden using another firmware,
- * this default code will also be overridden.
- * The first argument supplied to this firmware is the function which will
- * start PE0. In order to be compliant with this interface, the firmware must
- * call this function when everything is setup and use r0 to give the set of
- * supported features (rm_fw.h).
+ * this default code will be overridden.
  */
 .section .rm_firmware.default, "ax", @progbits
 ENTRY(rm_firmware)
-	/* No feature supported by default code */
-	make $r0 = K1C_FW_NO_FEATURES
-	icall $r0
-	;;
-	make $r1 = WS_WFXL_VALUE
-	;;
-	/* Enable STOP */
-	wfxl $ws, $r1
-	;;
-1:	stop
-	;;
-	goto 1b
+	goto proc_power_off
 	;;
 ENDPROC(rm_firmware)
