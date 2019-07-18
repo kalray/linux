@@ -142,6 +142,15 @@ config STACK_MAX_DEPTH_TO_PRINT
 	range 1 128
 	default "24"
 
+config L2_CACHE
+	bool "Enable l2 cache driver"
+	default y
+	help
+	  Enable L2 cache driver in order to handle it. This driver can be
+	  disabled to eliminate any overhead related to L2 cache
+	  inval/writeback. Note that L2 cache is mandatory for SMP in order
+	  to maintain coherency on DDR between all PEs.
+
 config SECURE_DAME_HANDLING
 	bool "Secure DAME handling"
 	default y
@@ -172,6 +181,7 @@ config SMP
 	select GENERIC_IRQ_IPI
 	select IRQ_DOMAIN_HIERARCHY
 	select IRQ_DOMAIN
+	select L2_CACHE
 	help
 	  This enables support for systems with more than one CPU. If you have
 	  a system with only one CPU, say N. If you have a system with more
