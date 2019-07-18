@@ -93,6 +93,8 @@
  */
 #define LTLB_ENTRY_KERNEL_TEXT	0
 #define LTLB_ENTRY_GDB_PAGE	1
+/* This define should reflect the maximum number of fixed LTLB entries */
+#define LTLB_ENTRY_FIXED_COUNT	2
 #define LTLB_ENTRY_EARLY_SMEM	2
 
 /* MMC: Protection Trap Cause */
