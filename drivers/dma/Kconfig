@@ -767,14 +767,6 @@ config K1C_DMA_NOC
 	  mem2dev and mem2mem operations. It provides both RX and
 	  TX channels using the corresponding IOMMUs.
 
-config K1C_DMA_NOC_TEST
-	tristate "K1C DMA engine for NOC testing"
-	depends on K1C_DMA_NOC
-	help
-	  Enable K1C dmaengine testing mem2noc and mem2mem usecases for multiple
-	  dma channels. Also tests mem2dev/dev2mem transfers, with RX buffers
-	  provisioning on the fly.
-
 # driver files
 source "drivers/dma/bestcomm/Kconfig"
 
