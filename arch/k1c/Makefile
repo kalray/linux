@@ -26,9 +26,9 @@ KBUILD_LDFLAGS += -m elf64k1
 
 head-y	:= arch/k1c/kernel/head.o
 libs-y 	+= $(LIBGCC)
+libs-y  += arch/k1c/lib/
 core-y += arch/k1c/kernel/ \
           arch/k1c/mm/ \
-          arch/k1c/lib/ \
           arch/k1c/platform/
 # Final targets
 all: vmlinux
