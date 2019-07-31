@@ -15,6 +15,7 @@ generic-y += errno.h
 generic-y += exec.h
 generic-y += extable.h
 generic-y += exec.h
+generic-y += export.h
 generic-y += ftrace.h
 generic-y += futex.h
 generic-y += hardirq.h
