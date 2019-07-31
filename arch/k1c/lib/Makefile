@@ -6,4 +6,4 @@
 # Copyright (C) 2017 Kalray Inc.
 #
 
-obj-y := memcpy.o memset.o usercopy.o clear_page.o copy_page.o
+lib-y := usercopy.o clear_page.o copy_page.o memcpy.o memset.o strlen.o
