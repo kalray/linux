@@ -15,4 +15,7 @@ extern void *memset(void *s, int c, size_t n);
 #define __HAVE_ARCH_MEMCPY
 extern void *memcpy(void *dest, const void *src, size_t n);
 
+#define __HAVE_ARCH_STRLEN
+extern size_t strlen(const char *s);
+
 #endif	/* _ASM_K1C_STRING_H */
