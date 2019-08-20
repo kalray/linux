@@ -16,41 +16,7 @@
 #include <asm/pgtable.h>
 #include <asm/tlb.h>
 
-DEFINE_PER_CPU_ALIGNED(uint8_t[MMU_JTLB_SETS], jtlb_current_set_way);
 DEFINE_PER_CPU(unsigned long, k1c_asn_cache) = MM_CTXT_FIRST_CYCLE;
-
-/*
- * 4 bits are used to index the K1C access permissions. Bytes are used as
- * follow:
- *
- *   +---------------+------------+-------------+------------+
- *   |     Bit 3     |   Bit 2    |   Bit 1     |   Bit 0    |
- *   |---------------+------------+-------------+------------|
- *   |  _PAGE_GLOBAL | _PAGE_EXEC | _PAGE_WRITE | _PAGE_READ |
- *   +---------------+------------+-------------+------------+
- *
- * If _PAGE_GLOBAL is set then the page belongs to the kernel. Otherwise it
- * belongs to the user. When the page belongs to user we set the same
- * rights to kernel.
- */
-uint8_t k1c_access_perms[K1C_ACCESS_PERMS_SIZE] = {
-	TLB_PA_NA_NA,
-	TLB_PA_R_R,     /* 1: User R */
-	TLB_PA_NA_NA,
-	TLB_PA_RW_RW,   /* 3: User RW */
-	TLB_PA_NA_NA,
-	TLB_PA_RX_RX,   /* 5: User RX */
-	TLB_PA_NA_NA,
-	TLB_PA_RWX_RWX, /* 7: User RWX */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_R,    /* 9: Kernel R */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_RW,   /* 11: Kernel RW */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_RX,   /* 13: Kernel RX */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_RWX,  /* 15: Kernel RWX */
-};
 
 #ifdef CONFIG_K1C_DEBUG_TLB_ACCESS
 
@@ -283,30 +249,12 @@ void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
 void update_mmu_cache(struct vm_area_struct *vma,
 	unsigned long address, pte_t *ptep)
 {
-	phys_addr_t pfn;
-	unsigned long pte_val;
-	unsigned int pa;
-	struct k1c_tlb_format tlbe;
-	unsigned int set, way;
-	unsigned int cp, ps;
 	struct mm_struct *mm;
 	unsigned long asn;
-	unsigned long flags;
-	unsigned int shifted_addr;
 	int cpu = smp_processor_id();
 
 	if (unlikely(ptep == NULL))
 		panic("pte should not be NULL\n");
-
-	pfn = (phys_addr_t)pte_pfn(*ptep);
-	pte_val = pte_val(*ptep);
-
-	if (!pfn_valid(pfn))
-		/* Not sure if it is normal. In doubt we panic and we will
-		 * debug.
-		 */
-		panic("%s: pfn %lx is not valid\n",
-		      __func__, (unsigned long)pfn);
 
 	/* Flush any previous TLB entries */
 	flush_tlb_page(vma, address);
@@ -317,15 +265,6 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	mm = current->active_mm;
 	if (vma && (mm != vma->vm_mm))
 		return;
-	pa = (unsigned int)k1c_access_perms[K1C_ACCESS_PERMS_INDEX(pte_val)];
-
-	cp = pgprot_cache_policy(pte_val);
-
-	BUILD_BUG_ON(K1C_PAGE_SZ_SHIFT != K1C_SFR_TEL_PS_SHIFT);
-	ps = (pte_val & K1C_PAGE_SZ_MASK) >> K1C_PAGE_SZ_SHIFT;
-
-	/* Set page as accessed */
-	pte_val(*ptep) |= _PAGE_ACCESSED;
 
 	/*
 	 * Get the ASN:
@@ -352,34 +291,8 @@ void update_mmu_cache(struct vm_area_struct *vma,
 			      __func__, (asn & MM_CTXT_ASN_MASK), mmc_asn);
 	}
 #endif
-	asn &= MM_CTXT_ASN_MASK;
 
-	tlbe = tlb_mk_entry(
-		(void *)pfn_to_phys(pfn),
-		(void *)address,
-		ps,
-		(pte_val & _PAGE_GLOBAL) ? TLB_G_GLOBAL : TLB_G_USE_ASN,
-		pa,
-		cp,
-		asn,
-		TLB_ES_A_MODIFIED);
-
-	shifted_addr = address >> get_page_size_shift(ps);
-	set = shifted_addr & MMU_JTLB_SET_MASK;
-
-	local_irq_save(flags);
-
-	way = get_cpu_var(jtlb_current_set_way)[set]++;
-	put_cpu_var(jtlb_current_set_way);
-
-	way &= MMU_JTLB_WAY_MASK;
-
-	k1c_mmu_add_entry(MMC_SB_JTLB, way, tlbe);
-
-	if (k1c_mmc_error(k1c_sfr_get(K1C_SFR_MMC)))
-		panic("Failed to write entry to the JTLB");
-
-	local_irq_restore(flags);
+	k1c_mmu_jtlb_add_entry(address, ptep, asn);
 }
 
 #ifdef CONFIG_SMP
