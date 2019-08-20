@@ -70,7 +70,7 @@ static int handle_vmalloc_fault(uint64_t ea)
 	/* We refill the TLB now to avoid to take another nomapping
 	 * trap.
 	 */
-	update_mmu_cache(NULL, ea, pte_k);
+	k1c_mmu_jtlb_add_entry(ea & ~PAGE_MASK, pte_k, 0);
 
 	return 0;
 }
