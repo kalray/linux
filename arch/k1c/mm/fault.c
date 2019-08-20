@@ -31,7 +31,7 @@ static int handle_vmalloc_fault(uint64_t ea)
 	 * As we only have 2 or 3 level page table we don't need to
 	 * deal with other levels.
 	 */
-
+	unsigned long addr = ea & PAGE_MASK;
 	pgd_t *pgd_k, *pgd;
 	pmd_t *pmd_k, *pmd;
 	pte_t *pte_k;
@@ -70,7 +70,7 @@ static int handle_vmalloc_fault(uint64_t ea)
 	/* We refill the TLB now to avoid to take another nomapping
 	 * trap.
 	 */
-	update_mmu_cache(NULL, ea, pte_k);
+	k1c_mmu_jtlb_add_entry(addr, pte_k, 0);
 
 	return 0;
 }
