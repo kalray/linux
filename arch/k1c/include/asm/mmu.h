@@ -203,6 +203,8 @@ extern void k1c_mmu_dump_jtlb(int dump_all);
 void k1c_mmu_ltlb_add_entry(unsigned long vaddr, phys_addr_t paddr,
 			    pgprot_t flags, unsigned long page_shift);
 
+void k1c_mmu_jtlb_add_entry(unsigned long address, pte_t *ptep,
+			    unsigned int asn);
 extern void mmu_early_init(void);
 
 struct mm_struct;
