@@ -47,6 +47,12 @@ stack_error_panic_str_label:
 	.string "Stack has been messed up !"
 #endif
 
+#ifdef CONFIG_K1C_DEBUG_TLB_WRITE
+.section .rodata
+mmc_error_panic_str_label:
+	.string "Failed to write entry to the JTLB (in assembly refill)"
+#endif
+
 #ifdef CONFIG_K1C_DEBUG_ASN
 .section .rodata
 asn_error_panic_str_label:
@@ -570,6 +576,11 @@ pte_prepared:
 	;;
 	tlbwrite
 	;;
+#ifdef CONFIG_K1C_DEBUG_TLB_WRITE
+	goto mmc_error_check
+	;;
+mmc_error_check_ok:
+#endif
 #ifdef CONFIG_K1C_DEBUG_ASN
 	goto asn_check
 	;;
@@ -629,6 +640,18 @@ is_huge_page:
 	goto pte_prepared
 	;;
 
+#ifdef CONFIG_K1C_DEBUG_TLB_WRITE
+mmc_error_check:
+	get $r1 = $mmc
+	;;
+	andd $r1 = $r1, K1C_SFR_MMC_E_MASK
+	;;
+	cb.deqz $r1? mmc_error_check_ok
+	;;
+	make $r1 = mmc_error_panic_str_label
+	goto asm_panic
+	;;
+#endif
 #ifdef CONFIG_K1C_DEBUG_ASN
 /*
  * When entering this path $r0 = $sr.
@@ -667,19 +690,35 @@ asn_check:
 	cb.dnez $r3? asn_check_ok
 	;;
 asn_check_err:
-	/* Restore kenrel stack */
+	/* We are fried, die peacefully */
+	make $r1 = asn_error_panic_str_label
+	goto asm_panic
+	;;
+#endif
+
+#if defined(CONFIG_K1C_DEBUG_ASN) || defined(CONFIG_K1C_DEBUG_TLB_WRITE)
+
+/**
+ * This routine calls panic from assembly after setting appropriate things
+ * $r0 = current
+ * $r1 = panic string
+ */
+asm_panic:
+	/* Restore kernel stack */
 	ld $r12 = TASK_THREAD_KERNEL_SP[$r0]
-	make $r32 = PS_HWLOOP_ENABLE
+	make $r32 = PS_HWLOOP_EN_ET_EN
 	make $r33 = 0
 	;;
 	/* Clear hw loop exit to disable current loop */
 	set $le = $r33
 	;;
-	/* Reenable hardware loop since some functions might need it */
+	/*
+	 * Reenable hardware loop and traps (for nomapping) since some functions
+	 * might need it
+	 */
 	wfxl $ps = $r32
 	;;
-	/* We are fried, die peacefully */
-	make $r0 = asn_error_panic_str_label
+	copyd $r0 = $r1
 	call panic
 	;;
 #endif
