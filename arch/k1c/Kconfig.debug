@@ -8,6 +8,15 @@ config K1C_DEBUG_ASN
 	  process is matching the ASN found in MMC. If it is not the
 	  case an error will be printed.
 
+config K1C_DEBUG_TLB_WRITE
+	bool "Enable TLBs write checks"
+	default n
+	help
+	  Enabling this option will enable TLB access checks. This is
+	  particularly helpful when modifying the assembly code responsible
+	  of TLB refill. If set, mmc.e will be checked each time the tlb are
+	  written and a panic will be thrown on error.
+
 config K1C_DEBUG_TLB_ACCESS
 	bool "Enable TLBs accesses logging"
 	default n
