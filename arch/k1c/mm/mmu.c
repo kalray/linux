@@ -173,8 +173,10 @@ void k1c_mmu_jtlb_add_entry(unsigned long address, pte_t *ptep,
 
 	k1c_mmu_add_entry(MMC_SB_JTLB, way, tlbe);
 
+#ifdef CONFIG_K1C_DEBUG_TLB_WRITE
 	if (k1c_mmc_error(k1c_sfr_get(K1C_SFR_MMC)))
-		panic("Failed to write entry to the JTLB");
+		panic("Failed to write entry to the JTLB (in update_mmu_cache)");
+#endif
 
 	local_irq_restore(flags);
 }
