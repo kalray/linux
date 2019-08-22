@@ -508,8 +508,13 @@ pte_prepared:
 	;;
 	/* If bit PRESENT of pte entry is 0, then entry is not present */
 	cb.even $r1? refill_err_out
-	/* Set the TLB way in $mmc value, add 32 bits to be in the set part */
-	insf $r6 = $r0, K1C_SFR_END(MMC_SW) + 32, K1C_SFR_START(MMC_SW) + 32
+	/*
+	 * Set the JTLB way in $mmc value, add 32 bits to be in the set part.
+	 * Since we are refilling JTLB, we must make sure we insert only
+	 * relevant bits (ie 2 bits for ways) to avoid using nonexistent ways.
+	 */
+	insf $r6 = $r0, K1C_SFR_START(MMC_SW) + 32 + (MMU_JTLB_WAYS_SHIFT - 1),\
+						K1C_SFR_START(MMC_SW) + 32
 	/* Extract page global bit */
 	extfz $r3 = $r1, _PAGE_GLOBAL_SHIFT, _PAGE_GLOBAL_SHIFT
 	/* Increment way value, note that we do not care about overflow since
