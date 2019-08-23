@@ -14,7 +14,6 @@ obj-y	:= setup.o process.o traps.o common.o time.o prom.o \
 		entry.o syscall_table.o signal.o sys_k1c.o \
 		stacktrace.o dame_handler.o vdso.o
 
-obj-$(CONFIG_PANIC_SYSCALL) += panic.o
 obj-$(CONFIG_JUMP_LABEL) += jump_label.o
 obj-$(CONFIG_SMP) += smp.o smpboot.o
 obj-$(CONFIG_HAVE_HW_BREAKPOINT) += hw_breakpoint.o
