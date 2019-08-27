@@ -1,0 +1,31 @@
+* Kalray initialization of PCIe subsystem settings
+
+The presence of this node in the device tree is mandatory for PCIe-rc to work.
+This module allow to enable or disable the Data Asynchronous Memory Error
+(DAME). When disabled a failed non posted PCIe transaction will not generate a
+DAME and thus will prevent the kernel to crash.
+When DAME is disable, it is strongly recommended to activate AER, as then in
+case of failed transaction a recovery procedure is started.
+
+Required properties:
+- compatible: Should contain "kalray,subsys-pcie"
+- reg = contains pcie subsystem address and length
+- reg-names = must include "pcie_subsys"
+
+Optional properties:
+- kalray,disable-dame
+	- if not present use default (at reset) settings
+	- = <0> : DAME generation is enabled
+	- = <1> : DAME generation is disabled
+
+Example:
+++++++++
+
+pcie_subsys: pcie_subsys@5128350000 {
+	compatible = "kalray,subsys-pcie";
+	reg = <0x51 0x28350000 0x0 0x1000>; /* pcie subsystem */
+	reg-names = "pcie_subsys";
+	kalray,disable-dame = <1>;
+};
+
+
