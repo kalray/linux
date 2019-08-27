@@ -188,7 +188,6 @@
  * @bar_decoder_base: virtual address to read/write bar decoder registers
  * @ecam_base: virtual address to read/write to PCIe ECAM region
  * @phycore_base: virtual address to read/write to phy registers
- * @pcie_subsys: virtual address to read/write pcie subsys registers
  * @phys_breg_base: Physical address Bridge Registers
  * @phys_csr_reg_base: Physical address CSR register
  * @phys_bar_decoder_base: Physical Bar decoder Base
@@ -196,7 +195,6 @@
  * @ftu_regmap: virtual address to read/write system shared registers
  * @ctrl_num: index of controller from 0 up to 7
  * @nb_lane: number of pcie lane
- * @disable_dame: disable DAME generation when a PCI transaction failed
  * @irq_intx: legacy irq handler interrupt number
  * @irq_misc: misc irq handler interrupt number
  * @irq_aer: AER framework interrupt
@@ -213,7 +211,6 @@ struct nwl_pcie {
 	void __iomem *bar_decoder_base;
 	void __iomem *ecam_base;
 	void __iomem *phycore_base;
-	void __iomem *pcie_subsys;
 	phys_addr_t phys_breg_base;
 	phys_addr_t phys_csr_reg_base;
 	phys_addr_t phys_bar_decoder_base;
@@ -223,7 +220,6 @@ struct nwl_pcie {
 	struct pci_host_bridge *bridge;
 	u32 ctrl_num;
 	u32 nb_lane;
-	bool disable_dame;
 	int irq_intx;
 	int irq_misc;
 	int irq_aer;
@@ -802,12 +798,6 @@ static int nwl_pcie_bridge_init(struct nwl_pcie *pcie)
 	nwl_bridge_writel(pcie, nwl_bridge_readl(pcie, BRCFG_INTERRUPT) |
 			  BRCFG_INTERRUPT_MASK, BRCFG_INTERRUPT);
 
-	/* Dis/enable DAME generation according to settings */
-	val = DISABLE_SLAVE_ERR;
-	if (pcie->disable_dame == false)
-		val = ENABLE_SLAVE_ERR;
-	writel(val, pcie->pcie_subsys + PCIE_SUBSYS_SLAVE_ERR);
-
 	return 0;
 }
 
@@ -888,7 +878,6 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 {
 	struct device *dev = pcie->dev;
 	struct resource *res;
-	u32 dame;
 	int ret;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "bridge_reg");
@@ -921,11 +910,6 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 	if (IS_ERR(pcie->phycore_base))
 		return PTR_ERR(pcie->phycore_base);
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "pcie_subsys");
-	pcie->pcie_subsys = devm_ioremap_resource(dev, res);
-	if (IS_ERR(pcie->pcie_subsys))
-		return PTR_ERR(pcie->pcie_subsys);
-
 	ret = of_property_read_u32(pdev->dev.of_node, "kalray,ctrl-num",
 				   &pcie->ctrl_num);
 	if (ret != 0)
@@ -941,14 +925,6 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 	if (ret != 0)
 		return ret;
 	dev_info(dev, "nb_lane : %u\n", pcie->nb_lane);
-
-	ret = of_property_read_u32(pdev->dev.of_node, "kalray,disable-dame",
-				   &dame);
-	pcie->disable_dame = false;
-	if (ret == 0 && dame != 0)
-		pcie->disable_dame = true;
-	dev_info(dev, "disable_dame: %s\n",
-		 pcie->disable_dame ? "true" : "false");
 
 	/* Get intx IRQ number */
 	pcie->irq_intx = platform_get_irq_byname(pdev, "intx");
@@ -1260,3 +1236,48 @@ static struct platform_driver nwl_pcie_driver = {
 	.probe = nwl_pcie_probe,
 };
 builtin_platform_driver(nwl_pcie_driver);
+
+static int pcie_subsys_probe(struct platform_device *pdev)
+{
+	void __iomem *pcie_subsys;
+	struct resource *res;
+	u32 dame;
+	int ret;
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "pcie_subsys");
+	pcie_subsys = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(pcie_subsys))
+		return PTR_ERR(pcie_subsys);
+
+	ret = of_property_read_u32(pdev->dev.of_node, "kalray,disable-dame",
+				   &dame);
+	if (ret == 0) {
+		if (dame == 0)
+			writel(ENABLE_SLAVE_ERR,
+				pcie_subsys + PCIE_SUBSYS_SLAVE_ERR);
+		else
+			writel(DISABLE_SLAVE_ERR,
+				pcie_subsys + PCIE_SUBSYS_SLAVE_ERR);
+
+		dev_info(&pdev->dev, "disable_dame: %s\n",
+			 dame == 0 ? "false" : "true");
+	}
+
+	return devm_of_platform_populate(&pdev->dev);
+}
+
+static const struct of_device_id subsys_pcie_of_match[] = {
+	{ .compatible = "kalray,subsys-pcie", },
+	{}
+};
+
+static struct platform_driver k1c_subsys_pcie_driver = {
+	.driver = {
+		.name = "k1c-subsys-pcie",
+		.suppress_bind_attrs = true,
+		.of_match_table = subsys_pcie_of_match,
+	},
+	.probe = pcie_subsys_probe,
+};
+builtin_platform_driver(k1c_subsys_pcie_driver);
+
