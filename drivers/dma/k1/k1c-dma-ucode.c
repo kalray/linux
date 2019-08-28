@@ -17,23 +17,20 @@
 #include "k1c-dma-ucode.h"
 #include "k1c-dma-regs.h"
 
-static struct k1c_dma_ucode mem2mem_stride2stride_ucode = {
+struct k1c_dma_ucode mem2mem_stride2stride_ucode = {
 	.name = K1C_DMA_MEM2MEM_UCODE_NAME,
-	.pgrm_id = MEM2MEM_PROGRAM_ID,
 	.tab.transfer_mode = K1C_DMA_TX_TRANSFER_MODE_AXI,
 	.tab.valid = 1,
 };
 
-static struct k1c_dma_ucode mem2noc_stride2stride_ucode = {
+struct k1c_dma_ucode mem2noc_stride2stride_ucode = {
 	.name = K1C_DMA_MEM2NOC_UCODE_NAME,
-	.pgrm_id = MEM2NOC_PROGRAM_ID,
 	.tab.transfer_mode = K1C_DMA_TX_TRANSFER_MODE_NOC,
 	.tab.valid = 1,
 };
 
-static struct k1c_dma_ucode mem2eth_ucode = {
+struct k1c_dma_ucode mem2eth_ucode = {
 	.name = K1C_DMA_MEM2ETH_UCODE_NAME,
-	.pgrm_id = MEM2ETH_PROGRAM_ID,
 	.tab.transfer_mode = K1C_DMA_TX_TRANSFER_MODE_NOC,
 	.tab.valid = 1,
 };
@@ -45,24 +42,33 @@ struct k1c_dma_ucode *default_ucodes[] = {
 };
 
 int k1c_dma_ucode_load(struct k1c_dma_dev *dev,
-		       const struct k1c_dma_ucode *ucode)
+		struct k1c_dma_ucode *ucode)
 {
 	u64 check_desc, val = 0;
 	const struct firmware *fw;
-	void __iomem *pgrm_table_addr = dev->iobase +
-		K1C_DMA_TX_PGRM_TAB_OFFSET + sizeof(val) * ucode->pgrm_id;
+	void __iomem *pgrm_table_addr;
 	u64 *write_addr = dev->iobase + K1C_DMA_TX_PGRM_MEM_OFFSET +
-		dev->next_pgrm_addr;
+		dev->dma_fws.pgrm_mem.next_addr;
 	const u64 *read_ptr;
-	int i, ret;
+	int i, ret, dma_fw_ids_end;
 
 	/* Paranoid check */
-	if (!IS_ALIGNED(dev->next_pgrm_addr, 0x8)) {
+	if (!IS_ALIGNED(dev->dma_fws.pgrm_mem.next_addr, 0x8)) {
 		dev_err(dev->dma.dev, "Ucore start adress is not aligned\n");
 		return -EINVAL;
 	}
 
-	dev_dbg(dev->dma.dev, "Requesting firmware %s", ucode->name);
+	/* ida_alloc_range is inclusive, therefore -1 */
+	dma_fw_ids_end = dev->dma_fws.ids.start + dev->dma_fws.ids.nb - 1;
+	ret = ida_alloc_range(&(dev->dma_fws.ida), dev->dma_fws.ids.start,
+			dma_fw_ids_end, GFP_KERNEL);
+	if (ret < 0) {
+		dev_err(dev->dma.dev, "No free ids available for dma fw");
+		return ret;
+	}
+	ucode->pgrm_id = ret;
+
+	dev_info(dev->dma.dev, "Requesting firmware %s", ucode->name);
 	ret = request_firmware(&fw, ucode->name, dev->dma.dev);
 	if (ret < 0)
 		return ret;
@@ -78,14 +84,16 @@ int k1c_dma_ucode_load(struct k1c_dma_dev *dev,
 
 	if (read_ptr == 0 ||
 		!IS_ALIGNED(fw->size, 0x8) ||
-		TO_PM_ADDR(dev->next_pgrm_addr + fw->size) >
-			K1C_DMA_TX_PGRM_MEM_NUMBER) {
+		TO_PM_ADDR(dev->dma_fws.pgrm_mem.next_addr + fw->size) >
+			dev->dma_fws.pgrm_mem.size) {
 		dev_err(dev->dma.dev, "Can't write ucode in scratch memory\n");
 		ret = -EINVAL;
 		goto early_exit;
 	}
 
 	/* Check if there is already a ucode */
+	pgrm_table_addr = dev->iobase + K1C_DMA_TX_PGRM_TAB_OFFSET +
+		sizeof(val) * ucode->pgrm_id;
 	check_desc = readq(pgrm_table_addr);
 	if (((check_desc >> K1C_DMA_TX_PGRM_TAB_VALID_SHIFT) & 1) == 1) {
 		dev_warn(dev->dma.dev, "Overriding ucode[%d] already loaded\n",
@@ -97,7 +105,7 @@ int k1c_dma_ucode_load(struct k1c_dma_dev *dev,
 		writeq(read_ptr[i], write_addr++);
 
 	/* Update program table */
-	val |= (TO_PM_ADDR(dev->next_pgrm_addr) <<
+	val |= (TO_PM_ADDR(dev->dma_fws.pgrm_mem.next_addr) <<
 		K1C_DMA_TX_PGRM_TAB_PM_START_ADDR_SHIFT);
 	val |= (ucode->tab.transfer_mode <<
 		K1C_DMA_TX_PGRM_TAB_TRANSFER_MODE_SHIFT);
@@ -108,7 +116,7 @@ int k1c_dma_ucode_load(struct k1c_dma_dev *dev,
 	writeq(val, pgrm_table_addr);
 
 	/* Update to last written byte to start next ucode at this address */
-	dev->next_pgrm_addr += fw->size;
+	dev->dma_fws.pgrm_mem.next_addr += fw->size;
 
 early_exit:
 	release_firmware(fw);

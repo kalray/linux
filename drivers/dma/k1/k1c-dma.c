@@ -1098,6 +1098,23 @@ static int k1c_dma_probe(struct platform_device *pdev)
 		dev->dma_requests = K1C_DMA_MAX_REQUESTS;
 	}
 
+	if (of_property_read_u32_array(node_to_parse, "kalray,dma-ucode-ids",
+				       (u32 *) &dev->dma_fws.ids, 2)  != 0) {
+		dev_warn(&pdev->dev, "Property kalray,dma-ucode-ids not found\n");
+		dev->dma_fws.ids.start = 0;
+		dev->dma_fws.ids.nb = K1C_DMA_TX_PGRM_TABLE_NUMBER;
+	}
+	if (of_property_read_u32_array(node_to_parse, "kalray,dma-ucode-reg",
+				(u32 *) &dev->dma_fws.pgrm_mem, 2)
+				!= 0) {
+		dev_warn(&pdev->dev, "Property kalray,dma-ucode-reg not found\n");
+		dev->dma_fws.pgrm_mem.start = 0;
+		dev->dma_fws.pgrm_mem.size = K1C_DMA_TX_PGRM_MEM_NUMBER;
+	}
+	dev->dma_fws.pgrm_mem.next_addr =
+		TO_CPU_ADDR(dev->dma_fws.pgrm_mem.start);
+	ida_init(&(dev->dma_fws.ida));
+
 	node = of_parse_phandle(node_to_parse, "memory-region", 0);
 	if (node)
 		rmem = of_reserved_mem_lookup(node);
