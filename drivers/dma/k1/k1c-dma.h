@@ -145,6 +145,36 @@ struct k1c_dma_chan {
 	unsigned long state;
 };
 
+/** struct k1c_dma_fw_ids - K1C DMA firmwares identifiers pool
+ * @start: Start identifier
+ * @nb: Number of identifiers in the pool
+ */
+struct k1c_dma_fw_ids {
+	u32 start;
+	u32 nb;
+};
+
+/** struct k1c_dma_fw_pgrm_mem - K1C DMA program memory pool
+ * @start: Start PM address of the pool
+ * @nb: PM Size allocated in this pool
+ * @next_addr: CPU next writable adress in this pool
+ */
+struct k1c_dma_fw_pgrm_mem {
+	u32 start;
+	u32 size;
+	u64 next_addr;
+};
+
+/** k1c_dma_fws - K1C DMA firmwares structure
+ * @ids: Programs identifiers
+ * @pgrm_mem: Program memory
+ */
+struct k1c_dma_fws {
+	struct k1c_dma_fw_ids ids;
+	struct k1c_dma_fw_pgrm_mem pgrm_mem;
+	struct ida ida;
+};
+
 /**
  * struct k1c_dma_dev - K1C DMA hardware device
  * @iobase: Register mapping
@@ -161,6 +191,7 @@ struct k1c_dma_chan {
  * @pending_chan: Awaiting dma channels
  * @dbg: dbg fs
  * @asn: device specific asn for iommu / hw
+ * @dma_fws: Information about firmwares pool probed from dt
  *
  * One dev per rx/tx channels
  */
@@ -177,8 +208,8 @@ struct k1c_dma_dev {
 	spinlock_t lock;
 	struct list_head pending_chan;
 	struct dentry *dbg;
-	u64 next_pgrm_addr;
 	u32 asn;
+	struct k1c_dma_fws dma_fws;
 };
 
 int k1c_dma_request_msi(struct platform_device *pdev);
