@@ -904,7 +904,7 @@ int k1c_dma_rdma_tx_push_mem2mem(struct k1c_dma_phy *phy,
 			     u64 *hw_job_id)
 {
 	const u64 comp_queue_id = tx_job->comp_q_id;
-	const u64 pgrm_id = MEM2MEM_PROGRAM_ID;
+	const u64 pgrm_id = mem2mem_stride2stride_ucode.pgrm_id;
 	const u64 entry = tx_job->route_id;
 	const u64 source = tx_job->src_dma_addr;
 	const u64 dest = tx_job->dst_dma_addr;
@@ -942,7 +942,7 @@ int k1c_dma_rdma_tx_push_mem2noc(struct k1c_dma_phy *phy,
 			     u64 *hw_job_id)
 {
 	const u64 comp_queue_id = tx_job->comp_q_id;
-	const u64 pgrm_id = MEM2NOC_PROGRAM_ID;
+	const u64 pgrm_id = mem2noc_stride2stride_ucode.pgrm_id;
 	const u64 noc_route_id = tx_job->route_id;
 	const u64 source = tx_job->src_dma_addr;
 	const u64 offset = tx_job->dst_dma_addr;
@@ -974,7 +974,7 @@ int k1c_dma_pkt_tx_push(struct k1c_dma_phy *phy, struct k1c_dma_tx_job *tx_job,
 		    u64 eot, u64 *hw_job_id)
 {
 	const u64 comp_queue_id = tx_job->comp_q_id;
-	const u64 pgrm_id = MEM2ETH_PROGRAM_ID;
+	const u64 pgrm_id = mem2eth_ucode.pgrm_id;
 	const u64 noc_route_id = tx_job->route_id;
 	const u64 source = tx_job->src_dma_addr;
 	const u64 object_len = tx_job->len;

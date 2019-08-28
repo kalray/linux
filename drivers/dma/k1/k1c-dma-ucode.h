@@ -12,6 +12,7 @@
 
 #include <linux/types.h>
 #include <linux/firmware.h>
+#include <linux/limits.h>
 
 #include "k1c-dma.h"
 
@@ -20,15 +21,10 @@
 #define K1C_DMA_MEM2NOC_UCODE_NAME "mem2noc_stride2stride.bin"
 
 /* k1c processor is byte adressable, DMA is word (64 bits) adressable
- * Converts a CPU addr to a DMA address
+ * Converts a CPU addr to a DMA address and vice versa
  */
 #define TO_PM_ADDR(x)	((x) >> 3)
-
-enum k1c_dma_pgrm_id {
-	MEM2ETH_PROGRAM_ID = 13,
-	MEM2NOC_PROGRAM_ID,
-	MEM2MEM_PROGRAM_ID,
-};
+#define TO_CPU_ADDR(x)	((x) << 3)
 
 enum k1c_dma_tx_transfer_mode {
 	K1C_DMA_TX_TRANSFER_MODE_NOC = 0,
@@ -56,6 +52,13 @@ struct k1c_dma_ucode {
 	char *name;
 	struct k1c_dma_ucode_tab tab; /* Config */
 };
+
+/* All available microcodes */
+extern struct k1c_dma_ucode mem2mem_stride2stride_ucode;
+extern struct k1c_dma_ucode mem2noc_stride2stride_ucode;
+extern struct k1c_dma_ucode mem2eth_ucode;
+
+extern struct k1c_dma_ucode *default_ucodes[];
 
 int k1c_dma_default_ucodes_load(struct k1c_dma_dev *dev);
 
