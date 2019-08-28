@@ -7,6 +7,9 @@ Required properties:
 - reg: DMA NOC registers and length
 - dma-channels: number of used channels
 - dma-requests: max number of requests per channel
+- kalray,dma-ucode-ids: start identifier (inclusive) and number of identifiers
+  reserved for dma engine microcode firmwares in dma memory
+- kalray,dma-ucode-reg: start offset in program table followed by size
 - msi-parent: mailbox use for MSI
 - memory-region: optional reserved region for dma queue allocation
 - iommus: optional iommu
@@ -19,6 +22,8 @@ Example:
 		 reg = <0 0x1800000 0 0x100000>;
 		 dma-channels = <128>;
 		 dma-requests = <32>;
+		 kalray,dma-ucode-ids = <0 3>;
+		 kalray,dma-ucode-reg = <0 64>;
 		 msi-parent = <&apic_mailbox>;
 		 memory-region = <&dma_noc_reserved>;
 		 iommus = <&iommu_noc 12>;
