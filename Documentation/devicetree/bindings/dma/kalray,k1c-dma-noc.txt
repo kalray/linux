@@ -10,6 +10,10 @@ Required properties:
 - kalray,dma-ucode-ids: start identifier (inclusive) and number of identifiers
   reserved for dma engine microcode firmwares in dma memory
 - kalray,dma-ucode-reg: start offset in program table followed by size
+- kalray,dma-tx-job-queue-ids: start index of TX job queue followed by number
+- kalray,dma-tx-comp-queue-ids: start index of TX completion queue followed by
+                                number. Must be inline with dma-tx-job-queue-ids
+- kalray,dma-noc-route-ids: usable indexes in noc-route table (start, nb)
 - msi-parent: mailbox use for MSI
 - memory-region: optional reserved region for dma queue allocation
 - iommus: optional iommu
@@ -24,6 +28,9 @@ Example:
 		 dma-requests = <32>;
 		 kalray,dma-ucode-ids = <0 3>;
 		 kalray,dma-ucode-reg = <0 64>;
+		 kalray,dma-tx-job-queue-ids = <0 63>;
+		 kalray,dma-tx-comp-queue-ids = <0 63>;
+		 kalray,dma-noc-route-ids = <0 511>;
 		 msi-parent = <&apic_mailbox>;
 		 memory-region = <&dma_noc_reserved>;
 		 iommus = <&iommu_noc 12>;
