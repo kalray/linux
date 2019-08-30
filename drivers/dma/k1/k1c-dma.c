@@ -235,10 +235,6 @@ static int k1c_dma_check_rx_comp(struct k1c_dma_dev *dev,
 
 		txd = &hw_job->txd;
 		if (pkt->base == txd->src_dma_addr) {
-			if (pkt->byte != txd->len)
-				dev_warn(dev->dma.dev,
-					 "Incomplete RX desc: @0x%lx\n",
-					 (uintptr_t)desc);
 			k1c_dma_release_hw_job(c, hw_job);
 			return 0;
 		}
@@ -420,6 +416,7 @@ struct k1c_dma_phy *k1c_dma_get_phy(struct k1c_dma_dev *dev,
 {
 	struct k1c_dma_phy *p, *phy = NULL;
 	enum k1c_dma_dir_type dir = c->cfg.dir;
+	struct device *d = dev->dma.dev;
 	int nb_phy = k1c_dma_get_phy_nb(dir);
 	int i = 0;
 
@@ -429,9 +426,14 @@ struct k1c_dma_phy *k1c_dma_get_phy(struct k1c_dma_dev *dev,
 			for (i = 0; i < nb_phy; ++i) {
 				p = &dev->phy[dir][i];
 				/* rx_tag is equivalent to Rx fifo id */
-				if (unlikely(p->hw_id == c->cfg.rx_tag)) {
-					if (!p->used)
-						phy = p;
+				if (!p->used && p->hw_id == c->cfg.rx_tag) {
+					if (k1c_dma_check_rx_q_enabled(p,
+							c->cfg.rx_cache_id)) {
+						dev_err(d, "%s RX channel[%d] already in use\n",
+							__func__, p->hw_id);
+						goto out;
+					}
+					phy = p;
 					break;
 				}
 			}
@@ -441,18 +443,23 @@ struct k1c_dma_phy *k1c_dma_get_phy(struct k1c_dma_dev *dev,
 		for (i = 0; i < nb_phy; ++i) {
 			p = &dev->phy[dir][i];
 			if (!p->used) {
+				if (k1c_dma_check_tx_q_enabled(p)) {
+					dev_warn(d, "%s TX queue[%d] already in use\n",
+						__func__, p->hw_id);
+					continue;
+				}
 				phy = p;
 				break;
 			}
 		}
 	}
 	if (phy != NULL) {
-		dev_dbg(dev->dma.dev, "%s dir: %d hw_id: %d\n", __func__,
-			  dir, phy->hw_id);
+		dev_dbg(d, "%s dir: %d hw_id: %d\n", __func__, dir, phy->hw_id);
 		phy->used = 1;
 		phy->comp_count = 0;
 		phy->rx_cache_id = c->cfg.rx_cache_id;
 	}
+out:
 	spin_unlock(&dev->lock);
 	return phy;
 }
@@ -645,8 +652,9 @@ int k1c_dma_get_route_id(struct k1c_dma_phy *phy,
 				idx = i;
 				break;
 			}
-		} else if (idx == -1) {
+		} else {
 			idx = i;
+			break;
 		}
 	}
 	if ((i == K1C_DMA_NOC_ROUTE_TABLE_NUMBER) && (idx == -1)) {
