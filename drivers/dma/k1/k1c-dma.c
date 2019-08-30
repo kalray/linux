@@ -439,8 +439,9 @@ struct k1c_dma_phy *k1c_dma_get_phy(struct k1c_dma_dev *dev,
 			}
 		}
 	} else {
+		u32 s = dev->dma_tx_jobq_ids.start;
 		/* For TX -> use the first available */
-		for (i = 0; i < nb_phy; ++i) {
+		for (i = s; i < s + dev->dma_tx_jobq_ids.nb; ++i) {
 			p = &dev->phy[dir][i];
 			if (!p->used) {
 				if (k1c_dma_check_tx_q_enabled(p)) {
@@ -631,6 +632,7 @@ static void k1c_dma_release_desc(struct virt_dma_desc *vd)
 
 /**
  * k1c_dma_get_route_id() - Find route_id according to route given in param
+ * @dev: k1c device for global param
  * @phy: the phy to get route table from
  * @route: the route to look for
  * @route_id: returned route identifier if found
@@ -638,13 +640,14 @@ static void k1c_dma_release_desc(struct virt_dma_desc *vd)
  * If no found, get a new one
  * Must be called under lock
  */
-int k1c_dma_get_route_id(struct k1c_dma_phy *phy,
+int k1c_dma_get_route_id(struct k1c_dma_dev *dev, struct k1c_dma_phy *phy,
 			 u64 *route, u64 *route_id)
 {
 	int i, idx = -1;
+	int s = dev->dma_noc_route_ids.start;
 	u64 rt = 0;
 
-	for (i = 0; i < K1C_DMA_NOC_ROUTE_TABLE_NUMBER; ++i) {
+	for (i = s; i < s + dev->dma_noc_route_ids.nb; ++i) {
 		rt = readq(phy->base + K1C_DMA_NOC_RT_OFFSET +
 			   i * K1C_DMA_NOC_RT_ELEM_SIZE);
 		if ((rt & K1C_DMA_NOC_RT_VALID_MASK) != 0) {
@@ -690,7 +693,7 @@ int k1c_dma_setup_route(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 	((u64)(cfg->hw_vchan & 0x1)     << K1C_DMA_NOC_RT_VCHAN_SHIFT)  |
 	((u64)(1)                       << K1C_DMA_NOC_RT_VALID_SHIFT);
 	spin_lock(&dev->lock);
-	ret = k1c_dma_get_route_id(c->phy, &desc->route, &desc->route_id);
+	ret = k1c_dma_get_route_id(dev, c->phy, &desc->route, &desc->route_id);
 	spin_unlock(&dev->lock);
 	if (ret) {
 		dev_err(dev->dma.dev, "Unable to get route_id\n");
@@ -1069,50 +1072,32 @@ struct dma_chan *k1c_dma_xlate(struct of_phandle_args *dma_spec,
 	return dma_request_channel(mask, k1c_dma_filter_fn, &param);
 }
 
-static int k1c_dma_probe(struct platform_device *pdev)
+static int k1c_dma_parse_dt(struct platform_device *pdev,
+			    struct k1c_dma_dev *dev)
 {
-	int i, ret;
-	char name[K1C_STR_LEN];
-	struct dma_device *dma;
-	struct k1c_dma_dev *dev = devm_kzalloc(&pdev->dev,
-					       sizeof(*dev), GFP_KERNEL);
-	struct device_node *node, *node_to_parse = pdev->dev.of_node;
-	struct resource *io;
+	struct device_node *node, *np = pdev->dev.of_node;
 	struct reserved_mem *rmem = NULL;
 	dma_addr_t rmem_dma;
-	static int dev_cnt;
+	int ret = 0;
 
-	if (!dev) {
-		dev_err(&pdev->dev, "Device allocation error\n");
-		return -ENOMEM;
-	}
-
-	/* Request and map I/O memory */
-	io = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	dev->iobase = devm_ioremap_resource(&pdev->dev, io);
-	if (IS_ERR(dev->iobase))
-		return PTR_ERR(dev->iobase);
-
-	platform_set_drvdata(pdev, dev);
-
-	if (of_property_read_u32_array(node_to_parse, "dma-channels",
+	if (of_property_read_u32_array(np, "dma-channels",
 				       &dev->dma_channels, 1)  != 0) {
 		dev_warn(&pdev->dev, "Property dma-channels not found\n");
 		dev->dma_channels = 64;
 	}
-	if (of_property_read_u32_array(node_to_parse, "dma-requests",
+	if (of_property_read_u32_array(np, "dma-requests",
 				       &dev->dma_requests, 1)  != 0) {
 		dev_warn(&pdev->dev, "Property dma-requests not found\n");
 		dev->dma_requests = K1C_DMA_MAX_REQUESTS;
 	}
 
-	if (of_property_read_u32_array(node_to_parse, "kalray,dma-ucode-ids",
+	if (of_property_read_u32_array(np, "kalray,dma-ucode-ids",
 				       (u32 *) &dev->dma_fws.ids, 2)  != 0) {
 		dev_warn(&pdev->dev, "Property kalray,dma-ucode-ids not found\n");
 		dev->dma_fws.ids.start = 0;
 		dev->dma_fws.ids.nb = K1C_DMA_TX_PGRM_TABLE_NUMBER;
 	}
-	if (of_property_read_u32_array(node_to_parse, "kalray,dma-ucode-reg",
+	if (of_property_read_u32_array(np, "kalray,dma-ucode-reg",
 				(u32 *) &dev->dma_fws.pgrm_mem, 2)
 				!= 0) {
 		dev_warn(&pdev->dev, "Property kalray,dma-ucode-reg not found\n");
@@ -1123,7 +1108,28 @@ static int k1c_dma_probe(struct platform_device *pdev)
 		TO_CPU_ADDR(dev->dma_fws.pgrm_mem.start);
 	ida_init(&(dev->dma_fws.ida));
 
-	node = of_parse_phandle(node_to_parse, "memory-region", 0);
+	if (of_property_read_u32_array(np, "kalray,dma-tx-job-queue-ids",
+				(u32 *)&dev->dma_tx_jobq_ids, 2) != 0) {
+		dev->dma_tx_jobq_ids.start = 0;
+		dev->dma_tx_jobq_ids.nb = K1C_DMA_TX_JOB_QUEUE_NUMBER;
+	}
+	if (of_property_read_u32_array(np, "kalray,dma-tx-comp-queue-ids",
+				(u32 *)&dev->dma_tx_compq_ids, 2) != 0) {
+		dev->dma_tx_compq_ids.start = 0;
+		dev->dma_tx_compq_ids.nb = K1C_DMA_TX_COMPLETION_QUEUE_NUMBER;
+	}
+	if (dev->dma_tx_jobq_ids.start != dev->dma_tx_compq_ids.start ||
+	    dev->dma_tx_jobq_ids.nb != dev->dma_tx_compq_ids.nb) {
+		dev_err(&pdev->dev, "dma-tx-job-queue-ids != dma-tx-comp-queue-ids\n");
+		return -EINVAL;
+	}
+	if (of_property_read_u32_array(np, "kalray,dma-noc-route-ids",
+				(u32 *)&dev->dma_noc_route_ids, 2) != 0) {
+		dev->dma_noc_route_ids.start = 0;
+		dev->dma_noc_route_ids.nb = K1C_DMA_NOC_ROUTE_TABLE_NUMBER;
+	}
+
+	node = of_parse_phandle(np, "memory-region", 0);
 	if (node)
 		rmem = of_reserved_mem_lookup(node);
 	of_node_put(node);
@@ -1146,6 +1152,36 @@ static int k1c_dma_probe(struct platform_device *pdev)
 	} else {
 		dev_warn(&pdev->dev, "Failed to lookup reserved memory\n");
 	}
+
+	return 0;
+}
+
+static int k1c_dma_probe(struct platform_device *pdev)
+{
+	int i, ret;
+	char name[K1C_STR_LEN];
+	struct dma_device *dma;
+	struct k1c_dma_dev *dev = devm_kzalloc(&pdev->dev,
+					       sizeof(*dev), GFP_KERNEL);
+	struct resource *io;
+	static int dev_cnt;
+
+	if (!dev) {
+		dev_err(&pdev->dev, "Device allocation error\n");
+		return -ENOMEM;
+	}
+
+	/* Request and map I/O memory */
+	io = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	dev->iobase = devm_ioremap_resource(&pdev->dev, io);
+	if (IS_ERR(dev->iobase))
+		return PTR_ERR(dev->iobase);
+
+	platform_set_drvdata(pdev, dev);
+
+	ret = k1c_dma_parse_dt(pdev, dev);
+	if (ret)
+		return ret;
 
 	dev->desc_cache = KMEM_CACHE(k1c_dma_desc, SLAB_PANIC |
 				     SLAB_HWCACHE_ALIGN);
@@ -1254,7 +1290,7 @@ static int k1c_dma_probe(struct platform_device *pdev)
 
 	/* Device-tree DMA controller registration */
 	k1c_dma_info.dma_cap = dma->cap_mask;
-	ret = of_dma_controller_register(node_to_parse, k1c_dma_xlate, dma);
+	ret = of_dma_controller_register(pdev->dev.of_node, k1c_dma_xlate, dma);
 	if (ret)
 		dev_warn(&pdev->dev, "%s: Failed to register DMA controller\n",
 				 __func__);
