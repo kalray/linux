@@ -114,11 +114,7 @@ struct k1c_dma_chan {
 	unsigned long state;
 };
 
-/** struct k1c_dma_fw_ids - K1C DMA firmwares identifiers pool
- * @start: Start identifier
- * @nb: Number of identifiers in the pool
- */
-struct k1c_dma_fw_ids {
+struct dma_node_id {
 	u32 start;
 	u32 nb;
 };
@@ -139,7 +135,7 @@ struct k1c_dma_fw_pgrm_mem {
  * @pgrm_mem: Program memory
  */
 struct k1c_dma_fws {
-	struct k1c_dma_fw_ids ids;
+	struct dma_node_id ids;
 	struct k1c_dma_fw_pgrm_mem pgrm_mem;
 	struct ida ida;
 };
@@ -169,6 +165,9 @@ struct k1c_dma_dev {
 	struct dma_device dma;
 	u32 dma_channels;
 	u32 dma_requests;
+	struct dma_node_id dma_tx_jobq_ids;
+	struct dma_node_id dma_tx_compq_ids;
+	struct dma_node_id dma_noc_route_ids;
 	struct tasklet_struct task;
 	struct k1c_dma_chan **chan;
 	struct kmem_cache *desc_cache;
