@@ -178,6 +178,8 @@ int k1c_dma_pkt_tx_push(struct k1c_dma_phy *phy,
 int k1c_dma_noc_tx_push(struct k1c_dma_phy *phy, struct k1c_dma_tx_job *tx_job,
 			u64 eot, u64 *hw_job_id);
 
+int k1c_dma_check_rx_q_enabled(struct k1c_dma_phy *phy, int rx_cache_id);
+int k1c_dma_check_tx_q_enabled(struct k1c_dma_phy *phy);
 void k1c_dma_stop_queues(struct k1c_dma_phy *phy);
 int k1c_dma_allocate_queues(struct k1c_dma_phy *phy,
 			    struct k1c_dma_job_queue_list *jobq_list,
