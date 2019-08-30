@@ -544,6 +544,47 @@ int k1c_dma_init_tx_queues(struct k1c_dma_phy *phy)
 	return ret;
 }
 
+
+int k1c_dma_check_rx_q_enabled(struct k1c_dma_phy *phy,
+			       int rx_cache_id)
+{
+	int idx = K1C_DMA_NB_RX_JOB_QUEUE_PER_CACHE * rx_cache_id;
+	u64 val = readq(phy->base + K1C_DMA_RX_JOB_Q_OFFSET +
+			idx * K1C_DMA_RX_JOB_Q_ELEM_SIZE +
+			K1C_DMA_RX_JOB_Q_STATUS_OFFSET);
+
+	if ((val & 0x3) != 0)
+		return -EBUSY;
+
+	val = readq(phy->base + K1C_DMA_RX_CHAN_OFFSET +
+		    phy->hw_id * K1C_DMA_RX_CHAN_ELEM_SIZE +
+		    K1C_DMA_RX_CHAN_ACTIVATED_OFFSET);
+
+	if ((val & 0x1) != 0)
+		return -EBUSY;
+
+	return 0;
+}
+
+int k1c_dma_check_tx_q_enabled(struct k1c_dma_phy *phy)
+{
+	u64 val = readq(phy->base + K1C_DMA_TX_JOB_Q_OFFSET +
+			phy->hw_id * K1C_DMA_TX_JOB_Q_ELEM_SIZE +
+			K1C_DMA_TX_JOB_Q_STATUS_OFFSET);
+
+	if ((val & 0x3) != 0)
+		return -EBUSY;
+
+	val = readq(phy->base + K1C_DMA_TX_COMP_Q_OFFSET +
+			phy->hw_id * K1C_DMA_TX_COMP_Q_ELEM_SIZE +
+			K1C_DMA_TX_COMP_Q_STATUS_OFFSET);
+
+	if ((val & 0x3) != 0)
+		return -EBUSY;
+
+	return 0;
+}
+
 /**
  * Returns a rx_jobq allocated (if needed) in rx_jobq for phy->rx_cache_id
  * MUST be locked with k1c_dma_dev->lock
