@@ -7,13 +7,14 @@
  * Copyright (C) 2019 Kalray Inc.
  */
 
-#ifndef ASM_K1C_DMA_H
-#define ASM_K1C_DMA_H
+#ifndef K1C_DMA_H
+#define K1C_DMA_H
 
 #include <linux/scatterlist.h>
 #include <linux/platform_device.h>
-#include "../virt-dma.h"
+#include <linux/dma/k1c-dma.h>
 
+#include "../virt-dma.h"
 #include "k1c-dma-hw.h"
 
 #define K1C_STR_LEN               (32)
@@ -61,38 +62,6 @@ struct k1c_dma_desc {
 	u64 route_id;
 	u64 last_job_id;
 	u64 err;
-};
-
-/**
- * struct k1c_dma_slave_cfg - Extended slave configuration structure for channel
- * @cfg: Dma engine channel config
- * @dir: RX / TX
- * @trans_type: Transfer type for dma-noc
- * @noc_route: Transfer route
- * @qos_id: qos
- * @hw_vchan: Hw vchan requested [0, 1]
- * @rx_cache_id: Rx cache associated to rx job queue [0, 3]
- */
-struct k1c_dma_slave_cfg {
-	struct dma_slave_config cfg;
-	enum k1c_dma_dir_type dir;
-	enum k1c_dma_transfer_type trans_type;
-	u64 noc_route;
-	u8  rx_tag;
-	u8  qos_id;
-	u8  hw_vchan;
-	u8  rx_cache_id;
-};
-
-/**
- * struct k1c_callback_param - Extended callback param
- * Purpose is get buffer length actually written by dma
- * @cb_param: descriptor callback_param
- * @len: actual length of the completed descriptor
- */
-struct k1c_callback_param {
-	void *cb_param;
-	size_t len;
 };
 
 /**

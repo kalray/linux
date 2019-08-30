@@ -10,24 +10,14 @@
 #ifndef K1C_DMA_HW_H
 #define K1C_DMA_HW_H
 
+#include <linux/dma/k1c-dma.h>
+
 #include "k1c-dma-regs.h"
 
 #define K1C_DMA_CACHE_ID  (1ULL)
 #define K1C_DMA_THREAD_ID (1ULL)
 
 #define K1C_DMA_ASN_GLOBAL (31)
-
-enum k1c_dma_dir_type {
-	K1C_DMA_DIR_TYPE_RX = 0,
-	K1C_DMA_DIR_TYPE_TX,
-	K1C_DMA_DIR_TYPE_MAX
-};
-
-enum k1c_dma_transfer_type {
-	K1C_DMA_TYPE_MEM2MEM = 0,
-	K1C_DMA_TYPE_MEM2ETH,
-	K1C_DMA_TYPE_MEM2NOC,
-};
 
 /**
  * struct k1c_dma_tx_job - Tx job description
