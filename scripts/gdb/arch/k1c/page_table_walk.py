@@ -30,7 +30,23 @@ class Pte(ctypes.Union):
     _fields_ = [("bf", pte_bits),
                 ("value", ctypes.c_uint64)]
 
-PTRSIZE = 8
+    def __init__(self, pteValue):
+        self.value = pteValue
+
+    def __str__(self):
+        pte_str = "PFN: 0x{:016x}, ".format(self.bf.PFN << constants.LX_PAGE_SHIFT)
+        pte_str += "PS: " + page_sz_str[self.bf.PageSZ] + ", bits: "
+        ignore_fields = ["PFN", "Unused", "PageSZ"]
+
+        for field in reversed(self.bf._fields_):
+            if field[0] in ignore_fields:
+                continue
+
+            if long(getattr(self.bf, field[0])) != 0:
+                pte_str += field[0] + " "
+
+        return pte_str
+
 
 PGD_ENTRIES = 1 << constants.LX_PGDIR_BITS
 PMD_ENTRIES = 1 << constants.LX_PMD_BITS
@@ -43,52 +59,26 @@ page_sz_str = {
     constants.LX_TLB_PS_512M: "512 Mo"
 }
 
-def extract_hexa(s):
-    return map(lambda x:int(x, 16), re.findall(r'(0x[0-9a-f]+)',s))
+def unsigned_long(gdb_val):
+    """Convert a unsigned long gdb.Value to a displayable python value
+    """
+    return long(gdb_val) & 0xFFFFFFFFFFFFFFFF
 
 def do_lookup(base, size=512):
-    """Run x/512gx to look for the first 512 values where 512 is the size
-       given as a parameter. PGD has a size different from others.
-       It returns a list of pairs (adresses, value) found in the table.
+    """Lookup a page table and return an array of pair with index:entry_value
     """
-    gdb_output = gdb.execute("x/{}gx 0x{:016x}".format(size, base), True, True)
+    unsigned_long_ptr = gdb.lookup_type('unsigned long').pointer()
+    base_ptr = base.cast(unsigned_long_ptr)
 
     res = []
 
-    if gdb_output:
-        for line in gdb_output.split('\n'):
-            # line is something like:
-            #   0xffffff001f5ccff0: 0x0000000000000000 0xffffff001f5ce000
-            m = extract_hexa(line.lower())
-            if len(m) == 3:
-                if m[1] != 0x0:
-                    res.append((m[0], m[1]))
-                if m[2] != 0x0:
-                    res.append((m[0] + PTRSIZE, m[2]))
+    for entry in range(size):
+        entry_val = base_ptr.dereference()
+        base_ptr += 1
+        if entry_val != 0:
+            res.append((entry, entry_val))
 
     return res
-
-def get_pte_bits(pte_entry):
-    """Decode a pte_entry using bits defined in pgtable-bits
-       It returns a string describing the pte entry
-    """
-    pte_val = Pte()
-    pte_val.value = pte_entry
-    pte_str = "\t\tPFN: 0x{:016x}, ".format(pte_val.bf.PFN << constants.LX_PAGE_SHIFT)
-    pte_str += "PS: " + page_sz_str[pte_val.bf.PageSZ] + ", bits: "
-
-    ignore_fields = ["PFN", "Unused", "PageSZ"]
-
-    for field in reversed(pte_val.bf._fields_):
-        if field[0] in ignore_fields:
-            continue
-
-        if long(getattr(pte_val.bf, field[0])) != 0:
-            pte_str += field[0] + " "
-
-    pte_str += "\n"
-    return pte_str
-
 
 class LxPageTableWalk(gdb.Command):
     """Looks for entries in the page table. The base address of the PGD is
@@ -100,51 +90,35 @@ class LxPageTableWalk(gdb.Command):
 
     def invoke(self, argument, from_tty):
         argv = gdb.string_to_argv(argument)
-        if len(argv) != 1:
-            raise gdb.GdbError("PGD address is not provided.")
 
-        # We suppose that an hexa is given as parameter
-        m = extract_hexa(argv[0].lower())
-        if len(m) == 0:
-                # Try to run it has a command
-                try:
-                    gdb_output = gdb.execute("{}".format(argv[0]), True, True)
-                except:
-                    # Let's try something else
-                    m = []
-                else:
-                    m = extract_hexa(gdb_output)
+        if (len(argv) == 1):
+            pgd = argv[0]
+        else:
+            pgd = "$lx_current().active_mm.pgd"
 
-        if len(m) == 0:
-                # Try to print what the user gives us as parameter
-                try:
-                    gdb_output = gdb.execute("p/x {}".format(argv[0]), True, True)
-                except:
-                    raise gdb.GdbError("Failed to find a working base for PGD.")
-                m = extract_hexa(gdb_output)
+        unsigned_long_ptr = gdb.lookup_type('unsigned long').pointer()
+        val = gdb.parse_and_eval(pgd)
+        pgd = unsigned_long(val.cast(unsigned_long_ptr))
 
-        pgd = m[0]
         print "> Looking for PGD base 0x{:016x}\n".format(pgd)
 
-        for pgd_pair in do_lookup(pgd, PGD_ENTRIES):
+        for pgd_pair in do_lookup(val, PGD_ENTRIES):
             gdb.write("[{}] -> Entry[0x{:016x}]\n".format(
-                    (pgd_pair[0] - pgd)/PTRSIZE,
-                    pgd_pair[1]))
-            gdb.write("\t> Looking for PMD base 0x{:016x}\n".format(pgd_pair[1]))
+                    pgd_pair[0], unsigned_long(pgd_pair[1])))
+            gdb.write("\t> Looking for PMD base 0x{:016x}\n".format(unsigned_long(pgd_pair[1])))
             for pmd_pair in do_lookup(pgd_pair[1], PMD_ENTRIES):
                 gdb.write("\t[{}] -> Entry[0x{:016x}]\n".format(
-                        (pmd_pair[0] - pgd_pair[1])/8,
-                        pmd_pair[1]))
+                        pmd_pair[0], unsigned_long(pmd_pair[1])))
                 # Check if the PMD value read is a huge page or a pointer to a
                 # PTE base.
-                if (pmd_pair[1] & constants.LX__PAGE_HUGE):
-                    gdb.write("\t\t> Huge page entry:\n")
-                    gdb.write(get_pte_bits(pmd_pair[1]))
+                if (unsigned_long(pmd_pair[1]) & constants.LX__PAGE_HUGE):
+                    gdb.write("\t\t> Huge PTE: ")
+                    gdb.write(str(Pte(pmd_pair[1])) + "\n")
                 else:
-                    gdb.write("\t\t> Looking for PTE base 0x{:016x}\n".format(pmd_pair[1]))
+                    gdb.write("\t\t> Looking for PTE base 0x{:016x}\n".format(unsigned_long(pmd_pair[1])))
                     for pte_pair in do_lookup(pmd_pair[1], PTE_ENTRIES):
                         gdb.write("\t\t[{}] -> PTE [0x{:016x}]\n".format(
-                                (pte_pair[0] - pmd_pair[1])/8, pte_pair[1]))
-                        gdb.write(get_pte_bits(pte_pair[1]))
+                                pte_pair[0], unsigned_long(pte_pair[1])))
+                        gdb.write("\t\t" + str(Pte(pte_pair[1]))+ "\n")
 
 LxPageTableWalk()
