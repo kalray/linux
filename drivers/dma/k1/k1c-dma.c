@@ -18,6 +18,7 @@
 #include <linux/init.h>
 #include <linux/iommu.h>
 #include <linux/mm.h>
+#include <linux/rhashtable.h>
 #include <linux/interrupt.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
@@ -174,6 +175,16 @@ int k1c_dma_start_desc(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 	return ret;
 }
 
+/* rhashtable for hw_job src_dma_addr <-> k1c_dma_desc matching
+ * Used in Ethernet RX case only, to allow faster lookup of descriptor
+ * as soon as hw_job has completed
+ */
+const static struct rhashtable_params rhtb_params = {
+	.key_len     = sizeof(u64),
+	.key_offset  = offsetof(struct k1c_dma_hw_job, txd.src_dma_addr),
+	.head_offset = offsetof(struct k1c_dma_hw_job, rnode),
+};
+
 /**
  * k1c_dma_get_hw_job() - Get or allocate new hw_job descriptor
  * Must be under c->vc.lock
@@ -217,32 +228,6 @@ static void k1c_dma_complete(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 }
 
 /**
- * Specific case for RX MEM2ETH -> completion is not directly linked
- * to RX job queue
- * Must be called under c->vc.lock
- */
-static int k1c_dma_check_rx_comp(struct k1c_dma_dev *dev,
-				 struct k1c_dma_desc *desc,
-				 struct k1c_dma_pkt_full_desc *pkt)
-{
-	struct k1c_dma_hw_job *hw_job, *tmp;
-	struct k1c_dma_tx_job *txd;
-	struct k1c_dma_chan *c = to_k1c_dma_chan(desc->vd.tx.chan);
-
-	list_for_each_entry_safe(hw_job, tmp, &desc->txd_pending, node) {
-		if (list_empty(&hw_job->node))
-			continue;
-
-		txd = &hw_job->txd;
-		if (pkt->base == txd->src_dma_addr) {
-			k1c_dma_release_hw_job(c, hw_job);
-			return 0;
-		}
-	}
-	return -EINVAL;
-}
-
-/**
  * k1c_dma_check_complete() - Check/mark a transfer descriptor as done (i.e.
  * all its txd hw descriptors have been processed by dma)
  * For TX desc and mem2noc RX: pushing in job queue stores last_job_id. It is
@@ -255,6 +240,7 @@ static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
 				   struct k1c_dma_chan *c)
 {
 	struct k1c_dma_phy *phy = c->phy;
+	struct device *d = dev->dma.dev;
 	struct k1c_dma_desc *desc, *tmp_desc;
 	int ret = 0;
 
@@ -264,27 +250,33 @@ static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
 	if (phy->dir == K1C_DMA_DIR_TYPE_RX &&
 	    c->cfg.trans_type == K1C_DMA_TYPE_MEM2ETH) {
 		struct k1c_dma_pkt_full_desc pkt;
+		struct k1c_dma_hw_job *hw_job;
 
 		do {
 			ret = k1c_dma_rx_get_comp_pkt(phy, &pkt);
 			if (ret < 0)
 				break;
 			// Update the corresponding txd
-			list_for_each_entry_safe(desc, tmp_desc,
-						 &c->desc_running, vd.node) {
-				if (list_empty(&desc->vd.node))
-					continue;
-				if (list_empty(&desc->txd_pending)) {
-					k1c_dma_complete(c, desc);
-					break;
-				}
-				if (!k1c_dma_check_rx_comp(dev, desc, &pkt)) {
-					if (list_empty(&desc->txd_pending)) {
-						desc->len += pkt.byte;
-						k1c_dma_complete(c, desc);
-					}
-					break;
-				}
+			hw_job = rhashtable_lookup_fast(&c->rhtb, &pkt.base,
+							rhtb_params);
+			if (!hw_job) {
+				dev_err(d, "%s Unable to lookup pkt (0x%llx)\n",
+					__func__, (u64)pkt.base);
+				break;
+			}
+			if (!hw_job->desc) {
+				dev_err(d, "%s desc == NULL\n", __func__);
+				break;
+			}
+			desc = hw_job->desc;
+			desc->len += pkt.byte;
+			rhashtable_remove_fast(&c->rhtb, &hw_job->rnode,
+					       rhtb_params);
+			k1c_dma_release_hw_job(c, hw_job);
+			if (list_empty(&desc->txd_pending)) {
+				dev_dbg(d, "%s desc: 0x%llx Complete\n",
+					__func__, desc);
+				k1c_dma_complete(c, desc);
 			}
 		} while (ret == 0);
 	} else {
@@ -533,7 +525,7 @@ static int k1c_dma_alloc_chan_resources(struct dma_chan *chan)
 	struct k1c_dma_desc *desc;
 	struct k1c_dma_hw_job *hw_job;
 	unsigned long flags;
-	int i;
+	int i, ret;
 
 	INIT_LIST_HEAD(&c->desc_running);
 
@@ -543,16 +535,9 @@ static int k1c_dma_alloc_chan_resources(struct dma_chan *chan)
 	if (!c->txd_cache)
 		goto err_kmemcache;
 
-	spin_lock_irqsave(&c->vc.lock, flags);
-	for (i = 0 ; i < K1C_DMA_MAX_TXD; ++i) {
-		hw_job = k1c_dma_get_hw_job(c);
-		if (!hw_job) {
-			spin_unlock_irqrestore(&c->vc.lock, flags);
-			goto err_mem;
-		}
-		k1c_dma_release_hw_job(c, hw_job);
-	}
-	spin_unlock_irqrestore(&c->vc.lock, flags);
+	ret = rhashtable_init(&c->rhtb, &rhtb_params);
+	if (ret < 0)
+		goto err_kmemcache;
 
 	/* Allocate less than dma_requests desc (allocated later if needed) */
 	for (i = 0 ; i < K1C_DMA_PREALLOC_DESC_NB; ++i) {
@@ -568,6 +553,7 @@ static int k1c_dma_alloc_chan_resources(struct dma_chan *chan)
 
 err_mem:
 	c->phy = NULL;
+	rhashtable_destroy(&c->rhtb);
 err_kmemcache:
 	kmem_cache_destroy(c->txd_cache);
 	return -ENOMEM;
@@ -587,6 +573,7 @@ static void k1c_dma_free_chan_resources(struct dma_chan *chan)
 	k1c_dma_release_phy(dev, c->phy);
 	c->phy = NULL;
 	vchan_free_chan_resources(vc);
+	rhashtable_destroy(&c->rhtb);
 	kmem_cache_destroy(c->txd_cache);
 }
 
@@ -784,6 +771,7 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 		spin_unlock_irqrestore(&c->vc.lock, f);
 		goto err;
 	}
+	hw_job->desc = desc;
 	list_add_tail(&hw_job->node, &desc->txd_pending);
 	spin_unlock_irqrestore(&c->vc.lock, f);
 	txd = &hw_job->txd;
@@ -908,6 +896,7 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 			spin_unlock_irqrestore(&c->vc.lock, flags);
 			goto err;
 		}
+		hw_job->desc = desc;
 		list_add_tail(&hw_job->node, &desc->txd_pending);
 		spin_unlock_irqrestore(&c->vc.lock, flags);
 		txd = &hw_job->txd;
@@ -917,6 +906,16 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 		txd->nb = 1;
 		txd->comp_q_id = desc->phy->hw_id;
 		txd->route_id = desc->route_id;
+		if (c->phy->dir == K1C_DMA_DIR_TYPE_RX &&
+		    c->cfg.trans_type == K1C_DMA_TYPE_MEM2ETH) {
+			ret = rhashtable_lookup_insert_fast(&c->rhtb,
+							    &hw_job->rnode,
+							    rhtb_params);
+			if (ret) {
+				dev_err(dev, "Failed to insert hw_job in rhashtable\n");
+				goto err;
+			}
+		}
 		dev_dbg(dev, "%s txd.base: 0x%llx .len: %lld\n",
 			__func__, txd->src_dma_addr, txd->len);
 	}
