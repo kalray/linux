@@ -31,10 +31,14 @@
  * struct k1c_dma_hw_job - HW transfer descriptor
  * @txd: actual job descriptor
  * @node: node for desc->txd_pending
+ * @rnode: node for rhashtable
+ * @desc: back pointer to k1c_dma_desc owner
  */
 struct k1c_dma_hw_job {
 	struct k1c_dma_tx_job txd;
 	struct list_head node;
+	struct rhash_head rnode;
+	struct k1c_dma_desc *desc;
 };
 
 /**
@@ -91,6 +95,7 @@ enum k1c_dma_state {
  * @desc_pool: Pool of transfer descriptor
  * @desc_running: Currently pushed in hw resources
  * @txd_cache: HW transfer descriptor cache
+ * @rhtb: rhashtable of hw descriptor <-> desc
  * @phy: Pointer to Hw RX/TX phy
  * @node: For pending_chan list
  * @cfg: Chan config after slave_config
@@ -104,6 +109,7 @@ struct k1c_dma_chan {
 	struct list_head desc_pool;
 	struct list_head desc_running;
 	struct kmem_cache *txd_cache;
+	struct rhashtable rhtb;
 	/* protected by c->vc.lock */
 	struct k1c_dma_phy *phy;
 	/* protected by d->lock */
