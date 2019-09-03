@@ -10,7 +10,6 @@
 #include <linux/errno.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
-#include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/iopoll.h>
 #include <linux/dma-mapping.h>
@@ -1035,3 +1034,62 @@ int k1c_dma_pkt_tx_push(struct k1c_dma_phy *phy, struct k1c_dma_tx_job *tx_job,
 	return k1c_dma_push_job_fast(phy, &p, hw_job_id);
 }
 
+#define REG64(o) scnprintf(buf + n, buf_size - n, "%-50s: @0x%llx - 0x%llx\n", \
+			   #o, (unsigned long long)o, readq(o))
+int k1c_dma_dbg_get_q_regs(struct k1c_dma_phy *phy, char *buf, size_t buf_size)
+{
+	size_t n = 0;
+	int id = phy->hw_id;
+	void __iomem *off;
+
+	if (phy->dir == K1C_DMA_DIR_TYPE_RX) {
+		off = phy->base + K1C_DMA_RX_CHAN_OFFSET +
+			id * K1C_DMA_RX_CHAN_ELEM_SIZE;
+		n += scnprintf(buf + n, buf_size - n, "RX channel queue:\n");
+		n += REG64(off + K1C_DMA_RX_CHAN_BUF_EN_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_BUF_SA_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_BUF_SIZE_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_JOB_Q_CFG_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_CUR_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_BYTE_CNT_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_NOTIF_CNT_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_CNT_CLEAR_MODE_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_COMP_Q_CFG_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_COMP_Q_SA_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_COMP_Q_SLOT_NB_LOG2_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_COMP_Q_WP_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_COMP_Q_RP_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_COMP_Q_VALID_RP_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_COMP_Q_ASN_OFFSET);
+		n += REG64(off + K1C_DMA_RX_CHAN_ACTIVATED_OFFSET);
+	} else {
+		off = phy->base + K1C_DMA_TX_JOB_Q_OFFSET +
+			id * K1C_DMA_TX_JOB_Q_ELEM_SIZE;
+		n += scnprintf(buf + n, buf_size - n, "TX job queue:\n");
+		n += REG64(off + K1C_DMA_TX_JOB_Q_SA_OFFSET);
+		n += REG64(off + K1C_DMA_TX_JOB_Q_NB_LOG2_OFFSET);
+		n += REG64(off + K1C_DMA_TX_JOB_Q_WP_OFFSET);
+		n += REG64(off + K1C_DMA_TX_JOB_Q_VALID_WP_OFFSET);
+		n += REG64(off + K1C_DMA_TX_JOB_Q_RP_OFFSET);
+		n += REG64(off + K1C_DMA_TX_JOB_Q_ASN_OFFSET);
+		n += REG64(off + K1C_DMA_TX_JOB_Q_THREAD_ID_OFFSET);
+		n += REG64(off + K1C_DMA_TX_JOB_Q_ACTIVATE_OFFSET);
+
+		off = phy->base + K1C_DMA_TX_COMP_Q_OFFSET +
+			id * K1C_DMA_TX_COMP_Q_ELEM_SIZE;
+		n += scnprintf(buf + n, buf_size - n,
+			       "\nTX completion queue:\n");
+		n += REG64(off + K1C_DMA_TX_COMP_Q_MODE_OFFSET);
+		n += REG64(off + K1C_DMA_TX_COMP_Q_SA_OFFSET);
+		n += REG64(off + K1C_DMA_TX_COMP_Q_NB_LOG2_OFFSET);
+		n += REG64(off + K1C_DMA_TX_COMP_Q_GLOBAL_OFFSET);
+		n += REG64(off + K1C_DMA_TX_COMP_Q_ASN_OFFSET);
+		n += REG64(off + K1C_DMA_TX_COMP_Q_FIELD_EN_OFFSET);
+		n += REG64(off + K1C_DMA_TX_COMP_Q_WP_OFFSET);
+		n += REG64(off + K1C_DMA_TX_COMP_Q_RP_OFFSET);
+		n += REG64(off + K1C_DMA_TX_COMP_Q_VALID_RP_OFFSET);
+		n += REG64(off + K1C_DMA_TX_COMP_Q_ACTIVATE_OFFSET);
+	}
+
+	return n;
+}
