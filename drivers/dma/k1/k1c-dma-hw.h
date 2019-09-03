@@ -156,8 +156,6 @@ int k1c_dma_pkt_rx_queue_push_desc(struct k1c_dma_phy *phy, u64 pkt_paddr,
 
 /* Get completion count */
 u64 k1c_dma_get_comp_count(struct k1c_dma_phy *phy);
-/* Get current job id in completion queue */
-u64 k1c_dma_get_cur_comp_id(struct k1c_dma_phy *phy);
 
 /**
  * Get completed Rx descriptors

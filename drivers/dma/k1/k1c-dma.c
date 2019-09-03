@@ -50,6 +50,8 @@ static struct k1c_dma_desc *k1c_dma_next_desc(struct k1c_dma_chan *c)
 /**
  * k1c_dma_start_sg_mem2mem() - Push a memcpy transfer
  * @desc: the job descriptor to start
+ *
+ * Return: 0 - OK -EBUSY if job fifo is full
  */
 static int k1c_dma_start_sg_mem2mem(struct k1c_dma_desc *desc)
 {
@@ -75,6 +77,8 @@ static int k1c_dma_start_sg_mem2mem(struct k1c_dma_desc *desc)
 /**
  * k1c_dma_start_sg_eth_rx() - Push a eth RX job queue descriptor
  * @desc: the job descriptor to start
+ *
+ * Return: 0 - OK -EBUSY if job fifo is full
  */
 static int k1c_dma_start_sg_eth_rx(struct k1c_dma_desc *desc)
 {
@@ -98,6 +102,8 @@ static int k1c_dma_start_sg_eth_rx(struct k1c_dma_desc *desc)
 /**
  * k1c_dma_start_sg_noc_tx() - Push a noc TX job descriptor
  * @desc: the job descriptor to start
+ *
+ * Return: 0 - OK -EBUSY if job fifo is full
  */
 static int k1c_dma_start_sg_noc_tx(struct k1c_dma_desc *desc)
 {
@@ -122,6 +128,8 @@ static int k1c_dma_start_sg_noc_tx(struct k1c_dma_desc *desc)
 /**
  * k1c_dma_start_sg_eth_tx() - Push a eth TX job descriptor
  * @desc: the job descriptor to start
+ *
+ * Return: 0 - OK -EBUSY if job fifo is full
  */
 static int k1c_dma_start_sg_eth_tx(struct k1c_dma_desc *desc)
 {
@@ -149,6 +157,8 @@ static int k1c_dma_start_sg_eth_tx(struct k1c_dma_desc *desc)
  *
  * This function is a wrapper calling the proper sg_start functions depending
  * on channel transfer type
+ *
+ * Return: 0 - OK -EPERM if channel type does not match with direction
  */
 int k1c_dma_start_desc(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 {
@@ -176,7 +186,8 @@ int k1c_dma_start_desc(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 	return ret;
 }
 
-/* rhashtable for hw_job src_dma_addr <-> k1c_dma_desc matching
+/**
+ * rhashtable for hw_job src_dma_addr <-> k1c_dma_desc matching
  * Used in Ethernet RX case only, to allow faster lookup of descriptor
  * as soon as hw_job has completed
  */
@@ -188,7 +199,11 @@ const static struct rhashtable_params rhtb_params = {
 
 /**
  * k1c_dma_get_hw_job() - Get or allocate new hw_job descriptor
+ * @c: Used channel
+ *
  * Must be under c->vc.lock
+ *
+ * Return: new hw_job pointer
  */
 static struct k1c_dma_hw_job *k1c_dma_get_hw_job(struct k1c_dma_chan *c)
 {
@@ -203,6 +218,9 @@ static struct k1c_dma_hw_job *k1c_dma_get_hw_job(struct k1c_dma_chan *c)
 
 /**
  * k1c_dma_release_hw_job() - Release hw_job descriptor
+ * @c: Used channel
+ * @hw_job: hw_job to be released
+ *
  * Must be under c->vc.lock
  */
 static void k1c_dma_release_hw_job(struct k1c_dma_chan *c,
@@ -214,7 +232,8 @@ static void k1c_dma_release_hw_job(struct k1c_dma_chan *c,
 
 /**
  * k1c_dma_complete() - Mark a HW transfer as ended in driver
- * @desc: the job descriptor to start
+ * @c: Current channel
+ * @desc: descriptor to be marked as complete
  */
 static void k1c_dma_complete(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 {
@@ -229,12 +248,18 @@ static void k1c_dma_complete(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 }
 
 /**
- * k1c_dma_check_complete() - Check/mark a transfer descriptor as done (i.e.
- * all its txd hw descriptors have been processed by dma)
+ * k1c_dma_check_complete() - Check/mark a transfer descriptor as done.
+ * @dev: Current device
+ * @c: Channel to be checked
+ *
+ * Checks all channel descriptors (i.e. all txd hw descriptors have been
+ * processed by dma).
  * For TX desc and mem2noc RX: pushing in job queue stores last_job_id. It is
- * compared with completion count (works for both static and queue mode)
- * For RX mem2dev desc: completion returns a pkt struct, to be compared
- * with the current pending desc struct (base addr).
+ * compared with completion count (works for both static and queue mode).
+ * For RX mem2dev desc: each hw_job are associated to desc in rhtb hashtable.
+ * Completion returns a k1c_dma_pkt_full_desc struct from which hw_job
+ * base addr is extracted and used as index in rhtb hashtable.
+ *
  * Must be called under c->vc.lock
  */
 static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
@@ -257,12 +282,12 @@ static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
 			ret = k1c_dma_rx_get_comp_pkt(phy, &pkt);
 			if (ret < 0)
 				break;
-			// Update the corresponding txd
+			/* Update the corresponding txd */
 			hw_job = rhashtable_lookup_fast(&c->rhtb, &pkt.base,
 							rhtb_params);
 			if (!hw_job) {
 				dev_err(d, "%s Unable to lookup pkt (0x%llx)\n",
-					__func__, (u64)pkt.base);
+					__func__, pkt.base);
 				break;
 			}
 			if (!hw_job->desc) {
@@ -275,8 +300,8 @@ static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
 					       rhtb_params);
 			k1c_dma_release_hw_job(c, hw_job);
 			if (list_empty(&desc->txd_pending)) {
-				dev_dbg(d, "%s desc: 0x%llx Complete\n",
-					__func__, desc);
+				dev_dbg(d, "%s desc: 0x%lx Complete\n",
+					__func__, (uintptr_t)desc);
 				k1c_dma_complete(c, desc);
 			}
 		} while (ret == 0);
@@ -285,7 +310,7 @@ static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
 					 &c->desc_running, vd.node) {
 			if (list_empty(&desc->vd.node))
 				break;
-			// Assuming TX fifo is in static mode
+			/* Assuming TX fifo is in static mode */
 			if (desc->last_job_id <= k1c_dma_get_comp_count(phy)) {
 				desc->len = desc->size;
 				k1c_dma_complete(c, desc);
@@ -295,9 +320,8 @@ static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
 }
 
 /**
- * k1c_dma_task() - Start all pending transfers and check completion
+ * k1c_dma_task() - Starts all pending transfers and checks completion
  * @arg: the device
- *
  */
 void k1c_dma_task(unsigned long arg)
 {
@@ -329,10 +353,10 @@ void k1c_dma_task(unsigned long arg)
 }
 
 /**
- * k1c_dma_issue_pending() - Ask the tasklet to run if transfers pending
- * @chan: The channel to search for transfers
+ * k1c_dma_issue_pending() - Actually sends pending hw_job desc to HW
+ * @chan: Current channel
  *
- * This results in running pending transfers and check for their completion
+ * This results in running pending transfers
  */
 static void k1c_dma_issue_pending(struct dma_chan *chan)
 {
@@ -351,10 +375,15 @@ static void k1c_dma_issue_pending(struct dma_chan *chan)
 	spin_unlock_irqrestore(&c->vc.lock, flags);
 }
 
-/** k1c_dma_tx_status() - Check a cookie completion
+/**
+ * k1c_dma_tx_status() - Check a cookie completion
  * @chan: the corresponding channel
  * @cookie: the cookie to check against
  * @txstate: the returned state
+ *
+ * Return:
+ *  DMA_COMPLETE - OK
+ *  DMA_ERROR - dma-noc HW fifo in error
  */
 static enum dma_status k1c_dma_tx_status(struct dma_chan *chan,
 		       dma_cookie_t cookie, struct dma_tx_state *txstate)
@@ -401,8 +430,10 @@ static int k1c_dma_get_phy_nb(enum k1c_dma_dir_type dir)
 
 /**
  * k1c_dma_get_phy() - Get a phy from channel
- * @dev: the device
- * @c: the channel where to find a phy
+ * @dev: Current device
+ * @c: Channel requesting hw fifo
+ *
+ * Return: new k1c_dma_phy pointer
  */
 struct k1c_dma_phy *k1c_dma_get_phy(struct k1c_dma_dev *dev,
 				    struct k1c_dma_chan *c)
@@ -458,6 +489,11 @@ out:
 	return phy;
 }
 
+/**
+ * k1c_dma_release_phy() - release hw_queues associated to phy
+ * @dev: Current device
+ * @phy: phy to release
+ */
 void k1c_dma_release_phy(struct k1c_dma_dev *dev, struct k1c_dma_phy *phy)
 {
 	if (!phy)
@@ -471,12 +507,14 @@ void k1c_dma_release_phy(struct k1c_dma_dev *dev, struct k1c_dma_phy *phy)
 	spin_unlock(&dev->lock);
 }
 
-/*
+/**
  * k1c_dma_slave_config() - Configures slave before actual transfer
- * @chan: the channel to configure
- * @cfg: the channel configuration to apply
+ * @chan: Channel to configure
+ * @cfg: Base dmaengine configuration (contained in k1c_dma_slave_cfg)
  *
- * Initialize hw queues depending on transfer direction and type
+ * Initializes hw queues depending on transfer direction and type
+ *
+ * Return: O - OK
  */
 static int k1c_dma_slave_config(struct dma_chan *chan,
 				struct dma_slave_config *cfg)
@@ -497,7 +535,13 @@ static int k1c_dma_slave_config(struct dma_chan *chan,
 	return 0;
 }
 
-/* Allocate a transfer descriptor */
+/**
+ * k1c_dma_alloc_desc() - Allocates a transfer descriptor
+ * @dev: Current device
+ * @flags: Allocation additionnal flags
+ *
+ * Return: O - OK
+ */
 static struct k1c_dma_desc *k1c_dma_alloc_desc(struct k1c_dma_dev *dev,
 					       gfp_t flags)
 {
@@ -511,9 +555,12 @@ static struct k1c_dma_desc *k1c_dma_alloc_desc(struct k1c_dma_dev *dev,
 }
 
 /**
- * k1c_dma_alloc_chan_resources() - Allocate dma_requests descriptor per channel
- * @chan: the channel to configure
+ * k1c_dma_alloc_chan_resources() - Allocates channel resources
+ * @chan: Channel to configure
  *
+ * Alloc hw_job cache and preallocates K1C_DMA_PREALLOC_DESC_NB descriptors)
+ *
+ * Return: O - OK -ENOMEM - Allocation failed
  */
 static int k1c_dma_alloc_chan_resources(struct dma_chan *chan)
 {
@@ -524,7 +571,6 @@ static int k1c_dma_alloc_chan_resources(struct dma_chan *chan)
 						    dev);
 	struct k1c_dma_dev *dev = platform_get_drvdata(pdev);
 	struct k1c_dma_desc *desc;
-	struct k1c_dma_hw_job *hw_job;
 	unsigned long flags;
 	int i, ret;
 
@@ -559,7 +605,12 @@ err_kmemcache:
 	kmem_cache_destroy(c->txd_cache);
 	return -ENOMEM;
 }
-
+/**
+ * k1c_dma_free_chan_resources() - Free channel resources
+ * @chan: Current channel
+ *
+ * Descriptors will be released in c->vc.desc_free ops
+ */
 static void k1c_dma_free_chan_resources(struct dma_chan *chan)
 {
 	struct k1c_dma_chan *c = to_k1c_dma_chan(chan);
@@ -579,7 +630,10 @@ static void k1c_dma_free_chan_resources(struct dma_chan *chan)
 }
 
 /**
- * k1c_dma_get_desc() - Get or allocate new transfer descriptor
+ * k1c_dma_get_desc() - Gets or allocates new transfer descriptor
+ * @c: Current channel
+ *
+ * Return: new descriptor pointer or NULL
  */
 static struct k1c_dma_desc *k1c_dma_get_desc(struct k1c_dma_chan *c)
 {
@@ -593,8 +647,9 @@ static struct k1c_dma_desc *k1c_dma_get_desc(struct k1c_dma_chan *c)
 	if (vd) {
 		list_del_init(&vd->node);
 		desc = (struct k1c_dma_desc *)vd;
-	} else
+	} else {
 		desc = k1c_dma_alloc_desc(c->dev, GFP_KERNEL);
+	}
 	spin_unlock_irqrestore(&c->vc.lock, flags);
 	desc->last_job_id = 0;
 	desc->err = 0;
@@ -604,6 +659,12 @@ static struct k1c_dma_desc *k1c_dma_get_desc(struct k1c_dma_chan *c)
 	return desc;
 }
 
+/**
+ * k1c_dma_release_desc() - Release all hw job of current descriptor
+ * @vd: Current virt-dma descriptor
+ *
+ * Push back descriptor in channel desc_pool
+ */
 static void k1c_dma_release_desc(struct virt_dma_desc *vd)
 {
 	struct k1c_dma_chan *c = to_k1c_dma_chan(vd->tx.chan);
@@ -619,14 +680,15 @@ static void k1c_dma_release_desc(struct virt_dma_desc *vd)
 }
 
 /**
- * k1c_dma_get_route_id() - Find route_id according to route given in param
+ * k1c_dma_get_route_id() - Returns route_id index in noc_route table
  * @dev: k1c device for global param
  * @phy: the phy to get route table from
  * @route: the route to look for
  * @route_id: returned route identifier if found
  *
- * If no found, get a new one
  * Must be called under lock
+ *
+ * Return: 0 - OK -EAGAIN - failed to add route
  */
 int k1c_dma_get_route_id(struct k1c_dma_dev *dev, struct k1c_dma_phy *phy,
 			 u64 *route, u64 *route_id)
@@ -664,6 +726,10 @@ int k1c_dma_get_route_id(struct k1c_dma_dev *dev, struct k1c_dma_phy *phy,
  * k1c_dma_setup_route() - Set up route for desc based on config params
  * @c: channel with configuration
  * @desc: the descriptor containing the route
+ *
+ * Adds route to dma noc_route table
+ *
+ * Return: 0 - OK -EAGAIN - failed to add route
  */
 int k1c_dma_setup_route(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 {
@@ -697,6 +763,8 @@ int k1c_dma_setup_route(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
  * @src: the source adress
  * @len: the length of the data transfer
  * @flags: flags for vchan
+ *
+ * Return: new dma transfer descriptor or NULL
  */
 struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 		struct dma_chan *chan, dma_addr_t dst, dma_addr_t src,
@@ -782,8 +850,8 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 	txd->nb = 1;
 	txd->fence_before = 1;
 	txd->fence_after = 1;
-	txd->lstride = 0; // Linear transfer for memcpy
-	txd->rstride = 0; // Linear transfer for memcpy
+	txd->lstride = 0; /* Linear transfer for memcpy */
+	txd->rstride = 0; /* Linear transfer for memcpy */
 	/* Assuming phy.hw_id == compq hw_id */
 	txd->comp_q_id = desc->phy->hw_id;
 	txd->route_id = desc->route_id;
@@ -805,6 +873,8 @@ err:
  * @direction: RX or TX
  * @tx_flags: tx flags to pass
  * @context: unused in this driver
+ *
+ * Return: new dma transfer descriptor or NULL
  */
 static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 		struct dma_chan *chan,
@@ -942,8 +1012,10 @@ err:
 }
 
 /**
- * k1c_dma_chan_init - Initialize channel. Sets one hw_fifo per channel
- * @dev: this device
+ * k1c_dma_chan_init - Allocates and init k1c_dma_chan channel
+ * @dev: Current device
+ *
+ * Return: new allocated k1c_dma_chan pointer or NULL
  */
 struct k1c_dma_chan *k1c_dma_chan_init(struct k1c_dma_dev *dev)
 {
@@ -963,6 +1035,10 @@ struct k1c_dma_chan *k1c_dma_chan_init(struct k1c_dma_dev *dev)
 	return c;
 }
 
+/**
+ * k1c_dma_free_phy - Mark all hw queues as unused
+ * @dev: Current device
+ */
 static void k1c_dma_free_phy(struct k1c_dma_dev *dev)
 {
 	struct k1c_dma_phy *p;
@@ -979,7 +1055,9 @@ static void k1c_dma_free_phy(struct k1c_dma_dev *dev)
 
 /**
  * k1c_dma_allocate_phy() - Allocate HW rx / tx channels
- * @dev: this device
+ * @dev: Current device
+ *
+ * Return: 0 - OK -ENOMEM - if alloc failed -EINVAL - ucode loading failed
  */
 static int k1c_dma_allocate_phy(struct k1c_dma_dev *dev)
 {
@@ -1041,8 +1119,15 @@ struct of_dma_filter_info k1c_dma_info = {
 	.filter_fn = k1c_dma_filter_fn
 };
 
+/**
+ * k1c_dma_xlate() - Filters channel requests and sets capabilities
+ * @dma_spec: node arguments
+ * @ofdma: dma node
+ *
+ * Return: dma_chan pointer matching or NULL
+ */
 struct dma_chan *k1c_dma_xlate(struct of_phandle_args *dma_spec,
-				     struct of_dma *ofdma)
+			       struct of_dma *ofdma)
 {
 	struct dma_device *dev = ofdma->of_dma_data;
 	struct k1c_dma_chan_param param;
@@ -1066,6 +1151,13 @@ struct dma_chan *k1c_dma_xlate(struct of_phandle_args *dma_spec,
 	return dma_request_channel(mask, k1c_dma_filter_fn, &param);
 }
 
+/**
+ * k1c_dma_parse_dt() - Recovers device properties from DT
+ * @pdev: Platform device
+ * @dev: Current device
+ *
+ * Return: 0 - OK -EINVAL - if checks on properties failed
+ */
 static int k1c_dma_parse_dt(struct platform_device *pdev,
 			    struct k1c_dma_dev *dev)
 {
@@ -1150,6 +1242,14 @@ static int k1c_dma_parse_dt(struct platform_device *pdev,
 	return 0;
 }
 
+/**
+ * k1c_dma_probe() - called when dma-noc device is probed
+ * @pdev: the platform device
+ *
+ * Allocates device resources, gets information for RX/TX channels
+ *
+ * Return: 0 if successful, negative value otherwise.
+ */
 static int k1c_dma_probe(struct platform_device *pdev)
 {
 	int i, ret;
@@ -1304,6 +1404,10 @@ err_nodev:
 	return -ENODEV;
 }
 
+/**
+ * k1c_dma_free_channels() - Releases all channels
+ * @dev: Current device
+ */
 static void k1c_dma_free_channels(struct k1c_dma_dev *dev)
 {
 	struct k1c_dma_chan *c, *tmp_c;
@@ -1321,6 +1425,12 @@ static void k1c_dma_free_channels(struct k1c_dma_dev *dev)
 	}
 }
 
+/**
+ * k1c_dma_remove() - called when dma-noc driver is removed from system
+ * @pdev: the platform device
+ *
+ * Return: 0 - OK
+ */
 static int k1c_dma_remove(struct platform_device *pdev)
 {
 	struct k1c_dma_dev *dev = platform_get_drvdata(pdev);
