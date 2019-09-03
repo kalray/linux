@@ -81,6 +81,15 @@ struct k1c_dma_pkt_desc {
 /* UC related */
 #define K1C_DMA_UC_NB_PARAMS 8
 
+/**
+ * k1c_dma_alloc_queue() - Allocate and init k1c_dma_hw_queue
+ * @phy: Current phy
+ * @q: Current queue
+ * @size: in bytes
+ * @offset: queue reg base offset
+ *
+ * Return: 0 - OK -ENOMEM - Alloc failed
+ */
 static int k1c_dma_alloc_queue(struct k1c_dma_phy *phy,
 			       struct k1c_dma_hw_queue *q,
 			       size_t size, u64 offset)
@@ -101,6 +110,12 @@ static int k1c_dma_alloc_queue(struct k1c_dma_phy *phy,
 
 	return 0;
 }
+
+/**
+ * k1c_dma_release_queue() - Free allocated queue memory
+ * @phy: Current phy
+ * @q: Current queue
+ */
 
 static void k1c_dma_release_queue(struct k1c_dma_phy *phy,
 				  struct k1c_dma_hw_queue *q)
@@ -173,12 +188,14 @@ int is_asn_global(u32 asn)
 }
 
 /**
- * k1c_dma_fifo_rx_channel_queue_init() - Allocate and initialize RX queue
- * @param phy pointer to physical description
+ * k1c_dma_fifo_rx_channel_queue_init() - Initializes RX hw queue
+ * @phy: pointer to physical description
+ *
+ * Return: 0 - OK
  */
 static int k1c_dma_fifo_rx_channel_queue_init(struct k1c_dma_phy *phy)
 {
-	/* Desactivate it, we need the RX buffer adress before running it */
+	/* Disable it, we need the RX buffer address before running it */
 	k1c_dma_q_writeq(phy, 0, K1C_DMA_RX_CHAN_ACTIVATED_OFFSET);
 	/* Wait for channel to be deactivated */
 	wmb();
@@ -216,10 +233,14 @@ static int k1c_dma_fifo_rx_channel_queue_init(struct k1c_dma_phy *phy)
 
 /**
  * k1c_dma_fifo_rx_channel_queue_post_init() - Finish RX NoC initialization
- * @phy: phy pointer to physical description
+ * @phy: pointer to physical description
+ * @buf_paddr: buffer dma address
+ * @buf_size: buffer size
  *
  * To be called after k1c_dma_fifo_rx_channel_queue_init once we know the RX
  * buffer address to finish initialization
+ *
+ * Return: 0 - OK
  */
 int
 k1c_dma_fifo_rx_channel_queue_post_init(struct k1c_dma_phy *phy, u64 buf_paddr,
@@ -232,17 +253,22 @@ k1c_dma_fifo_rx_channel_queue_post_init(struct k1c_dma_phy *phy, u64 buf_paddr,
 	dev_dbg(phy->dev, "RX hw_queue[%d] buf_paddr: 0x%llx buf_size: %lld\n",
 			phy->hw_id, buf_paddr, buf_size);
 
-	/* Activate once conifguration is done and commited in memory */
+	/* Activate once configuration is done and commited in memory */
 	k1c_dma_q_writeq(phy, 1, K1C_DMA_RX_CHAN_ACTIVATED_OFFSET);
 	return 0;
 }
 
-/*
- * Specific configuration for rx channel (-> init completion queue for MEM2ETH)
+/**
+ * k1c_dma_pkt_rx_channel_queue_init() - Specific configuration for rx channel
+ * @phy: Current phy
+ *
+ * Initializes completion queue for MEM2ETH
+ *
+ * Return: 0 - OK
  */
 static int k1c_dma_pkt_rx_channel_queue_init(struct k1c_dma_phy *phy)
 {
-	// export field full desc for buffer_base, buf_size, notif, bytes cnt
+	/* Export field full desc for buffer_base, buf_size, notif, bytes cnt */
 	const u64 field = 1;
 
 	dev_dbg(phy->dev, "%s Enabling rx_channel[%d] qbase: 0x%llx\n",
@@ -285,6 +311,8 @@ static int k1c_dma_pkt_rx_channel_queue_init(struct k1c_dma_phy *phy)
 /**
  * k1c_dma_pkt_rx_job_queue_init() - Initialize RX job fifo
  * @phy: pointer to physical description
+ *
+ * Return: 0 - OK -ENOMEM - queue not allocated -ENODEV - queue already in use
  */
 int k1c_dma_pkt_rx_job_queue_init(struct k1c_dma_phy *phy)
 {
@@ -330,9 +358,15 @@ int k1c_dma_pkt_rx_job_queue_init(struct k1c_dma_phy *phy)
 	return 0;
 }
 
-/*
- * Enqueue a packet descriptor in a rx submission queue (recycle queue)
+/**
+ * k1c_dma_pkt_rx_queue_push_desc() - Enqueues a packet descriptor in a rx
+ * submission queue
+ * @phy: Current phy
+ * @pkt_paddr: buffer dma address
+ * @pkt_len: buffer length
  * Must not sleep (called from tasklet)
+ *
+ * Return: 0 - OK -EBUSY - job queue full
  */
 int k1c_dma_pkt_rx_queue_push_desc(struct k1c_dma_phy *phy,
 			       u64 pkt_paddr, u64 pkt_len)
@@ -367,11 +401,15 @@ int k1c_dma_pkt_rx_queue_push_desc(struct k1c_dma_phy *phy,
 	return 0;
 }
 
-/*
- * k1c_dma_rx_get_comp_pkt() - Return pkt descriptor at read_pointer offset
- * in completion queue, increment read_pointer. Not blocking.
- * @return 0 if success,
- *         negative value if fifo full or current ticket > completion count
+/**
+ * k1c_dma_rx_get_comp_pkt() - Reads completed pkt descriptor.
+ * @phy: Current phy
+ * @pkt: pointer to buffer descriptor
+ *
+ * Completed descriptor is at read_pointer offset in completion queue,
+ * increments read_pointer. Not blocking.
+ *
+ * Return: 0 - OK, -EINVAL: if fifo full or no completion
  */
 int k1c_dma_rx_get_comp_pkt(struct k1c_dma_phy *phy,
 			     struct k1c_dma_pkt_full_desc *pkt)
@@ -384,7 +422,7 @@ int k1c_dma_rx_get_comp_pkt(struct k1c_dma_phy *phy,
 					    K1C_DMA_RX_CHAN_COMP_Q_WP_OFFSET);
 	u64 ticket = k1c_dma_q_readq(phy, K1C_DMA_RX_CHAN_COMP_Q_RP_OFFSET);
 
-	// No job completed
+	/* No job completed */
 	if (ticket >= rx_comp_count)
 		return -EINVAL;
 
@@ -409,8 +447,10 @@ int k1c_dma_rx_get_comp_pkt(struct k1c_dma_phy *phy,
 }
 
 /**
- * k1c_dma_tx_job_queue_init - Initialize TX job fifo
+ * k1c_dma_tx_job_queue_init() - Initialize TX job fifo
  * @phy: phy pointer to physical description
+ *
+ * Return: 0 - OK -ENOMEM: queue not allocated
  */
 int k1c_dma_tx_job_queue_init(struct k1c_dma_phy *phy)
 {
@@ -445,8 +485,13 @@ int k1c_dma_tx_job_queue_init(struct k1c_dma_phy *phy)
 	return 0;
 }
 
-/*
+/**
+ * k1c_dma_tx_completion_init() - Initializes TX completion queue.
+ * @phy: Current phy
+ *
  * No allocation in static mode
+ *
+ * Return: 0 - OK -EBUSY - queue already in use -EINVAL - queue failed to start
  */
 int k1c_dma_tx_completion_init(struct k1c_dma_phy *phy)
 {
@@ -485,7 +530,7 @@ int k1c_dma_tx_completion_init(struct k1c_dma_phy *phy)
 	k1c_dma_compq_writeq_relaxed(phy, phy->msi_data,
 			K1C_DMA_TX_COMP_Q_NOTIF_ARG_OFFSET);
 
-	/* Activate once conifguration is done and commited in memory */
+	/* Activate once configuration is done and commited in memory */
 	k1c_dma_compq_writeq(phy, 1ULL, K1C_DMA_TX_COMP_Q_ACTIVATE_OFFSET);
 	ret = readq_poll_timeout(phy->compq.base +
 				 K1C_DMA_TX_COMP_Q_STATUS_OFFSET,
@@ -516,6 +561,13 @@ static void k1c_dma_rx_queues_stop(struct k1c_dma_phy *phy)
 		k1c_dma_jobq_writeq(phy, 1ULL, K1C_DMA_RX_JOB_Q_STOP_OFFSET);
 }
 
+/**
+ * k1c_dma_init_rx_queues() - Allocates RX queues depending on transfer type
+ * @phy: Current phy
+ * @trans_type: transfer type
+ *
+ * Return: 0 - OK -ENOMEM - queue not allocated -ENODEV - queue already in use
+ */
 int k1c_dma_init_rx_queues(struct k1c_dma_phy *phy,
 		enum k1c_dma_transfer_type trans_type)
 {
@@ -526,12 +578,19 @@ int k1c_dma_init_rx_queues(struct k1c_dma_phy *phy,
 		ret = k1c_dma_pkt_rx_job_queue_init(phy);
 		if (!ret)
 			ret = k1c_dma_pkt_rx_channel_queue_init(phy);
-	} else if (trans_type == K1C_DMA_TYPE_MEM2NOC)
+	} else if (trans_type == K1C_DMA_TYPE_MEM2NOC) {
 		ret = k1c_dma_fifo_rx_channel_queue_init(phy);
+	}
 
 	return ret;
 }
 
+/**
+ * k1c_dma_init_tx_queues() - Allocates TX queues
+ * @phy: Current phy
+ *
+ * Return: 0 - OK -ENOMEM - queue not allocated -ENODEV - queue already in use
+ */
 int k1c_dma_init_tx_queues(struct k1c_dma_phy *phy)
 {
 	int ret = 0;
@@ -543,7 +602,13 @@ int k1c_dma_init_tx_queues(struct k1c_dma_phy *phy)
 	return ret;
 }
 
-
+/**
+ * k1c_dma_check_rx_q_enabled() - Check if RX queues already in use
+ * @phy: Current phy
+ * @rx_cache_id: rx cache_id associated to RX job_q[phy->hw_id]
+ *
+ * Return: 0 - OK -EBUSY - if queue already in use
+ */
 int k1c_dma_check_rx_q_enabled(struct k1c_dma_phy *phy,
 			       int rx_cache_id)
 {
@@ -565,6 +630,13 @@ int k1c_dma_check_rx_q_enabled(struct k1c_dma_phy *phy,
 	return 0;
 }
 
+/**
+ * k1c_dma_check_tx_q_enabled() - Check if TX queues already in use
+ * @phy: Current phy
+ *
+ * Return: 0 - OK -EBUSY - if queue already in use
+ */
+
 int k1c_dma_check_tx_q_enabled(struct k1c_dma_phy *phy)
 {
 	u64 val = readq(phy->base + K1C_DMA_TX_JOB_Q_OFFSET +
@@ -585,10 +657,16 @@ int k1c_dma_check_tx_q_enabled(struct k1c_dma_phy *phy)
 }
 
 /**
- * Returns a rx_jobq allocated (if needed) in rx_jobq for phy->rx_cache_id
- * MUST be locked with k1c_dma_dev->lock
+ * k1c_dma_get_job_queue() - Get a new job depending on phy->dir
+ * @phy: Current phy
+ * @aligned_size: aligned fifo size (see phy->size_log2)
+ * @jobq_list: jobq list
+ *
  * Default proposal is to assign 2 rx_job_queue to 1 cache: 1 for driver
  * rx buffer refill, and 1 for hw only buffer recycle
+ * MUST be locked with k1c_dma_dev->lock
+ *
+ * Return: new rx_jobq allocated (if needed) in rx_jobq for phy->rx_cache_id
  */
 static int k1c_dma_get_job_queue(struct k1c_dma_phy *phy, u64 aligned_size,
 				struct k1c_dma_job_queue_list *jobq_list)
@@ -611,10 +689,11 @@ static int k1c_dma_get_job_queue(struct k1c_dma_phy *phy, u64 aligned_size,
 					phy->hw_id);
 				goto exit;
 			}
-		} else
+		} else {
 			dev_warn(phy->dev,
 				 "RX job_queue[%d] already allocated -> reusing it\n",
 				 phy->hw_id);
+		}
 		++jobq_list->rx_refcount[idx];
 	} else {
 		size = aligned_size * sizeof(struct k1c_dma_tx_job_desc);
@@ -643,6 +722,11 @@ exit:
 	return ret;
 }
 
+/**
+ * k1c_dma_release_job_queue() - Releases job queue
+ * @phy: Current phy
+ * @jobq_list: job queue list
+ */
 static void k1c_dma_release_job_queue(struct k1c_dma_phy *phy,
 				      struct k1c_dma_job_queue_list *jobq_list)
 {
@@ -669,6 +753,14 @@ static void k1c_dma_release_job_queue(struct k1c_dma_phy *phy,
 	}
 }
 
+/**
+ * k1c_dma_allocate_queues() - Main function to allocate queues
+ * @phy: Current phy
+ * @jobq_list: jobq list
+ * @trans_type: transfer type
+ *
+ * Return: 0 -OK -ENOMEM: if failed
+ */
 int k1c_dma_allocate_queues(struct k1c_dma_phy *phy,
 			    struct k1c_dma_job_queue_list *jobq_list,
 			    enum k1c_dma_transfer_type trans_type)
@@ -700,7 +792,7 @@ int k1c_dma_allocate_queues(struct k1c_dma_phy *phy,
 						    jobq_list);
 			if (ret)
 				goto err;
-			// Allocate RX completion queue ONLY for MEM2ETH
+			/* Allocate RX completion queue ONLY for MEM2ETH */
 			size = aligned_size *
 				sizeof(struct k1c_dma_pkt_full_desc);
 			ret = k1c_dma_alloc_queue(phy,
@@ -743,6 +835,10 @@ void k1c_dma_stop_queues(struct k1c_dma_phy *phy)
 }
 
 /**
+ * k1c_dma_release_queues() - Free all ressources allocated for queues
+ * @phy: Current phy
+ * @jobq_list: list for job queues
+ *
  * Must be locked with k1c_dma_dev->lock for jobq_list access
  */
 void k1c_dma_release_queues(struct k1c_dma_phy *phy,
@@ -797,6 +893,10 @@ static void k1c_dma_status_queues(struct k1c_dma_phy *phy)
 	}
 }
 
+/**
+ * k1c_dma_read_status() - Dumps register status
+ * @phy: pointer to physical description
+ */
 int k1c_dma_read_status(struct k1c_dma_phy *phy)
 {
 	u64 err = 0;
@@ -846,6 +946,12 @@ int k1c_dma_read_status(struct k1c_dma_phy *phy)
 	return ret;
 }
 
+/**
+ * k1c_dma_get_comp_count() - Completion count depending on phy direction
+ * @phy: Current phy
+ *
+ * Return: job completion count for current phy
+ */
 u64 k1c_dma_get_comp_count(struct k1c_dma_phy *phy)
 {
 	u64 comp_count = 0;
@@ -865,21 +971,6 @@ u64 k1c_dma_get_comp_count(struct k1c_dma_phy *phy)
 	return comp_count;
 }
 
-u64 k1c_dma_get_cur_comp_id(struct k1c_dma_phy *phy)
-{
-	u64 id = 0;
-
-	if (phy->dir == K1C_DMA_DIR_TYPE_RX) {
-		id = k1c_dma_q_readq(phy, K1C_DMA_RX_CHAN_COMP_Q_RP_OFFSET);
-		dev_dbg(phy->dev, "RX chan[%d] ticket: %lld\n", phy->hw_id, id);
-	} else {
-		id = k1c_dma_compq_readq(phy, K1C_DMA_TX_COMP_Q_RP_OFFSET);
-		dev_dbg(phy->dev, "TX chan[%d] ticket: %lld\n", phy->hw_id, id);
-	}
-
-	return id;
-}
-
 struct k1c_dma_job_param {
 	u64 param[K1C_DMA_UC_NB_PARAMS];
 	u64 config;
@@ -888,10 +979,12 @@ struct k1c_dma_job_param {
 /**
  * k1c_dma_push_job_fast() - Perform a DMA job push at low level
  * @phy: phy pointer to physical description
- * @param: ucode parameters
+ * @p: ucode parameters
  * @hw_job_id: identifier for this job
  *
  * Must not sleep (called from tasklet)
+ *
+ * Return: 0 - OK -EBUSY if fifo is full
  */
 static int k1c_dma_push_job_fast(struct k1c_dma_phy *phy,
 					const struct k1c_dma_job_param *p,
@@ -931,13 +1024,16 @@ static int k1c_dma_push_job_fast(struct k1c_dma_phy *phy,
 	return 0;
 }
 
-
-/* RDMA */
-/*
- * Performs a generic asynchronous memcopy memory to memory.
- * This function should be used to perform linear or shaped (source and/or
- * destination) memory copy
+/**
+ * k1c_dma_rdma_tx_push_mem2mem() - Performs a generic asynchronous memcpy
+ * @phy: phy pointer to physical description
+ * @tx_job: Generic transfer job description
+ * @hw_job_id: identifier for the hw job
  *
+ * This function should be used to perform linear or shaped (source and/or
+ * destination) memory copy memory to memory
+ *
+ * Return: 0 - OK -EBUSY if fifo is full
  */
 int k1c_dma_rdma_tx_push_mem2mem(struct k1c_dma_phy *phy,
 			     struct k1c_dma_tx_job *tx_job,
@@ -972,10 +1068,16 @@ int k1c_dma_rdma_tx_push_mem2mem(struct k1c_dma_phy *phy,
 }
 
 
-/*
- * Perform a generic asynchronous memcopy memory to noc.
+/**
+ * k1c_dma_rdma_tx_push_mem2noc() - Perform a generic asynchronous memcopy
+ * @phy: phy pointer to physical description
+ * @tx_job: Generic transfer job description
+ * @hw_job_id: identifier for the hw job
+ *
  * This function should be used to perform linear or shaped (source and/or
- * destination) memory copy
+ * destination) memory copy memory to noc.
+ *
+ * Return: 0 - OK -EBUSY if fifo is full
  */
 int k1c_dma_rdma_tx_push_mem2noc(struct k1c_dma_phy *phy,
 			     struct k1c_dma_tx_job *tx_job,
@@ -1007,8 +1109,14 @@ int k1c_dma_rdma_tx_push_mem2noc(struct k1c_dma_phy *phy,
 	return k1c_dma_push_job_fast(phy, &p, hw_job_id);
 }
 
-/*
- * Ethernet pkt push
+/**
+ * k1c_dma_pkt_tx_push() - Ethernet push transfer descriptor
+ * @phy: phy pointer to physical description
+ * @tx_job: Generic transfer job description
+ * @eot: End of packet marker
+ * @hw_job_id: identifier for the hw job
+ *
+ * Return: 0 - OK -EBUSY if job fifo is full
  */
 int k1c_dma_pkt_tx_push(struct k1c_dma_phy *phy, struct k1c_dma_tx_job *tx_job,
 		    u64 eot, u64 *hw_job_id)
