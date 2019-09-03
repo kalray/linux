@@ -197,4 +197,6 @@ void k1c_dma_release_queues(struct k1c_dma_phy *phy,
 
 int k1c_dma_read_status(struct k1c_dma_phy *phy);
 
+int k1c_dma_dbg_get_q_regs(struct k1c_dma_phy *phy, char *buf, size_t buf_size);
+
 #endif /* K1C_DMA_HW_H */
