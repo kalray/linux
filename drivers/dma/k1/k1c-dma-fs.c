@@ -8,9 +8,69 @@
  */
 #include <linux/sysfs.h>
 #include <linux/platform_device.h>
+#include <linux/debugfs.h>
 
 #include "k1c-dma.h"
 
+/**
+ * struct k1c_dma_dbg_entry - debugfs ops
+ */
+struct k1c_dma_dbg_entry {
+	int (*read)(struct seq_file *seq, void *data);
+	struct k1c_dma_chan *c;
+};
+
+static ssize_t k1c_dma_dbg_hw_queues_read(struct file *file,
+					  char __user *user_buf,
+					  size_t count, loff_t *ppos)
+{
+
+	struct k1c_dma_phy *phy = (struct k1c_dma_phy *)file->private_data;
+	int n = 0;
+	ssize_t ret = 0;
+	char *buf = kcalloc(1, PAGE_SIZE, GFP_KERNEL);
+
+	if (!buf || *ppos > 0) {
+		kfree(buf);
+		return 0;
+	}
+
+	n += k1c_dma_dbg_get_q_regs(phy, buf, PAGE_SIZE);
+	ret = simple_read_from_buffer(user_buf, count, ppos, buf, n);
+	kfree(buf);
+	return ret;
+}
+
+static const struct file_operations k1c_dma_dbg_ops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.llseek = default_llseek,
+	.read = k1c_dma_dbg_hw_queues_read,
+};
+
+/**
+ * k1c_dma_dbg_init() - Initializes debugfs for one hw queue
+ *    debugfs entries will be removed with debugfs_remove_recursive
+ * @phy: HW queue (must be allocated and .dir defined)
+ * @dbg: debufs entry
+ */
+int k1c_dma_dbg_init(struct k1c_dma_phy *phy, struct dentry *dbg)
+{
+	char name[K1C_STR_LEN];
+	struct dentry *dir;
+
+	snprintf(name, K1C_STR_LEN, "%s_hwqueue%d",
+		 (phy->dir == K1C_DMA_DIR_TYPE_RX) ? "RX" : "TX",
+		 phy->hw_id);
+	dir = debugfs_create_dir(name, dbg);
+	debugfs_create_file("regs", 0444, dir, phy, &k1c_dma_dbg_ops);
+
+	return 0;
+}
+
+/**
+ * struct k1c_dma_sysfs_entry - Sysfs attributes ops
+ */
 struct k1c_dma_sysfs_entry {
 	struct attribute attr;
 	ssize_t (*show)(struct k1c_dma_chan *c, char *buf);
