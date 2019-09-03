@@ -192,4 +192,6 @@ void k1c_dma_free_msi(struct platform_device *pdev);
 int k1c_dma_sysfs_init(struct dma_device *dma);
 void k1c_dma_sysfs_remove(struct dma_device *dma);
 
+int k1c_dma_dbg_init(struct k1c_dma_phy *phy, struct dentry *dbg);
+
 #endif /* ASM_K1C_DMA_H */
