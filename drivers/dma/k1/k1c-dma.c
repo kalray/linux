@@ -33,6 +33,7 @@
 #include "k1c-dma-regs.h"
 #include "k1c-dma-ucode.h"
 
+#define K1C_DMA_DRIVER_NAME "k1c_dma_noc"
 
 static inline struct k1c_dma_chan *to_k1c_dma_chan(struct dma_chan *chan)
 {
@@ -946,28 +947,19 @@ err:
  */
 struct k1c_dma_chan *k1c_dma_chan_init(struct k1c_dma_dev *dev)
 {
-	char name[K1C_STR_LEN];
-	struct dentry *chan_dbg;
-	struct k1c_dma_chan *c = devm_kzalloc(dev->dma.dev,
-					      sizeof(*c), GFP_KERNEL);
+	struct k1c_dma_chan *c;
+
+	c = devm_kzalloc(dev->dma.dev, sizeof(*c), GFP_KERNEL);
 	if (!c)
 		return NULL;
 
 	c->dev = dev;
-
 	INIT_LIST_HEAD(&c->desc_pool);
 	INIT_LIST_HEAD(&c->node);
 	INIT_LIST_HEAD(&c->desc_running);
 	c->vc.desc_free = k1c_dma_release_desc;
 	vchan_init(&c->vc, &dev->dma);
 
-	if (dev->dbg) {
-		snprintf(name, K1C_STR_LEN,
-			 "k1c-dma-chan#%02d", dev->dma.chancnt);
-		chan_dbg = debugfs_create_dir(name, dev->dbg);
-		debugfs_create_u8("rx_tag", 0444, chan_dbg, &c->cfg.rx_tag);
-		debugfs_create_u32("dir", 0444, chan_dbg, &c->cfg.dir);
-	}
 	return c;
 }
 
@@ -1010,6 +1002,9 @@ static int k1c_dma_allocate_phy(struct k1c_dma_dev *dev)
 			p->dev = dev->dma.dev;
 			p->comp_count = 0;
 			p->asn = dev->asn;
+
+			if (k1c_dma_dbg_init(p, dev->dbg))
+				dev_warn(dev->dma.dev, "Failed to init debugfs\n");
 		}
 		dev->phy[j] = phy;
 	}
@@ -1235,6 +1230,9 @@ static int k1c_dma_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	snprintf(name, K1C_STR_LEN, K1C_DMA_DRIVER_NAME"_%d", dev_cnt);
+	dev->dbg = debugfs_create_dir(name, NULL);
+
 	/* Allocate resources to handle actual hw queues */
 	ret = k1c_dma_allocate_phy(dev);
 	if (ret < 0) {
@@ -1257,9 +1255,6 @@ static int k1c_dma_probe(struct platform_device *pdev)
 		k1c_dma_free_msi(pdev);
 		return -ENOMEM;
 	}
-
-	snprintf(name, K1C_STR_LEN, "%s#%02d", pdev->name, dev_cnt);
-	dev->dbg = debugfs_create_dir(name, NULL);
 
 	/* Parse all hw channels */
 	for (i = 0; i < dev->dma_channels; ++i) {
@@ -1343,7 +1338,6 @@ static int k1c_dma_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#define K1C_DMA_DRIVER_NAME "k1c_dma_noc"
 
 MODULE_DEVICE_TABLE(of, k1c_dma_match);
 
