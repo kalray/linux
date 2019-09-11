@@ -197,8 +197,6 @@ static inline struct k1c_tlb_format tlb_mk_entry(
 }
 
 extern void k1c_mmu_early_setup(void);
-extern void k1c_mmu_dump_ltlb(int dump_all);
-extern void k1c_mmu_dump_jtlb(int dump_all);
 
 void k1c_mmu_ltlb_add_entry(unsigned long vaddr, phys_addr_t paddr,
 			    pgprot_t flags, unsigned long page_shift);
