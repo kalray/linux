@@ -51,8 +51,7 @@ irqreturn_t dame_irq_handler(int irq, void *dev_id)
 	 * Otherwise, if we are in kernel, we are fried...
 	 */
 	if (user_mode(regs)) {
-		force_sig_fault(SIGBUS, BUS_ADRERR,
-				(void __user *) NULL, current);
+		force_sig_fault(SIGBUS, BUS_ADRERR, (void __user *) NULL);
 	} else {
 		die(regs, 0, "DAME error encountered while in kernel !!!!\n");
 	}
