@@ -9,6 +9,9 @@
 #ifndef _ASM_K1C_SYSCALL_H
 #define _ASM_K1C_SYSCALL_H
 
+#include <linux/err.h>
+#include <linux/audit.h>
+
 #include <asm/ptrace.h>
 
 void scall_machine_exit(unsigned char value);
@@ -35,6 +38,24 @@ static inline int syscall_get_nr(struct task_struct *task, struct pt_regs *regs)
 		return -1;
 
 	return es_sysno(regs);
+}
+
+static inline long syscall_get_error(struct task_struct *task,
+				     struct pt_regs *regs)
+{
+	/* 0 if syscall succeeded, otherwise -Errorcode */
+	return IS_ERR_VALUE(regs->r0) ? regs->r0 : 0;
+}
+
+static inline long syscall_get_return_value(struct task_struct *task,
+					    struct pt_regs *regs)
+{
+	return regs->r0;
+}
+
+static inline int syscall_get_arch(struct task_struct *task)
+{
+	return AUDIT_ARCH_K1C;
 }
 
 static inline void syscall_get_arguments(struct task_struct *task,
