@@ -89,7 +89,7 @@ badframe:
 			frame, (void *) instruction_pointer(regs),
 			(void *) user_stack_pointer(regs));
 	}
-	force_sig(SIGSEGV, task);
+	force_sig(SIGSEGV);
 	return 0;
 }
 
