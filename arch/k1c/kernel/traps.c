@@ -85,9 +85,9 @@ void die(struct pt_regs *regs, unsigned long ea, const char *str)
 		do_exit(SIGSEGV);
 }
 
-void user_do_sig(struct pt_regs *regs, int signo, int code,
-	unsigned long addr, struct task_struct *tsk)
+void user_do_sig(struct pt_regs *regs, int signo, int code, unsigned long addr)
 {
+	struct task_struct *tsk = current;
 	if (show_unhandled_signals && unhandled_signal(tsk, signo)
 	    && printk_ratelimit()) {
 		pr_info("%s[%d]: unhandled signal %d code 0x%x at 0x%lx",
@@ -97,17 +97,17 @@ void user_do_sig(struct pt_regs *regs, int signo, int code,
 		show_regs(regs);
 	}
 	if (signo == SIGKILL) {
-		force_sig(signo, tsk);
+		force_sig(signo);
 		return;
 	}
-	force_sig_fault(signo, code, (void __user *) addr, tsk);
+	force_sig_fault(signo, code, (void __user *) addr);
 }
 
 static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
 			  int signo, int sigcode)
 {
 	if (user_mode(regs)) {
-		user_do_sig(regs, signo, sigcode, ea, current);
+		user_do_sig(regs, signo, sigcode, ea);
 		return;
 	}
 
