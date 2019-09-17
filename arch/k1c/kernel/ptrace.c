@@ -364,8 +364,7 @@ void k1c_breakpoint(void)
 	pr_debug("%s pc=0x%llx\n", __func__, regs->spc);
 
 	/* deliver the signal to userspace */
-	force_sig_fault(SIGTRAP, TRAP_BRKPT, (void __user *) regs->spc,
-			current);
+	force_sig_fault(SIGTRAP, TRAP_BRKPT, (void __user *) regs->spc);
 }
 
 static void k1c_stepi(void)
@@ -375,8 +374,7 @@ static void k1c_stepi(void)
 	pr_debug("%s pc=0x%llx\n", __func__, regs->spc);
 
 	/* deliver the signal to userspace */
-	force_sig_fault(SIGTRAP, TRAP_TRACE, (void __user *) regs->spc,
-			current);
+	force_sig_fault(SIGTRAP, TRAP_TRACE, (void __user *) regs->spc);
 }
 
 void user_enable_single_step(struct task_struct *child)
