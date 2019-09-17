@@ -77,7 +77,6 @@ static int handle_vmalloc_fault(uint64_t ea)
 
 void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
-	struct task_struct *tsk;
 	struct mm_struct *mm;
 	struct vm_area_struct *vma;
 	unsigned long flags, cause, vma_mask;
@@ -85,7 +84,6 @@ void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	int fault;
 
 	cause = k1c_sfr_field_val(es, ES, RWX);
-	tsk = current;
 
 	/* We fault-in kernel-space virtual memory on-demand. The
 	 * 'reference' page table is init_mm.pgd.
@@ -96,7 +94,7 @@ void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 		return;
 	}
 
-	mm = tsk->mm;
+	mm = current->mm;
 
 	/*
 	 * If we're in an interrupt or have no user
@@ -177,9 +175,9 @@ good_area:
 	if (flags & FAULT_FLAG_ALLOW_RETRY) {
 		/* To avoid updating stats twice for retry case */
 		if (fault & VM_FAULT_MAJOR)
-			tsk->maj_flt++;
+			current->maj_flt++;
 		else
-			tsk->min_flt++;
+			current->min_flt++;
 
 		if (fault & VM_FAULT_RETRY) {
 			/* Clear FAULT_FLAG_ALLOW_RETRY to avoid any risk
@@ -203,7 +201,7 @@ bad_area:
 	up_read(&mm->mmap_sem);
 
 	if (user_mode(regs)) {
-		user_do_sig(regs, SIGSEGV, code, ea, tsk);
+		user_do_sig(regs, SIGSEGV, code, ea);
 		return;
 	}
 
@@ -248,7 +246,7 @@ do_sigbus:
 	if (!user_mode(regs))
 		goto no_context;
 
-	user_do_sig(regs, SIGBUS, BUS_ADRERR, ea, tsk);
+	user_do_sig(regs, SIGBUS, BUS_ADRERR, ea);
 
 	return;
 
