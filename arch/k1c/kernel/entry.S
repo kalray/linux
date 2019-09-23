@@ -37,6 +37,11 @@
 
 #define MMC_SEL_JTLB_CLEAR_WAY	(K1C_SFR_MMC_SB_MASK | K1C_SFR_MMC_SW_MASK)
 
+#define MME_WFXL(_enable)	SFR_SET_VAL_WFXL(PS, MME, _enable)
+
+/* Temporary scract system register for trap handling */
+#define TMP_SCRATCH_SR	$sr_pl3
+
 .altmacro
 
 #define TEL_DEFAULT_VALUE  (TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT)
@@ -379,33 +384,33 @@ ENDPROC(k1c_debug_handler)
 ***********************************************************************/
 .text
 ENTRY(k1c_trap_handler):
-	/* Save r0r1r2r3 using $r4 as temporary */
-	save_quad_regs $r0r1r2r3 $r4
+	/* Save r3 in a temporary system register to check if the trap is a
+	* nomapping or not */
+	set TMP_SCRATCH_SR = $r3
+	;;
 	get $r3 = $es
 	;;
 	/* Hardware trap cause  */
 	extfz $r3 = $r3, K1C_SFR_END(ES_HTC), K1C_SFR_START(ES_HTC)
-	get $r2 = $sr
 	;;
 	/* Is this a nomapping trap ? */
 	compd.eq $r3 = $r3, K1C_TRAP_NOMAPPING
-	get $r0 = $ea
 	;;
-	/* Load mm addr */
-	ld $r1 = TASK_ACTIVE_MM[$r2]
 	/* if nomapping trap, try fast_refill */
 	cb.even $r3? trap_slow_path
 	;;
 	/*
-	 * Fast TLB refill routine, when entering this path,
-	 * $r0 = $ea
-	 * $r1 = task mm value
+	 * Fast TLB refill routine
 	 *
 	 * On k1c, we do not have hardware page walking, hence, TLB refill is
 	 * done using the core on no-mapping traps.
 	 * This routine must be as fast as possible to avoid wasting CPU time.
 	 * For that purpose, it is called directly from trap_handle after saving
 	 * only 8 registers ($r0 -> $r7) in a dedicated buffer.
+	 * To avoid taking nomapping while accessing page tables inside this
+	 * refill handler we switch to physical accesses using DAUS.
+	 * Once the switch is done, we save up to 8 registers to compute
+	 * the refill data.
 	 * This allows to avoid computing a complete task switching in order
 	 * to greatly reduce the refill time.
 	 *
@@ -413,23 +418,49 @@ ENTRY(k1c_trap_handler):
 	 * Currently, the way selection is done using a round robin algorithm.
 	 *
 	 * The refill is using the basic flow:
-	 * 1 -	Walk the page table to find the TLB entry to add (virtual to
+	 * 1 -	Enable physical access using DAUS.
+	 * 2 -	Save necessary registers
+	 * 3 -	Walk the page table to find the TLB entry to add (virtual to
 	 *	physical)
-	 * 2 -	Compute the TLB entry to be written (convert PTE to TLB entry)
-	 * 3 - 	Compute the target set (0 -> 127) for the new TLB entry
+	 * 4 -	Compute the TLB entry to be written (convert PTE to TLB entry)
+	 * 5 - 	Compute the target set (0 -> 127) for the new TLB entry
 	 *	This is done by extracting the 6 lsb of page number
-	 * 4 -	Get the current way to be used which is selected using a
+	 * 6 -	Get the current way to be used which is selected using a
 		simple round robin
-	 * 5 -	Mark PTE entry as _PAGE_ACCESSED (and optionally PAGE_DIRTY)
-	 * 6 -	Commit the new tlb entry
-	 *
-	 * Since we are a VLIW core, a lot of this operation can be done
-	 * simultaneously by packing bundles.
+	 * 7 -	Mark PTE entry as _PAGE_ACCESSED (and optionally PAGE_DIRTY)
+	 * 8 -	Commit the new tlb entry
+	 * 9 -  Restore the virtual memory by disabling DAUS.
 	 *
 	 */
+	/* Disable MME in $sps */
+	make $r3 = MME_WFXL(0)
 	;;
+	wfxl $sps = $r3
+	;;
+	/* Enable DAUS */
+	make $r3 = SFR_SET_VAL_WFXL(PS, DAUS, 1)
+	/* Get current task */
+	rswap $r10 = $sr
+	;;
+	wfxl $ps = $r3
+	/* We are now accessing data with MMU disabled */
+	;;
+	/*
+	 * Restore $r3 from temporary system scratch register */
+	get $r3 = TMP_SCRATCH_SR
+	/* Save register for refill handler */
+	so __PA(TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r10] = $r4r5r6r7
+	;;
+	/* Get exception address */
+	get $r0 = $ea
 	/* Save more registers to be comfy */
-	so (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2] = $r4r5r6r7
+	so __PA(TASK_THREAD_SAVE_AREA) [$r10] = $r0r1r2r3
+	;;
+	/* Restore $r10 value */
+	rswap $r10 = $sr
+	/* Load task active mm for pgd loading in macro_tlb_refill */
+	ld $r1 = __PA(TASK_ACTIVE_MM)[$r10]
+	;;
 	/* extract PGD offset */
 	extfz $r3 = $r0, (ASM_PGDIR_SHIFT + ASM_PGDIR_BITS - 1), ASM_PGDIR_SHIFT
 	/* is mm NULL ? */
@@ -437,15 +468,18 @@ ENTRY(k1c_trap_handler):
 	;;
 	get $r7 = $pcr
 	/* Load pgd base address into $r1 */
-	ld $r1 = MM_PGD[$r1]
+	ld $r1 = __PA(MM_PGD)[$r1]
 	;;
+	/* Add offset for physical address */
+	addd $r1 = $r1, VA_TO_PA_OFFSET
 	/* Extract processor ID to compute cpu_offset*/
 	extfz $r7 = $r7, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
+	;;
 	/* Load PGD entry offset */
 	ld.xs $r1 = $r3[$r1]
 	/* Load per_cpu_offset */
 #if defined(CONFIG_SMP)
-	make $r5 = __per_cpu_offset
+	make $r5 = __PA(__per_cpu_offset)
 #endif
 	;;
 	/* extract PMD offset*/
@@ -508,7 +542,7 @@ pte_prepared:
 	make $r6 = MMC_SEL_JTLB_CLEAR_WAY
 	;;
 	/* Load current way to use for current set */
-	lbz $r0 = jtlb_current_set_way[$r5]
+	lbz $r0 = __PA(jtlb_current_set_way)[$r5]
 	/* Check if the access was a "write" access */
 	andd $r7 = $r7, (K1C_TRAP_RWX_WRITE << K1C_SFR_ES_RWX_SHIFT)
 	;;
@@ -537,7 +571,7 @@ pte_prepared:
 	/* Clear bits not related to FN in the pte entry for TEL writing */
 	andd $r6 = $r1, K1C_PFN_MASK
 	/* Store new way */
-	sb jtlb_current_set_way[$r5] = $r0
+	sb __PA(jtlb_current_set_way)[$r5] = $r0
 	;;
 	/* Extract access perms from pte entry */
 	extfz $r3 = $r1, K1C_ACCESS_PERM_STOP_BIT, K1C_ACCESS_PERM_START_BIT
@@ -556,7 +590,7 @@ pte_prepared:
 	/* Add ASN from mmc into future $teh value */
 	insf $r4 = $r0, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
 	/* load access permissions */
-	lbz $r6 = k1c_access_perms[$r3]
+	lbz $r6 = __PA(k1c_access_perms)[$r3]
 	ord $r0 = $r6, TEL_DEFAULT_VALUE
 	;;
 	/* OR PTE value with accessed/dirty flags */
@@ -586,11 +620,21 @@ mmc_error_check_ok:
 	;;
 asn_check_ok:
 #endif
-	/* Restore additionnal registers */
-	lo $r4r5r6r7 = (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r0]
-	;;
 	/* Restore registers */
-	lo $r0r1r2r3 = TASK_THREAD_SAVE_AREA[$r0]
+	lo $r4r5r6r7 = __PA(TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r0]
+	;;
+	/* Save $r4 for reenabling mmu and data cache in sps */
+	set TMP_SCRATCH_SR = $r4
+	/* Restore registers */
+	lo $r0r1r2r3 = __PA(TASK_THREAD_SAVE_AREA)[$r0]
+	;;
+	/* Enable MME in $sps */
+	make $r4 = MME_WFXL(1)
+	;;
+	/* Reenable $mme in $sps */
+	wfxl $sps = $r4
+	;;
+	get $r4 = TMP_SCRATCH_SR
 	;;
 	rfe
 	;;
@@ -668,7 +712,7 @@ asn_check:
 	;;
 	get $r2 = $pcr
 	/* Load active mm addr */
-	ld $r3 = TASK_ACTIVE_MM[$r0]
+	ld $r3 = __PA(TASK_ACTIVE_MM)[$r0]
 	;;
 	get $r5 = $mmc
 	/* Extract processor ID to compute cpu_offset*/
@@ -676,6 +720,8 @@ asn_check:
 	addd $r3 = $r3, MM_CTXT_ASN
 	;;
 	extfz $r4 = $r5, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
+	addd $r3 = $r3, VA_TO_PA_OFFSET
+	;;
 	/* Load current asn from active_mm */
 	ld.xs $r3 = $r2[$r3]
 	;;
@@ -704,19 +750,20 @@ asn_check_err:
  * $r1 = panic string
  */
 asm_panic:
-	/* Restore kernel stack */
-	ld $r12 = TASK_THREAD_KERNEL_SP[$r0]
-	make $r32 = PS_HWLOOP_EN_ET_EN
+	/*
+	 * Reenable hardware loop and traps (for nomapping) since some functions
+	 * might need it. Moreover, disable DAUS to reenable MMU accesses.
+	 */
+	make $r32 = PS_HWLOOP_EN_ET_EN | SFR_SET_VAL_WFXL(PS, DAUS, 0)
 	make $r33 = 0
 	;;
 	/* Clear hw loop exit to disable current loop */
 	set $le = $r33
 	;;
-	/*
-	 * Reenable hardware loop and traps (for nomapping) since some functions
-	 * might need it
-	 */
 	wfxl $ps = $r32
+	;;
+	/* Restore kernel stack */
+	ld $r12 = TASK_THREAD_KERNEL_SP[$r0]
 	;;
 	copyd $r0 = $r1
 	call panic
@@ -725,17 +772,33 @@ asm_panic:
 
 /* Error path for TLB refill */
 refill_err_out:
+	/* Enable MME in $sps */
+	make $r3 = MME_WFXL(1)
+	/* Disable DAUS */
+	make $r1 = SFR_SET_VAL_WFXL(PS, DAUS, 0)
 	get $r2 = $sr
 	;;
-	/*
-	 * Restore additionnal registers which were clobbered.
-	 * No need to restore $r0r1r2r3 since this is handled in
-	 * save_regs_for_exception.
-	 */
-	lo $r4r5r6r7 = (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2]
+	/* Reenable MME in $sps */
+	wfxl $sps = $r3
 	;;
-	/* Simply continue on the standard path after error */
+	/* Disable DAUS in $ps */
+	wfxl $ps = $r1
+	;;
+	/* Restore clobbered registers */
+	lo $r4r5r6r7 = (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2]
+	goto trap_switch_stack
+	;;
+
+/* This path is entered only when the trap is NOT a NOMAPPING */
 trap_slow_path:
+	/* Restore $r3 from temporary scratch system register */
+	get $r3 = TMP_SCRATCH_SR
+	;;
+	save_quad_regs $r0r1r2r3 $r4
+	;;
+	get $r2 = $sr
+	;;
+trap_switch_stack:
 	switch_stack $r1 $r2 trap_save_regs
 	;;
 trap_save_regs:
