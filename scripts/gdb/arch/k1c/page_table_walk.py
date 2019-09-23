@@ -106,7 +106,7 @@ class LxPageTableWalk(gdb.Command):
             gdb.write("[{}] -> Entry[0x{:016x}]\n".format(
                     pgd_pair[0], unsigned_long(pgd_pair[1])))
             gdb.write("\t> Looking for PMD base 0x{:016x}\n".format(unsigned_long(pgd_pair[1])))
-            for pmd_pair in do_lookup(pgd_pair[1], PMD_ENTRIES):
+            for pmd_pair in do_lookup(pgd_pair[1] + constants.LX_PA_TO_VA_OFFSET, PMD_ENTRIES):
                 gdb.write("\t[{}] -> Entry[0x{:016x}]\n".format(
                         pmd_pair[0], unsigned_long(pmd_pair[1])))
                 # Check if the PMD value read is a huge page or a pointer to a
@@ -116,7 +116,7 @@ class LxPageTableWalk(gdb.Command):
                     gdb.write(str(Pte(pmd_pair[1])) + "\n")
                 else:
                     gdb.write("\t\t> Looking for PTE base 0x{:016x}\n".format(unsigned_long(pmd_pair[1])))
-                    for pte_pair in do_lookup(pmd_pair[1], PTE_ENTRIES):
+                    for pte_pair in do_lookup(pmd_pair[1] + constants.LX_PA_TO_VA_OFFSET, PTE_ENTRIES):
                         gdb.write("\t\t[{}] -> PTE [0x{:016x}]\n".format(
                                 pte_pair[0], unsigned_long(pte_pair[1])))
                         gdb.write("\t\t" + str(Pte(pte_pair[1]))+ "\n")
