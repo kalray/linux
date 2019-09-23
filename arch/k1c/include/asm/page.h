@@ -25,8 +25,8 @@
  * These macros are specifically written for assembly. They are useful for
  * converting symbols above PAGE_OFFSET to their physical addresses.
  */
-#define __PA(x)	(x + VA_TO_PA_OFFSET)
-#define __VA(x)	(x + PA_TO_VA_OFFSET)
+#define __PA(x)	((x) + VA_TO_PA_OFFSET)
+#define __VA(x)	((x) + PA_TO_VA_OFFSET)
 
 /*
  * PFN starts at 0 if physical address starts at 0x0. As it is not the case

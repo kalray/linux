@@ -53,6 +53,17 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 }
 
 /**
+ * PUD
+ */
+
+static inline void pud_populate(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
+{
+	unsigned long pfn = virt_to_pfn(pmd);
+
+	set_pud(pud, __pud((unsigned long)pfn << PAGE_SHIFT));
+}
+
+/**
  * PMD
  */
 
@@ -60,13 +71,17 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 static inline void pmd_populate_kernel(struct mm_struct *mm,
 	pmd_t *pmd, pte_t *pte)
 {
-	set_pmd(pmd, __pmd((unsigned long)pte));
+	unsigned long pfn = virt_to_pfn(pte);
+
+	set_pmd(pmd, __pmd((unsigned long)pfn << PAGE_SHIFT));
 }
 
 static inline void pmd_populate(struct mm_struct *mm,
 	pmd_t *pmd, pgtable_t pte)
 {
-	set_pmd(pmd, __pmd((unsigned long) page_address(pte)));
+	unsigned long pfn = virt_to_pfn(page_address(pte));
+
+	set_pmd(pmd, __pmd((unsigned long)pfn << PAGE_SHIFT));
 }
 
 #if CONFIG_PGTABLE_LEVELS > 2

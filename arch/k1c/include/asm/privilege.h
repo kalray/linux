@@ -163,6 +163,7 @@
 					 PSO_WFXL_OWN(IE, __pl) | \
 					 PSO_WFXL_OWN(HLE, __pl) | \
 					 PSO_WFXL_OWN(SRE, __pl) | \
+					 PSO_WFXL_OWN(DAUS, __pl) | \
 					 PSO_WFXL_OWN(ICE, __pl) | \
 					 PSO_WFXL_OWN(USE, __pl) | \
 					 PSO_WFXL_OWN(DCE, __pl) | \
