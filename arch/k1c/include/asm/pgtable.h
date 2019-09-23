@@ -177,11 +177,6 @@ static inline void set_pud(pud_t *pudp, pud_t pmd)
 	*pudp = pmd;
 }
 
-static inline void pud_populate(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
-{
-	set_pud(pud, __pud((unsigned long)pmd));
-}
-
 static inline int pud_none(pud_t pud)
 {
 	return !pud_val(pud);
@@ -220,23 +215,7 @@ static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 /* Returns 1 if entry is present */
 static inline int pmd_present(pmd_t pmd)
 {
-	/* All kernel pages are mapped (see LTLB[0]) so we don't need to check
-	 * if page is present if value is in the range of the mapping.
-	 */
-	unsigned long pmdv = pmd_val(pmd);
-
-	if (pmdv == 0)
-		return 0;
-
-	/* Currently 1G is mapped */
-	if ((pmdv >= CONFIG_K1C_PAGE_OFFSET) &&
-	    (pmdv < (CONFIG_K1C_PAGE_OFFSET + 0x40000000)))
-		return 1;
-
-	panic("%s: First time we pass here with pmd value not mapped. Check what should be returned\n",
-		__func__);
-
-	return 0;
+	return pmd_val(pmd);
 }
 
 /* Returns 1 if the corresponding entry has the value 0 */
@@ -264,7 +243,7 @@ static inline void pmd_clear(pmd_t *pmdp)
  */
 static inline struct page *pmd_page(pmd_t pmd)
 {
-	return virt_to_page(pmd_val(pmd));
+	return pfn_to_page(pmd_val(pmd) >> PAGE_SHIFT);
 }
 
 #define pmd_ERROR(e) \
@@ -275,9 +254,14 @@ static inline unsigned long pmd_index(unsigned long addr)
 	return ((addr) >> PMD_SHIFT) & (PTRS_PER_PMD - 1);
 }
 
+static inline unsigned long pud_page_vaddr(pud_t pud)
+{
+	return (unsigned long)pfn_to_virt(pud_val(pud) >> PAGE_SHIFT);
+}
+
 static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
 {
-	return (pmd_t *)pud_val(*pud) + pmd_index(addr);
+	return (pmd_t *)pud_page_vaddr(*pud) + pmd_index(addr);
 }
 
 /**********************
@@ -346,9 +330,14 @@ static inline unsigned long pte_index(unsigned long addr)
 	return ((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1);
 }
 
+static inline unsigned long pmd_page_vaddr(pmd_t pmd)
+{
+	return (unsigned long)pfn_to_virt(pmd_val(pmd) >> PAGE_SHIFT);
+}
+
 static inline pte_t *pte_offset_kernel(pmd_t *pmd, unsigned long addr)
 {
-	return (pte_t *)pmd_val(*pmd) + pte_index(addr);
+	return (pte_t *)pmd_page_vaddr(*pmd) + pte_index(addr);
 }
 
 #define pte_offset_map(dir, addr)	pte_offset_kernel((dir), (addr))
