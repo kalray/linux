@@ -225,7 +225,7 @@ static void __init fixedrange_init(void)
 	if (!fixmap_pmd_p)
 		panic("%s: failed to allocate pmd page for fixmap\n", __func__);
 	memset(fixmap_pmd_p, 0, PAGE_SIZE);
-	set_pud(pud, __pud((unsigned long) fixmap_pmd_p));
+	set_pud(pud, __pud(__pa(fixmap_pmd_p)));
 
 	pmd = pmd_offset(pud, vaddr);
 	/* Allocate the PTE page */
@@ -233,7 +233,7 @@ static void __init fixedrange_init(void)
 	if (!fixmap_pte_p)
 		panic("%s: failed to allocate pte page for fixmap\n", __func__);
 	memset(fixmap_pte_p, 0, PAGE_SIZE);
-	set_pmd(pmd, __pmd((unsigned long) fixmap_pte_p));
+	set_pmd(pmd, __pmd(__pa(fixmap_pte_p)));
 }
 
 
