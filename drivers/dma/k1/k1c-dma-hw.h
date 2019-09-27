@@ -106,6 +106,7 @@ struct k1c_dma_pkt_full_desc {
  * @hw_id: default: -1, [0, 63] if assigned
  * @rx_cache_id: rx cache associated to rx job queue [0, 3]
  * @asn: device specific asn for iommu / hw
+ * @vchan: device specific vchan for hw
  */
 struct k1c_dma_phy {
 	struct device *dev;
@@ -123,6 +124,7 @@ struct k1c_dma_phy {
 	int hw_id;
 	int rx_cache_id;
 	u32 asn;
+	u32 vchan;
 };
 
 /*
