@@ -710,7 +710,7 @@ int k1c_dma_get_route_id(struct k1c_dma_dev *dev, struct k1c_dma_phy *phy,
 			break;
 		}
 	}
-	if ((i == K1C_DMA_NOC_ROUTE_TABLE_NUMBER) && (idx == -1)) {
+	if ((i >= K1C_DMA_NOC_ROUTE_TABLE_NUMBER) || (idx == -1)) {
 		dev_err(phy->dev, "Noc route table full\n");
 		return -EAGAIN;
 	}
@@ -718,7 +718,6 @@ int k1c_dma_get_route_id(struct k1c_dma_dev *dev, struct k1c_dma_phy *phy,
 	writeq(*route, phy->base + K1C_DMA_NOC_RT_OFFSET +
 	       idx * K1C_DMA_NOC_RT_ELEM_SIZE);
 	*route_id = idx;
-
 	return 0;
 }
 
@@ -744,7 +743,7 @@ int k1c_dma_setup_route(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 	((u64)(cfg->qos_id & 0xFU)      << K1C_DMA_NOC_RT_QOS_ID_SHIFT) |
 	((u64)(global & 0x1U)           << K1C_DMA_NOC_RT_GLOBAL_SHIFT) |
 	((u64)(c->phy->asn & K1C_DMA_ASN_MASK) << K1C_DMA_NOC_RT_ASN_SHIFT) |
-	((u64)(cfg->hw_vchan & 0x1)     << K1C_DMA_NOC_RT_VCHAN_SHIFT)  |
+	((u64)(c->phy->vchan & 0x1)     << K1C_DMA_NOC_RT_VCHAN_SHIFT)  |
 	((u64)(1)                       << K1C_DMA_NOC_RT_VALID_SHIFT);
 	spin_lock(&dev->lock);
 	ret = k1c_dma_get_route_id(dev, c->phy, &desc->route, &desc->route_id);
@@ -753,6 +752,9 @@ int k1c_dma_setup_route(struct k1c_dma_chan *c, struct k1c_dma_desc *desc)
 		dev_err(dev->dma.dev, "Unable to get route_id\n");
 		return ret;
 	}
+	dev_dbg(dev->dma.dev, "route: 0x%llx rx_tag: 0x%x global: %d asn: %d vchan: %d\n",
+		desc->route, cfg->rx_tag, global, c->phy->asn, c->phy->vchan);
+
 	return 0;
 }
 
@@ -799,7 +801,6 @@ struct dma_async_tx_descriptor *k1c_prep_dma_memcpy(
 		c->cfg.cfg.direction = DMA_MEM_TO_MEM;
 		c->cfg.noc_route = 0;
 		c->cfg.qos_id = 0;
-		c->cfg.hw_vchan = 0;
 		c->phy = k1c_dma_get_phy(d, c);
 		if (c->phy == NULL) {
 			dev_err(dev, "No phy available\n");
@@ -1080,6 +1081,7 @@ static int k1c_dma_allocate_phy(struct k1c_dma_dev *dev)
 			p->dev = dev->dma.dev;
 			p->comp_count = 0;
 			p->asn = dev->asn;
+			p->vchan = dev->vchan;
 
 			if (k1c_dma_dbg_init(p, dev->dbg))
 				dev_warn(dev->dma.dev, "Failed to init debugfs\n");
@@ -1215,6 +1217,12 @@ static int k1c_dma_parse_dt(struct platform_device *pdev,
 		dev->dma_noc_route_ids.nb = K1C_DMA_NOC_ROUTE_TABLE_NUMBER;
 	}
 
+	if (of_property_read_u32(np, "kalray,dma-noc-vchan",
+				 &dev->vchan) != 0) {
+		dev_err(&pdev->dev, "kalray,dma-noc-vchan is missing\n");
+		return -EINVAL;
+	}
+
 	node = of_parse_phandle(np, "memory-region", 0);
 	if (node)
 		rmem = of_reserved_mem_lookup(node);
@@ -1257,7 +1265,6 @@ static int k1c_dma_probe(struct platform_device *pdev)
 	struct dma_device *dma;
 	struct k1c_dma_dev *dev = devm_kzalloc(&pdev->dev,
 					       sizeof(*dev), GFP_KERNEL);
-	struct resource *io;
 	static int dev_cnt;
 
 	if (!dev) {
@@ -1266,8 +1273,7 @@ static int k1c_dma_probe(struct platform_device *pdev)
 	}
 
 	/* Request and map I/O memory */
-	io = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	dev->iobase = devm_ioremap_resource(&pdev->dev, io);
+	dev->iobase = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(dev->iobase))
 		return PTR_ERR(dev->iobase);
 
