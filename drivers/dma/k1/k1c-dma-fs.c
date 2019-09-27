@@ -120,29 +120,17 @@ static ssize_t rx_cache_id_show(struct k1c_dma_chan *c, char *buf)
 	return snprintf(buf, K1C_STR_LEN, "%d\n", c->cfg.rx_cache_id);
 }
 
+static ssize_t hw_vchan_show(struct k1c_dma_chan *c, char *buf)
+{
+	return snprintf(buf, K1C_STR_LEN, "%d\n", c->phy->vchan);
+}
+
 static struct k1c_dma_sysfs_entry dir_attr         = __ATTR_RO(dir);
 static struct k1c_dma_sysfs_entry trans_type_attr  = __ATTR_RO(trans_type);
 static struct k1c_dma_sysfs_entry rx_cache_id_attr = __ATTR_RO(rx_cache_id);
+static struct k1c_dma_sysfs_entry hw_vchan_attr    = __ATTR_RO(hw_vchan);
 
 /* RW attr */
-static ssize_t hw_vchan_show(struct k1c_dma_chan *c, char *buf)
-{
-	return snprintf(buf, K1C_STR_LEN, "%d\n", c->cfg.hw_vchan);
-}
-
-static ssize_t hw_vchan_store(struct k1c_dma_chan *c, const char *buf,
-			      size_t count)
-{
-	int hw_vchan;
-
-	if (sscanf(buf, "%du", &hw_vchan) != -1) {
-		if (hw_vchan < 0 || hw_vchan > 1)
-			return -EINVAL;
-		c->cfg.hw_vchan = hw_vchan;
-	}
-	return count;
-}
-
 static ssize_t noc_route_show(struct k1c_dma_chan *c, char *buf)
 {
 	return snprintf(buf, K1C_STR_LEN, "0x%llx\n", c->cfg.noc_route);
@@ -176,7 +164,6 @@ static ssize_t rx_tag_store(struct k1c_dma_chan *c, const char *buf,
 	return count;
 }
 
-static struct k1c_dma_sysfs_entry hw_vchan_attr    = __ATTR_RW(hw_vchan);
 static struct k1c_dma_sysfs_entry noc_route_attr   = __ATTR_RW(noc_route);
 static struct k1c_dma_sysfs_entry rx_tag_attr      = __ATTR_RW(rx_tag);
 
