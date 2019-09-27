@@ -31,7 +31,6 @@ enum k1c_dma_transfer_type {
  * @trans_type: Transfer type for dma-noc
  * @noc_route: Transfer route
  * @qos_id: qos
- * @hw_vchan: Hw vchan requested [0, 1]
  * @rx_cache_id: Rx cache associated to rx job queue [0, 3]
  */
 struct k1c_dma_slave_cfg {
@@ -41,7 +40,6 @@ struct k1c_dma_slave_cfg {
 	u64 noc_route;
 	u8  rx_tag;
 	u8  qos_id;
-	u8  hw_vchan;
 	u8  rx_cache_id;
 };
 
