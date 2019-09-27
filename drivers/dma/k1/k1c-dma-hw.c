@@ -904,7 +904,7 @@ int k1c_dma_read_status(struct k1c_dma_phy *phy)
 
 	k1c_dma_status_queues(phy);
 	err = readq(phy->base + K1C_DMA_IT_OFFSET +
-		    K1C_DMA_IT_VECTOR_LAC_OFFSET);
+		    K1C_DMA_IT_VECTOR_OFFSET);
 	if (err & (~K1C_DMA_IT_VECTOR_RESERVED_MASK)) {
 		dev_err(phy->dev, "it vector: 0x%llx\n", err);
 		ret = -EINVAL;

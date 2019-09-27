@@ -162,6 +162,7 @@ struct k1c_dma_fws {
  * @pending_chan: Awaiting dma channels
  * @dbg: dbg fs
  * @asn: device specific asn for iommu / hw
+ * @vchan: device specific vchan for hw
  * @dma_fws: Information about firmwares pool probed from dt
  *
  * One dev per rx/tx channels
@@ -183,6 +184,7 @@ struct k1c_dma_dev {
 	struct list_head pending_chan;
 	struct dentry *dbg;
 	u32 asn;
+	u32 vchan;
 	struct k1c_dma_fws dma_fws;
 };
 
