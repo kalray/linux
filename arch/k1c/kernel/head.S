@@ -170,6 +170,7 @@ init_core:
 	/* Setup default processor status */
 	make $r25 = PS_WFXL_VALUE
 	make $r26 = PCR_WFXM_VALUE
+	;;
 	/**
 	 * There is nothing much we can do if we take a early trap since the
 	 * kernel is not yet ready to handle them.
