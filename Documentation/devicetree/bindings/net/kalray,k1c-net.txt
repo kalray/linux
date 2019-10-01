@@ -1,0 +1,57 @@
+* Phy definition
+
+- reg: phy id as used in driver (see bindings/net/phy.txt)
+- phy-mode: see bindings/net/ethernet.txt
+
+* Kalray net controller
+
+Required properties:
+- compatible: Should be "kalray,k1c-eth";
+- reg: {phy, mac, eth} registers and length
+- reg-names: {phy, mac, eth} names
+
+* Kalray netdev
+
+Required properties:
+- compatible: Should be "kalray,k1c-net";
+- dmas: dma-noc channels
+- dma-names: as defined in bindings/dma/dma.txt
+- phy-handle: related to a phy definition
+- sfp: sfp definition
+
+
+Example:
+
+	sfp_eth0: sfp-eth0 {
+		  compatible = "sff,sfp";
+		  i2c-bus = <&sfpp0_i2c>;
+	};
+
+	mdio-bus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		phy0: ethernet-phy@0 {
+			reg = <0>;
+			phy-mode = "sgmii";
+			device_type = "ethernet-phy";
+			fixed-link {
+				speed = <1000>;
+				full-duplex;
+			};
+		};
+	};
+	ethernet: ethernet@10050000 {
+		compatible = "kalray,k1c-eth";
+		reg = <0x0 0x10040000 0x0 0xB4>,
+		      <0x0 0x10050000 0x0 0x8ED0>,
+		      <0x0 0x10090000 0x0 0x16400>;
+		reg-names = "phy", "mac", "eth";
+
+		port0: ethernet-port@0 {
+			compatible = "kalray,k1c-net";
+			dmas = <&dma_noc 1>, <&dma_noc 1>;
+			dma-names = "rx", "tx";
+			phy-handle = <&phy0>;
+			sfp = <&sfp_eth0>;
+		};
+	};
