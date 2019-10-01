@@ -1,0 +1,29 @@
+#
+# Kalray device configuration
+#
+
+config NET_VENDOR_KALRAY
+	bool "Kalray devices"
+	default y
+	help
+	  If you have a network (Ethernet) card belonging to this class, say Y.
+
+	  Note that the answer to this question doesn't directly affect the
+	  kernel: saying N will just cause the configurator to skip all
+	  the questions about Kalray cards. If you say Y, you will be asked for
+	  your specific card in the following questions.
+
+if NET_VENDOR_KALRAY
+config NET_K1C_SOC
+	tristate "Kalray ethernet support"
+	depends on K1C_DMA_NOC
+	select PHYLIB
+	help
+	  This driver supports the K1C Ethernet hardware using dma_noc driver
+	  as dependency.
+	  Allows configuring load balancing (flow control, parsing) and
+	  TX flow.
+
+	  To compile this driver as a module, choose M here.
+
+endif # NET_VENDOR_KALRAY
