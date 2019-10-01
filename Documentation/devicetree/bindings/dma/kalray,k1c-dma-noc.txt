@@ -14,6 +14,7 @@ Required properties:
 - kalray,dma-tx-comp-queue-ids: start index of TX completion queue followed by
                                 number. Must be inline with dma-tx-job-queue-ids
 - kalray,dma-noc-route-ids: usable indexes in noc-route table (start, nb)
+- kalray,dma-noc-vchan: hw vchan (MUST be different of vchan used by l2-cache)
 - msi-parent: mailbox use for MSI
 - memory-region: optional reserved region for dma queue allocation
 - iommus: optional iommu
@@ -31,6 +32,7 @@ Example:
 		 kalray,dma-tx-job-queue-ids = <0 63>;
 		 kalray,dma-tx-comp-queue-ids = <0 63>;
 		 kalray,dma-noc-route-ids = <0 511>;
+		 kalray,dma-noc-vchan = <1>;
 		 msi-parent = <&apic_mailbox>;
 		 memory-region = <&dma_noc_reserved>;
 		 iommus = <&iommu_noc 12>;
