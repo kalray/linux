@@ -17,10 +17,6 @@
 #define K1C_ETH_LANE_NB      (4)
 #define K1C_ETH_PFC_CLASS_NB (8)
 
-#define K1C_ETH_RX_TAG (0UL)
-/* Hw vchan MUST be different of the one used by l2-cache */
-#define K1C_ETH_RX_CACHE_ID (0UL)
-
 #define K1C_ETH_DISPATCH_TABLE_IDX (128)
 
 #define REG(b, o) pr_info("%-50s: @0x%lx - 0x%lx\n", #o, (u32)o, readl(b + o))
@@ -242,8 +238,8 @@ void k1c_eth_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu);
 u32 k1c_eth_lb_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 u32 k1c_eth_lb_has_footer(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_lb_init_default_rr(struct k1c_eth_hw *hw,
-				struct k1c_eth_lane_cfg *cfg);
-void k1c_eth_lb_get_status(struct k1c_eth_hw *hw, int lane_id);
+				struct k1c_eth_lane_cfg *cfg, u32 rx_tag);
+void k1c_eth_lb_dump_status(struct k1c_eth_hw *hw, int lane_id);
 void k1c_eth_lb_set_dispatch_table_entry(struct k1c_eth_hw *hw, u32 table_idx,
 					 u32 rx_tag);
 
