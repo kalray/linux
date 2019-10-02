@@ -25,6 +25,7 @@
 #include <linux/of_dma.h>
 #include <linux/of_platform.h>
 #include <net/checksum.h>
+#include <linux/dma/k1c-dma-api.h>
 
 #include "k1c-net.h"
 #include "k1c-net-hw.h"
@@ -484,23 +485,6 @@ busy:
 	return NETDEV_TX_BUSY;
 }
 
-/* k1c_eth_netdev_dma_callback_rx() - Rx dma callback
- * @param: Callback param
- */
-static void k1c_eth_netdev_dma_callback_rx(void *param)
-{
-	struct k1c_callback_param *p = param;
-	struct k1c_eth_netdev_rx *rx = p->cb_param;
-	struct k1c_eth_netdev *ndev = rx->ndev;
-
-	netdev_dbg(ndev->netdev, "%s Received skb: 0x%llx len: %d\n",
-		   __func__, (u64)rx->skb, (int)p->len);
-
-	rx->len = p->len;
-	atomic_inc(&ndev->completed_rx);
-	napi_schedule(&ndev->napi);
-}
-
 /* k1c_eth_alloc_rx_buffers() - Allocation rx buffers
  * @ndev: Current k1c_eth_netdev
  * @count: number of buffers to allocate
@@ -509,8 +493,8 @@ static void k1c_eth_alloc_rx_buffers(struct k1c_eth_netdev *ndev, int count)
 {
 	struct net_device *netdev = ndev->netdev;
 	struct device *dev = ndev->dev;
-	struct dma_async_tx_descriptor *txd;
 	struct k1c_eth_ring *rxr = &ndev->rx_ring;
+	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 	u32 rx_w = rxr->next_to_use;
 	struct sk_buff *skb;
 	u32 unused_desc = k1c_eth_desc_unused(rxr);
@@ -543,20 +527,16 @@ static void k1c_eth_alloc_rx_buffers(struct k1c_eth_netdev *ndev, int count)
 			break;
 		}
 
-		txd = dmaengine_prep_slave_sg(rxr->chan, &rx->sg[0], 1,
-					      DMA_DEV_TO_MEM,
-					      DMA_PREP_INTERRUPT);
-		if (!txd) {
-			netdev_err(netdev, "Failed to get dma desc rx[%d]\n",
-				   rx_w);
+		ret = k1c_dma_enqueue_rx_buffer(dma_cfg->pdev,
+					  dma_cfg->rx_chan_id.start,
+					  sg_dma_address(&rx->sg[0]),
+					  ndev->rx_buffer_len);
+		if (ret) {
+			netdev_err(netdev, "Failed to enqueue buffer in rx chan[%d]: %d\n",
+				   dma_cfg->rx_chan_id.start, ret);
 			dma_unmap_sg(dev, &rx->sg[0], 1, DMA_FROM_DEVICE);
 			break;
 		}
-		txd->callback = k1c_eth_netdev_dma_callback_rx;
-		rx->cb_p.cb_param = rx;
-		txd->callback_param = &rx->cb_p;
-		rx->cookie = dmaengine_submit(txd);
-		dma_async_issue_pending(rxr->chan);
 
 		++rx_w;
 		if (rx_w == rxr->count)
@@ -574,7 +554,7 @@ static void k1c_eth_alloc_rx_buffers(struct k1c_eth_netdev *ndev, int count)
  *  - handles RX metadata
  *  - RX buffer re-allocation if needed
  * @ndev: Current k1c_eth_netdev
- * @work_done: returned nb of buffer completed
+ * @work_done: returned nb of buffers completed
  * @work_left: napi budget
  *
  * Return: 0 on success
@@ -582,9 +562,11 @@ static void k1c_eth_alloc_rx_buffers(struct k1c_eth_netdev *ndev, int count)
 static int k1c_eth_clean_rx_irq(struct k1c_eth_netdev *ndev,
 				int *work_done, int work_left)
 {
+	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
+	struct k1c_eth_ring *rxr = &ndev->rx_ring;
 	struct net_device *netdev = ndev->netdev;
 	struct device *dev = ndev->dev;
-	struct k1c_eth_ring *rxr = &ndev->rx_ring;
+	struct k1c_dma_pkt_full_desc pkt;
 	u32 rx_r = rxr->next_to_clean;
 	struct k1c_eth_netdev_rx *rx;
 	struct rx_metadata *hdr = NULL;
@@ -592,11 +574,21 @@ static int k1c_eth_clean_rx_irq(struct k1c_eth_netdev *ndev,
 	struct sk_buff *skb;
 	int rx_count = 0;
 
-	while (atomic_dec_if_positive(&ndev->completed_rx) >= 0) {
+	*work_done = 0;
+	while (!k1c_dma_get_rx_completed(dma_cfg->pdev,
+					 dma_cfg->rx_chan_id.start, &pkt)) {
 		if (*work_done >= work_left)
 			break;
 
 		rx = &rxr->rx_buf[rx_r];
+		if (pkt.base != sg_dma_address(&rx->sg[0])) {
+			netdev_err(netdev, "%s pkt.base 0x%llx != rx->sg[0] 0x%llx pkt.byte: %lld skb data: 0x%llx\n",
+			   __func__,  pkt.base, sg_dma_address(&rx->sg[0]),
+			   pkt.byte, (u64)rx->skb->data);
+			break;
+		}
+
+		rx->len = pkt.byte;
 		(*work_done)++;
 		skb = rx->skb;
 		rx->skb = NULL;
@@ -648,12 +640,16 @@ static int k1c_eth_netdev_poll(struct napi_struct *napi, int budget)
 {
 	struct k1c_eth_netdev *ndev = container_of(napi,
 						   struct k1c_eth_netdev, napi);
+	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 	int work_done = 0;
 
+	k1c_dma_disable_irq(dma_cfg->pdev, dma_cfg->rx_chan_id.start);
 	k1c_eth_clean_rx_irq(ndev, &work_done, budget);
 
-	if (work_done < budget)
+	if (work_done < budget) {
 		napi_complete_done(napi, work_done);
+		k1c_dma_enable_irq(dma_cfg->pdev, dma_cfg->rx_chan_id.start);
+	}
 
 	return work_done;
 }
@@ -752,6 +748,16 @@ static const struct net_device_ops k1c_eth_netdev_ops = {
 #endif
 };
 
+static void k1c_eth_dma_irq_rx(void *data)
+{
+	struct k1c_eth_ring *ring = data;
+	struct k1c_eth_netdev *ndev;
+
+	ndev = netdev_priv(ring->netdev);
+
+	napi_schedule(&ndev->napi);
+}
+
 /* k1c_eth_alloc_rx_res() - Allocate RX resources
  * @netdev: Current netdev
  *
@@ -762,6 +768,7 @@ int k1c_eth_alloc_rx_res(struct net_device *netdev)
 	int i, ret = 0;
 	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
 	struct k1c_eth_ring *ring = &ndev->rx_ring;
+	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 
 	ring->netdev = ndev->netdev;
 	ring->next_to_use = 0;
@@ -779,33 +786,17 @@ int k1c_eth_alloc_rx_res(struct net_device *netdev)
 		ring->rx_buf[i].ndev = ndev;
 	}
 	memset(&ring->config, 0, sizeof(ring->config));
-	ring->config.cfg.direction = DMA_DEV_TO_MEM;
-	ring->config.dir = K1C_DMA_DIR_TYPE_RX;
-	ring->config.trans_type = K1C_DMA_TYPE_MEM2ETH;
-	ring->config.rx_tag = K1C_ETH_RX_TAG;
-	ring->config.noc_route = noc_route_eth2c(K1C_ETH0);
-	ring->config.qos_id = 0;
-	ring->config.rx_cache_id = K1C_ETH_RX_CACHE_ID;
-
-	ring->chan = of_dma_request_slave_channel(ndev->dev->of_node, "rx");
-	if (!ring->chan) {
-		netdev_err(netdev, "Request dma RX chan failed\n");
-		ret = -EINVAL;
+	ret = k1c_dma_reserve_rx_chan(dma_cfg->pdev, dma_cfg->rx_chan_id.start,
+				      dma_cfg->rx_cache_id, k1c_eth_dma_irq_rx,
+				      ring);
+	if (ret != 0)
 		goto chan_failed;
-	}
-	/* Config dma */
-	ret = dmaengine_slave_config(ring->chan, &ring->config.cfg);
-	if (ret) {
-		netdev_err(netdev, "Unable to configure slave\n");
-		goto config_failed;
-	}
 
 	return 0;
 
-config_failed:
-	dma_release_channel(ring->chan);
 chan_failed:
 	kfree(ring->rx_buf);
+	ring->rx_buf = NULL;
 exit:
 	return ret;
 }
@@ -816,10 +807,12 @@ exit:
 void k1c_eth_release_rx_res(struct net_device *netdev)
 {
 	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
+	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct k1c_eth_ring *ring = &ndev->rx_ring;
 
-	dma_release_channel(ring->chan);
+	k1c_dma_release_rx_chan(dma_cfg->pdev, dma_cfg->rx_chan_id.start);
 	kfree(ring->rx_buf);
+	ring->rx_buf = NULL;
 }
 
 /* k1c_eth_alloc_tx_res() - Allocate TX resources (including dma_noc channel)
@@ -854,7 +847,6 @@ int k1c_eth_alloc_tx_res(struct net_device *netdev)
 	ring->config.dir = K1C_DMA_DIR_TYPE_TX;
 	ring->config.noc_route = noc_route_c2eth(K1C_ETH0);
 	ring->config.qos_id = 0;
-	ring->config.rx_cache_id = K1C_ETH_RX_CACHE_ID;
 
 	ring->chan = of_dma_request_slave_channel(ndev->dev->of_node, "tx");
 	if (!ring->chan) {
@@ -873,6 +865,7 @@ config_failed:
 	dma_release_channel(ring->chan);
 chan_failed:
 	kfree(ring->tx_buf);
+	ring->tx_buf = NULL;
 exit:
 	return ret;
 }
@@ -887,6 +880,7 @@ void k1c_eth_release_tx_res(struct net_device *netdev)
 
 	dma_release_channel(ring->chan);
 	kfree(ring->tx_buf);
+	ring->tx_buf = NULL;
 }
 
 /* k1c_eth_parse_dt() - Parse device tree inputs
@@ -901,12 +895,18 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *np_dma, *np_phy;
+	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 	phy_interface_t phy_mode;
 	int ret = 0;
 
 	np_dma = of_parse_phandle(np, "dmas", 0);
 	if (!np_dma) {
 		dev_err(&pdev->dev, "Failed to get dma\n");
+		return -EINVAL;
+	}
+	dma_cfg->pdev = of_find_device_by_node(np_dma);
+	if (!dma_cfg->pdev) {
+		dev_err(&pdev->dev, "Failed to dma_noc platform_device\n");
 		return -EINVAL;
 	}
 
@@ -928,6 +928,30 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 	}
 
 	of_property_read_u32(np_dma, "kalray,dma-noc-vchan", &ndev->hw->vchan);
+	if (of_property_read_u32(np, "kalray,dma-rx-cache-id",
+				 &dma_cfg->rx_cache_id)) {
+		dev_err(ndev->dev, "Unable to get dma-rx-cache-id\n");
+		return -EINVAL;
+	}
+	if (of_property_read_u32_array(np, "kalray,dma-rx-channel-ids",
+			       (u32 *)&dma_cfg->rx_chan_id, 2) != 0) {
+		dev_err(ndev->dev, "Unable to get dma-rx-channel-ids\n");
+		return -EINVAL;
+	}
+	if (of_property_read_u32_array(np, "kalray,dma-rx-comp-queue-ids",
+			       (u32 *)&dma_cfg->rx_compq_id, 2) != 0) {
+		dev_err(ndev->dev, "Unable to get dma-rx-comp-queue-ids\n");
+		return -EINVAL;
+	}
+
+	if (dma_cfg->rx_chan_id.start != dma_cfg->rx_compq_id.start ||
+	    dma_cfg->rx_chan_id.nb != dma_cfg->rx_compq_id.nb) {
+		dev_err(ndev->dev, "rx_chan_id(%d,%d) != rx_compq_id(%d,%d)\n",
+			dma_cfg->rx_chan_id.start, dma_cfg->rx_chan_id.nb,
+			dma_cfg->rx_compq_id.start, dma_cfg->rx_compq_id.nb);
+		return -EINVAL;
+	}
+
 	np_phy = of_parse_phandle(np, "phy-handle", 0);
 	if (!np_phy) {
 		dev_err(&pdev->dev, "Phy node not defined\n");
@@ -980,7 +1004,6 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	ndev->dev = &pdev->dev;
 	ndev->netdev = netdev;
 	ndev->hw = &dev->hw;
-	atomic_set(&ndev->completed_rx, 0);
 
 	ret = k1c_eth_parse_dt(pdev, ndev);
 	if (ret)
@@ -1080,7 +1103,8 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 
 	k1c_mac_set_addr(&dev->hw, &ndev->cfg);
 	k1c_eth_tx_set_default(&ndev->cfg);
-	k1c_eth_lb_init_default_rr(&dev->hw, &ndev->cfg);
+	k1c_eth_lb_init_default_rr(&dev->hw, &ndev->cfg,
+				   ndev->dma_cfg.rx_chan_id.start);
 	k1c_eth_tx_init(&dev->hw, &ndev->cfg);
 
 	dev_err(&pdev->dev, "K1C netdev[%d] probed\n", ndev->cfg.id);
