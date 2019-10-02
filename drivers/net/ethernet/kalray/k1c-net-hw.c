@@ -68,19 +68,6 @@ void k1c_eth_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu)
 	k1c_mac_hw_change_mtu(hw, lane, mtu);
 }
 
-void k1c_eth_lb_get_status(struct k1c_eth_hw *hw, int lane_id)
-{
-	u32 off = RX_LB_DROP_CNT_OFFSET + RX_LB_DROP_CNT_LANE_OFFSET +
-		lane_id * RX_LB_DROP_CNT_LANE_ELEM_SIZE;
-
-	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_MTU_OFFSET);
-	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_FCS_OFFSET);
-	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_FIFO_OFFSET);
-	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_FIFO_CRC_OFFSET);
-	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_TOTAL_OFFSET);
-	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_RULE_OFFSET);
-}
-
 #define RX_LB_CTRL(LANE) (RX_LB_OFFSET + RX_LB_CTRL_OFFSET \
 	+ (LANE) * RX_LB_CTRL_ELEM_SIZE)
 
@@ -99,6 +86,20 @@ void k1c_eth_lb_get_status(struct k1c_eth_hw *hw, int lane_id)
 
 #define RX_LB_DEFAULT_RULE_LANE_CTRL(LANE) \
 	(RX_LB_DEFAULT_RULE_LANE(LANE) + RX_LB_DEFAULT_RULE_LANE_CTRL_OFFSET)
+
+void k1c_eth_lb_dump_status(struct k1c_eth_hw *hw, int lane_id)
+{
+	u32 off = RX_LB_DROP_CNT_OFFSET + RX_LB_DROP_CNT_LANE_OFFSET +
+		lane_id * RX_LB_DROP_CNT_LANE_ELEM_SIZE;
+
+	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_MTU_OFFSET);
+	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_FCS_OFFSET);
+	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_FIFO_OFFSET);
+	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_FIFO_CRC_OFFSET);
+	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_TOTAL_OFFSET);
+	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_RULE_OFFSET);
+	DUMP_REG(hw, RX_LB_DEFAULT_RULE_LANE_CTRL(lane_id) + 4); // hit_cnt
+}
 
 int k1c_eth_utils_get_rr_target(struct k1c_eth_hw *hw, int lane,
 				u32 dispatch_table_idx,
@@ -137,7 +138,7 @@ void k1c_eth_lb_set_dispatch_table_entry(struct k1c_eth_hw *hw, u32 table_idx,
 }
 
 void k1c_eth_lb_init_default_rr(struct k1c_eth_hw *hw,
-				struct k1c_eth_lane_cfg *lane_cfg)
+				struct k1c_eth_lane_cfg *lane_cfg, u32 rx_tag)
 {
 	u32 reg;
 	u32 row = 0, mask = 0; // dispatch line and bitmask
@@ -170,8 +171,7 @@ void k1c_eth_lb_init_default_rr(struct k1c_eth_hw *hw,
 	dev_dbg(hw->dev, "dispatch_table_idx: %d rr_row: %d, rr_mask: 0x%x\n",
 		dispatch_table_idx, row, mask);
 	k1c_eth_writel(hw, mask, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(lane, row));
-	k1c_eth_lb_set_dispatch_table_entry(hw, dispatch_table_idx,
-					    K1C_ETH_RX_TAG);
+	k1c_eth_lb_set_dispatch_table_entry(hw, dispatch_table_idx, rx_tag);
 }
 
 u32 k1c_eth_lb_has_header(struct k1c_eth_hw *hw,
