@@ -195,5 +195,6 @@ int k1c_dma_sysfs_init(struct dma_device *dma);
 void k1c_dma_sysfs_remove(struct dma_device *dma);
 
 int k1c_dma_dbg_init(struct k1c_dma_phy *phy, struct dentry *dbg);
+void k1c_dma_release_phy(struct k1c_dma_dev *dev, struct k1c_dma_phy *phy);
 
 #endif /* ASM_K1C_DMA_H */

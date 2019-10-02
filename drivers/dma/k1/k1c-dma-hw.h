@@ -10,7 +10,9 @@
 #ifndef K1C_DMA_HW_H
 #define K1C_DMA_HW_H
 
+#include <linux/atomic.h>
 #include <linux/dma/k1c-dma.h>
+#include <linux/dma/k1c-dma-api.h>
 
 #include "k1c-dma-regs.h"
 
@@ -75,18 +77,8 @@ struct k1c_dma_hw_queue {
 struct k1c_dma_job_queue_list {
 	struct k1c_dma_hw_queue tx[K1C_DMA_TX_JOB_QUEUE_NUMBER];
 	struct k1c_dma_hw_queue rx[K1C_DMA_RX_JOB_QUEUE_NUMBER];
-	int rx_refcount[K1C_DMA_RX_JOB_QUEUE_NUMBER];
+	atomic_t rx_refcount[K1C_DMA_RX_JOB_QUEUE_NUMBER];
 };
-
-/**
- * struct k1c_dma_pkt_full_desc - RX completion descriptor (specific to MEM2ETH)
- */
-struct k1c_dma_pkt_full_desc {
-	u64 base;
-	u64 size;
-	u64 byte;
-	u64 notif;
-} __aligned(16);
 
 /**
  * struct k1c_dma_phy - HW description, limited to one transfer type
@@ -94,6 +86,7 @@ struct k1c_dma_pkt_full_desc {
  * @base: Base addr of DMA device
  * @msi_mb_paddr: Mailbox physical addr for DMA IT
  * @msi_data: Data used for MB notification
+ * @irq: Interrupt_number
  * @max_desc: Max fifo size (= dma_requests)
  * @size_log2: log2 channel fifo size
  * @comp_count: completion count (completion queue write pointer)
@@ -107,12 +100,15 @@ struct k1c_dma_pkt_full_desc {
  * @rx_cache_id: rx cache associated to rx job queue [0, 3]
  * @asn: device specific asn for iommu / hw
  * @vchan: device specific vchan for hw
+ * @irq_handler: External callback
+ * @irq_data: Callback data
  */
 struct k1c_dma_phy {
 	struct device *dev;
 	void __iomem *base;
 	u64 msi_mb_paddr;
 	u32 msi_data;
+	unsigned int irq;
 	u16 max_desc;
 	u16 size_log2;
 	u64 comp_count;
@@ -125,6 +121,8 @@ struct k1c_dma_phy {
 	int rx_cache_id;
 	u32 asn;
 	u32 vchan;
+	void (*irq_handler)(void *data);
+	void *irq_data;
 };
 
 /*
