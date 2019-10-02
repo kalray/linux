@@ -679,7 +679,7 @@ static int k1c_dma_get_job_queue(struct k1c_dma_phy *phy, u64 aligned_size,
 	if (phy->dir == K1C_DMA_DIR_TYPE_RX) {
 		idx = K1C_DMA_NB_RX_JOB_QUEUE_PER_CACHE * phy->rx_cache_id;
 		jobq = &jobq_list->rx[idx];
-		if (jobq_list->rx_refcount[idx] == 0) {
+		if (!atomic_fetch_inc(&jobq_list->rx_refcount[idx])) {
 			size = aligned_size * sizeof(struct k1c_dma_pkt_desc);
 			ret = k1c_dma_alloc_queue(phy, jobq, size,
 					  K1C_DMA_RX_JOB_Q_OFFSET +
@@ -687,14 +687,14 @@ static int k1c_dma_get_job_queue(struct k1c_dma_phy *phy, u64 aligned_size,
 			if (ret) {
 				dev_err(phy->dev, "Unable to alloc RX job_queue[%d]\n",
 					phy->hw_id);
+				atomic_dec(&jobq_list->rx_refcount[idx]);
 				goto exit;
 			}
 		} else {
-			dev_warn(phy->dev,
-				 "RX job_queue[%d] already allocated -> reusing it\n",
-				 phy->hw_id);
+			dev_dbg(phy->dev,
+				"RX job_queue[%d] already allocated -> reusing it\n",
+				phy->hw_id);
 		}
-		++jobq_list->rx_refcount[idx];
 	} else {
 		size = aligned_size * sizeof(struct k1c_dma_tx_job_desc);
 		idx = phy->hw_id;
@@ -737,13 +737,8 @@ static void k1c_dma_release_job_queue(struct k1c_dma_phy *phy,
 		idx = K1C_DMA_NB_RX_JOB_QUEUE_PER_CACHE * phy->rx_cache_id;
 		jobq = &jobq_list->rx[idx];
 		if (jobq->vaddr && jobq->size) {
-			--jobq_list->rx_refcount[idx];
-			if (jobq_list->rx_refcount[idx] == 0)
+			if (atomic_dec_and_test(&jobq_list->rx_refcount[idx]))
 				k1c_dma_release_queue(phy, jobq);
-		}
-		if (jobq_list->rx_refcount[idx] < 0) {
-			dev_err(phy->dev, "Rx job queue[%d] rx_refcount < 0\n",
-				phy->hw_id);
 		}
 		phy->jobq = NULL;
 	} else if (phy->dir == K1C_DMA_DIR_TYPE_TX) {
