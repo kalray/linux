@@ -69,6 +69,7 @@ static void k1c_dma_write_msi_msg(struct msi_desc *msi, struct msi_msg *msg)
 		}
 		phy->msi_mb_paddr = msi_mb_dmaaddr;
 		phy->msi_data = msg->data;
+		phy->irq = msi->irq;
 	}
 }
 
@@ -82,8 +83,13 @@ static irqreturn_t k1c_dma_irq_handler(int chirq, void *arg)
 	u64 comp_count = k1c_dma_get_comp_count(phy);
 
 	/* Schedule a tasklet to complete descriptors and push new desc */
-	if (phy->comp_count < comp_count)
+	if (phy->comp_count < comp_count) {
 		tasklet_schedule(&dev->task);
+		if (phy->irq_handler) {
+			phy->comp_count = comp_count;
+			phy->irq_handler(phy->irq_data);
+		}
+	}
 
 	phy->comp_count = comp_count;
 
@@ -131,8 +137,7 @@ int k1c_dma_request_msi(struct platform_device *pdev)
 		for_each_msi_entry(msi, &pdev->dev) {
 			if (msi == failed_desc)
 				break;
-			devm_free_irq(&pdev->dev, msi->irq,
-				      dev);
+			devm_free_irq(&pdev->dev, msi->irq, dev);
 		}
 		k1c_dma_free_msi(pdev);
 	}
