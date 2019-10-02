@@ -58,8 +58,6 @@ struct k1c_eth_netdev_rx {
 	struct sk_buff *skb;
 	struct scatterlist sg[1];
 	size_t len;             /* Actual rx size in bytes (written by dev) */
-	dma_cookie_t cookie;
-	struct k1c_callback_param cb_p;
 };
 
 struct k1c_eth_ring {
@@ -75,6 +73,18 @@ struct k1c_eth_ring {
 	u16 next_to_clean;
 };
 
+struct k1c_eth_node_id {
+	u32 start;
+	u32 nb;
+};
+
+struct k1c_dma_config {
+	struct platform_device *pdev;
+	u32 rx_cache_id;
+	struct k1c_eth_node_id rx_chan_id;
+	struct k1c_eth_node_id rx_compq_id;
+};
+
 /**
  * struct k1c_eth_netdev - K1C net device
  * @netdev: net device
@@ -86,7 +96,6 @@ struct k1c_eth_ring {
  * @napi: napi struct
  * @node: node in k1c_eth_dev list
  * @rx_ring: RX buffer ring (may need 2 chans for rx_split feature)
- * @completed_rx: number of completed RX
  * @rx_buffer_len: RX buffer length
  * @tx_ring: TX buffer ring
  * @stats: hardware statistics
@@ -99,10 +108,10 @@ struct k1c_eth_netdev {
 	struct device_node *phy_node;
 	phy_interface_t phy_mode;
 	struct k1c_eth_lane_cfg cfg;
+	struct k1c_dma_config dma_cfg;
 	struct napi_struct napi;
 	struct list_head node;
 	struct k1c_eth_ring rx_ring;
-	atomic_t completed_rx;
 	u16    rx_buffer_len;
 	struct k1c_eth_ring tx_ring;
 	struct k1c_eth_hw_stats stats;
