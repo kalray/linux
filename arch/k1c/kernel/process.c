@@ -19,6 +19,12 @@
 #include <asm/uaccess.h>
 #include <asm/hw_breakpoint.h>
 
+#if defined(CONFIG_STACKPROTECTOR)
+#include <linux/stackprotector.h>
+unsigned long __stack_chk_guard __read_mostly;
+EXPORT_SYMBOL(__stack_chk_guard);
+#endif
+
 #define SCALL_NUM_EXIT	"0xfff"
 
 void arch_cpu_idle(void)
