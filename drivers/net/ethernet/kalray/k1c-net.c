@@ -678,7 +678,7 @@ static int k1c_eth_set_mac_addr(struct net_device *netdev, void *p)
 		return -EADDRNOTAVAIL;
 
 	memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
-	memcpy(ndev->cfg.mac_addr, addr->sa_data, netdev->addr_len);
+	memcpy(ndev->cfg.mac_f.addr, addr->sa_data, netdev->addr_len);
 
 	k1c_mac_set_addr(ndev->hw, &ndev->cfg);
 
@@ -1004,6 +1004,7 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	ndev->dev = &pdev->dev;
 	ndev->netdev = netdev;
 	ndev->hw = &dev->hw;
+	ndev->cfg.hw = ndev->hw;
 
 	ret = k1c_eth_parse_dt(pdev, ndev);
 	if (ret)
@@ -1012,7 +1013,7 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	netif_napi_add(netdev, &ndev->napi,
 		       k1c_eth_netdev_poll, NAPI_POLL_WEIGHT);
 	eth_hw_addr_random(netdev);
-	memcpy(ndev->cfg.mac_addr, netdev->dev_addr, ETH_ALEN);
+	memcpy(ndev->cfg.mac_f.addr, netdev->dev_addr, ETH_ALEN);
 	/* As of now keep tx_fifo = lane_id -> needs to be updated */
 	ndev->cfg.tx_fifo = ndev->cfg.id % TX_FIFO_NB;
 
@@ -1103,9 +1104,15 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 
 	k1c_mac_set_addr(&dev->hw, &ndev->cfg);
 	k1c_eth_tx_set_default(&ndev->cfg);
-	k1c_eth_lb_init_default_rr(&dev->hw, &ndev->cfg,
+	k1c_eth_lb_set_default(&dev->hw, &ndev->cfg);
+	k1c_eth_lb_f_cfg(&dev->hw, &ndev->cfg);
+	k1c_eth_dispatch_table_cfg(&dev->hw, &ndev->cfg,
 				   ndev->dma_cfg.rx_chan_id.start);
-	k1c_eth_tx_init(&dev->hw, &ndev->cfg);
+	k1c_eth_tx_f_cfg(&dev->hw, &ndev->cfg);
+
+	ret = k1c_eth_sysfs_init(ndev);
+	if (ret)
+		netdev_warn(ndev->netdev, "Failed to initialize sysfs\n");
 
 	dev_err(&pdev->dev, "K1C netdev[%d] probed\n", ndev->cfg.id);
 
@@ -1127,6 +1134,7 @@ static int k1c_netdev_remove(struct platform_device *pdev)
 {
 	struct k1c_eth_netdev *ndev = platform_get_drvdata(pdev);
 
+	k1c_eth_sysfs_remove(ndev);
 	k1c_eth_free_netdev(ndev);
 	dmaengine_put();
 
