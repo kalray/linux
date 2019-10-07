@@ -70,7 +70,7 @@ void k1c_mac_set_addr(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	/* PMAC */
-	a = &cfg->mac_addr[0];
+	a = &cfg->mac_f.addr[0];
 	val = (u32)a[2] << 24 | (u32)a[3] << 16 | (u32)a[4] << 8 | (u32)a[5];
 	k1c_mac_writel(hw, val, off + PMAC_MAC_ADDR_0_OFFSET);
 	k1c_mac_writel(hw, val, off + EMAC_MAC_ADDR_0_OFFSET);
