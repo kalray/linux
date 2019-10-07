@@ -1105,6 +1105,7 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 	k1c_mac_set_addr(&dev->hw, &ndev->cfg);
 	k1c_eth_tx_set_default(&ndev->cfg);
 	k1c_eth_lb_set_default(&dev->hw, &ndev->cfg);
+	k1c_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
 	k1c_eth_lb_f_cfg(&dev->hw, &ndev->cfg);
 	k1c_eth_dispatch_table_cfg(&dev->hw, &ndev->cfg,
 				   ndev->dma_cfg.rx_chan_id.start);
