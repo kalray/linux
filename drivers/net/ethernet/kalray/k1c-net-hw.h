@@ -20,6 +20,7 @@
 #define K1C_ETH_DISPATCH_TABLE_IDX (128)
 
 #define REG(b, o) pr_info("%-50s: @0x%lx - 0x%lx\n", #o, (u32)o, readl(b + o))
+#define K1C_ETH_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
 
 #define K1C_ETH_SETF(val, field) (((val) << field ## _SHIFT) & (field ## _MASK))
 #define K1C_ETH_GETF(reg, field) (((reg) & field ## _MASK) >> (field ## _SHIFT))
@@ -85,21 +86,21 @@ struct k1c_eth_lb_f {
 };
 
 /**
- * struct k1c_eth_pfc_class_f - Hardware PFC class
+ * struct k1c_eth_cl_f - Hardware PFC classes
  * @alert_release_level: Max bytes before sending XON for this class
  * @drop_level: Max bytes before dropping packets for this class
  * @alert_level: Max bytes before sending XOFF request for this class
- * @pfc_en: is PFC enabled for this class
+ * @pfc_ena: is PFC enabled for this class
  * @id: PFC class identifier
  * @kobj: kobject for sysfs
+ * @cfg: pointer to the parent cfg structure
  */
-struct k1c_eth_pfc_class_f {
+struct k1c_eth_cl_f {
 	struct kobject kobj;
-	int alert_release_level;
+	int release_level;
 	int drop_level;
 	int alert_level;
-	int pfc_en;
-	unsigned int id;
+	int pfc_ena;
 };
 
 /**
@@ -111,9 +112,11 @@ struct k1c_eth_pfc_class_f {
  */
 struct k1c_eth_pfc_f {
 	struct kobject kobj;
-	int global_alert_release_level;
+	int global_release_level;
 	int global_drop_level;
 	int global_alert_level;
+	u8 global_pfc_en;
+	u8 global_pause_en;
 };
 
 /**
@@ -124,8 +127,8 @@ struct k1c_eth_pfc_f {
  * @drop_en: Allow dropping pkt if tx fifo full
  * @nocx_en: Enable NoC extension
  * @nocx_pack_en: Enables NoCX bandwidth optimization (only if nocx_en)
- * @pfc_en: Enable PFC
- * @pause_en: Enable pause
+ * @pfc_en: Enable global PFC
+ * @pause_en: Enable global pause
  * @rr_trigger: Max number of consecutive ethernet pkts that tx fifo can send
  *              when winning round-robin arbitration (0 means 16 pkts).
  */
@@ -175,8 +178,8 @@ struct k1c_eth_lane_cfg {
 	struct k1c_eth_hw *hw;
 	struct k1c_eth_lb_f lb_f;
 	struct k1c_eth_tx_f tx_f;
-	struct k1c_eth_pfc_f pfc;
-	struct k1c_eth_pfc_class_f cl[K1C_ETH_PFC_CLASS_NB];
+	struct k1c_eth_pfc_f pfc_f;
+	struct k1c_eth_cl_f cl_f[K1C_ETH_PFC_CLASS_NB];
 	struct k1c_eth_mac_f mac_f;
 };
 
@@ -306,6 +309,10 @@ void k1c_eth_lb_dump_status(struct k1c_eth_hw *hw, int lane_id);
 void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
 				struct k1c_eth_lane_cfg *cfg, u32 rx_tag);
+void k1c_eth_pfc_f_set_default(struct k1c_eth_hw *hw,
+			       struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_pfc_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_cl_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 
 /* TX */
 void k1c_eth_tx_set_default(struct k1c_eth_lane_cfg *cfg);
@@ -316,5 +323,6 @@ u32  k1c_eth_tx_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 /* STATS */
 void k1c_eth_update_stats64(struct k1c_eth_hw *hw, int lane_id,
 			    struct k1c_eth_hw_stats *stats);
+
 
 #endif // K1C_NET_HW_H

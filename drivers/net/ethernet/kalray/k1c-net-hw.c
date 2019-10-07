@@ -120,6 +120,109 @@ int k1c_eth_utils_get_rr_target(struct k1c_eth_hw *hw, int lane,
 	return 0;
 }
 
+void k1c_eth_pfc_f_set_default(struct k1c_eth_hw *hw,
+			       struct k1c_eth_lane_cfg *cfg)
+{
+	int i = 0;
+	int cl_offset, off = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
+		cfg->id * RX_PFC_LANE_ELEM_SIZE;
+
+	memset(&cfg->pfc_f, 0, sizeof(cfg->pfc_f));
+	cfg->pfc_f.global_drop_level = k1c_eth_readl(hw, off +
+				RX_PFC_LANE_GLOBAL_DROP_LEVEL_OFFSET);
+
+	cfg->pfc_f.global_alert_level = k1c_eth_readl(hw, off +
+				RX_PFC_LANE_GLOBAL_ALERT_LEVEL_OFFSET);
+
+	for (i = 0; i < K1C_ETH_PFC_CLASS_NB; ++i) {
+		cl_offset = off + RX_PFC_LANE_CLASS_OFFSET +
+			i * RX_PFC_LANE_CLASS_ELEM_SIZE;
+
+		memset(&cfg->cl_f[i], 0, sizeof(cfg->cl_f[i]));
+		cfg->cl_f[i].release_level = k1c_eth_readl(hw, cl_offset +
+					RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
+		cfg->cl_f[i].drop_level = k1c_eth_readl(hw, cl_offset +
+					RX_PFC_LANE_CLASS_DROP_LEVEL_OFFSET);
+		cfg->cl_f[i].alert_level = k1c_eth_readl(hw, cl_offset +
+					RX_PFC_LANE_CLASS_ALERT_LEVEL_OFFSET);
+	}
+}
+
+void k1c_eth_cl_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	int offset = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
+		cfg->id * RX_PFC_LANE_ELEM_SIZE;
+	int cl_offset = 0;
+	u32 v = 0;
+	int i = 0;
+
+	for (i = 0; i < K1C_ETH_PFC_CLASS_NB; ++i) {
+		cl_offset = offset + RX_PFC_LANE_CLASS_OFFSET +
+			i * RX_PFC_LANE_CLASS_ELEM_SIZE;
+
+		v = K1C_ETH_SETF(cfg->cl_f[i].release_level,
+				 RX_PFC_LANE_CLASS_RELEASE_LEVEL);
+		k1c_eth_writel(hw, v, cl_offset +
+			       RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
+
+		v = K1C_ETH_SETF(cfg->cl_f[i].drop_level,
+				    RX_PFC_LANE_CLASS_DROP_LEVEL);
+		k1c_eth_writel(hw, v, cl_offset +
+			       RX_PFC_LANE_CLASS_DROP_LEVEL_OFFSET);
+
+		v = K1C_ETH_SETF(cfg->cl_f[i].alert_level,
+				    RX_PFC_LANE_CLASS_ALERT_LEVEL);
+		k1c_eth_writel(hw, v, cl_offset +
+			       RX_PFC_LANE_CLASS_ALERT_LEVEL_OFFSET);
+
+		v = k1c_eth_readl(hw, offset + RX_PFC_LANE_CTRL_OFFSET);
+		if (cfg->cl_f[i].pfc_ena)
+			set_bit(RX_PFC_LANE_CTRL_EN_SHIFT + i, (void *)&v);
+		else
+			clear_bit(RX_PFC_LANE_CTRL_EN_SHIFT + i, (void *)&v);
+		k1c_eth_writel(hw, v, offset + RX_PFC_LANE_CTRL_OFFSET);
+	}
+}
+
+void k1c_eth_pfc_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	int off = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
+		cfg->id * RX_PFC_LANE_ELEM_SIZE;
+	u32 v;
+	void *vv;
+
+	v = K1C_ETH_SETF(cfg->pfc_f.global_release_level,
+			   RX_PFC_LANE_GLOBAL_RELEASE_LEVEL);
+	k1c_eth_writel(hw, v, off + RX_PFC_LANE_GLOBAL_RELEASE_LEVEL_OFFSET);
+
+	v = K1C_ETH_SETF(cfg->pfc_f.global_drop_level,
+			   RX_PFC_LANE_GLOBAL_DROP_LEVEL);
+	k1c_eth_writel(hw, v, off + RX_PFC_LANE_GLOBAL_DROP_LEVEL_OFFSET);
+
+	v = K1C_ETH_SETF(cfg->pfc_f.global_alert_level,
+			   RX_PFC_LANE_GLOBAL_ALERT_LEVEL);
+	k1c_eth_writel(hw, v, off + RX_PFC_LANE_GLOBAL_ALERT_LEVEL_OFFSET);
+
+	v = k1c_eth_readl(hw, off + RX_PFC_LANE_CTRL_OFFSET);
+	vv = (void *)&v;
+	if (cfg->pfc_f.global_pfc_en)
+		if (test_bit(RX_PFC_LANE_CTRL_GLOBAL_PAUSE_EN_SHIFT, vv))
+			dev_err(hw->dev, "Can't enable global pfc with global pause set\n");
+		else
+			set_bit(RX_PFC_LANE_CTRL_GLOBAL_PFC_EN_SHIFT, vv);
+	else
+		clear_bit(RX_PFC_LANE_CTRL_GLOBAL_PFC_EN_SHIFT, vv);
+
+	if (cfg->pfc_f.global_pause_en)
+		if (test_bit(RX_PFC_LANE_CTRL_GLOBAL_PFC_EN_SHIFT, vv))
+			dev_err(hw->dev, "Can't enable global pause with global pfc set\n");
+		else
+			set_bit(RX_PFC_LANE_CTRL_GLOBAL_PAUSE_EN_SHIFT, vv);
+	else
+		clear_bit(RX_PFC_LANE_CTRL_GLOBAL_PAUSE_EN_SHIFT, vv);
+	k1c_eth_writel(hw, v, off + RX_PFC_LANE_CTRL_OFFSET);
+}
+
 void k1c_eth_lb_set_default(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
 	int i, l = cfg->id;
@@ -156,6 +259,9 @@ void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 	reg |= K1C_ETH_SETF(cfg->lb_f.add_header, RX_LB_CTRL_ADD_HEADER);
 	reg |= K1C_ETH_SETF(cfg->lb_f.add_footer, RX_LB_CTRL_ADD_FOOTER);
 	k1c_eth_writel(hw, reg, RX_LB_CTRL(lane));
+
+	k1c_eth_pfc_f_cfg(hw, cfg);
+	k1c_eth_cl_f_cfg(hw, cfg);
 }
 
 void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
