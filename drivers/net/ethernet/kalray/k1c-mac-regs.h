@@ -111,6 +111,10 @@
 #define EMAC_TX_FIFO_SECTIONS_OFFSET               0x120
 #define EMAC_TX_FIFO_SECTION_FULL_SHIFT            0x0
 #define EMAC_TX_FIFO_SECTION_FULL_MASK             0x1FUL
+#define EMAC_CMD_CFG_PAUSE_FWD_SHIFT               0x7
+#define EMAC_CMD_CFG_PAUSE_FWD_MASK                0x80UL
+#define EMAC_CMD_CFG_PAUSE_IGNORE_SHIFT            0x8
+#define EMAC_CMD_CFG_PAUSE_IGNORE_MASK             0x100UL
 
 /* PMAC */
 #define PMAC_CMD_CFG_OFFSET                        0x8
@@ -142,6 +146,12 @@
 #define PMAC_TX_FIFO_SECTIONS_OFFSET               0x20
 #define PMAC_TX_FIFO_SECTION_FULL_SHIFT            0x0
 #define PMAC_TX_FIFO_SECTION_FULL_MASK             0x1FUL
+#define PMAC_CMD_CFG_PFC_MODE_SHIFT                0x13
+#define PMAC_CMD_CFG_PFC_MODE_MASK                 0x80000UL
+#define PMAC_CMD_CFG_PAUSE_IGNORE_SHIFT            0x8
+#define PMAC_CMD_CFG_PAUSE_IGNORE_MASK             0x100UL
+#define PMAC_CMD_CFG_PAUSE_FWD_SHIFT               0x7
+#define PMAC_CMD_CFG_PAUSE_FWD_MASK                0x80UL
 
 /* STATS64 */
 #define STAT64_OFFSET                              0x8000
@@ -149,5 +159,6 @@
 #define STAT64_RX_ELEM_SIZE                        0x200
 #define STAT64_TX_OFFSET                           0x800
 #define STAT64_TX_ELEM_SIZE                        0x200
+
 
 #endif /* ASM_K1C_MAC_REGS_H */
