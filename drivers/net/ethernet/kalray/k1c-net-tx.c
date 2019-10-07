@@ -40,16 +40,15 @@ void k1c_eth_tx_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 
 void k1c_eth_tx_set_default(struct k1c_eth_lane_cfg *cfg)
 {
-	struct k1c_eth_tx_features *f = &cfg->tx_f;
+	struct k1c_eth_tx_f *f = &cfg->tx_f;
 
 	memset(f, 0, sizeof(*f));
 	f->lane_id = cfg->id;
-	f->global = 0;
 }
 
-void k1c_eth_tx_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+void k1c_eth_tx_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
-	struct k1c_eth_tx_features *f = &cfg->tx_f;
+	struct k1c_eth_tx_f *f = &cfg->tx_f;
 	u32 off = TX_FIFO(cfg->tx_fifo);
 	u64 src_addr;
 	u32 val = 0;
@@ -74,7 +73,7 @@ void k1c_eth_tx_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 		 hw->asn);
 
 	off = TX_LANE + f->lane_id * TX_LANE_ELEM_SIZE;
-	a = &cfg->mac_addr[0];
+	a = &cfg->mac_f.addr[0];
 	src_addr = (u64)a[5] << 40 | (u64)a[4] << 32 | (u64)a[3] << 24 |
 		(u64)a[2] << 16 | (u64)a[1] << 8 | (u64)a[0];
 	k1c_eth_writeq(hw, src_addr, off + TX_LANE_SA);
