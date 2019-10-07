@@ -26,7 +26,7 @@
 
 enum k1c_eth_io {
 	K1C_ETH0 = 0,
-	K1c_ETH1
+	K1C_ETH1
 };
 
 enum k1c_eth_resource {
@@ -48,36 +48,88 @@ struct k1c_eth_res {
 	void __iomem *base;
 };
 
-enum k1c_eth_default_dispatch_policy {
-	K1C_ETH_DEFAULT_DROP = 0x0,
-	K1C_ETH_DEFAULT_ROUND_ROBIN = 0x1,
-	K1C_ETH_DEFAULT_FORWARD = 0x2,
-	K1C_ETH_DEFAULT_NOCX = 0x3,
+enum default_dispatch_policy {
+	DEFAULT_DROP = 0x0,
+	DEFAULT_ROUND_ROBIN = 0x1,
+	DEFAULT_FORWARD = 0x2,
+	DEFAULT_NOCX = 0x3,
+	DEFAULT_DISPATCH_POLICY_NB,
 };
 
-enum k1c_eth_store_and_forward_value {
-	K1C_ETH_LB_CTRL_DATA_TRANSMIT_ONTHEFLY = 0x0,
-	K1C_ETH_LB_CTRL_DATA_STORE_AND_FORWARD = 0x1,
-};
-
-enum k1c_eth_keep_all_crc_error_pkt_value {
-	K1C_ETH_LB_CTRL_DATA_DROP_PKT_CRC_ERROR = 0x0,
-	K1C_ETH_LB_CTRL_DATA_KEEP_PKT_CRC_ERROR = 0x1,
-};
-
-enum k1c_eth_dispatch_policy_value {
-	K1C_ETH_PARSER_DISABLED = 0x0,
-	K1C_ETH_PARSER_ROUND_ROBIN = 0x1,
-	K1C_ETH_PARSER_HASH_LUT = 0x2,
-	K1C_ETH_PARSER_DROP = 0x3,
-	K1C_ETH_PARSER_FORWARD = 0x4,
-	K1C_ETH_PARSER_NOCX = 0x5,
+enum dispatch_policy {
+	PARSER_DISABLED = 0x0,
+	PARSER_ROUND_ROBIN = 0x1,
+	PARSER_HASH_LUT = 0x2,
+	PARSER_DROP = 0x3,
+	PARSER_FORWARD = 0x4,
+	PARSER_NOCX = 0x5,
+	PARSER_POLICY_NB,
 };
 
 /**
- * struct k1c_eth_tx_features
+ * struct k1c_eth_pfc_class_cfg - Hardware PFC class
+ * @alert_release_level: Max bytes before sending XON for this class
+ * @drop_level: Max bytes before dropping packets for this class
+ * @alert_level: Max bytes before sending XOFF request for this class
+ * @pfc_en: is PFC enabled for this class
+ * @id: PFC class identifier
+ * @kobj: kobject for sysfs
  */
-struct k1c_eth_tx_features {
+struct k1c_eth_pfc_class {
+	int alert_release_level;
+	int drop_level;
+	int alert_level;
+	int pfc_en;
+	unsigned int id;
+	struct kobject kobj;
+};
+
+/**
+ * struct k1c_eth_lb_pfc - Hardware PFC controller
+ * @global_alert_release_level: Max bytes before sending XON for every class
+ * @global_drop_level: Max bytes before dropping packets for every class
+ * @global_alert_level: Max bytes before sending XOFF for every class
+ * @kobj: kobject for sysfs
+ */
+struct k1c_eth_lb_pfc {
+	int global_alert_release_level;
+	int global_drop_level;
+	int global_alert_level;
+	struct kobject kobj;
+};
+
+/**
+ * struct k1c_eth_lb - Load balancer features
+ * @kobj: kobject for sysfs
+ * @default_dispatch_policy: Load balancer policy
+ * @store_and_forward: Is store and forward enabled
+ * @keep_all_crc_error_pkt: Keep all received eth pkts including erroneous ones
+ * @add_header: Add metadata to packet header
+ * @add_footer: Add metadata to packet footer
+ */
+struct k1c_eth_lb_f {
+	struct kobject kobj;
+	enum default_dispatch_policy default_dispatch_policy;
+	u8 store_and_forward;
+	u8 keep_all_crc_error_pkt;
+	u8 add_header;
+	u8 add_footer;
+};
+
+/**
+ * struct k1c_eth_tx - TX features
+ * @kobj: kobject for sysfs
+ * @lane_id: Identifier of the current lane
+ * @header_en: Add metadata TX
+ * @drop_en: Allow dropping pkt if tx fifo full
+ * @nocx_en: Enable NoC extension
+ * @nocx_pack_en: Enables NoCX bandwidth optimization (only if nocx_en)
+ * @pfc_en: Enable PFC
+ * @pause_en: Enable pause
+ * @rr_trigger: Max number of consecutive ethernet pkts that tx fifo can send
+ *              when winning round-robin arbitration (0 means 16 pkts).
+ */
+struct k1c_eth_tx_f {
 	struct kobject kobj;
 	u8 lane_id;
 	u8 header_en;
@@ -91,6 +143,16 @@ struct k1c_eth_tx_features {
 };
 
 /**
+ * struct k1c_eth_mac_f - MAC controller features
+ * @addr: MAC address
+ * @loopback_mode: mac loopback mode
+ */
+struct k1c_eth_mac_f {
+	u8 addr[ETH_ALEN];
+	enum k1c_eth_loopback_mode loopback_mode;
+};
+
+/**
  * struct k1c_eth_lane_cfg - Lane configuration
  * @id: lane_id [0, 3]
  * @tx_fifo: TX fifo [0, 9] associated with lane id
@@ -99,6 +161,7 @@ struct k1c_eth_tx_features {
  * @duplex: duplex mode
  * @mac_addr: MAC address
  * @lb_f: Load balancer features
+ * @tx_f: TX features
  */
 struct k1c_eth_lane_cfg {
 	int id;
@@ -106,8 +169,10 @@ struct k1c_eth_lane_cfg {
 	int link;
 	unsigned int speed;
 	unsigned int duplex;
-	u8 mac_addr[ETH_ALEN];
-	struct k1c_eth_tx_features tx_f;
+	struct k1c_eth_hw *hw;
+	struct k1c_eth_lb_f lb_f;
+	struct k1c_eth_tx_f tx_f;
+	struct k1c_eth_mac_f mac_f;
 };
 
 /**
@@ -237,15 +302,15 @@ int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *lane_cfg);
 void k1c_eth_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu);
 u32 k1c_eth_lb_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 u32 k1c_eth_lb_has_footer(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
-void k1c_eth_lb_init_default_rr(struct k1c_eth_hw *hw,
-				struct k1c_eth_lane_cfg *cfg, u32 rx_tag);
 void k1c_eth_lb_dump_status(struct k1c_eth_hw *hw, int lane_id);
-void k1c_eth_lb_set_dispatch_table_entry(struct k1c_eth_hw *hw, u32 table_idx,
-					 u32 rx_tag);
+void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
+				struct k1c_eth_lane_cfg *cfg, u32 rx_tag);
+void k1c_eth_lb_set_default(struct k1c_eth_hw *h, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 
 /* TX */
 void k1c_eth_tx_set_default(struct k1c_eth_lane_cfg *cfg);
-void k1c_eth_tx_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_tx_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_tx_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 u32  k1c_eth_tx_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 
