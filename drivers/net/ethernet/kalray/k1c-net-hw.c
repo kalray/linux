@@ -120,58 +120,68 @@ int k1c_eth_utils_get_rr_target(struct k1c_eth_hw *hw, int lane,
 	return 0;
 }
 
-void k1c_eth_lb_set_dispatch_table_entry(struct k1c_eth_hw *hw, u32 table_idx,
-					 u32 rx_tag)
+void k1c_eth_lb_set_default(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
-	u64 val = 0;
+	int i, l = cfg->id;
 
-	val |= K1C_ETH_SETF(noc_route_eth2c(K1C_ETH0),
-			    RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE);
-	val |= K1C_ETH_SETF((u64)rx_tag, RX_DISPATCH_TABLE_ENTRY_RX_CHAN);
-	val |= K1C_ETH_SETF((u64)hw->vchan, RX_DISPATCH_TABLE_ENTRY_NOC_VCHAN);
-	val |= K1C_ETH_SETF((u64)hw->asn, RX_DISPATCH_TABLE_ENTRY_ASN);
-	val |= K1C_ETH_SETF(0UL, RX_DISPATCH_TABLE_ENTRY_SPLIT_EN);
-	val |= K1C_ETH_SETF(0UL, RX_DISPATCH_TABLE_ENTRY_SPLIT_TRIGGER);
-	k1c_eth_writeq(hw, val, RX_DISPATCH_TABLE_ENTRY(table_idx));
-	dev_dbg(hw->dev, "table_entry[%d]: 0x%llx asn: %d\n",
-		table_idx, val, hw->asn);
-}
-
-void k1c_eth_lb_init_default_rr(struct k1c_eth_hw *hw,
-				struct k1c_eth_lane_cfg *lane_cfg, u32 rx_tag)
-{
-	u32 reg;
-	u32 row = 0, mask = 0; // dispatch line and bitmask
-	int i, lane = lane_cfg->id;
-	int dispatch_table_idx = K1C_ETH_DISPATCH_TABLE_IDX;
+	cfg->lb_f.default_dispatch_policy = DEFAULT_ROUND_ROBIN;
+	cfg->lb_f.store_and_forward = 1;
+	/* 0: Drop, 1: keep all pkt with crc error */
+	cfg->lb_f.keep_all_crc_error_pkt = 0;
+	cfg->lb_f.add_header = 0;
+	cfg->lb_f.add_footer = 1;
 
 	for (i = 0; i < RX_LB_DEFAULT_RULE_LANE_RR_TARGET_ARRAY_SIZE; ++i)
-		k1c_eth_writel(hw, 0,
-			       RX_LB_DEFAULT_RULE_LANE_RR_TARGET(lane, i));
+		k1c_eth_writel(hw, 0, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(l, i));
 	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; ++i)
 		k1c_eth_writeq(hw, 0, RX_DISPATCH_TABLE_ENTRY(i));
+}
+
+void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	int lane = cfg->id;
+	u32 reg;
 
 	reg = k1c_eth_readl(hw, RX_LB_DEFAULT_RULE_LANE_CTRL(lane));
-	reg |=  K1C_ETH_SETF(K1C_ETH_DEFAULT_ROUND_ROBIN,
+	reg |=  K1C_ETH_SETF(cfg->lb_f.default_dispatch_policy,
 			     RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY);
 	k1c_eth_writel(hw, reg, RX_LB_DEFAULT_RULE_LANE_CTRL(lane));
 
 	reg = k1c_eth_readl(hw, RX_LB_CTRL(lane));
 	reg |= K1C_ETH_SETF(hw->max_frame_size, RX_LB_CTRL_MTU_SIZE);
-	reg |= K1C_ETH_SETF(K1C_ETH_LB_CTRL_DATA_STORE_AND_FORWARD,
+	reg |= K1C_ETH_SETF(cfg->lb_f.store_and_forward,
 			    RX_LB_CTRL_STORE_AND_FORWARD);
-	reg |= K1C_ETH_SETF(K1C_ETH_LB_CTRL_DATA_KEEP_PKT_CRC_ERROR,
+	reg |= K1C_ETH_SETF(cfg->lb_f.keep_all_crc_error_pkt,
 			    RX_LB_CTRL_KEEP_ALL_CRC_ERROR_PKT);
-	reg |= K1C_ETH_SETF(0, RX_LB_CTRL_ADD_HEADER);
-	reg |= K1C_ETH_SETF(0, RX_LB_CTRL_ADD_FOOTER);
+	reg |= K1C_ETH_SETF(cfg->lb_f.add_header, RX_LB_CTRL_ADD_HEADER);
+	reg |= K1C_ETH_SETF(cfg->lb_f.add_footer, RX_LB_CTRL_ADD_FOOTER);
 	k1c_eth_writel(hw, reg, RX_LB_CTRL(lane));
+}
+
+void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
+				struct k1c_eth_lane_cfg *cfg, u32 rx_tag)
+{
+	int dispatch_table_idx = K1C_ETH_DISPATCH_TABLE_IDX;
+	u32 row = 0, mask = 0; // dispatch line and bitmask
+	int lane = cfg->id;
+	u64 val = 0;
 
 	// Enable dispatch entry
 	k1c_eth_utils_get_rr_target(hw, lane, dispatch_table_idx, &row, &mask);
 	dev_dbg(hw->dev, "dispatch_table_idx: %d rr_row: %d, rr_mask: 0x%x\n",
 		dispatch_table_idx, row, mask);
 	k1c_eth_writel(hw, mask, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(lane, row));
-	k1c_eth_lb_set_dispatch_table_entry(hw, dispatch_table_idx, rx_tag);
+
+	val = K1C_ETH_SETF(noc_route_eth2c(K1C_ETH0),
+			   RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE);
+	val |= K1C_ETH_SETF((u64)rx_tag, RX_DISPATCH_TABLE_ENTRY_RX_CHAN);
+	val |= K1C_ETH_SETF((u64)hw->vchan, RX_DISPATCH_TABLE_ENTRY_NOC_VCHAN);
+	val |= K1C_ETH_SETF((u64)hw->asn, RX_DISPATCH_TABLE_ENTRY_ASN);
+	val |= K1C_ETH_SETF(0UL, RX_DISPATCH_TABLE_ENTRY_SPLIT_EN);
+	val |= K1C_ETH_SETF(0UL, RX_DISPATCH_TABLE_ENTRY_SPLIT_TRIGGER);
+	k1c_eth_writeq(hw, val, RX_DISPATCH_TABLE_ENTRY(dispatch_table_idx));
+	dev_dbg(hw->dev, "table_entry[%d]: 0x%llx asn: %d\n",
+		dispatch_table_idx, val, hw->asn);
 }
 
 u32 k1c_eth_lb_has_header(struct k1c_eth_hw *hw,
