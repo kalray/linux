@@ -67,39 +67,7 @@ enum dispatch_policy {
 };
 
 /**
- * struct k1c_eth_pfc_class_cfg - Hardware PFC class
- * @alert_release_level: Max bytes before sending XON for this class
- * @drop_level: Max bytes before dropping packets for this class
- * @alert_level: Max bytes before sending XOFF request for this class
- * @pfc_en: is PFC enabled for this class
- * @id: PFC class identifier
- * @kobj: kobject for sysfs
- */
-struct k1c_eth_pfc_class {
-	int alert_release_level;
-	int drop_level;
-	int alert_level;
-	int pfc_en;
-	unsigned int id;
-	struct kobject kobj;
-};
-
-/**
- * struct k1c_eth_lb_pfc - Hardware PFC controller
- * @global_alert_release_level: Max bytes before sending XON for every class
- * @global_drop_level: Max bytes before dropping packets for every class
- * @global_alert_level: Max bytes before sending XOFF for every class
- * @kobj: kobject for sysfs
- */
-struct k1c_eth_lb_pfc {
-	int global_alert_release_level;
-	int global_drop_level;
-	int global_alert_level;
-	struct kobject kobj;
-};
-
-/**
- * struct k1c_eth_lb - Load balancer features
+ * struct k1c_eth_lb_f - Load balancer features
  * @kobj: kobject for sysfs
  * @default_dispatch_policy: Load balancer policy
  * @store_and_forward: Is store and forward enabled
@@ -117,7 +85,39 @@ struct k1c_eth_lb_f {
 };
 
 /**
- * struct k1c_eth_tx - TX features
+ * struct k1c_eth_pfc_class_f - Hardware PFC class
+ * @alert_release_level: Max bytes before sending XON for this class
+ * @drop_level: Max bytes before dropping packets for this class
+ * @alert_level: Max bytes before sending XOFF request for this class
+ * @pfc_en: is PFC enabled for this class
+ * @id: PFC class identifier
+ * @kobj: kobject for sysfs
+ */
+struct k1c_eth_pfc_class_f {
+	struct kobject kobj;
+	int alert_release_level;
+	int drop_level;
+	int alert_level;
+	int pfc_en;
+	unsigned int id;
+};
+
+/**
+ * struct k1c_eth_pfc_f - Hardware PFC controller
+ * @global_alert_release_level: Max bytes before sending XON for every class
+ * @global_drop_level: Max bytes before dropping packets for every class
+ * @global_alert_level: Max bytes before sending XOFF for every class
+ * @kobj: kobject for sysfs
+ */
+struct k1c_eth_pfc_f {
+	struct kobject kobj;
+	int global_alert_release_level;
+	int global_drop_level;
+	int global_alert_level;
+};
+
+/**
+ * struct k1c_eth_tx_f - TX features
  * @kobj: kobject for sysfs
  * @lane_id: Identifier of the current lane
  * @header_en: Add metadata TX
@@ -159,9 +159,12 @@ struct k1c_eth_mac_f {
  * @link: phy link id
  * @speed: phy node speed
  * @duplex: duplex mode
- * @mac_addr: MAC address
+ * @hw: back pointer to hw description
  * @lb_f: Load balancer features
  * @tx_f: TX features
+ * @pfc: Packet Flow Control
+ * @classes: Array of 8 classes
+ * @mac: mac controller
  */
 struct k1c_eth_lane_cfg {
 	int id;
@@ -172,6 +175,8 @@ struct k1c_eth_lane_cfg {
 	struct k1c_eth_hw *hw;
 	struct k1c_eth_lb_f lb_f;
 	struct k1c_eth_tx_f tx_f;
+	struct k1c_eth_pfc_f pfc;
+	struct k1c_eth_pfc_class_f cl[K1C_ETH_PFC_CLASS_NB];
 	struct k1c_eth_mac_f mac_f;
 };
 
@@ -182,10 +187,7 @@ struct k1c_eth_lane_cfg {
  * @asn: device ASN
  * @vchan: dma-noc vchan (MUST be different of the one used by l2-cache)
  * @max_frame_size: current mtu for mac
- * @loopback_mode: mac loopback mode
- * @fec_en: FEC enable
- * @pause_en: RX pause enable
- * @pfc_en: RX PFC enable
+ * @fec_en: Forward Error Correction enabled
  */
 struct k1c_eth_hw {
 	struct device *dev;
@@ -193,10 +195,7 @@ struct k1c_eth_hw {
 	u32 asn;
 	u32 vchan;
 	u32 max_frame_size;
-	u16 loopback_mode;
 	u16 fec_en;
-	u16 pause_en;
-	u16 pfc_en;
 };
 
 struct k1c_eth_hw_rx_stats {
@@ -302,11 +301,11 @@ int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *lane_cfg);
 void k1c_eth_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu);
 u32 k1c_eth_lb_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 u32 k1c_eth_lb_has_footer(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_lb_set_default(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *c);
 void k1c_eth_lb_dump_status(struct k1c_eth_hw *hw, int lane_id);
+void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
 				struct k1c_eth_lane_cfg *cfg, u32 rx_tag);
-void k1c_eth_lb_set_default(struct k1c_eth_hw *h, struct k1c_eth_lane_cfg *cfg);
-void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 
 /* TX */
 void k1c_eth_tx_set_default(struct k1c_eth_lane_cfg *cfg);
