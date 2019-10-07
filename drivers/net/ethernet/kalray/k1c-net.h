@@ -127,4 +127,7 @@ void k1c_eth_up(struct net_device *netdev);
 void k1c_eth_down(struct net_device *netdev);
 void k1c_set_ethtool_ops(struct net_device *netdev);
 
+int k1c_eth_sysfs_init(struct k1c_eth_netdev *ndev);
+void k1c_eth_sysfs_remove(struct k1c_eth_netdev *ndev);
+
 #endif /* K1C_NET_H */
