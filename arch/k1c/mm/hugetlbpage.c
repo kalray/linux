@@ -104,8 +104,11 @@ pte_t *huge_pte_alloc(struct mm_struct *mm,
 	if (pgd_present(*pgd)) {
 		pud = pud_offset(pgd, addr);
 		if (pud_present(*pud))
-			pmd = pmd_alloc(mm, (pud_t *)pgd, addr);
+			pmd = pmd_alloc(mm, pud, addr);
 	}
+
+	if (size > K1C_PAGE_64K_SIZE)
+		return (pte_t *)pmd;
 
 	return pmd ? pte_alloc_map(mm, pmd, addr) : NULL;
 }
