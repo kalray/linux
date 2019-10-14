@@ -48,6 +48,18 @@ static struct k1c_dma_desc *k1c_dma_next_desc(struct k1c_dma_chan *c)
 }
 
 /**
+ * k1c_dma_is_chan_rx_eth() - Check if chan RX MEM2ETH
+ * @c: Channel to be checked
+ *
+ * Return: != 0 if chan RX MEM2ETH
+ */
+static int k1c_dma_is_chan_rx_eth(struct k1c_dma_chan *c)
+{
+	return (c->cfg.dir == K1C_DMA_DIR_TYPE_RX &&
+		c->cfg.trans_type == K1C_DMA_TYPE_MEM2ETH);
+}
+
+/**
  * k1c_dma_start_sg_mem2mem() - Push a memcpy transfer
  * @desc: the job descriptor to start
  *
@@ -286,6 +298,10 @@ static void k1c_dma_check_complete(struct k1c_dma_dev *dev,
 			hw_job = rhashtable_lookup_fast(&c->rhtb, &pkt.base,
 							rhtb_params);
 			if (!hw_job) {
+				/* This happens if 2 channels push into the same
+				 * rx_cache. Completion queue may use one buffer
+				 * from another channel !
+				 */
 				dev_err(d, "%s Unable to lookup pkt (0x%llx)\n",
 					__func__, pkt.base);
 				break;
@@ -893,6 +909,7 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 	struct scatterlist *sgent;
 	unsigned long flags;
 	enum k1c_dma_dir_type dir = c->cfg.dir;
+	enum k1c_dma_transfer_type type = c->cfg.trans_type;
 	int i = 0, ret = 0;
 
 	if (sg_len > K1C_DMA_MAX_TXD) {
@@ -913,10 +930,19 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 		return NULL;
 	}
 
-	if (dir == K1C_DMA_DIR_TYPE_RX &&
-	    c->cfg.trans_type == K1C_DMA_TYPE_MEM2NOC) {
-		if (sg_len > 1) {
-			dev_err(dev, "Only one buffer per channel allowed for NOC RX channels\n");
+	if (dir == K1C_DMA_DIR_TYPE_RX) {
+		if (sg_len > 1 && (type == K1C_DMA_TYPE_MEM2NOC ||
+				   type == K1C_DMA_TYPE_MEM2ETH)) {
+			/* sg_len limited to 1 for RX eth/noc 1 desc == 1 hw_job
+			 * Rx completion can not be handled else
+			 */
+			dev_err(dev, "SG len > 1 NOT supported\n");
+			return NULL;
+		}
+		if (type == K1C_DMA_TYPE_MEM2ETH &&
+		    c->cfg.rx_cache_id >= K1C_DMA_RX_JOB_CACHE_NUMBER) {
+			dev_err(dev, "Config failed rx_cache_id %d >= %d\n)",
+			   c->cfg.rx_cache_id, K1C_DMA_RX_JOB_CACHE_NUMBER);
 			return NULL;
 		}
 	}
@@ -951,9 +977,6 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 		}
 	}
 
-	if (c->phy->rx_cache_id != c->cfg.rx_cache_id)
-		dev_warn(dev, "RX cache_id mismatch!\n");
-
 	desc->dir = direction;
 	if (desc->dir == DMA_MEM_TO_DEV) {
 		if (k1c_dma_setup_route(c, desc))
@@ -978,8 +1001,7 @@ static struct dma_async_tx_descriptor *k1c_dma_prep_slave_sg(
 		txd->nb = 1;
 		txd->comp_q_id = desc->phy->hw_id;
 		txd->route_id = desc->route_id;
-		if (c->phy->dir == K1C_DMA_DIR_TYPE_RX &&
-		    c->cfg.trans_type == K1C_DMA_TYPE_MEM2ETH) {
+		if (k1c_dma_is_chan_rx_eth(c)) {
 			ret = rhashtable_lookup_insert_fast(&c->rhtb,
 							    &hw_job->rnode,
 							    rhtb_params);
