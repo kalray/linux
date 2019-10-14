@@ -278,7 +278,7 @@ static int k1c_dma_pkt_rx_channel_queue_init(struct k1c_dma_phy *phy)
 	k1c_dma_q_writeq_relaxed(phy, 0, K1C_DMA_RX_CHAN_BUF_SIZE_OFFSET);
 
 	k1c_dma_q_writeq_relaxed(phy, K1C_DMA_RX_COMP_Q_CFG_EN_MASK |
-		(K1C_DMA_CACHE_ID << K1C_DMA_RX_COMP_Q_CFG_FIELD_SEL_SHIFT),
+		(phy->rx_cache_id << K1C_DMA_RX_COMP_Q_CFG_FIELD_SEL_SHIFT),
 		K1C_DMA_RX_CHAN_JOB_Q_CFG_OFFSET);
 	k1c_dma_q_writeq_relaxed(phy, 0, K1C_DMA_RX_CHAN_CUR_OFFSET);
 	k1c_dma_q_writeq_relaxed(phy, 0, K1C_DMA_RX_CHAN_BYTE_CNT_OFFSET);
@@ -349,7 +349,7 @@ int k1c_dma_pkt_rx_job_queue_init(struct k1c_dma_phy *phy)
 			K1C_DMA_RX_JOB_Q_NOTIF_ARG_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, K1C_DMA_RX_Q_ENABLE,
 			K1C_DMA_RX_JOB_Q_NOTIF_MODE_OFFSET);
-	k1c_dma_jobq_writeq_relaxed(phy, K1C_DMA_CACHE_ID,
+	k1c_dma_jobq_writeq_relaxed(phy, phy->rx_cache_id,
 			K1C_DMA_RX_JOB_Q_CACHE_ID_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, phy->asn, K1C_DMA_RX_JOB_Q_ASN_OFFSET);
 	/* Activate once configuration is done and commited in memory */
