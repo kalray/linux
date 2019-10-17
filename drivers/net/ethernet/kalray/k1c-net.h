@@ -90,8 +90,7 @@ struct k1c_dma_config {
  * @netdev: net device
  * @dev: device
  * @hw: pointer to hw resources
- * @phy_node: linked phy
- * @phy_mode: mode
+ * @phy: phy pointer
  * @cfg: lane config parameters
  * @napi: napi struct
  * @node: node in k1c_eth_dev list
@@ -105,8 +104,7 @@ struct k1c_eth_netdev {
 	struct device *dev;
 	struct k1c_eth_hw *hw;
 	/* Connection to PHY device */
-	struct device_node *phy_node;
-	phy_interface_t phy_mode;
+	struct phy_device *phy;
 	struct k1c_eth_lane_cfg cfg;
 	struct k1c_dma_config dma_cfg;
 	struct napi_struct napi;
