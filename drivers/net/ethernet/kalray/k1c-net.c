@@ -85,14 +85,8 @@ static void k1c_eth_link_change(struct net_device *netdev)
 static int k1c_eth_netdev_open(struct net_device *netdev)
 {
 	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
-	struct phy_device *phy;
 
-	phy = of_phy_connect(netdev, ndev->phy_node,
-			     &k1c_eth_link_change, 0, ndev->phy_mode);
-	if (!phy)
-		return -ENODEV;
-
-	phy_start(phy);
+	phy_start(ndev->phy);
 
 	k1c_eth_up(netdev);
 	return 0;
@@ -893,10 +887,9 @@ void k1c_eth_release_tx_res(struct net_device *netdev)
  */
 int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 {
-	struct device_node *np = pdev->dev.of_node;
-	struct device_node *np_dma, *np_phy;
 	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
-	phy_interface_t phy_mode;
+	struct device_node *np = pdev->dev.of_node;
+	struct device_node *np_dma;
 	int ret = 0;
 
 	np_dma = of_parse_phandle(np, "dmas", 0);
@@ -952,28 +945,12 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 		return -EINVAL;
 	}
 
-	np_phy = of_parse_phandle(np, "phy-handle", 0);
-	if (!np_phy) {
-		dev_err(&pdev->dev, "Phy node not defined\n");
+	ndev->phy = of_phy_get_and_connect(ndev->netdev, np,
+					   k1c_eth_link_change);
+	if (!ndev->phy) {
+		dev_err(ndev->dev, "Unable to get phy\n");
 		return -EINVAL;
 	}
-	if (of_phy_is_fixed_link(np_phy)) {
-		ret = of_phy_register_fixed_link(np_phy);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "Broken fixed-link specification\n");
-			return ret;
-		}
-	}
-
-	phy_mode = of_get_phy_mode(np_phy);
-	if (phy_mode < 0) {
-		dev_err(&pdev->dev, "\"phy-mode\" property not found\n");
-		return -EINVAL;
-	}
-
-	of_property_read_u32(np_phy, "reg", &ndev->cfg.id);
-	ndev->phy_node = np_phy;
-	ndev->phy_mode = phy_mode;
 
 	return 0;
 }
@@ -990,13 +967,15 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 {
 	struct k1c_eth_netdev *ndev;
 	struct net_device *netdev;
-	int ret = 0;
+	int ret, i = 0;
+	struct list_head *n;
 
 	netdev = alloc_etherdev(sizeof(struct k1c_eth_netdev));
 	if (!netdev) {
 		dev_err(&pdev->dev, "Failed to alloc netdev\n");
 		return NULL;
 	}
+	SET_NETDEV_DEV(netdev, &pdev->dev);
 	ndev = netdev_priv(netdev);
 	memset(ndev, 0, sizeof(*ndev));
 	netdev->netdev_ops = &k1c_eth_netdev_ops;
@@ -1035,7 +1014,9 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 		goto err;
 	}
 
-	SET_NETDEV_DEV(netdev, &pdev->dev);
+	list_for_each(n, &dev->list)
+		i++;
+	ndev->cfg.id = i;
 	/* Populate list of netdev */
 	INIT_LIST_HEAD(&ndev->node);
 	list_add(&ndev->node, &dev->list);
