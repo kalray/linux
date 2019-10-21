@@ -50,6 +50,7 @@ SECTIONS
 	.boot :
 	{
 		KEEP(*(.boot.startup));
+		KEEP(*(.boot.*));
 	}
 
 	/**
