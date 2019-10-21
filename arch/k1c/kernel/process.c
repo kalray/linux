@@ -10,6 +10,7 @@
 #include <linux/sched.h>
 #include <linux/ptrace.h>
 #include <linux/printk.h>
+#include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
 #include <linux/hw_breakpoint.h>
 
@@ -17,6 +18,7 @@
 #include <asm/processor.h>
 #include <asm/ptrace.h>
 #include <asm/uaccess.h>
+#include <asm/stacktrace.h>
 #include <asm/hw_breakpoint.h>
 
 #if defined(CONFIG_STACKPROTECTOR)
@@ -193,3 +195,49 @@ void machine_restart(char *cmd)
 
 void (*pm_power_off)(void) = machine_power_off;
 EXPORT_SYMBOL(pm_power_off);
+
+static bool find_wchan(unsigned long pc, void *arg)
+{
+	unsigned long *p = arg;
+
+	/*
+	 * If the pc is in a scheduler function (waiting), then, this is the
+	 * address where the process is currently stuck. Note that scheduler
+	 * functions also include lock functions. This functions are
+	 * materialized using annotation to put them is special text sections.
+	 */
+	if (!in_sched_functions(pc)) {
+		*p = pc;
+		return true;
+	}
+
+	return false;
+}
+
+/*
+ * get_wchan is called to obtain "schedule()" caller function address.
+ */
+unsigned long get_wchan(struct task_struct *p)
+{
+	unsigned long pc = 0;
+	struct stackframe frame;
+
+	if (!p || p == current || p->state == TASK_RUNNING)
+		return 0;
+
+	/*
+	 * We need to obtain the task stack since we don't want the stack to
+	 * move under our feet.
+	 */
+	if (!try_get_task_stack(p))
+		return 0;
+
+	start_stackframe(&frame, thread_saved_reg(p, fp),
+			 thread_saved_reg(p, ra));
+	walk_stackframe(p, &frame, find_wchan, &pc);
+
+	put_task_stack(p);
+
+	return pc;
+}
+
