@@ -22,6 +22,9 @@ void k1c_pwr_ctrl_cpu_poweron(unsigned int cpu);
 #define K1C_PWR_CTRL_VEC_OFFSET 0x1000
 #define K1C_PWR_CTRL_VEC_WUP_SET_OFFSET     0x10
 
+/* Power controller PE reset PC register definitions */
+#define K1C_PWR_CTRL_RESET_PC_OFFSET               0x2000
+
 /* Power controller global register definitions */
 #define K1C_PWR_CTRL_GLOBAL_OFFSET 0x4040
 #define K1C_PWR_CTRL_GLOBAL_SET_OFFSET     0x10
