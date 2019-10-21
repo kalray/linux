@@ -11,10 +11,15 @@
 
 #include <linux/types.h>
 
-extern void __iomem *ioremap(phys_addr_t offset, unsigned long size);
+#include <asm/page.h>
+#include <asm/pgtable.h>
+
+extern void __iomem *__ioremap(phys_addr_t offset, unsigned long size,
+			       pgprot_t prot);
 extern void iounmap(volatile void __iomem *addr);
 
-#define ioremap_nocache(addr, size) ioremap((addr), (size))
+#define ioremap(addr, size)		__ioremap((addr), (size), PAGE_DEVICE)
+#define ioremap_nocache(addr, size)	__ioremap((addr), (size), PAGE_KERNEL_NOCACHE)
 
 #include <asm-generic/io.h>
 
