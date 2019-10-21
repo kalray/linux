@@ -15,6 +15,7 @@
  * ioremap - map bus memory into CPU space
  * @addr: bus address of the memory
  * @size: size of the resource to map
+ * @pgprot: page protection policy
  *
  * ioremap performs a platform specific sequence of operations to
  * make bus memory CPU accessible via the readb/readw/readl/writeb/
@@ -24,7 +25,7 @@
  *
  * Must be freed with iounmap.
  */
-void __iomem *ioremap(phys_addr_t addr, unsigned long size)
+void __iomem *__ioremap(phys_addr_t addr, unsigned long size, pgprot_t prot)
 {
 	phys_addr_t last_addr;
 	unsigned long vaddr;
@@ -48,14 +49,14 @@ void __iomem *ioremap(phys_addr_t addr, unsigned long size)
 
 	vaddr = (unsigned long)area->addr;
 
-	if (ioremap_page_range(vaddr, vaddr + size, addr, PAGE_DEVICE)) {
+	if (ioremap_page_range(vaddr, vaddr + size, addr, prot)) {
 		free_vm_area(area);
 		return NULL;
 	}
 
 	return (void __iomem *)(vaddr + offset);
 }
-EXPORT_SYMBOL(ioremap);
+EXPORT_SYMBOL(__ioremap);
 
 
 /**
