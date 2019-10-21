@@ -15,6 +15,7 @@
 #include <asm/mem_map.h>
 #include <asm/rm_fw.h>
 #include <asm/setup.h>
+#include <asm/page.h>
 
 #include <linux/linkage.h>
 #include <linux/init.h>
@@ -130,6 +131,13 @@
 	tlbwrite
 .endm
 
+/* Boot args */
+#define BOOT_ARGS_COUNT	4
+.align 32
+.section .boot.data, "aw", @progbits
+rm_boot_args:
+.skip BOOT_ARGS_COUNT * 8
+
 /*
  * This is our entry point. When entering from bootloader,
  * the following registers are set:
@@ -200,6 +208,9 @@ gdb_mmu_enabled:
 	icall $r25
 	;;
 clear_bss:
+	/* Copy bootloader arguments before cloberring them */
+	copyo $r20r21r22r23 = $r0r1r2r3
+	;;
 	/* Clear BSS */
 	make $r0 = __bss_start
 	make $r1 = __bss_stop
@@ -210,6 +221,7 @@ clear_bss:
 	make $r41 = init_task
 	;;
 	set $sr = $r41
+	copyo $r0r1r2r3 = $r20r21r22r23
 	;;
 	addd $sp = $r40, THREAD_SIZE
 	/* Clear frame pointer */
@@ -224,6 +236,27 @@ clear_bss:
 	igoto $r20
 	;;
 ENDPROC(k1c_start)
+
+/**
+ * When PE 0 is started from the RM, arguments from the bootloaders are copied
+ * into rm_boot_args. It allows to give parameters from RM to PE.
+ * Note that the 4K alignment is required by the reset pc register...
+ */
+.align (4 * 1024)
+ENTRY(pe_start_wrapper)
+	make $r0 = rm_boot_args
+	make $r27 = PWR_CTRL_ADDR
+	make $r28 = k1c_start
+	;;
+	lo $r0r1r2r3 = 0[$r0]
+	;;
+	/* Set reset PC back to original value for SMP start */
+	sd K1C_PWR_CTRL_RESET_PC_OFFSET[$r27] = $r28
+	;;
+	fence
+	goto k1c_start
+	;;
+ENDPROC(pe_start_wrapper)
 
 /**
  * asm_memzero - Clear a memory zone with zeroes
@@ -261,19 +294,31 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	;;
 	wfxl $ps = $r32
 	;;
-	/* Clear L2 registers */
-	make $r0 = __rm_firmware_regs_start
-	make $r1 = __rm_firmware_regs_end
-	call asm_memzero
-	;;
 	make $r26 = PWR_CTRL_ADDR
 	make $r27 = PWR_CTRL_GLOBAL_CONFIG_VALUE
 	;;
 	/* Set PE enable in power controller */
 	sd PWR_CTRL_GLOBAL_CONFIG_OFFSET[$r26] = $r27
+	make $r28 = rm_boot_args
+	;;
+	/* Store parameters for PE0 */
+	so 0[$r28] = $r0r1r2r3
+	make $r29 = pe_start_wrapper
+	;;
+	/* Set PE reset PC to arguments wrapper */
+	sd K1C_PWR_CTRL_RESET_PC_OFFSET[$r26] = $r29
+	;;
+	/* Fence to make sure parameters will be visible by PE 0 */
+	fence
+	;;
+	/* Clear L2 registers */
+	make $r0 = __rm_firmware_regs_start
+	make $r1 = __rm_firmware_regs_end
+	call asm_memzero
 	;;
 	/* Start PE 0 (1 << cpu) */
 	make $r27 = 1
+	make $r26 = PWR_CTRL_ADDR
 	;;
 	/* Wake up PE0 */
 	sd PWR_CTRL_WUP_SET_OFFSET[$r26] = $r27
