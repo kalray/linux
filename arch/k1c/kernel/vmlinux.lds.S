@@ -77,6 +77,7 @@ SECTIONS
 	. = PAGE_OFFSET;
 	_start = .;
 
+	_stext = .;
 	/* Exception vector must be aligned on a huge frontier */
 	.exception ALIGN(EXCEPTION_ALIGNMENT) :
 				AT(ADDR(.exception) - LOAD_OFFSET)
@@ -116,7 +117,6 @@ SECTIONS
 	}
 	__init_end = .;
 
-	_stext = .;
 	.text : AT(ADDR(.text) - LOAD_OFFSET)
 	{
 		_text = .;
