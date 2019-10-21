@@ -133,12 +133,8 @@ struct thread_struct {
 #define task_pt_regs(p) \
 	((struct pt_regs *)(task_stack_page(p) + THREAD_SIZE) - 1)
 
-#define thread_saved_ra(tsk)	\
-	((unsigned long)(tsk->thread.ctx_switch.ra))
-#define thread_saved_fp(tsk)	\
-	((unsigned long)(tsk->thread.ctx_switch.fp))
-#define thread_saved_sp(tsk)	\
-	((unsigned long)(tsk->thread.ctx_switch.sp))
+#define thread_saved_reg(__tsk, __reg) \
+	((unsigned long) ((__tsk)->thread.ctx_switch.__reg))
 
 void release_thread(struct task_struct *t);
 
