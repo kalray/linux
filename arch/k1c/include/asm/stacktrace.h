@@ -19,14 +19,28 @@ struct stackframe {
 	unsigned long ra;	/* Return address */
 };
 
-static inline bool on_stack_page(unsigned long stack_page, unsigned long sp)
+static inline bool on_task_stack(struct task_struct *tsk, unsigned long sp)
 {
-	unsigned long low = stack_page;
+	unsigned long low = (unsigned long) task_stack_page(tsk);
 	unsigned long high = low + THREAD_SIZE;
 
-	return (sp >= low && sp < high);
+	if (sp < low || sp >= high)
+		return false;
+
+	return true;
 }
 
 void show_stacktrace(struct task_struct *task, struct pt_regs *regs);
 
+
+void walk_stackframe(struct task_struct *task, struct stackframe *frame,
+			     bool (*fn)(unsigned long, void *), void *arg);
+
+static inline void start_stackframe(struct stackframe *frame,
+				    unsigned long fp,
+				    unsigned long pc)
+{
+	frame->fp = fp;
+	frame->ra = pc;
+}
 #endif /* _ASM_K1C_STACKTRACE_H */
