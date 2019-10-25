@@ -17,6 +17,7 @@
 #include <asm/page.h>
 #include <asm/sfr.h>
 #include <asm/page.h>
+#include <asm/pgtable-bits.h>
 #include <asm/tlb_defs.h>
 
 /*
@@ -166,6 +167,37 @@ static inline int get_page_size_shift(int ps)
 	 */
 	return __builtin_k1_sbmm8(K1C_PS_SHIFT_MATRIX,
 				  K1C_SBMM_BYTE_SEL << ps);
+}
+
+/*
+ * 4 bits are used to index the K1C access permissions. Bytes are used as
+ * follow:
+ *
+ *   +---------------+------------+-------------+------------+
+ *   |     Bit 3     |   Bit 2    |   Bit 1     |   Bit 0    |
+ *   |---------------+------------+-------------+------------|
+ *   |  _PAGE_GLOBAL | _PAGE_EXEC | _PAGE_WRITE | _PAGE_READ |
+ *   +---------------+------------+-------------+------------+
+ *
+ * If _PAGE_GLOBAL is set then the page belongs to the kernel. Otherwise it
+ * belongs to the user. When the page belongs to user we set the same
+ * rights to kernel.
+ * In order to quickly compute policy from this value, we use sbmm operation.
+ * The main interest is to avoid an additionnal load and specifically in the
+ * assembly refill handler.
+ */
+static inline u8 get_page_access_perms(u8 policy)
+{
+	/* If PAGE_READ is unset, there is no permission for this page */
+	if (!(policy & (_PAGE_READ >> _PAGE_PERMS_SHIFT)))
+		return TLB_PA_NA_NA;
+
+	/* We discard _PAGE_READ bit to get a linear number in [0,7] */
+	policy >>= 1;
+
+	/* Use sbmm to directly get the page perms */
+	return __builtin_k1_sbmm8(K1C_PAGE_PA_MATRIX,
+				  K1C_SBMM_BYTE_SEL << policy);
 }
 
 static inline struct k1c_tlb_format tlb_mk_entry(

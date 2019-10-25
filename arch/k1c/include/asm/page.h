@@ -69,6 +69,16 @@
 				 (K1C_PAGE_64K_SHIFT << 8) | \
 				 (K1C_PAGE_4K_SHIFT))
 
+/* Encode all page access policy into one 64bit constant for sbmm */
+#define K1C_PAGE_PA_MATRIX	((UL(TLB_PA_NA_RWX) << 56) | \
+				 (UL(TLB_PA_NA_RX) << 48) | \
+				 (UL(TLB_PA_NA_RW) << 40) | \
+				 (UL(TLB_PA_NA_R) << 32) | \
+				 (UL(TLB_PA_RWX_RWX) << 24) | \
+				 (UL(TLB_PA_RX_RX) << 16) | \
+				 (UL(TLB_PA_RW_RW) << 8) | \
+				 (UL(TLB_PA_R_R)))
+
 /*
  * Select a byte using sbmm8. When shifted by one bit left, we get the next
  * byte.
