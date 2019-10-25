@@ -126,6 +126,8 @@ asn_error_panic_str_label:
  * both task_reg and sp_reg must be in saved_quad since they have been cloberred
  * and will be restored when restoring saved_quad.
  * pt_regs_sp is a single register which will be filled by pt_regs addr.
+ * When "returning" from this macro, hardware loop are enabled and exception
+ * is cleared, allowing to call kernel function without any risk.
  */
 .macro save_regs_for_exception sp_reg task_reg saved_quad pt_regs_sp
 .if (\saved_quad==$r4r5r6r7 || \saved_quad==$r60r61r62r63)
@@ -195,7 +197,11 @@ asn_error_panic_str_label:
 	so PT_LC_LE_LS_RA[$sp] = $r4r5r6r7
 	/* Clear frame pointer */
 	make $fp = 0
+	/* Reenable hwloop and clear exception taken */
+	make $r8 = PS_HWLOOP_EN_ET_EN
 	copyd \pt_regs_sp = $sp
+	;;
+	wfxl $ps, $r8
 	;;
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	addd $sp = $sp, -REG_SIZE
@@ -362,11 +368,7 @@ ENTRY(k1c_debug_handler):
 debug_save_regs:
 	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r2
 	;;
-	make $r8 = PS_HWLOOP_EN_ET_EN
 	get $r1 = $ea
-	;;
-	/* Enable hwloop */
-	wfxl $ps, $r8
 	;;
 	/* Handler call */
 	get $r0 = $es
@@ -804,11 +806,7 @@ trap_switch_stack:
 trap_save_regs:
 	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r2
 	;;
-	make $r8 = PS_HWLOOP_EN_ET_EN
 	get $r1 = $ea
-	;;
-	/* Enable hwloop */
-	wfxl $ps, $r8
 	;;
 	/* Handler call */
 	get $r0 = $es
@@ -847,8 +845,6 @@ ENTRY(k1c_interrupt_handler):
 it_save_regs:
 	save_regs_for_exception $r1 $r0 $r0r1r2r3 $r1
 	;;
-	make $r8 = PS_HWLOOP_EN_ET_EN
-	/* Prepare handler call */
 	get $r0 = $ilr
 	;;
 	get $r2 = $ile
@@ -862,9 +858,6 @@ it_save_regs:
 	 */
 	get $r3 = $es
 	make $r4 = 1
-	;;
-	/* Enable hwloop and exceptions */
-	wfxl $ps, $r8
 	;;
 	/* Extract interrupt number from $es */
 	extfz $r3 = $r3, K1C_SFR_END(ES_ITN), K1C_SFR_START(ES_ITN)
