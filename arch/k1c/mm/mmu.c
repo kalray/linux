@@ -27,39 +27,6 @@ DEFINE_PER_CPU_ALIGNED(uint8_t[MMU_JTLB_SETS], jtlb_current_set_way);
 static struct k1c_tlb_format ltlb_entries[MMU_LTLB_WAYS];
 static unsigned long ltlb_entries_bmp;
 
-/*
- * 4 bits are used to index the K1C access permissions. Bytes are used as
- * follow:
- *
- *   +---------------+------------+-------------+------------+
- *   |     Bit 3     |   Bit 2    |   Bit 1     |   Bit 0    |
- *   |---------------+------------+-------------+------------|
- *   |  _PAGE_GLOBAL | _PAGE_EXEC | _PAGE_WRITE | _PAGE_READ |
- *   +---------------+------------+-------------+------------+
- *
- * If _PAGE_GLOBAL is set then the page belongs to the kernel. Otherwise it
- * belongs to the user. When the page belongs to user we set the same
- * rights to kernel.
- */
-uint8_t k1c_access_perms[K1C_ACCESS_PERMS_SIZE] = {
-	TLB_PA_NA_NA,
-	TLB_PA_R_R,     /* 1: User R */
-	TLB_PA_NA_NA,
-	TLB_PA_RW_RW,   /* 3: User RW */
-	TLB_PA_NA_NA,
-	TLB_PA_RX_RX,   /* 5: User RX */
-	TLB_PA_NA_NA,
-	TLB_PA_RWX_RWX, /* 7: User RWX */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_R,    /* 9: Kernel R */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_RW,   /* 11: Kernel RW */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_RX,   /* 13: Kernel RX */
-	TLB_PA_NA_NA,
-	TLB_PA_NA_RWX,  /* 15: Kernel RWX */
-};
-
 /**
  * k1c_mmu_ltlb_add_entry - Add a kernel entry in the LTLB
  *
@@ -148,7 +115,7 @@ void k1c_mmu_jtlb_add_entry(unsigned long address, pte_t *ptep,
 	BUILD_BUG_ON(K1C_PAGE_SZ_SHIFT != K1C_SFR_TEL_PS_SHIFT);
 
 	ps = (pte_val & K1C_PAGE_SZ_MASK) >> K1C_PAGE_SZ_SHIFT;
-	pa = (unsigned int) k1c_access_perms[K1C_ACCESS_PERMS_INDEX(pte_val)];
+	pa = get_page_access_perms(K1C_ACCESS_PERMS_INDEX(pte_val));
 	cp = pgprot_cache_policy(pte_val);
 
 	tlbe = tlb_mk_entry(
