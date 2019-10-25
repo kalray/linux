@@ -53,6 +53,14 @@ __k1c_sfr_set_mask(unsigned char sfr, uint64_t mask, uint64_t value)
 	}
 }
 
+static inline u64 k1c_sfr_iget(unsigned char sfr)
+{
+	u64 res = sfr;
+
+	asm volatile ("iget %0" : "+r"(res) :: );
+	return res;
+}
+
 #ifdef CONFIG_DEBUG_SFR_SET_MASK
 # define k1c_sfr_set_mask(__sfr, __mask, __value) \
 	do { \
