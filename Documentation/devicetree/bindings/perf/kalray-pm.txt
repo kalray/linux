@@ -1,0 +1,21 @@
+* Kalray k1c Performance Monitors
+
+K1C core has several Performance Monitors for counting cpu and cache events.
+The K1C PM representation in the device tree should be done as under:
+
+Required properties:
+
+- compatible :
+	"kalray,k1c-core-pm"
+
+- interrupts : The interrupt number for k1c PM is 3.
+- interrupt-parent : The k1c core interrupt controller.
+- kalray,pm-num : Number of Performance Monitors the k1c core has.
+
+Example:
+core_pm {
+	compatible = "kalray,k1c-core-pm";
+	interrupts = <3>;
+	interrupt-parent = <&core_intc>;
+	kalray,pm-num = <4>;
+}
