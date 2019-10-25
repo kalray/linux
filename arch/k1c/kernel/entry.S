@@ -575,28 +575,40 @@ pte_prepared:
 	/* Store new way */
 	sb __PA(jtlb_current_set_way)[$r5] = $r0
 	;;
-	/* Extract access perms from pte entry */
-	extfz $r3 = $r1, K1C_ACCESS_PERM_STOP_BIT, K1C_ACCESS_PERM_START_BIT
+	/* Extract access perms from pte entry (discard PAGE_READ bit +1) */
+	extfz $r3 = $r1, K1C_ACCESS_PERM_STOP_BIT, K1C_ACCESS_PERM_START_BIT + 1
 	/* Move FN bits to their place */
 	srld $r6 = $r6, K1C_PFN_SHIFT - PAGE_SHIFT
 	/* Extract the page size + cache policy */
-	andd $r5 = $r1, (K1C_PAGE_SZ_MASK | K1C_PAGE_CP_MASK)
+	andd $r0 = $r1, (K1C_PAGE_SZ_MASK | K1C_PAGE_CP_MASK)
+	/* Prepare SBMM value */
+	make $r5 = K1C_SBMM_BYTE_SEL
 	;;
 	/* Add page size + cache policy to $tel value */
-	ord $r6 = $r6, $r5
+	ord $r6 = $r6, $r0
 	/* Get $mmc to get current ASN */
 	get $r0 = $mmc
 	/* Add _PAGE_ACCESSED bit to PTE entry for writeback */
 	ord $r7 = $r7, _PAGE_ACCESSED
 	;;
-	/* Add ASN from mmc into future $teh value */
-	insf $r4 = $r0, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
-	/* load access permissions */
-	lbz $r6 = __PA(k1c_access_perms)[$r3]
-	ord $r0 = $r6, TEL_DEFAULT_VALUE
-	;;
 	/* OR PTE value with accessed/dirty flags */
 	ord $r1 = $r1, $r7
+	/* Generate the byte selection for sbmm */
+	slld $r5 = $r5, $r3
+	/* Compute the mask to extract set and mask exception address */
+	make $r7 = K1C_PAGE_PA_MATRIX
+	;;
+	ord $r0 = $r6, TEL_DEFAULT_VALUE
+	/* Add ASN from mmc into future $teh value */
+	insf $r4 = $r0, K1C_SFR_END(MMC_ASN), K1C_SFR_START(MMC_ASN)
+	/* Get the page permission value */
+	sbmm8 $r6 = $r7, $r5
+	/* Check PAGE_READ bit in PTE entry */
+	andd $r3 = $r1, _PAGE_READ
+	;;
+	/* If PAGE_READ bit is not set, set policy as NA_NA */
+	cmoved.deqz $r3? $r6 = TLB_PA_NA_NA
+	;;
 	/* Shift PA to correct position */
 	slld $r6 = $r6, K1C_SFR_TEL_PA_SHIFT
 	set $teh = $r4
