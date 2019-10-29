@@ -297,8 +297,8 @@ static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 		case RSC_CARVEOUT:
 			c = rsc;
 			seq_printf(seq, "Entry %d is of type %s\n", i, types[hdr->type]);
-			seq_printf(seq, "  Device Address 0x%x\n", c->da);
-			seq_printf(seq, "  Physical Address 0x%x\n", c->pa);
+			seq_printf(seq, "  Device Address 0x%llx\n", c->da);
+			seq_printf(seq, "  Physical Address 0x%llx\n", c->pa);
 			seq_printf(seq, "  Length 0x%x Bytes\n", c->len);
 			seq_printf(seq, "  Flags 0x%x\n", c->flags);
 			seq_printf(seq, "  Reserved (should be zero) [%d]\n", c->reserved);
@@ -307,8 +307,8 @@ static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 		case RSC_DEVMEM:
 			d = rsc;
 			seq_printf(seq, "Entry %d is of type %s\n", i, types[hdr->type]);
-			seq_printf(seq, "  Device Address 0x%x\n", d->da);
-			seq_printf(seq, "  Physical Address 0x%x\n", d->pa);
+			seq_printf(seq, "  Device Address 0x%llx\n", d->da);
+			seq_printf(seq, "  Physical Address 0x%llx\n", d->pa);
 			seq_printf(seq, "  Length 0x%x Bytes\n", d->len);
 			seq_printf(seq, "  Flags 0x%x\n", d->flags);
 			seq_printf(seq, "  Reserved (should be zero) [%d]\n", d->reserved);
@@ -317,7 +317,7 @@ static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 		case RSC_TRACE:
 			t = rsc;
 			seq_printf(seq, "Entry %d is of type %s\n", i, types[hdr->type]);
-			seq_printf(seq, "  Device Address 0x%x\n", t->da);
+			seq_printf(seq, "  Device Address 0x%llx\n", t->da);
 			seq_printf(seq, "  Length 0x%x Bytes\n", t->len);
 			seq_printf(seq, "  Reserved (should be zero) [%d]\n", t->reserved);
 			seq_printf(seq, "  Name %s\n\n", t->name);
@@ -338,11 +338,11 @@ static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 
 			for (j = 0; j < v->num_of_vrings; j++) {
 				seq_printf(seq, "  Vring %d\n", j);
-				seq_printf(seq, "    Device Address 0x%x\n", v->vring[j].da);
+				seq_printf(seq, "    Device Address 0x%llx\n", v->vring[j].da);
 				seq_printf(seq, "    Alignment %d\n", v->vring[j].align);
 				seq_printf(seq, "    Number of buffers %d\n", v->vring[j].num);
 				seq_printf(seq, "    Notify ID %d\n", v->vring[j].notifyid);
-				seq_printf(seq, "    Physical Address 0x%x\n\n",
+				seq_printf(seq, "    Physical Address 0x%llx\n\n",
 					   v->vring[j].pa);
 			}
 			break;
@@ -369,7 +369,7 @@ static int rproc_carveouts_show(struct seq_file *seq, void *p)
 		seq_printf(seq, "\tName: %s\n", carveout->name);
 		seq_printf(seq, "\tVirtual address: %pK\n", carveout->va);
 		seq_printf(seq, "\tDMA address: %pad\n", &carveout->dma);
-		seq_printf(seq, "\tDevice address: 0x%x\n", carveout->da);
+		seq_printf(seq, "\tDevice address: 0x%llx\n", carveout->da);
 		seq_printf(seq, "\tLength: 0x%zx Bytes\n\n", carveout->len);
 	}
 
