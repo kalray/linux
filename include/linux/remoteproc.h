@@ -168,8 +168,8 @@ enum fw_resource_type {
  * (mainly for debugging purposes).
  */
 struct fw_rsc_carveout {
-	u32 da;
-	u32 pa;
+	u64 da;
+	u64 pa;
 	u32 len;
 	u32 flags;
 	u32 reserved;
@@ -206,8 +206,8 @@ struct fw_rsc_carveout {
  * access to physical addresses that are outside those ranges.
  */
 struct fw_rsc_devmem {
-	u32 da;
-	u32 pa;
+	u64 da;
+	u64 pa;
 	u32 len;
 	u32 flags;
 	u32 reserved;
@@ -231,7 +231,7 @@ struct fw_rsc_devmem {
  * user via debugfs entries (called trace0, trace1, etc..).
  */
 struct fw_rsc_trace {
-	u32 da;
+	u64 da;
 	u32 len;
 	u32 reserved;
 	u8 name[32];
@@ -255,11 +255,11 @@ struct fw_rsc_trace {
  * dynamically allocation of the vring's device address is supported.
  */
 struct fw_rsc_vdev_vring {
-	u32 da;
+	u64 da;
 	u32 align;
 	u32 num;
 	u32 notifyid;
-	u32 pa;
+	u64 pa;
 } __packed;
 
 /**
@@ -330,7 +330,7 @@ struct rproc_mem_entry {
 	void *va;
 	dma_addr_t dma;
 	int len;
-	u32 da;
+	u64 da;
 	void *priv;
 	char name[32];
 	struct list_head node;
@@ -551,7 +551,7 @@ struct rproc_subdev {
 struct rproc_vring {
 	void *va;
 	int len;
-	u32 da;
+	u64 da;
 	u32 align;
 	int notifyid;
 	struct rproc_vdev *rvdev;
@@ -599,14 +599,14 @@ void rproc_add_carveout(struct rproc *rproc, struct rproc_mem_entry *mem);
 
 struct rproc_mem_entry *
 rproc_mem_entry_init(struct device *dev,
-		     void *va, dma_addr_t dma, int len, u32 da,
+		     void *va, dma_addr_t dma, int len, u64 da,
 		     int (*alloc)(struct rproc *, struct rproc_mem_entry *),
 		     int (*release)(struct rproc *, struct rproc_mem_entry *),
 		     const char *name, ...);
 
 struct rproc_mem_entry *
 rproc_of_resm_mem_entry_init(struct device *dev, u32 of_resm_idx, int len,
-			     u32 da, const char *name, ...);
+			     u64 da, const char *name, ...);
 
 int rproc_boot(struct rproc *rproc);
 void rproc_shutdown(struct rproc *rproc);
