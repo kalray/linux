@@ -288,7 +288,7 @@ rproc_find_carveout_by_name(struct rproc *rproc, const char *name, ...)
  * Return: 0 if carveout matches request else error
  */
 static int rproc_check_carveout_da(struct rproc *rproc,
-				   struct rproc_mem_entry *mem, u32 da, u32 len)
+				   struct rproc_mem_entry *mem, u64 da, u32 len)
 {
 	struct device *dev = &rproc->dev;
 	int delta;
@@ -390,7 +390,7 @@ rproc_parse_vring(struct rproc_vdev *rvdev, struct fw_rsc_vdev *rsc, int i)
 	struct fw_rsc_vdev_vring *vring = &rsc->vring[i];
 	struct rproc_vring *rvring = &rvdev->vring[i];
 
-	dev_dbg(dev, "vdev rsc: vring%d: da 0x%x, qsz %d, align %d\n",
+	dev_dbg(dev, "vdev rsc: vring%d: da 0x%llx, qsz %d, align %d\n",
 		i, vring->da, vring->num, vring->align);
 
 	/* verify queue size and vring alignment are sane */
@@ -582,7 +582,7 @@ static int rproc_handle_trace(struct rproc *rproc, void *ptr,
 
 	rproc->num_traces++;
 
-	dev_dbg(dev, "%s added: da 0x%x, len 0x%x\n",
+	dev_dbg(dev, "%s added: da 0x%llx, len 0x%x\n",
 		name, rsc->da, rsc->len);
 
 	return 0;
@@ -660,7 +660,7 @@ static int rproc_handle_devmem(struct rproc *rproc, void *ptr,
 	mapping->len = rsc->len;
 	list_add_tail(&mapping->node, &rproc->mappings);
 
-	dev_dbg(dev, "mapped devmem pa 0x%x, da 0x%x, len 0x%x\n",
+	dev_dbg(dev, "mapped devmem pa 0x%llx, da 0x%llx, len 0x%x\n",
 		rsc->pa, rsc->da, rsc->len);
 
 	return 0;
@@ -754,17 +754,12 @@ static int rproc_alloc_carveout(struct rproc *rproc,
 		mapping->len = mem->len;
 		list_add_tail(&mapping->node, &rproc->mappings);
 
-		dev_dbg(dev, "carveout mapped 0x%x to %pad\n",
+		dev_dbg(dev, "carveout mapped 0x%llx to %pad\n",
 			mem->da, &dma);
 	}
 
-	if (mem->da == FW_RSC_ADDR_ANY) {
-		/* Update device address as undefined by requester */
-		if ((u64)dma & HIGH_BITS_MASK)
-			dev_warn(dev, "DMA address cast in 32bit to fit resource table format\n");
-
-		mem->da = (u32)dma;
-	}
+	if (mem->da == FW_RSC_ADDR_ANY)
+		mem->da = dma;
 
 	mem->dma = dma;
 	mem->va = va;
@@ -837,7 +832,7 @@ static int rproc_handle_carveout(struct rproc *rproc,
 		return -EINVAL;
 	}
 
-	dev_dbg(dev, "carveout rsc: name: %s, da 0x%x, pa 0x%x, len 0x%x, flags 0x%x\n",
+	dev_dbg(dev, "carveout rsc: name: %s, da 0x%llx, pa 0x%llx, len 0x%x, flags 0x%x\n",
 		rsc->name, rsc->da, rsc->pa, rsc->len, rsc->flags);
 
 	/*
@@ -912,7 +907,7 @@ EXPORT_SYMBOL(rproc_add_carveout);
 __printf(8, 9)
 struct rproc_mem_entry *
 rproc_mem_entry_init(struct device *dev,
-		     void *va, dma_addr_t dma, size_t len, u32 da,
+		     void *va, dma_addr_t dma, size_t len, u64 da,
 		     int (*alloc)(struct rproc *, struct rproc_mem_entry *),
 		     int (*release)(struct rproc *, struct rproc_mem_entry *),
 		     const char *name, ...)
@@ -958,7 +953,7 @@ EXPORT_SYMBOL(rproc_mem_entry_init);
 __printf(5, 6)
 struct rproc_mem_entry *
 rproc_of_resm_mem_entry_init(struct device *dev, u32 of_resm_idx, size_t len,
-			     u32 da, const char *name, ...)
+			     u64 da, const char *name, ...)
 {
 	struct rproc_mem_entry *mem;
 	va_list args;
@@ -1194,10 +1189,6 @@ static int rproc_alloc_registered_carveouts(struct rproc *rproc)
 				pa = (u64)rproc_va_to_pa(entry->va);
 			else
 				pa = (u64)entry->dma;
-
-			if (((u64)pa) & HIGH_BITS_MASK)
-				dev_warn(dev,
-					 "Physical address cast in 32bit to fit resource table format\n");
 
 			rsc->pa = (u32)pa;
 			rsc->da = entry->da;

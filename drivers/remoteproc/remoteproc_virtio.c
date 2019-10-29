@@ -261,6 +261,7 @@ static void rproc_transport_features(struct virtio_device *vdev)
 	 * creates virtio rings on preallocated memory.
 	 */
 	__virtio_clear_bit(vdev, VIRTIO_F_RING_PACKED);
+	__virtio_set_bit(vdev, VIRTIO_F_ACCESS_PLATFORM);
 }
 
 static int rproc_virtio_finalize_features(struct virtio_device *vdev)
@@ -275,9 +276,6 @@ static int rproc_virtio_finalize_features(struct virtio_device *vdev)
 
 	/* Give virtio_rproc a chance to accept features. */
 	rproc_transport_features(vdev);
-
-	/* Make sure we don't have any features > 32 bits! */
-	BUG_ON((u32)vdev->features != vdev->features);
 
 	/*
 	 * Remember the finalized features of our vdev, and provide it
