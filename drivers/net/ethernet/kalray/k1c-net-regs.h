@@ -125,6 +125,23 @@
 #define RX_DISPATCH_TABLE_ENTRY_SPLIT_TRIGGER_SHIFT 0x39
 #define RX_DISPATCH_TABLE_ENTRY_SPLIT_TRIGGER_MASK 0xFE00000000000000
 
+/* RX_LB_LUT */
+#define RX_LB_LUT_OFFSET                           0x10000
+#define RX_LB_LUT_LUT_OFFSET                       0x0
+#define RX_LB_LUT_ARRAY_SIZE                       0x800
+#define RX_LB_LUT_NOC_TABLE_ID_SHIFT               0x0
+#define RX_LB_LUT_NOC_TABLE_ID_MASK                0x1FFUL
+#define RX_LB_LUT_CTRL_OFFSET                      0x2000
+#define RX_LB_LUT_CTRL_LANE_EN_SHIFT               0x0
+#define RX_LB_LUT_CTRL_LANE_EN_MASK                0x3UL
+#define RX_LB_LUT_CTRL_RULE_EN_SHIFT               0x2
+#define RX_LB_LUT_CTRL_RULE_EN_MASK                0x7CUL
+#define RX_LB_LUT_CTRL_PFC_EN_SHIFT                0x7
+#define RX_LB_LUT_CTRL_PFC_EN_MASK                 0x380UL
+#define RX_LB_LUT_QPN_CTRL_OFFSET                  0x2004
+#define RX_LB_LUT_QPN_CTRL_QPN_EN_SHIFT            0x0
+#define RX_LB_LUT_QPN_CTRL_QPN_EN_MASK             0xFFFFFFUL
+
 /* RX_LB_PARSER */
 #define PARSER_CTRL_OFFSET                         0x12800
 #define PARSER_CTRL_ELEM_SIZE                      0x40
