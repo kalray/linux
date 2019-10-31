@@ -10,6 +10,9 @@
 #include <linux/ethtool.h>
 
 #include "k1c-net.h"
+#include "k1c-net-regs.h"
+
+#define RSS_NB_RX_RINGS     (64)
 
 #define STAT(n, m)   { n, FIELD_SIZEOF(struct k1c_eth_hw_stats, m), \
 	offsetof(struct k1c_eth_hw_stats, m) }
@@ -190,13 +193,99 @@ static int k1c_eth_get_sset_count(struct net_device *netdev, int sset)
 	}
 }
 
+static int k1c_eth_get_rxnfc(struct net_device *netdev,
+			     struct ethtool_rxnfc *cmd, u32 *rule_locs)
+{
+	int ret = -EOPNOTSUPP;
+
+	switch (cmd->cmd) {
+	case ETHTOOL_GRXRINGS:
+		cmd->data = RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE;
+		ret = 0;
+		break;
+	}
+	return ret;
+}
+
+static u32 k1c_eth_get_rxfh_key_size(struct net_device *netdev)
+{
+	return fls(RX_LB_LUT_ARRAY_SIZE);
+}
+
+static u32 k1c_eth_rss_indir_size(struct net_device *netdev)
+{
+	return RX_LB_LUT_ARRAY_SIZE;
+}
+
+static void k1c_eth_get_lut(struct net_device *netdev, struct k1c_eth_hw *hw,
+			    u32 *indir)
+{
+	u32 v, off = RX_LB_LUT_OFFSET + RX_LB_LUT_LUT_OFFSET;
+	u32 i, r = off;
+
+	for (i = 0; i < k1c_eth_rss_indir_size(netdev); ++i, r += 4) {
+		v = k1c_eth_readl(hw, r);
+		indir[i] = v & RX_LB_LUT_NOC_TABLE_ID_MASK;
+	}
+}
+
+static void k1c_eth_set_lut(struct net_device *netdev, struct k1c_eth_hw *hw,
+			    const u32 *indir)
+{
+	u32 off = RX_LB_LUT_OFFSET + RX_LB_LUT_LUT_OFFSET;
+	u32 i, r = off;
+
+	for (i = 0; i < k1c_eth_rss_indir_size(netdev); ++i, r += 4)
+		k1c_eth_writel(hw, indir[i] & RX_LB_LUT_NOC_TABLE_ID_MASK, r);
+}
+
+static int k1c_eth_get_rxfh(struct net_device *netdev, u32 *indir, u8 *key,
+			  u8 *hfunc)
+{
+	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
+
+	if (hfunc)
+		*hfunc = ETH_RSS_HASH_CRC32_BIT;
+
+	if (indir)
+		k1c_eth_get_lut(netdev, ndev->hw, indir);
+
+	return 0;
+}
+
+static int k1c_eth_set_rxfh(struct net_device *netdev, const u32 *indir,
+			  const u8 *key, const u8 hfunc)
+{
+	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
+	u32 tbl_size =  k1c_eth_rss_indir_size(netdev);
+	int i;
+
+	if (hfunc)
+		return -EINVAL;
+
+	if (indir) {
+		for (i = 0; i < tbl_size; ++i)
+			if (indir[i] >= RSS_NB_RX_RINGS)
+				return -EINVAL;
+
+		k1c_eth_set_lut(netdev, ndev->hw, indir);
+	}
+
+	return 0;
+}
+
 static const struct ethtool_ops k1c_ethtool_ops = {
-	.get_drvinfo = k1c_eth_get_drvinfo,
-	.get_ringparam = k1c_eth_get_ringparam,
-	.set_ringparam = k1c_eth_set_ringparam,
-	.get_ethtool_stats = k1c_eth_get_ethtool_stats,
-	.get_strings = k1c_eth_get_strings,
-	.get_sset_count = k1c_eth_get_sset_count,
+	.get_drvinfo         = k1c_eth_get_drvinfo,
+	.get_ringparam       = k1c_eth_get_ringparam,
+	.set_ringparam       = k1c_eth_set_ringparam,
+	.get_ethtool_stats   = k1c_eth_get_ethtool_stats,
+	.get_strings         = k1c_eth_get_strings,
+	.get_sset_count      = k1c_eth_get_sset_count,
+	.get_rxnfc           = k1c_eth_get_rxnfc,
+	.get_rxfh_indir_size = k1c_eth_rss_indir_size,
+	.get_rxfh_key_size   = k1c_eth_get_rxfh_key_size,
+	.get_rxfh            = k1c_eth_get_rxfh,
+	.set_rxfh            = k1c_eth_set_rxfh,
 };
 
 void k1c_set_ethtool_ops(struct net_device *netdev)
