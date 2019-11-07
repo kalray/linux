@@ -35,8 +35,6 @@ int foo(void)
 	DEFINE(REG_SIZE, sizeof(uint64_t));
 #endif
 
-	DEFINE(QUAD_SIZE, 4 * sizeof(uint64_t));
-
 	/*
 	 * We allocate a pt_regs on the stack when entering the kernel.  This
 	 * ensures the alignment is sane.
