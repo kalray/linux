@@ -721,7 +721,7 @@ mmc_error_check:
 	;;
 	cb.deqz $r1? mmc_error_check_ok
 	;;
-	make $r1 = mmc_error_panic_str_label
+	make $r0 = mmc_error_panic_str_label
 	goto asm_panic
 	;;
 #endif
@@ -766,7 +766,7 @@ asn_check:
 	;;
 asn_check_err:
 	/* We are fried, die peacefully */
-	make $r1 = asn_error_panic_str_label
+	make $r0 = asn_error_panic_str_label
 	goto asm_panic
 	;;
 #endif
@@ -775,8 +775,7 @@ asn_check_err:
 
 /**
  * This routine calls panic from assembly after setting appropriate things
- * $r0 = current
- * $r1 = panic string
+ * $r0 = panic string
  */
 asm_panic:
 	/*
@@ -785,6 +784,7 @@ asm_panic:
 	 */
 	make $r32 = PS_HWLOOP_EN_ET_EN | SFR_SET_VAL_WFXL(PS, DAUS, 0)
 	make $r33 = 0
+	get $r34 = $sr
 	;;
 	/* Clear hw loop exit to disable current loop */
 	set $le = $r33
@@ -792,9 +792,8 @@ asm_panic:
 	wfxl $ps = $r32
 	;;
 	/* Restore kernel stack */
-	ld $r12 = TASK_THREAD_KERNEL_SP[$r0]
+	ld $r12 = TASK_THREAD_KERNEL_SP[$r34]
 	;;
-	copyd $r0 = $r1
 	call panic
 	;;
 #endif
