@@ -65,6 +65,28 @@ asn_error_panic_str_label:
 #endif
 
 /**
+ * disable_interrupts: Disable interrupts
+ * tmp_reg: Temporary register to use for interrupt disabling
+ */
+.macro disable_interrupt tmp_reg
+	make \tmp_reg = K1C_SFR_PS_IE_MASK
+	;;
+	wfxl $ps, \tmp_reg
+	;;
+.endm
+
+/**
+ * call_do_work_pending: Call do_work_pending and set stack argument ($r0)
+ * NOTE: Since do_work_pending requires thread_flags in $r1, they must
+ * be provided in $r1 before calling this macro.
+ */
+.macro call_do_work_pending
+	copyd $r0 = $sp
+	call do_work_pending
+	;;
+.endm
+
+/**
  * save_quad_regs: Save quad registers in temporary thread area
  * After call, the quad is saved in task_struct.thread.save_area.
  * sr_swap_reg is only used as a temporary value and will be
@@ -239,6 +261,9 @@ _check_ok:
 	/* Load sps value from saved registers */
 	ld $r6 = PT_SPS[$sp]
 	;;
+	/* Disable interrupt to check task flags atomically */
+	disable_interrupt $r60
+	;;
 	/* Check PL bit of sps, if set, then it means we are returning
 	 * to a lower privilege level (ie to user), if so, we need to
 	 * check work pending. If coming from kernel, directly go to
@@ -248,12 +273,10 @@ _check_ok:
 	;;
 	/* Do we have work pending ? */
 	andd $r5 = $r1, _TIF_WORK_MASK
-	/* Argument 0 for work_pending */
-	copyd $r0 = $sp
 	;;
 	/**
 	 * If we do not have work pending (ie $r5 == 0) then we can
-	 * directly jump to _restore_regs without calling work_pending
+	 * directly jump to _restore_regs without calling do_work_pending
 	 */
 	cb.deqz $r5? _restore_regs
 	;;
@@ -264,17 +287,9 @@ _check_ok:
 	 */
 	save_callee
 	;;
-	call work_pending
+	call_do_work_pending
 	;;
 _restore_regs:
-	/* Interrupts might have been reenabled inside traps/interrupt/
-	 * work_pending handler for nested support. In order to avoid messing
-	 * the restored context, disable interrupts.
-	 */
-	make $r60 = K1C_SFR_PS_IE_MASK
-	;;
-	wfxl $ps, $r60
-	;;
 	lo $r0r1r2r3 = PT_CS_SPC_SPS_ES[$sp]
 	;;
 	lo $r4r5r6r7 = PT_LC_LE_LS_RA[$sp]
@@ -1019,12 +1034,20 @@ do_syscall:
 	/* Reload task flags since the syscall might have generated a signal*/
 	get $r36 = $sr
 	;;
+#ifdef CONFIG_SECURE_DAME_HANDLING
+	/* Barrier to force DAME interrupt to be generated if any pending */
+	barrier
+	;;
+#endif
+	/* Disable interrupt to check task flags atomically */
+	disable_interrupt $r60
+	;;
 	ld $r38 = TASK_TI_FLAGS[$r36]
 	;;
 	andd $r37 = $r38, _TIF_SYSCALL_TRACE
 	;;
 	/* Save r0 which was returned from do_scall previously and
-	 * will be cloberred by work_pending(and potentially
+	 * will be cloberred by do_work_pending(and potentially
 	 * do_syscall_trace_exit if tracing is enabled)
 	 * If do_signal is called and that syscall is restarted,
 	 * it will be modified by handle_restart to restore original
@@ -1034,28 +1057,14 @@ do_syscall:
 	/* used to store if trace system */
 	cb.dnez $r37? trace_syscall_exit
 	;;
+check_work_pending:
 	/* Do we have work pending ? */
-	andd $r2 = $r38, _TIF_WORK_MASK
+	andd $r1 = $r38, _TIF_WORK_MASK
 	;;
 	/* If no work pending, directly continue to ret_to_user */
-	cb.dnez $r2? check_work_pending
+	cb.dnez $r1? call_work_pending
 	;;
 ret_to_user:
-#ifdef CONFIG_SECURE_DAME_HANDLING
-	/* Barrier to force DAME interrupt to be generated if any pending */
-	barrier
-	;;
-#endif
-	make $r60 = K1C_SFR_PS_IE_MASK
-	;;
-	/* Disable interrupt before restoring critical registers or else
-	 * our restored SFRs will be clobbered
-	 * ie: if an interrupt happens right after "set $spc = $r43"
-	 * Then spc will be cloberred when restoring it in the upper
-	 * routine (it or trap).
-	 */
-	wfxl $ps, $r60
-	;;
 	/* Restore registers */
 	lo $r60r61r62r63 = PT_LC_LE_LS_RA[$sp]
 	get $r33 = $sps
@@ -1118,7 +1127,7 @@ ret_to_user:
 	;;
 
 /* Slow paths handling */
-check_work_pending:
+call_work_pending:
 	/*
 	 * Work pending can potentially call a signal handler and then return
 	 * via rt_sigreturn. Return path will be different (restore all regs)
@@ -1126,8 +1135,7 @@ check_work_pending:
 	 */
 	save_callee
 	;;
-	copyd $r0 = $sp
-	call work_pending
+	call_do_work_pending
 	;;
 	goto ret_to_user
 	;;
@@ -1176,9 +1184,8 @@ trace_syscall_exit:
 	call do_syscall_trace_exit
 	;;
 	/* Restore r38 (task flags) which might have been clobbered by
-	 * do_syscall_trace_exit and needed by ret_to_user */
+	 * do_syscall_trace_exit and needed by check_work_pending */
 	ld $r38 = PT_R38[$sp]
-	;;
 	goto check_work_pending
 	;;
 ENDPROC(k1c_syscall_handler)
@@ -1494,82 +1501,6 @@ restore_tca_registers:
 	;;
 #endif
 ENDPROC(__switch_to)
-
-
-/***********************************************************************
-*        Common return from exceptions (trap/interrupts/syscall)
-***********************************************************************/
-
-.text
-/**
- * Check if there is work pending and call schedule if so.
- * This function is only called from restore_regs_after_exception
- * just before returning to user. It means we can use whatever
- * callee-saved register we might want to use.
- * $r0 = pt_regs addr
- */
-ENTRY(work_pending)
-	/* Save the callee saved we are going to use */
-	addd $sp = $sp, -QUAD_SIZE
-	so -QUAD_SIZE[$sp] = $r28r29r30r31
-	;;
-	/* Save $ra and our parameters */
-	get $r30 = $ra
-	make $r28 = PS_ET_CLEAR
-	;;
-	/* Clear ET to be able to send signal */
-	wfxl $ps, $r28
-	;;
-	copyd $r28 = $r0
-	get $r29 = $sr
-	;;
-recheck:
-	/*
-	 * Use a scratch reg since we do not care about preserving them
-	 * through calls. We only care to keep r28, r29 and r30
-	 */
-	ld $r33 = TASK_TI_FLAGS[$r29]
-	;;
-	andd $r32 = $r33, _TIF_NEED_RESCHED
-	;;
-	andd $r32 = $r33, _TIF_SIGPENDING
-	/* if TIF_NEED_RESCHED is set then call schedule */
-	cb.deqz $r32? check_sigpending
-	;;
-	call schedule
-	;;
-	goto recheck
-	;;
-check_sigpending:
-	andd $r32 = $r33, _TIF_NOTIFY_RESUME
-	/* if _TIF_SIGPENDING is set then call do_signal */
-	cb.deqz $r32? check_notify_resume
-	;;
-	/* First arguments of do_signal is current pt_regs */
-	copyd $r0 = $r28
-	call do_signal
-	;;
-	goto recheck
-	;;
-check_notify_resume:
-	/* if _TIF_NOTIFY_RESUME is set then call do_notify_resume */
-	cb.deqz $r32? no_flags
-	;;
-	copyd $r0 = $r28
-	/* First arguments of do_signal is also current pt_regs */
-	call do_notify_resume
-	;;
-	goto recheck
-	;;
-no_flags:
-	set $ra = $r30
-	;;
-	addd $sp = $sp, QUAD_SIZE
-	lo $r28r29r30r31, 0[$sp]
-	;;
-	ret
-	;;
-ENDPROC(work_pending)
 
 /***********************************************************************
 *          		 Misc functions
