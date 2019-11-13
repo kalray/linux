@@ -153,6 +153,8 @@ static struct attribute *pfc_f_attrs[] = {
 	&global_release_level_attr.attr,
 	&global_drop_level_attr.attr,
 	&global_alert_level_attr.attr,
+	&global_pfc_en_attr.attr,
+	&global_pause_en_attr.attr,
 	NULL,
 };
 
