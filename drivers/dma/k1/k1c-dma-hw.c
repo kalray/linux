@@ -58,10 +58,6 @@ struct k1c_dma_pkt_desc {
 #define K1C_DMA_PRGM_ID_SHIFT      (32)
 #define K1C_DMA_FENCE_AFTER_SHIFT  (48)
 
-/* K1C_DMA_READ_DELAY < ~10us */
-#define K1C_DMA_READ_DELAY         (10)
-#define K1C_DMA_READ_TIMEOUT       (50000)
-
 /**
  * Tx monitoring reg
  */
@@ -495,16 +491,12 @@ int k1c_dma_tx_job_queue_init(struct k1c_dma_phy *phy)
  */
 int k1c_dma_tx_completion_init(struct k1c_dma_phy *phy)
 {
-	int ret = 0;
 	u64 status = 0;
 	u16 global = is_asn_global(phy->asn);
 
 	/* check tx job completion queue is not used */
-	ret = readq_poll_timeout(phy->compq.base +
-				 K1C_DMA_TX_COMP_Q_STATUS_OFFSET,
-				 status, status == K1C_DMA_Q_STOPPED,
-				 K1C_DMA_READ_DELAY, K1C_DMA_READ_TIMEOUT);
-	if (unlikely(ret)) {
+	status = k1c_dma_compq_readq(phy, K1C_DMA_TX_COMP_Q_STATUS_OFFSET);
+	if (status != K1C_DMA_Q_STOPPED) {
 		dev_err(phy->dev, "TX completion queue[%d] still running\n",
 			phy->hw_id);
 		return -EBUSY;
@@ -532,14 +524,11 @@ int k1c_dma_tx_completion_init(struct k1c_dma_phy *phy)
 
 	/* Activate once configuration is done and commited in memory */
 	k1c_dma_compq_writeq(phy, 1ULL, K1C_DMA_TX_COMP_Q_ACTIVATE_OFFSET);
-	ret = readq_poll_timeout(phy->compq.base +
-				 K1C_DMA_TX_COMP_Q_STATUS_OFFSET,
-				 status, status == K1C_DMA_Q_RUNNING,
-				 K1C_DMA_READ_DELAY, K1C_DMA_READ_TIMEOUT);
-	if (unlikely(ret)) {
+	status = k1c_dma_compq_readq(phy, K1C_DMA_TX_COMP_Q_STATUS_OFFSET);
+	if (status != K1C_DMA_Q_RUNNING) {
 		dev_err(phy->dev, "TX completion queue[%d] not running\n",
 			phy->hw_id);
-		return -EINVAL;
+		return -EBUSY;
 	}
 
 	return 0;
