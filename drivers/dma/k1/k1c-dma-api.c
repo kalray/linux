@@ -136,7 +136,7 @@ void k1c_dma_disable_irq(struct platform_device *pdev, unsigned int id)
 	if (!p)
 		return;
 
-	disable_irq(p->irq);
+	disable_irq_nosync(p->irq);
 }
 EXPORT_SYMBOL_GPL(k1c_dma_disable_irq);
 
