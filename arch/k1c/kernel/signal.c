@@ -242,9 +242,13 @@ asmlinkage void do_signal(struct pt_regs *regs)
 	restore_saved_sigmask();
 }
 
+
 asmlinkage void do_work_pending(struct pt_regs *regs,
 				unsigned long thread_flags)
 {
+	/* We are called with IRQs disabled */
+	trace_hardirqs_off();
+
 	do {
 		if (thread_flags & _TIF_NEED_RESCHED) {
 			schedule();
