@@ -55,9 +55,6 @@ void notrace walk_stackframe(struct task_struct *task, struct stackframe *frame,
 	while (1) {
 		addr = frame->ra;
 
-		if (unlikely(!__kernel_text_address(addr)))
-			break;
-
 		if (fn(addr, arg))
 			break;
 
