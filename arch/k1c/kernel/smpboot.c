@@ -114,6 +114,7 @@ void __init start_kernel_secondary(void)
 
 	notify_cpu_starting(cpu);
 	set_cpu_online(cpu, true);
+	trace_hardirqs_off();
 
 	local_flush_tlb_all();
 
