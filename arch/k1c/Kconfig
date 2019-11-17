@@ -39,6 +39,9 @@ config ZONE_DMA32
 config STACKTRACE_SUPPORT
 	def_bool y
 
+config LOCKDEP_SUPPORT
+	def_bool y
+
 config TRACE_IRQFLAGS_SUPPORT
 	def_bool y
 

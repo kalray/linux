@@ -65,6 +65,17 @@ asn_error_panic_str_label:
 #endif
 
 /**
+ * call_trace_hardirqs: hardirqs tracing call
+ * state: State of hardirqs to be reported (on/off)
+ */
+.macro call_trace_hardirqs state
+#ifdef CONFIG_TRACE_IRQFLAGS
+	call trace_hardirqs_\state
+	;;
+#endif
+.endm
+
+/**
  * disable_interrupts: Disable interrupts
  * tmp_reg: Temporary register to use for interrupt disabling
  */
@@ -79,6 +90,7 @@ asn_error_panic_str_label:
  * call_do_work_pending: Call do_work_pending and set stack argument ($r0)
  * NOTE: Since do_work_pending requires thread_flags in $r1, they must
  * be provided in $r1 before calling this macro.
+ * Moreover, do_work_pending expects interrupts to be disabled.
  */
 .macro call_do_work_pending
 	copyd $r0 = $sp
@@ -221,9 +233,14 @@ asn_error_panic_str_label:
 	make $fp = 0
 	/* Reenable hwloop and clear exception taken */
 	make $r8 = PS_HWLOOP_EN_ET_EN
-	copyd \pt_regs_sp = $sp
 	;;
 	wfxl $ps, $r8
+	;;
+	/* When entering exceptions, IRQs are always disabled */
+	call_trace_hardirqs off
+	;;
+	/* Copy regs stack pointer for macro caller */
+	copyd \pt_regs_sp = $sp
 	;;
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	addd $sp = $sp, -REG_SIZE
@@ -289,7 +306,22 @@ _check_ok:
 	;;
 	call_do_work_pending
 	;;
+#ifdef CONFIG_TRACE_IRQFLAGS
+	/* reload sps value from saved registers */
+	ld $r6 = PT_SPS[$sp]
+	;;
+#endif
 _restore_regs:
+#ifdef CONFIG_TRACE_IRQFLAGS
+	/* Check if IRQs are going to be reenable in next context */
+	andd $r6 = $r6, K1C_SFR_SPS_IE_MASK
+	;;
+	cb.deqz $r6? 1f
+	;;
+	call trace_hardirqs_on
+	;;
+1:
+#endif
 	lo $r0r1r2r3 = PT_CS_SPC_SPS_ES[$sp]
 	;;
 	lo $r4r5r6r7 = PT_LC_LE_LS_RA[$sp]
@@ -1135,6 +1167,9 @@ call_work_pending:
 	save_callee
 	;;
 	call_do_work_pending
+	;;
+	/* Since we are returning to user, interrupts will be reenabled */
+	call_trace_hardirqs on
 	;;
 	goto ret_to_user
 	;;
