@@ -17,6 +17,7 @@
 #include <asm/processor.h>
 #include <asm/ptrace.h>
 #include <asm/page.h>
+#include <asm/fixmap.h>
 #include <asm/page_size.h>
 #include <asm/pgtable.h>
 #include <asm/ptrace.h>
@@ -31,6 +32,8 @@ int foo(void)
 	/* Check that user_pt_regs size matches the beginning of pt_regs */
 	BUILD_BUG_ON((offsetof(struct user_pt_regs, spc) + sizeof(uint64_t)) !=
 		     sizeof(struct user_pt_regs));
+
+	DEFINE(FIX_GDB_MEM_BASE_IDX, FIX_GDB_BARE_DISPLACED_MEM_BASE);
 
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	DEFINE(REG_SIZE, sizeof(uint64_t));
