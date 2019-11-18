@@ -13,6 +13,7 @@
 #include <asm/tlbflush.h>
 #include <asm/tlb_defs.h>
 #include <asm/page_size.h>
+#include <asm/mmu_stats.h>
 #include <asm/pgtable.h>
 #include <asm/tlb.h>
 
@@ -168,6 +169,11 @@ void local_flush_tlb_all(void)
 	struct k1c_tlb_format tlbe = K1C_EMPTY_TLB_ENTRY;
 	int set, way;
 	unsigned long flags;
+#ifdef CONFIG_K1C_MMU_STATS
+	struct mmu_stats *stats = &per_cpu(mmu_stats, smp_processor_id());
+
+	stats->tlb_flush_all++;
+#endif
 
 	local_irq_save(flags);
 
