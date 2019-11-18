@@ -20,7 +20,6 @@
  * the fixed_addresses enum (I think ?).
  */
 #define FIXADDR_TOP	(-PAGE_SIZE)
-#define FIX_GDB_MEM_BASE_IDX 1
 
 #define ASM_FIX_TO_VIRT(IDX) \
 	(FIXADDR_TOP - ((IDX) << PAGE_SHIFT))
@@ -31,7 +30,7 @@
 
 enum fixed_addresses {
 	FIX_EARLYCON_MEM_BASE,
-	FIX_GDB_BARE_DISPLACED_MEM_BASE = FIX_GDB_MEM_BASE_IDX,
+	FIX_GDB_BARE_DISPLACED_MEM_BASE,
 	__end_of_fixed_addresses
 };
 
