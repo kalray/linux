@@ -42,7 +42,8 @@ extern char _exception_start;
 
 #define cpu_relax()         barrier()
 
-#define SAVE_AREA_SIZE	8
+/* Size for register saving area for refill handler (enough for 3 quad regs) */
+#define SAVE_AREA_SIZE	12
 
 #define TCA_REG_COUNT	48
 

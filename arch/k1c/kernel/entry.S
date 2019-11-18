@@ -53,6 +53,9 @@
 
 #define TEL_DEFAULT_VALUE  (TLB_ES_A_MODIFIED << K1C_SFR_TEL_ES_SHIFT)
 
+#define TASK_THREAD_SAVE_AREA_QUAD(__q) \
+				(TASK_THREAD_SAVE_AREA + (__q) * QUAD_REG_SIZE)
+
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 .section .rodata
 stack_error_panic_str_label:
@@ -118,7 +121,7 @@ asn_error_panic_str_label:
 	rswap \sr_swap_reg = $sr
 	;;
 	/* Save registers in save_area */
-	so TASK_THREAD_SAVE_AREA[\sr_swap_reg] = \quad
+	so TASK_THREAD_SAVE_AREA_QUAD(0)[\sr_swap_reg] = \quad
 	/* Restore register */
 	rswap \sr_swap_reg = $sr
 	;;
@@ -193,7 +196,7 @@ asn_error_panic_str_label:
 	;;
 	/* Reload the saved quad registers to save correct values
 	 * Since we use the scratch reg before that */
-	lo \saved_quad = TASK_THREAD_SAVE_AREA[\task_reg]
+	lo \saved_quad = TASK_THREAD_SAVE_AREA_QUAD(0)[\task_reg]
 	;;
 	so PT_Q8[$sp] = $r8r9r10r11
 	;;
@@ -498,7 +501,7 @@ ENTRY(k1c_trap_handler):
 	/* Enable DAUS */
 	make $r3 = SFR_SET_VAL_WFXL(PS, DAUS, 1)
 	/* Get current task */
-	rswap $r10 = $sr
+	rswap $r63 = $sr
 	;;
 	wfxl $ps = $r3
 	/* We are now accessing data with MMU disabled */
@@ -506,25 +509,33 @@ ENTRY(k1c_trap_handler):
 #ifdef CONFIG_K1C_MMU_STATS
 	get $r3 = $pm0
 	;;
-	sd __PA(TASK_THREAD_ENTRY_TS)[$r10] = $r3
+	sd __PA(TASK_THREAD_ENTRY_TS)[$r63] = $r3
 	;;
 #endif
 	/* Restore $r3 from temporary system scratch register */
 	get $r3 = TMP_SCRATCH_SR
+	/* Save registers to save $tel, $teh and $mmc */
+	so __PA(TASK_THREAD_SAVE_AREA_QUAD(2))[$r63] = $r8r9r10r11
+	;;
+	get $r8 = $tel
 	/* Save register for refill handler */
-	so __PA(TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r10] = $r4r5r6r7
+	so __PA(TASK_THREAD_SAVE_AREA_QUAD(1))[$r63] = $r4r5r6r7
 	;;
 	/* Get exception address */
 	get $r0 = $ea
 	/* Save more registers to be comfy */
-	so __PA(TASK_THREAD_SAVE_AREA) [$r10] = $r0r1r2r3
+	so __PA(TASK_THREAD_SAVE_AREA_QUAD(0))[$r63] = $r0r1r2r3
 	;;
-	/* Restore $r10 value */
-	rswap $r10 = $sr
+	get $r9 = $teh
+	;;
+	get $r10 = $mmc
+	;;
+	/* Restore $r63 value */
+	rswap $r63 = $sr
 	/* Check kernel address range */
 	addd $r4 = $r0, -KERNEL_DIRECT_MEMORY_MAP_BASE
 	/* Load task active mm for pgd loading in macro_tlb_refill */
-	ld $r1 = __PA(TASK_ACTIVE_MM)[$r10]
+	ld $r1 = __PA(TASK_ACTIVE_MM)[$r63]
 	;;
 k1c_perf_tlb_refill:
 	/* Check if the address is in the kernel direct memory mapping */
@@ -548,8 +559,8 @@ k1c_perf_tlb_refill:
 	;;
 	/* Keep low bits of timer value */
 	andw $r4 = $r4, (REFILL_PERF_ENTRIES - 1)
-	/* do_tlb_write path expects $r0 to have $sr value */
-	get $r0 = $sr
+	/* Get current task pointer for register restoration */
+	get $r11 = $sr
 	;;
 	/* Add LTLB base way number for kernel refill way */
 	addw $r4 = $r4, LTLB_KERNEL_RESERVED
@@ -721,7 +732,7 @@ pte_prepared:
 	/* Prepare tel */
 	ord $r6 = $r0, $r6
 	/* Get current task pointer for register restoration */
-	get $r0 = $sr
+	get $r11 = $sr
 	;;
 	set $tel = $r6
 	;;
@@ -738,11 +749,16 @@ mmc_error_check_ok:
 	;;
 asn_check_ok:
 #endif
+	set $tel = $r8
 	/* Restore registers */
-	lo $r4r5r6r7 = __PA(TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r0]
+	lo $r4r5r6r7 = __PA(TASK_THREAD_SAVE_AREA_QUAD(1))[$r11]
 	;;
-	/* Restore registers */
-	lo $r0r1r2r3 = __PA(TASK_THREAD_SAVE_AREA)[$r0]
+	set $teh = $r9
+	lo $r0r1r2r3 = __PA(TASK_THREAD_SAVE_AREA_QUAD(0))[$r11]
+	;;
+	set $mmc = $r10
+	;;
+	lo $r8r9r10r11 = __PA(TASK_THREAD_SAVE_AREA_QUAD(2))[$r11]
 	;;
 #ifdef CONFIG_K1C_MMU_STATS
 	/*
@@ -837,9 +853,9 @@ asn_check_ok:
 	get $r0 = $sr
 	;;
 	/* Restore cloberred registers */
-	lo $r4r5r6r7 = __PA(TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r0]
+	lo $r4r5r6r7 = __PA(TASK_THREAD_SAVE_AREA_QUAD(1))[$r0]
 	;;
-	lo $r0r1r2r3 = __PA(TASK_THREAD_SAVE_AREA)[$r0]
+	lo $r0r1r2r3 = __PA(TASK_THREAD_SAVE_AREA_QUAD(0))[$r0]
 	;;
 #endif
 	/* Save $r4 for reenabling mmu and data cache in sps */
@@ -914,7 +930,7 @@ mmc_error_check:
 #endif
 #ifdef CONFIG_K1C_DEBUG_ASN
 /*
- * When entering this path $r0 = $sr.
+ * When entering this path $r11 = $sr.
  * WARNING: Do not clobber it here if you don't want to mess up with registers
  * restoration above.
  */
@@ -928,7 +944,7 @@ asn_check:
 	;;
 	get $r2 = $pcr
 	/* Load active mm addr */
-	ld $r3 = __PA(TASK_ACTIVE_MM)[$r0]
+	ld $r3 = __PA(TASK_ACTIVE_MM)[$r11]
 	;;
 	get $r5 = $mmc
 	/* Extract processor ID to compute cpu_offset*/
@@ -1000,7 +1016,9 @@ refill_err_out:
 	wfxl $ps = $r1
 	;;
 	/* Restore clobbered registers */
-	lo $r4r5r6r7 = (TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r2]
+	lo $r8r9r10r11 = TASK_THREAD_SAVE_AREA_QUAD(2)[$r2]
+	;;
+	lo $r4r5r6r7 = TASK_THREAD_SAVE_AREA_QUAD(1)[$r2]
 	goto trap_switch_stack
 	;;
 
