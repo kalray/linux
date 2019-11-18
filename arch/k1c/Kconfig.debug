@@ -38,6 +38,16 @@ config K1C_DEBUG_TLB_ACCESS_BITS
 	  entry 24 bytes are used. So by default it uses 96Ko of memory per
 	  CPU to store 2^12 (4096) entries.
 
+config K1C_MMU_STATS
+	bool "Register mmu stats debugfs entries"
+	default n
+	select DEBUG_FS
+	help
+	  Enable debugfs attribute which will allow inspecting various metric
+	  regarding MMU:
+	  - Number of nomapping traps handled
+	  - avg/min/max time for nomapping refill (user/kernel)
+
 config DEBUG_EXCEPTION_STACK
 	bool "Enable exception stack debugging"
 	default n
