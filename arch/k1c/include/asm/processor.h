@@ -108,6 +108,9 @@ struct thread_struct {
 	mm_segment_t addr_limit;		/* Addr limit */
 	uint64_t save_area[SAVE_AREA_SIZE];	/* regs save area */
 
+#ifdef CONFIG_K1C_MMU_STATS
+	uint64_t trap_entry_ts;
+#endif
 	/* Context switch related registers */
 	struct ctx_switch_regs ctx_switch;
 
