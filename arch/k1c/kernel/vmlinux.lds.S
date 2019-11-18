@@ -8,6 +8,7 @@
 
 
 #include <asm/thread_info.h>
+#include <asm/asm-offsets.h>
 #include <asm/sys_arch.h>
 #include <asm/cache.h>
 #include <asm/rm_fw.h>
