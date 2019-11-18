@@ -503,8 +503,13 @@ ENTRY(k1c_trap_handler):
 	wfxl $ps = $r3
 	/* We are now accessing data with MMU disabled */
 	;;
-	/*
-	 * Restore $r3 from temporary system scratch register */
+#ifdef CONFIG_K1C_MMU_STATS
+	get $r3 = $pm0
+	;;
+	sd __PA(TASK_THREAD_ENTRY_TS)[$r10] = $r3
+	;;
+#endif
+	/* Restore $r3 from temporary system scratch register */
 	get $r3 = TMP_SCRATCH_SR
 	/* Save register for refill handler */
 	so __PA(TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r10] = $r4r5r6r7
@@ -736,11 +741,109 @@ asn_check_ok:
 	/* Restore registers */
 	lo $r4r5r6r7 = __PA(TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r0]
 	;;
-	/* Save $r4 for reenabling mmu and data cache in sps */
-	set TMP_SCRATCH_SR = $r4
 	/* Restore registers */
 	lo $r0r1r2r3 = __PA(TASK_THREAD_SAVE_AREA)[$r0]
 	;;
+#ifdef CONFIG_K1C_MMU_STATS
+	/*
+	 * Fence to simulate a direct data dependency after returning from trap
+	 * nomapping handling. This is the worst case that can happen and the
+	 * processor will be stalled waiting for previous loads to complete.
+	 */
+	fence
+	;;
+	get $r4 = $pm0
+	;;
+	get $r0 = $sr
+	;;
+	/* Get cycles measured on trap entry */
+	ld $r1 = __PA(TASK_THREAD_ENTRY_TS)[$r0]
+	;;
+	/* Compute refill time */
+	sbfd $r0 = $r1, $r4
+	;;
+#ifdef CONFIG_SMP
+	get $r1 = $pcr
+	;;
+	/* Extract processor ID to compute cpu_offset */
+	extfz $r1 = $r1, K1C_SFR_END(PCR_PID), K1C_SFR_START(PCR_PID)
+	make $r2 = __PA(__per_cpu_offset)
+	;;
+	/* Load cpu offset */
+	ld.xs $r1 = $r1[$r2]
+	;;
+	addd $r1 = $r1, __PA(mmu_stats)
+	;;
+#else
+	make $r1 = __PA(mmu_stats)
+	;;
+#endif
+	/* Load time between refill + last refill cycle */
+	lq $r2r3 = MMU_STATS_CYCLES_BETWEEN_REFILL_OFF[$r1]
+	;;
+	/* Set last update time to current if 0 */
+	cmoved.deqz $r3? $r3 = $r4
+	/* remove current refill time to current cycle */
+	sbfd $r4 = $r0, $r4
+	;;
+	/* Compute time between last refill and current refill */
+	sbfd $r5 = $r3, $r4
+	/* Update last cycle time */
+	copyd $r3 = $r4
+	;;
+	/* Increment total time between refill */
+	addd $r2 = $r2, $r5
+	;;
+	sq MMU_STATS_CYCLES_BETWEEN_REFILL_OFF[$r1] = $r2r3
+	/* Get exception address */
+	get $r4 = $ea
+	;;
+	/* $r2 holds refill type (user/kernel/kernel_direct) */
+	make $r2 = MMU_STATS_REFILL_KERNEL_OFF
+	/* Check if address is a kernel direct mapping one */
+	compd.ltu $r3 = $r4, (KERNEL_DIRECT_MEMORY_MAP_BASE + \
+			      KERNEL_DIRECT_MEMORY_MAP_SIZE)
+	;;
+	cmoved.dnez $r3? $r2 = MMU_STATS_REFILL_KERNEL_DIRECT_OFF
+	/* Check if address is a user (ie below kernel) */
+	compd.ltu $r3 = $r4, KERNEL_DIRECT_MEMORY_MAP_BASE
+	;;
+	cmoved.dnez $r3? $r2 = MMU_STATS_REFILL_USER_OFF
+	;;
+	/* Compute refill struct addr into one reg */
+	addd $r1 = $r2, $r1
+	/* Load refill_struct values */
+	lo $r4r5r6r7 = $r2[$r1]
+	;;
+	/* Increment count */
+	addd $r4 = $r4, 1
+	/* Increment total cycles count */
+	addd $r5 = $r5, $r0
+	;;
+	/* Set min to ~0 if 0 */
+	cmoved.deqz $r6? $r6 = ~0
+	;;
+	/* Compare min and max */
+	compd.ltu $r2 = $r0, $r6
+	compd.gtu $r3 = $r0, $r7
+	;;
+	/* Update min and max*/
+	cmoved.dnez $r2? $r6 = $r0
+	cmoved.dnez $r3? $r7 = $r0
+	;;
+	/* store back all values */
+	so 0[$r1] = $r4r5r6r7
+	;;
+	get $r0 = $sr
+	;;
+	/* Restore cloberred registers */
+	lo $r4r5r6r7 = __PA(TASK_THREAD_SAVE_AREA + QUAD_REG_SIZE)[$r0]
+	;;
+	lo $r0r1r2r3 = __PA(TASK_THREAD_SAVE_AREA)[$r0]
+	;;
+#endif
+	/* Save $r4 for reenabling mmu and data cache in sps */
+	set TMP_SCRATCH_SR = $r4
 	/* Enable MME in $sps */
 	make $r4 = MME_WFXL(1)
 	;;

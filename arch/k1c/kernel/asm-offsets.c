@@ -21,6 +21,7 @@
 #include <asm/pgtable.h>
 #include <asm/ptrace.h>
 #include <asm/tlb_defs.h>
+#include <asm/mmu_stats.h>
 #include <asm/stacktrace.h>
 
 int foo(void)
@@ -114,6 +115,22 @@ int foo(void)
 	OFFSET(MM_PGD, mm_struct, pgd);
 #ifdef CONFIG_K1C_DEBUG_ASN
 	OFFSET(MM_CTXT_ASN, mm_struct, context.asn);
+#endif
+
+#ifdef CONFIG_K1C_MMU_STATS
+	DEFINE(MMU_REFILL_SIZE, sizeof(struct mmu_refill_stats));
+
+	OFFSET(MMU_STATS_REFILL_USER_OFF, mmu_stats,
+	       refill[MMU_REFILL_TYPE_USER]);
+	OFFSET(MMU_STATS_REFILL_KERNEL_OFF, mmu_stats,
+	       refill[MMU_REFILL_TYPE_KERNEL]);
+	OFFSET(MMU_STATS_REFILL_KERNEL_DIRECT_OFF, mmu_stats,
+	       refill[MMU_REFILL_TYPE_KERNEL_DIRECT]);
+	OFFSET(MMU_STATS_CYCLES_BETWEEN_REFILL_OFF, mmu_stats,
+	       cycles_between_refill);
+	OFFSET(MMU_STATS_LAST_REFILL, mmu_stats, last_refill);
+
+	OFFSET(TASK_THREAD_ENTRY_TS, task_struct, thread.trap_entry_ts);
 #endif
 
 	DEFINE(ASM_PGDIR_SHIFT, PGDIR_SHIFT);
