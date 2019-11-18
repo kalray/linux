@@ -9,6 +9,8 @@
 #ifndef _ASM_K1C_TLB_DEFS_H
 #define _ASM_K1C_TLB_DEFS_H
 
+#include <linux/sizes.h>
+
 #include <asm/sfr.h>
 
 /* Architecture specification */
@@ -89,14 +91,26 @@
 	(((_paddr) >> K1C_SFR_TEL_FN_SHIFT) << K1C_SFR_TEL_FN_SHIFT))
 
 
+/* Refill routine related defines */
+#define REFILL_PERF_ENTRIES	4
+#define REFILL_PERF_PAGE_SIZE	SZ_512M
+/* paddr will be inserted in assembly code */
+#define REFILL_PERF_TEL_VAL \
+	TLB_MK_TEL_ENTRY(0, TLB_PS_512M, TLB_ES_A_MODIFIED, TLB_CP_W_C, \
+			 TLB_PA_NA_RWX)
+/* vaddr will be inserted in assembly code */
+#define REFILL_PERF_TEH_VAL	TLB_MK_TEH_ENTRY(0, 0, TLB_G_GLOBAL, 0)
+
 /*
  * LTLB fixed entry index
  */
 #define LTLB_ENTRY_KERNEL_TEXT	0
 #define LTLB_ENTRY_GDB_PAGE	1
+/* Reserve entries for kernel pagination */
+#define LTLB_KERNEL_RESERVED	2
 /* This define should reflect the maximum number of fixed LTLB entries */
-#define LTLB_ENTRY_FIXED_COUNT	2
-#define LTLB_ENTRY_EARLY_SMEM	2
+#define LTLB_ENTRY_FIXED_COUNT	(LTLB_KERNEL_RESERVED + REFILL_PERF_ENTRIES)
+#define LTLB_ENTRY_EARLY_SMEM	LTLB_ENTRY_FIXED_COUNT
 
 /* MMC: Protection Trap Cause */
 #define MMC_PTC_RESERVED 0
