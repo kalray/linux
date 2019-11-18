@@ -9,6 +9,8 @@
 #ifndef _ASM_K1C_MEM_MAP_H
 #define _ASM_K1C_MEM_MAP_H
 
+#include <linux/const.h>
+
 #include <asm/page.h>
 
 /**
@@ -20,16 +22,16 @@
  */
 
 /**
- * Kernel text and data mapping
+ * Kernel direct memory mapping
  */
-#define KERNEL_TEXT_MAP_BASE	PAGE_OFFSET
-#define KERNEL_TEXT_MAP_SIZE	0x40000000
+#define KERNEL_DIRECT_MEMORY_MAP_BASE	PAGE_OFFSET
+#define KERNEL_DIRECT_MEMORY_MAP_SIZE	UL(0x1000000000)
 
 /**
  * Vmalloc mapping
  */
 #define KERNEL_VMALLOC_MAP_BASE \
-	(KERNEL_TEXT_MAP_BASE + KERNEL_TEXT_MAP_SIZE)
+	(KERNEL_DIRECT_MEMORY_MAP_BASE + KERNEL_DIRECT_MEMORY_MAP_SIZE)
 #define KERNEL_VMALLOC_MAP_SIZE	0x40000000
 
 #endif
