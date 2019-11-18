@@ -17,6 +17,7 @@
 #include <asm/sys_arch.h>
 #include <asm/sfr_defs.h>
 #include <asm/tlb_defs.h>
+#include <asm/mem_map.h>
 #include <asm/traps.h>
 #include <asm/unistd.h>
 
@@ -35,7 +36,13 @@
 #define PS_IT_DIS		K1C_SFR_PS_IE_MASK
 #define PS_IL_CLEAR		K1C_SFR_PS_IL_WFXL_CLEAR
 
-#define MMC_SEL_JTLB_CLEAR_WAY	(K1C_SFR_MMC_SB_MASK | K1C_SFR_MMC_SW_MASK)
+#define MMC_CLEAR_TLB_CLEAR_WAY \
+	(SFR_CLEAR_WFXL(MMC, SB) | SFR_CLEAR_WFXL(MMC, SW))
+
+#define MMC_SEL_TLB_CLEAR_WAY(__tlb) \
+	(SFR_SET_WFXL(MMC, SB, __tlb) | MMC_CLEAR_TLB_CLEAR_WAY)
+#define MMC_SEL_JTLB_CLEAR_WAY	MMC_SEL_TLB_CLEAR_WAY(MMC_SB_JTLB)
+#define MMC_SEL_LTLB_CLEAR_WAY	MMC_SEL_TLB_CLEAR_WAY(MMC_SB_LTLB)
 
 #define MME_WFXL(_enable)	SFR_SET_VAL_WFXL(PS, MME, _enable)
 
@@ -431,6 +438,8 @@ ENDPROC(k1c_debug_handler)
 /***********************************************************************
 *                      Traps handling
 ***********************************************************************/
+/* These labels will be used for instruction patching */
+.global k1c_perf_tlb_refill, k1c_std_tlb_refill
 .text
 ENTRY(k1c_trap_handler):
 	/* Save r3 in a temporary system register to check if the trap is a
@@ -507,9 +516,51 @@ ENTRY(k1c_trap_handler):
 	;;
 	/* Restore $r10 value */
 	rswap $r10 = $sr
+	/* Check kernel address range */
+	addd $r4 = $r0, -KERNEL_DIRECT_MEMORY_MAP_BASE
 	/* Load task active mm for pgd loading in macro_tlb_refill */
 	ld $r1 = __PA(TASK_ACTIVE_MM)[$r10]
 	;;
+k1c_perf_tlb_refill:
+	/* Check if the address is in the kernel direct memory mapping */
+	compd.ltu $r3 = $r4, KERNEL_DIRECT_MEMORY_MAP_SIZE
+	/* Clear low bits of virtual address to align on page size */
+	andd $r5 = $r0, ~(REFILL_PERF_PAGE_SIZE - 1)
+	/* Create corresponding physical address */
+	addd $r2 = $r4, PHYS_OFFSET
+	;;
+	/* If address is not a kernel one, take the standard path */
+	cb.deqz $r3? k1c_std_tlb_refill
+	/* Prepare $teh value with virtual address and kernel value */
+	ord $r7 = $r5, REFILL_PERF_TEH_VAL
+	;;
+	/* Get $pm0 value as a pseudo random value for LTLB way to use */
+	get $r4 = $pm0
+	/* Clear low bits of physical address to align on page size */
+	andd $r2 = $r2, ~(REFILL_PERF_PAGE_SIZE - 1)
+	/* Prepare value for $mmc wfxl to select LTLB and correct way */
+	make $r5 = MMC_SEL_LTLB_CLEAR_WAY
+	;;
+	/* Keep low bits of timer value */
+	andw $r4 = $r4, (REFILL_PERF_ENTRIES - 1)
+	/* do_tlb_write path expects $r0 to have $sr value */
+	get $r0 = $sr
+	;;
+	/* Add LTLB base way number for kernel refill way */
+	addw $r4 = $r4, LTLB_KERNEL_RESERVED
+	/* Prepare $tel value with physical address and kernel value */
+	ord $r6 = $r2, REFILL_PERF_TEL_VAL
+	set $teh = $r7
+	;;
+	/* insert way in $mmc wfxl value */
+	insf $r5 = $r4, K1C_SFR_END(MMC_SW) + 32, K1C_SFR_START(MMC_SW) + 32
+	set $tel = $r6
+	;;
+	wfxl $mmc = $r5
+	;;
+	goto do_tlb_write
+	;;
+k1c_std_tlb_refill:
 	/* extract PGD offset */
 	extfz $r3 = $r0, (ASM_PGDIR_SHIFT + ASM_PGDIR_BITS - 1), ASM_PGDIR_SHIFT
 	/* is mm NULL ? */
@@ -669,6 +720,7 @@ pte_prepared:
 	;;
 	set $tel = $r6
 	;;
+do_tlb_write:
 	tlbwrite
 	;;
 #ifdef CONFIG_K1C_DEBUG_TLB_WRITE
