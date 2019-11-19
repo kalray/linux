@@ -17,8 +17,6 @@
 
 #include <asm-generic/hugetlb.h>
 
-#define pmd_mkhuge(pmd)	(__pmd(pmd_val(pmd) | _PAGE_HUGE))
-
 extern void set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
 			    pte_t *ptep, pte_t pte);
 
