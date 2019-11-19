@@ -238,6 +238,10 @@ static inline void pmd_clear(pmd_t *pmdp)
  */
 static inline struct page *pmd_page(pmd_t pmd)
 {
+	if (pmd_val(pmd) & _PAGE_HUGE)
+		return pfn_to_page(
+				(pmd_val(pmd) & K1C_PFN_MASK) >> K1C_PFN_SHIFT);
+
 	return pfn_to_page(pmd_val(pmd) >> PAGE_SHIFT);
 }
 
@@ -418,6 +422,75 @@ static inline pte_t pte_mkhuge(pte_t pte)
 {
 	return __pte(pte_val(pte) | _PAGE_HUGE);
 }
+
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+
+#define pmdp_establish pmdp_establish
+static inline pmd_t pmdp_establish(struct vm_area_struct *vma,
+		unsigned long address, pmd_t *pmdp, pmd_t pmd)
+{
+	return __pmd(xchg(&pmd_val(*pmdp), pmd_val(pmd)));
+}
+
+static inline int pmd_trans_huge(pmd_t pmd)
+{
+	return !!(pmd_val(pmd) & _PAGE_HUGE);
+}
+
+static inline pte_t pte_of_pmd(pmd_t pmd)
+{
+	return __pte(pmd_val(pmd));
+}
+
+static inline pmd_t pmd_of_pte(pte_t pte)
+{
+	return __pmd(pte_val(pte));
+}
+
+
+#define pmd_mkclean(pmd)      pmd_of_pte(pte_mkclean(pte_of_pmd(pmd)))
+#define pmd_mkdirty(pmd)      pmd_of_pte(pte_mkdirty(pte_of_pmd(pmd)))
+#define pmd_mkold(pmd)	      pmd_of_pte(pte_mkold(pte_of_pmd(pmd)))
+#define pmd_mkwrite(pmd)      pmd_of_pte(pte_mkwrite(pte_of_pmd(pmd)))
+#define pmd_mkyoung(pmd)      pmd_of_pte(pte_mkyoung(pte_of_pmd(pmd)))
+#define pmd_modify(pmd, prot) pmd_of_pte(pte_modify(pte_of_pmd(pmd), prot))
+#define pmd_wrprotect(pmd)    pmd_of_pte(pte_wrprotect(pte_of_pmd(pmd)))
+
+static inline pmd_t pmd_mkhuge(pmd_t pmd)
+{
+	/* Create a huge page in PMD implies a size of 2Mo */
+	return __pmd(pmd_val(pmd) |
+			_PAGE_HUGE | (TLB_PS_2M << K1C_PAGE_SZ_SHIFT));
+}
+
+static inline pmd_t pmd_mknotpresent(pmd_t pmd)
+{
+	pmd_val(pmd) &= ~(_PAGE_PRESENT);
+
+	return pmd;
+}
+
+#define pmd_dirty(pmd)     pte_dirty(pte_of_pmd(pmd))
+#define pmd_write(pmd)     pte_write(pte_of_pmd(pmd))
+#define pmd_young(pmd)     pte_young(pte_of_pmd(pmd))
+
+#define mk_pmd(page, prot)  pmd_of_pte(mk_pte(page, prot))
+
+#define pmd_pfn(pmd)       pte_pfn(pte_of_pmd(pmd))
+
+static inline pmd_t pfn_pmd(unsigned long pfn, pgprot_t prot)
+{
+	return __pmd(((pfn << K1C_PFN_SHIFT) & K1C_PFN_MASK) |
+			pgprot_val(prot));
+}
+
+static inline void set_pmd_at(struct mm_struct *mm, unsigned long addr,
+			      pmd_t *pmdp, pmd_t pmd)
+{
+	*pmdp = pmd;
+}
+
+#endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
 #include <asm-generic/pgtable.h>
 

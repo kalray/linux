@@ -286,6 +286,15 @@ void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
 	}
 }
 
+void update_mmu_cache_pmd(struct vm_area_struct *vma, unsigned long addr,
+		pmd_t *pmd)
+{
+	pte_t pte = __pte(pmd_val(*pmd));
+
+	/* THP PMD accessors are implemented in terms of PTE */
+	update_mmu_cache(vma, addr, &pte);
+}
+
 void update_mmu_cache(struct vm_area_struct *vma,
 	unsigned long address, pte_t *ptep)
 {
