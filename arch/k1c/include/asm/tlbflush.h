@@ -50,6 +50,9 @@ static inline void flush_tlb(void)
 #define flush_tlb_kernel_range local_flush_tlb_kernel_range
 #endif
 
+void update_mmu_cache_pmd(struct vm_area_struct *vma, unsigned long addr,
+		pmd_t *pmd);
+
 void update_mmu_cache(struct vm_area_struct *vma,
 	unsigned long address, pte_t *ptep);
 
