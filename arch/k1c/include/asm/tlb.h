@@ -13,6 +13,8 @@ struct mmu_gather;
 
 static void tlb_flush(struct mmu_gather *tlb);
 
+int clear_ltlb_entry(unsigned long vaddr);
+
 #include <asm-generic/tlb.h>
 
 static inline unsigned int pgprot_cache_policy(unsigned long flags)
