@@ -79,6 +79,28 @@ void k1c_mmu_ltlb_add_entry(unsigned long vaddr, phys_addr_t paddr,
 	local_irq_restore(irqflags);
 }
 
+void k1c_mmu_ltlb_remove_entry(unsigned long vaddr)
+{
+	int ret, bit = LTLB_ENTRY_FIXED_COUNT;
+	struct k1c_tlb_format tlbe;
+
+	for_each_set_bit_from(bit, &ltlb_entries_bmp, MMU_LTLB_WAYS) {
+		tlbe = ltlb_entries[bit];
+		if (tlb_entry_match_addr(tlbe, vaddr)) {
+			__clear_bit(bit, &ltlb_entries_bmp);
+			break;
+		}
+	}
+
+	if (bit == MMU_LTLB_WAYS)
+		panic("Trying to remove non-existent LTLB entry for addr %lx\n",
+		      vaddr);
+
+	ret = clear_ltlb_entry(vaddr);
+	if (ret)
+		panic("Failed to remove LTLB entry for addr %lx\n", vaddr);
+}
+
 /**
  * k1c_mmu_jtlb_add_entry - Add an entry into JTLB
  *
