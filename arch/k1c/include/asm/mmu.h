@@ -20,6 +20,9 @@
 #include <asm/pgtable-bits.h>
 #include <asm/tlb_defs.h>
 
+/* Virtual adresses can use at most 41 bits */
+#define MMU_VIRT_BITS		41
+
 /*
  * See Documentation/k1c/k1c-mmu.txt for details about the division of the
  * virtual memory space.
@@ -226,6 +229,18 @@ static inline struct k1c_tlb_format tlb_mk_entry(
 	entry.tel_val = TLB_MK_TEL_ENTRY((uintptr_t)paddr, ps, es, cp, pa);
 
 	return entry;
+}
+
+static inline int tlb_entry_match_addr(struct k1c_tlb_format tlbe,
+				       unsigned long vaddr)
+{
+	/*
+	 * TLB entries store up to only 41 bits so we must truncate the provided
+	 * address to match teh.pn.
+	 */
+	vaddr &= GENMASK(MMU_VIRT_BITS - 1, K1C_SFR_TEH_PN_SHIFT);
+
+	return ((unsigned long) tlbe.teh.pn << K1C_SFR_TEH_PN_SHIFT) == vaddr;
 }
 
 extern void k1c_mmu_early_setup(void);
