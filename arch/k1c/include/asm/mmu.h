@@ -245,6 +245,7 @@ static inline int tlb_entry_match_addr(struct k1c_tlb_format tlbe,
 
 extern void k1c_mmu_early_setup(void);
 
+void k1c_mmu_ltlb_remove_entry(unsigned long vaddr);
 void k1c_mmu_ltlb_add_entry(unsigned long vaddr, phys_addr_t paddr,
 			    pgprot_t flags, unsigned long page_shift);
 
