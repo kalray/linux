@@ -17,6 +17,12 @@
 #include <asm/pgtable.h>
 #include <asm/tlb.h>
 
+/*
+ * When in kernel, use dummy asn 42 to be able to catch any problem easily if
+ * ASN is not restored properly.
+ */
+#define KERNEL_DUMMY_ASN	42
+
 DEFINE_PER_CPU(unsigned long, k1c_asn_cache) = MM_CTXT_FIRST_CYCLE;
 
 #ifdef CONFIG_K1C_DEBUG_TLB_ACCESS
@@ -50,19 +56,23 @@ void k1c_update_tlb_access(int type)
  * @addr: the address used to set TEH.PN
  * @global: is page global or not
  * @asn: ASN used if page is not global
+ * @tlb_type: tlb type (MMC_SB_LTLB or MMC_SB_JTLB)
  *
  * Preemption must be disabled when calling this function. There is no need to
  * invalidate micro TLB because it is invalidated when we write TLB.
  *
- * Return: nothing
+ * Return: 0 if TLB entry was found and deleted properly, -ENOENT if not found
+ * -EINVAL if found but in incorrect TLB.
+ *
  */
-static void clear_tlb_entry(unsigned long addr,
-			     unsigned int global,
-			     unsigned int asn)
+static int clear_tlb_entry(unsigned long addr,
+			   unsigned int global,
+			   unsigned int asn,
+			   unsigned int tlb_type)
 {
 	struct k1c_tlb_format entry;
 	unsigned long mmc_val;
-	int saved_asn;
+	int saved_asn, ret = 0;
 
 	/* Sanitize asn */
 	asn &= MM_CTXT_ASN_MASK;
@@ -100,13 +110,15 @@ static void clear_tlb_entry(unsigned long addr,
 		 * restore the ASN before returning.
 		 */
 		k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_E_SHIFT);
+		ret = -ENOENT;
 		goto restore_asn;
 	}
 
-	/* We surely don't want to flush fixed LTLB entries or we are fried */
-	if (k1c_mmc_sb(mmc_val) == MMC_SB_LTLB &&
-	    k1c_mmc_sw(mmc_val) < LTLB_ENTRY_FIXED_COUNT)
+	/* We surely don't want to flush another TLB type or we are fried */
+	if (k1c_mmc_sb(mmc_val) != tlb_type) {
+		ret = -EINVAL;
 		goto restore_asn;
+	}
 
 	/*
 	 * At this point the probe found an entry. TEL and TEH have correct
@@ -128,6 +140,27 @@ static void clear_tlb_entry(unsigned long addr,
 
 restore_asn:
 	k1c_sfr_set_field(K1C_SFR_MMC, ASN, saved_asn);
+
+	return ret;
+}
+
+static void clear_jtlb_entry(unsigned long addr,
+			     unsigned int global,
+			     unsigned int asn)
+{
+	clear_tlb_entry(addr, global, asn, MMC_SB_JTLB);
+}
+
+/**
+ * clear_ltlb_entry() - Remove a LTLB entry
+ * @vaddr: Virtual address to be matched against LTLB entries
+ *
+ * Return: Same value as clear_tlb_entry
+ */
+int clear_ltlb_entry(unsigned long vaddr)
+{
+	return clear_tlb_entry(vaddr, TLB_G_GLOBAL, KERNEL_DUMMY_ASN,
+			       MMC_SB_LTLB);
 }
 
 /* If mm is current we just need to assign the current task a new ASN. By
@@ -160,7 +193,7 @@ void local_flush_tlb_page(struct vm_area_struct *vma,
 		return;
 
 	local_irq_save(flags);
-	clear_tlb_entry(addr, TLB_G_USE_ASN, current_asn);
+	clear_jtlb_entry(addr, TLB_G_USE_ASN, current_asn);
 	local_irq_restore(flags);
 }
 
@@ -217,7 +250,7 @@ void local_flush_tlb_range(struct vm_area_struct *vma,
 	current_asn = mm_asn(vma->vm_mm, cpu);
 	if (current_asn != MM_CTXT_NO_ASN) {
 		while (start < end) {
-			clear_tlb_entry(start, TLB_G_USE_ASN, current_asn);
+			clear_jtlb_entry(start, TLB_G_USE_ASN, current_asn);
 			start += PAGE_SIZE;
 		}
 	}
@@ -245,11 +278,7 @@ void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
 		local_irq_save(flags);
 
 		while (start < end) {
-			/*
-			 * When in kernel, use dummy asn 42 to be able to catch
-			 * any problem easily if ASN is not restored properly.
-			 */
-			clear_tlb_entry(start, TLB_G_GLOBAL, 42);
+			clear_jtlb_entry(start, TLB_G_GLOBAL, KERNEL_DUMMY_ASN);
 			start += PAGE_SIZE;
 		}
 
