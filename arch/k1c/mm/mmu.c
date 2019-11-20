@@ -66,7 +66,8 @@ void k1c_mmu_ltlb_add_entry(unsigned long vaddr, phys_addr_t paddr,
 
 	local_irq_save(irqflags);
 
-	idx = ffz(ltlb_entries_bmp);
+	idx = find_next_zero_bit(&ltlb_entries_bmp, MMU_LTLB_WAYS,
+				 LTLB_ENTRY_FIXED_COUNT);
 	/* This should never happen */
 	BUG_ON(idx >= MMU_LTLB_WAYS);
 	__set_bit(idx, &ltlb_entries_bmp);
@@ -177,11 +178,7 @@ void __init k1c_mmu_early_setup(void)
 
 	k1c_mmu_remove_ltlb_entry(LTLB_ENTRY_EARLY_SMEM);
 
-	if (raw_smp_processor_id() == 0) {
-		/* Initialize already used ltlb entries */
-		__set_bit(LTLB_ENTRY_KERNEL_TEXT, &ltlb_entries_bmp);
-		__set_bit(LTLB_ENTRY_GDB_PAGE, &ltlb_entries_bmp);
-	} else {
+	if (raw_smp_processor_id() != 0) {
 		/* Apply existing ltlb entries starting from first one free */
 		bit = LTLB_ENTRY_FIXED_COUNT;
 		for_each_set_bit_from(bit, &ltlb_entries_bmp, MMU_LTLB_WAYS) {
