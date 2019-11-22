@@ -218,7 +218,7 @@ static void __init fixedrange_init(void)
 	 * Fixed mappings:
 	 */
 	vaddr = __fix_to_virt(__end_of_fixed_addresses - 1);
-	pgd = swapper_pg_dir + pgd_index(vaddr);
+	pgd = pgd_offset_raw(swapper_pg_dir, vaddr);
 	pud = pud_offset(pgd, vaddr);
 	/* Allocate the PMD page */
 	fixmap_pmd_p = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
