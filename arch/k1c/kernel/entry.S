@@ -410,12 +410,14 @@ exception_trampoline(trap)
 exception_trampoline(interrupt)
 exception_trampoline(syscall)
 
+#define EXCEPTION_ENTRY(__name) \
+.section .exception.text, "ax", @progbits ;\
+ENTRY(__name)
+
 /***********************************************************************
 *                      Debug handling
 ***********************************************************************/
-
-.text
-ENTRY(k1c_debug_handler):
+EXCEPTION_ENTRY(k1c_debug_handler):
 	save_quad_regs $r0r1r2r3 $r4
 	;;
 	get $r2 = $sr
@@ -443,8 +445,7 @@ ENDPROC(k1c_debug_handler)
 ***********************************************************************/
 /* These labels will be used for instruction patching */
 .global k1c_perf_tlb_refill, k1c_std_tlb_refill
-.text
-ENTRY(k1c_trap_handler):
+EXCEPTION_ENTRY(k1c_trap_handler):
 	/* Save r3 in a temporary system register to check if the trap is a
 	* nomapping or not */
 	set TMP_SCRATCH_SR = $r3
@@ -1053,8 +1054,7 @@ ENDPROC(k1c_trap_handler)
 /***********************************************************************
 *                      Interrupts handling
 ***********************************************************************/
-.text
-ENTRY(k1c_interrupt_handler):
+EXCEPTION_ENTRY(k1c_interrupt_handler):
 	save_quad_regs $r0r1r2r3 $r4
 	;;
 	get $r0 = $sr
@@ -1126,8 +1126,7 @@ ENDPROC(k1c_interrupt_handler)
 /***********************************************************************
 *                      Syscall handling
 ***********************************************************************/
-.text
-ENTRY(k1c_syscall_handler):
+EXCEPTION_ENTRY(k1c_syscall_handler):
 	/**
 	 * Syscalls are seen as standard func call from ABI POV
 	 * We may use all caller saved register whithout causing havoc
