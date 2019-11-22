@@ -157,10 +157,12 @@ static inline unsigned long pgd_index(unsigned long addr)
 	return ((addr >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1));
 }
 
+#define pgd_offset_raw(pgd, addr)	((pgd) + pgd_index(addr))
+
 /* Find an entry in the page global directory */
 static inline pgd_t *pgd_offset(const struct mm_struct *mm, unsigned long addr)
 {
-	return mm->pgd + pgd_index(addr);
+	return pgd_offset_raw(mm->pgd, addr);
 }
 
 /* Locate an entry in the kernel page global directory */
