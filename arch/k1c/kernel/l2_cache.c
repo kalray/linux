@@ -17,6 +17,7 @@
 
 #include <asm/rm_fw.h>
 #include <asm/l2_cache.h>
+#include <asm/sections.h>
 #include <asm/cacheflush.h>
 
 #define L2_START_TIMEOUT_MS	10
@@ -369,7 +370,7 @@ static phys_addr_t __init l2_get_regs_addr(struct device_node *np)
 
 		l2_regs_addr = res.start;
 	} else {
-		l2_regs_addr = (phys_addr_t) &__rm_firmware_regs_start;
+		l2_regs_addr = (phys_addr_t) __rm_firmware_regs_start;
 	}
 
 	if (!IS_ALIGNED(l2_regs_addr, PAGE_SIZE)) {
