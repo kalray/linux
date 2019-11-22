@@ -185,7 +185,7 @@ init_core:
 	 * Register this as the early exception handler to at least avoid
 	 * going in a black hole.
 	 */
-	make $r27 = _early_exception_start
+	make $r27 = __early_exception_start
 	;;
 	set $ev = $r27
 	;;

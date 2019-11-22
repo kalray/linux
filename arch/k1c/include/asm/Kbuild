@@ -37,7 +37,6 @@ generic-y += preempt.h
 generic-y += qrwlock.h
 generic-y += qspinlock.h
 generic-y += rwsem.h
-generic-y += sections.h
 generic-y += serial.h
 generic-y += shmparam.h
 generic-y += sockios.h

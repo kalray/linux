@@ -16,10 +16,4 @@
 
 #define RM_FIRMWARE_REGS_SIZE	(SZ_4K)
 
-#ifndef __ASSEMBLY__
-
-extern char *__rm_firmware_regs_start;
-
-#endif /* __ASSEMBLY__ */
-
 #endif /* _ASM_K1C_RM_FW_H */
