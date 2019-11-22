@@ -38,7 +38,7 @@ ENTRY(k1c_start)
  * exception handler, factorize it here.
  */
 #define EXCEPTION_SECTIONS(__sec) \
-	_ ## __sec ## _start = ABSOLUTE(.); \
+	__ ## __sec ## _start = ABSOLUTE(.); \
 	HANDLER_SECTION(__sec,debug) \
 	HANDLER_SECTION(__sec,trap) \
 	HANDLER_SECTION(__sec,interrupt) \
@@ -79,13 +79,6 @@ SECTIONS
 	_start = .;
 
 	_stext = .;
-	/* Exception vector must be aligned on a huge frontier */
-	.exception ALIGN(EXCEPTION_ALIGNMENT) :
-				AT(ADDR(.exception) - LOAD_OFFSET)
-	{
-		EXCEPTION_SECTIONS(exception)
-	}
-
 	__init_begin = .;
 
 	.early_exception ALIGN(EXCEPTION_ALIGNMENT) :
@@ -118,9 +111,12 @@ SECTIONS
 	}
 	__init_end = .;
 
-	.text : AT(ADDR(.text) - LOAD_OFFSET)
+	.text ALIGN(PAGE_SIZE) : AT(ADDR(.text) - LOAD_OFFSET)
 	{
 		_text = .;
+		EXCEPTION_SECTIONS(exception)
+		*(.exception.text)
+		__exception_end = .;
 		TEXT_TEXT
 		SCHED_TEXT
 		CPUIDLE_TEXT

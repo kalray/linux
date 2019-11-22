@@ -22,6 +22,7 @@
 
 #include <asm/processor.h>
 #include <asm/l2_cache.h>
+#include <asm/sections.h>
 #include <asm/hw_irq.h>
 #include <asm/setup.h>
 #include <asm/rm_fw.h>
@@ -64,7 +65,7 @@ static void __init setup_user_privilege(void)
 void __init setup_processor(void)
 {
 	/* Setup exception vector */
-	uint64_t ev_val = (uint64_t) &_exception_start;
+	uint64_t ev_val = (uint64_t) __exception_start;
 
 	k1c_sfr_set(K1C_SFR_EV, ev_val);
 
