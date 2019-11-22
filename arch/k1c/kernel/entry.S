@@ -27,12 +27,15 @@
 #define REPLICATE_32_MASK 0x0804020108040201
 
 #define PS_HWLOOP_ENABLE	(K1C_SFR_PS_HLE_MASK << 32)
-#define PS_HWLOOP_EN_ET_EN	\
-	(PS_HWLOOP_ENABLE | K1C_SFR_PS_ET_MASK)
+#define PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS	\
+	(PS_HWLOOP_ENABLE | K1C_SFR_PS_ET_MASK | SFR_SET_VAL_WFXL(PS, DAUS, 0))
 #define PS_ET_CLEAR K1C_SFR_PS_ET_MASK
-#define PS_HLE_EN_IT_EN_ET_CLEAR	\
-		(((K1C_SFR_PS_HLE_MASK | K1C_SFR_PS_IE_MASK) << 32) | \
-		K1C_SFR_PS_ET_MASK)
+#define PS_HLE_EN_IT_EN_ET_CLEAR_DAUS_DIS	\
+		(SFR_SET_VAL_WFXL(PS, HLE, 1) | \
+		SFR_SET_VAL_WFXL(PS, IE, 1) | \
+		SFR_SET_VAL_WFXL(PS, ET, 0) | \
+		SFR_SET_VAL_WFXL(PS, DAUS, 0))
+
 #define PS_IT_DIS		K1C_SFR_PS_IE_MASK
 #define PS_IL_CLEAR		K1C_SFR_PS_IL_WFXL_CLEAR
 
@@ -121,7 +124,7 @@ asn_error_panic_str_label:
 	rswap \sr_swap_reg = $sr
 	;;
 	/* Save registers in save_area */
-	so TASK_THREAD_SAVE_AREA_QUAD(0)[\sr_swap_reg] = \quad
+	so __PA(TASK_THREAD_SAVE_AREA_QUAD(0))[\sr_swap_reg] = \quad
 	/* Restore register */
 	rswap \sr_swap_reg = $sr
 	;;
@@ -147,7 +150,39 @@ asn_error_panic_str_label:
 	copyd \sp_reg = $sp
 	;;
 	/* restore sp from kernel stack pointer */
-	ld $sp = TASK_THREAD_KERNEL_SP[\task_reg]
+	ld $sp = __PA(TASK_THREAD_KERNEL_SP)[\task_reg]
+	;;
+.endm
+
+/**
+ * Disable MMU using a specified register
+ * scratch_reg: Scratch register to be used for $ps modification (clobbered)
+ */
+.macro disable_mmu scratch_reg
+	/* Disable MME in $sps */
+	make \scratch_reg = MME_WFXL(0)
+	;;
+	wfxl $sps = \scratch_reg
+	;;
+	/* Enable DAUS in $ps */
+	make \scratch_reg = SFR_SET_VAL_WFXL(PS, DAUS, 1)
+	;;
+	wfxl $ps = \scratch_reg
+	/* We are now accessing data with MMU disabled */
+	;;
+.endm
+
+/**
+ * Disable MMU when entering exception path
+ * This macro does not require any register since used register will be
+ * restored after use. This can safely be used directly after entering
+ * exceptions.
+ */
+.macro exception_entry_disable_mmu
+	set TMP_SCRATCH_SR = $r0
+	disable_mmu $r0
+	;;
+	get $r0 = TMP_SCRATCH_SR
 	;;
 .endm
 
@@ -179,9 +214,11 @@ asn_error_panic_str_label:
 .endif
 	/* make some room on stack to save registers */
 	addd $sp = $sp, -(PT_SIZE_ON_STACK)
-	so (PT_Q4-PT_SIZE_ON_STACK)[$sp] = $r4r5r6r7
+	so __PA(PT_Q4-PT_SIZE_ON_STACK)[$sp] = $r4r5r6r7
+	/* Compute physical address of stack to avoid using 64bits immediate */
+	addd $r6 = $sp, VA_TO_PA_OFFSET - (PT_SIZE_ON_STACK)
 	;;
-	so PT_Q60[$sp] = $r60r61r62r63
+	so PT_Q60[$r6] = $r60r61r62r63
 	/* Now that $r60r61r62r63 is saved, we can use it for saving
 	 * original stack stored in scratch_reg. Note that we can not
 	 * use the r12r13r14r15 quad to do that because it would
@@ -196,53 +233,54 @@ asn_error_panic_str_label:
 	;;
 	/* Reload the saved quad registers to save correct values
 	 * Since we use the scratch reg before that */
-	lo \saved_quad = TASK_THREAD_SAVE_AREA_QUAD(0)[\task_reg]
+	lo \saved_quad = __PA(TASK_THREAD_SAVE_AREA_QUAD(0))[\task_reg]
 	;;
-	so PT_Q8[$sp] = $r8r9r10r11
+	so PT_Q8[$r6] = $r8r9r10r11
 	;;
-	so PT_Q0[$sp] = $r0r1r2r3
+	so PT_Q0[$r6] = $r0r1r2r3
 	copyd $r61 = $r13
 	;;
-	sq PT_R16R17[$sp] = $r16r17
+	sq PT_R16R17[$r6] = $r16r17
 	make $r10 = 0x0
 	get $r5 = $le
 	copyd $r62 = $r14
 	;;
-	so PT_Q32[$sp] = $r32r33r34r35
+	so PT_Q32[$r6] = $r32r33r34r35
 	/* Since we are going to enable hardware loop, we must be careful
 	 * and reset le (loop exit) to avoid any exploit and return to
 	 * user with kernel mode */
 	set $le = $r10
 	copyd $r63 = $r15
 	;;
-	so PT_Q36[$sp] = $r36r37r38r39
+	so PT_Q36[$r6] = $r36r37r38r39
 	get $r0 = $cs
 	;;
-	so PT_Q40[$sp] = $r40r41r42r43
+	so PT_Q40[$r6] = $r40r41r42r43
 	get $r1 = $spc
 	;;
-	so PT_Q44[$sp] = $r44r45r46r47
+	so PT_Q44[$r6] = $r44r45r46r47
 	get $r2 = $sps
 	;;
-	so PT_Q48[$sp] = $r48r49r50r51
+	so PT_Q48[$r6] = $r48r49r50r51
 	get $r3 = $es
 	;;
-	so PT_Q52[$sp] = $r52r53r54r55
+	so PT_Q52[$r6] = $r52r53r54r55
 	get $r7 = $ra
 	;;
-	so PT_Q56[$sp] = $r56r57r58r59
+	so PT_Q56[$r6] = $r56r57r58r59
 	get $r4 = $lc
 	;;
-	so PT_Q12[$sp] = $r60r61r62r63
+	so PT_Q12[$r6] = $r60r61r62r63
+	copyd $r63 = $r6
 	get $r6 = $ls
 	;;
-	so PT_CS_SPC_SPS_ES[$sp] = $r0r1r2r3
+	so PT_CS_SPC_SPS_ES[$r63] = $r0r1r2r3
 	;;
-	so PT_LC_LE_LS_RA[$sp] = $r4r5r6r7
+	so PT_LC_LE_LS_RA[$r63] = $r4r5r6r7
 	/* Clear frame pointer */
 	make $fp = 0
-	/* Reenable hwloop and clear exception taken */
-	make $r8 = PS_HWLOOP_EN_ET_EN
+	/* Reenable hwloop, MMU and clear exception taken */
+	make $r8 = PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS
 	;;
 	wfxl $ps, $r8
 	;;
@@ -332,18 +370,22 @@ _restore_regs:
 	;;
 1:
 #endif
-	lo $r0r1r2r3 = PT_CS_SPC_SPS_ES[$sp]
+	disable_mmu $r0
 	;;
-	lo $r4r5r6r7 = PT_LC_LE_LS_RA[$sp]
+	lo $r0r1r2r3 = __PA(PT_CS_SPC_SPS_ES)[$sp]
+	/* Compute physical address of stack to avoid using 64bits immediate */
+	addd $r11 = $sp, VA_TO_PA_OFFSET
 	;;
-	lo $r60r61r62r63 = PT_Q60[$sp]
+	lo $r4r5r6r7 = PT_LC_LE_LS_RA[$r11]
 	;;
-	lo $r56r57r58r59 = PT_Q56[$sp]
+	lo $r60r61r62r63 = PT_Q60[$r11]
 	;;
-	lo $r52r53r54r55 = PT_Q52[$sp]
+	lo $r56r57r58r59 = PT_Q56[$r11]
+	;;
+	lo $r52r53r54r55 = PT_Q52[$r11]
 	get $r14 = $sps
 	;;
-	lo $r48r49r50r51 = PT_Q48[$sp]
+	lo $r48r49r50r51 = PT_Q48[$r11]
 	/* Generate a mask of ones at each bit where the current $sps
 	 * differs from the $sps to be restored
 	 */
@@ -353,39 +395,49 @@ _restore_regs:
 	/* prepare wfxl set mask on MSBs */
 	slld $r13 = $r2, 32
 	;;
-	lo $r44r45r46r47 = PT_Q44[$sp]
+	lo $r44r45r46r47 = PT_Q44[$r11]
 	/* Replicate mask of ones on the 32 MSBs */
 	sbmm8 $r14 = $r14, REPLICATE_32_MASK
 	/* Combine the set and clear mask for wfxl */
 	insf  $r13 = $r15, 31, 0
 	;;
-	lo $r40r41r42r43 = PT_Q40[$sp]
+	lo $r40r41r42r43 = PT_Q40[$r11]
 	set $lc = $r4
 	/* Mask to drop identical bits in order to avoid useless
 	 * privilege traps
 	 */
 	andd $r13 = $r13, $r14
 	;;
-	lq $r16r17 = PT_R16R17[$sp]
+	lq $r16r17 = PT_R16R17[$r11]
 	set $le = $r5
 	;;
-	lo $r32r33r34r35 = PT_Q32[$sp]
+	lo $r32r33r34r35 = PT_Q32[$r11]
 	set $ls = $r6
 	;;
-	lo $r36r37r38r39 = PT_Q36[$sp]
+	lo $r36r37r38r39 = PT_Q36[$r11]
+	copyd $r14 = $r11
 	set $ra = $r7
 	;;
-	lo $r8r9r10r11 = PT_Q8[$sp]
+	lo $r8r9r10r11 = PT_Q8[$r14]
 	set $cs = $r0
+	/* MME was disabled by disable_mmu, reenable it before leaving */
+	ord $r13 = $r13, SFR_SET_VAL_WFXL(SPS, MME, 1)
 	;;
-	lo $r4r5r6r7 = PT_Q4[$sp]
+	lo $r4r5r6r7 = PT_Q4[$r14]
 	set $spc = $r1
 	;;
-	lo $r0r1r2r3 = PT_Q0[$sp]
+	lo $r0r1r2r3 = PT_Q0[$r14]
+	/* Store $sps wfxl value in scratch system register */
+	set TMP_SCRATCH_SR = $r13
 	;;
-	wfxl $sps = $r13
+	lo $r12r13r14r15 = PT_Q12[$r14]
+	rswap $r0 = TMP_SCRATCH_SR
 	;;
-	lo $r12r13r14r15 = PT_Q12[$sp]
+	wfxl $sps = $r0
+	;;
+	/* Finally, restore $r0 value */
+	rswap $r0 = TMP_SCRATCH_SR
+	;;
 .endm
 
 /***********************************************************************
@@ -418,6 +470,8 @@ ENTRY(__name)
 *                      Debug handling
 ***********************************************************************/
 EXCEPTION_ENTRY(k1c_debug_handler):
+	exception_entry_disable_mmu
+	;;
 	save_quad_regs $r0r1r2r3 $r4
 	;;
 	get $r2 = $sr
@@ -446,6 +500,9 @@ ENDPROC(k1c_debug_handler)
 /* These labels will be used for instruction patching */
 .global k1c_perf_tlb_refill, k1c_std_tlb_refill
 EXCEPTION_ENTRY(k1c_trap_handler):
+	/* Enable DAUS for physical data access */
+	exception_entry_disable_mmu
+	;;
 	/* Save r3 in a temporary system register to check if the trap is a
 	* nomapping or not */
 	set TMP_SCRATCH_SR = $r3
@@ -494,18 +551,8 @@ EXCEPTION_ENTRY(k1c_trap_handler):
 	 * 9 -  Restore the virtual memory by disabling DAUS.
 	 *
 	 */
-	/* Disable MME in $sps */
-	make $r3 = MME_WFXL(0)
-	;;
-	wfxl $sps = $r3
-	;;
-	/* Enable DAUS */
-	make $r3 = SFR_SET_VAL_WFXL(PS, DAUS, 1)
 	/* Get current task */
 	rswap $r63 = $sr
-	;;
-	wfxl $ps = $r3
-	/* We are now accessing data with MMU disabled */
 	;;
 #ifdef CONFIG_K1C_MMU_STATS
 	get $r3 = $pm0
@@ -986,7 +1033,7 @@ asm_panic:
 	 * Reenable hardware loop and traps (for nomapping) since some functions
 	 * might need it. Moreover, disable DAUS to reenable MMU accesses.
 	 */
-	make $r32 = PS_HWLOOP_EN_ET_EN | SFR_SET_VAL_WFXL(PS, DAUS, 0)
+	make $r32 = PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS
 	make $r33 = 0
 	get $r34 = $sr
 	;;
@@ -1004,22 +1051,12 @@ asm_panic:
 
 /* Error path for TLB refill */
 refill_err_out:
-	/* Enable MME in $sps */
-	make $r3 = MME_WFXL(1)
-	/* Disable DAUS */
-	make $r1 = SFR_SET_VAL_WFXL(PS, DAUS, 0)
 	get $r2 = $sr
 	;;
-	/* Reenable MME in $sps */
-	wfxl $sps = $r3
-	;;
-	/* Disable DAUS in $ps */
-	wfxl $ps = $r1
-	;;
 	/* Restore clobbered registers */
-	lo $r8r9r10r11 = TASK_THREAD_SAVE_AREA_QUAD(2)[$r2]
+	lo $r8r9r10r11 = __PA(TASK_THREAD_SAVE_AREA_QUAD(2))[$r2]
 	;;
-	lo $r4r5r6r7 = TASK_THREAD_SAVE_AREA_QUAD(1)[$r2]
+	lo $r4r5r6r7 = __PA(TASK_THREAD_SAVE_AREA_QUAD(1))[$r2]
 	goto trap_switch_stack
 	;;
 
@@ -1055,6 +1092,8 @@ ENDPROC(k1c_trap_handler)
 *                      Interrupts handling
 ***********************************************************************/
 EXCEPTION_ENTRY(k1c_interrupt_handler):
+	exception_entry_disable_mmu
+	;;
 	save_quad_regs $r0r1r2r3 $r4
 	;;
 	get $r0 = $sr
@@ -1138,6 +1177,8 @@ EXCEPTION_ENTRY(k1c_syscall_handler):
 	 * this register must not be cloberred during function calls (tracing
 	 * for instance.
 	 */
+	disable_mmu $r43
+	;;
 	get $r43 = $es
 	copyd $r52 = $sp
 	copyd $r53 = $tp
@@ -1148,12 +1189,13 @@ EXCEPTION_ENTRY(k1c_syscall_handler):
 	;;
 	/* Extract syscall number */
 	extfz $r32 = $r43, K1C_SFR_END(ES_SN), K1C_SFR_START(ES_SN)
-	make $r42 = sys_call_table
 	/* Get regs to save on stack */
 	get $r63 = $ra
+	addd $r36 = $r36, VA_TO_PA_OFFSET
 	;;
 	ld $r39 = TASK_TI_FLAGS[$r36]
 	get $r41 = $spc
+	make $r42 = __PA(sys_call_table)
 	;;
 	/* Check for out-of-bound syscall number */
 	sbfd $r50 = $r32, __NR_syscalls
@@ -1172,10 +1214,11 @@ EXCEPTION_ENTRY(k1c_syscall_handler):
 	addd $sp = $sp, -PT_SIZE_ON_STACK
 	get $r40 = $cs
 	/* Save regs r0 -> r3 in pt_regs for restart & trace if needed */
-	so (PT_Q0 - PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
+	so __PA(PT_Q0 - PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
 	;;
 	/* Store user stack pointer, frame pointer, thread pointer and r15 */
-	so PT_Q12[$sp] = $r52r53r54r55
+	so __PA(PT_Q12)[$sp] = $r52r53r54r55
+	addd $r36 = $sp, VA_TO_PA_OFFSET
 	get $r60 = $lc
 	;;
 #ifdef CONFIG_SECURE_DAME_HANDLING
@@ -1185,29 +1228,29 @@ EXCEPTION_ENTRY(k1c_syscall_handler):
 	/* Extract $ilr.dame bit */
 	extfz $r44 = $r44, K1C_SFR_END(ILR_IT16), K1C_SFR_START(ILR_IT16)
 	/* Save $ilr value */
-	sd PT_ILR[$sp] = $r44
+	sd PT_ILR[$r36] = $r44
 	/* Clear $ilr.dame */
 	wfxl $ilr = $r45
 	;;
 #endif
-	so PT_CS_SPC_SPS_ES[$sp] = $r40r41r42r43
+	so PT_CS_SPC_SPS_ES[$r36] = $r40r41r42r43
 	get $r61 = $le
 	;;
-	/* Reenable hardware loops and IT */
-	make $r44 = PS_HLE_EN_IT_EN_ET_CLEAR
+	/* Reenable hardware loops, IT, exceptions and disable DAUS */
+	make $r44 = PS_HLE_EN_IT_EN_ET_CLEAR_DAUS_DIS
 	get $r62 = $ls
 	make $r43 = 0x0
 	/* Save regs r4 -> r7 in pt_regs for restart & trace if needed */
-	so PT_Q4[$sp] = $r4r5r6r7
+	so PT_Q4[$r36] = $r4r5r6r7
 	;;
 	/* Clear $le on entry */
 	set $le = $r43
 	/* Save hw loop stuff */
-	so PT_LC_LE_LS_RA[$sp] = $r60r61r62r63
+	so PT_LC_LE_LS_RA[$r36] = $r60r61r62r63
 	/* Clear frame pointer for kernel */
 	make $fp = 0
 	;;
-	/* Enable hwloop and interrupts
+	/* Enable hwloop and interrupts and MMU
 	 * Note that we have to reenable interrupts after saving context
 	 * to avoid losing registers content */
 	wfxl $ps, $r44
@@ -1259,17 +1302,22 @@ check_work_pending:
 	cb.dnez $r1? call_work_pending
 	;;
 ret_to_user:
+	disable_mmu $r60
+	;;
+	/* Compute $sp virtual address to avoid using 64 bits offset */
+	addd $r15 = $sp, VA_TO_PA_OFFSET
+	;;
 	/* Restore registers */
-	lo $r60r61r62r63 = PT_LC_LE_LS_RA[$sp]
+	lo $r60r61r62r63 = PT_LC_LE_LS_RA[$r15]
 	get $r33 = $sps
 	;;
-	lo $r40r41r42r43 = PT_CS_SPC_SPS_ES[$sp];
+	lo $r40r41r42r43 = PT_CS_SPC_SPS_ES[$r15];
 	set $ra = $r63
 	;;
 	/* Restore syscall arguments since they might be needed for
 	 * syscall restart
 	 */
-	lo $r0r1r2r3 = PT_Q0[$sp]
+	lo $r0r1r2r3 = PT_Q0[$r15]
 	set $cs = $r40
 	/* Generate a mask of ones at each bit where the current $sps
 	 * differs from the $sps to be restored
@@ -1286,7 +1334,7 @@ ret_to_user:
 	/* Combine the set and clear mask for wfxl */
 	insf  $r35 = $r34, 31, 0
 	;;
-	lo $r4r5r6r7 = PT_Q4[$sp]
+	lo $r4r5r6r7 = PT_Q4[$r15]
 	set $le = $r61
 	/* Mask to drop identical bits in order to avoid useless
 	 * privilege traps
@@ -1294,11 +1342,13 @@ ret_to_user:
 	andd $r35 = $r35, $r33
 	;;
 	/* Restore $ilr */
-	ld $r44 = PT_ILR[$sp]
+	ld $r44 = PT_ILR[$r15]
 	set $ls = $r62
+	/* Reenable MMU in $sps */
+	ord $r35 = $r35, SFR_SET_VAL_WFXL(SPS, MME, 1)
 	;;
 	/* Restore user pointer */
-	lo $r12r13r14r15 = PT_Q12[$sp]
+	lo $r12r13r14r15 = PT_Q12[$r15]
 	/* Prepare $r44 as a set mask for $ilr wfxl */
 	slld $r44 = $r44,  32
 	;;
