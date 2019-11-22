@@ -1134,14 +1134,9 @@ EXCEPTION_ENTRY(k1c_syscall_handler):
 	 * will be restored when returning from fork.
 	 * Note that r0 -> r11 MUST not be used since they are
 	 * containing syscall parameters !
-	 * During this function:
-	 * r36 = sr = current
-	 * r37 = current trace flag
-	 * r38 = syscall handler addr
-	 * r39 = current task flags
-	 * These 3 registers must live across function calls.
-	 * r36, r37 and r38 are used to speedup syscall return after actual
-	 * syscall func.
+	 * During this function, $r38 is the syscall handler address. Hence,
+	 * this register must not be cloberred during function calls (tracing
+	 * for instance.
 	 */
 	get $r43 = $es
 	copyd $r52 = $sp
@@ -1170,10 +1165,9 @@ EXCEPTION_ENTRY(k1c_syscall_handler):
 	;;
 	/* Restore kernel stack pointer */
 	ld $sp = TASK_THREAD_KERNEL_SP[$r36]
-	/* If the syscall number is valid, directly jump to check_trace */
-	cb.dlez $r50? invalid_scall
+	/* If the syscall number is invalid, set invalid handler */
+	cmoved.dlez $r50? $r38 = sys_ni_syscall
 	;;
-check_trace:
 	/* Prepare space on stack */
 	addd $sp = $sp, -PT_SIZE_ON_STACK
 	get $r40 = $cs
@@ -1182,6 +1176,7 @@ check_trace:
 	;;
 	/* Store user stack pointer, frame pointer, thread pointer and r15 */
 	so PT_Q12[$sp] = $r52r53r54r55
+	get $r60 = $lc
 	;;
 #ifdef CONFIG_SECURE_DAME_HANDLING
 	get $r44 = $ilr
@@ -1195,10 +1190,6 @@ check_trace:
 	wfxl $ilr = $r45
 	;;
 #endif
-	/* store volatile register which will be needed after C call */
-	so PT_Q36[$sp] = $r36r37r38r39
-	get $r60 = $lc
-	;;
 	so PT_CS_SPC_SPS_ES[$sp] = $r40r41r42r43
 	get $r61 = $le
 	;;
@@ -1346,15 +1337,8 @@ call_work_pending:
 	goto ret_to_user
 	;;
 
-invalid_scall:
-	/* Out of bound syscall, set $r38 = not implemented do_syscall func */
-	make $r38 = sys_ni_syscall
-	;;
-	goto check_trace
-	;;
-
 trace_syscall_enter:
-	/* Also save $r38 (syscall handler) which was computed above */
+	/* Save $r38 (syscall handler) which was computed above */
 	sd PT_R38[$sp] = $r38
 	;;
 	/* do_syscall_trace_enter expect pt_regs and syscall number
@@ -1364,15 +1348,13 @@ trace_syscall_enter:
 	;;
 	call do_syscall_trace_enter
 	;;
-	make $r41 = sys_ni_syscall
-	;;
-	/* Restore r36, r37 and r38 which might have been clobbered by
+	/* Restore r38 (syscall handler) which might has been clobbered by
 	 * do_syscall_trace_enter */
-	lo $r36r37r38r39 = PT_Q36[$sp]
+	ld $r38 = PT_R38[$sp]
 	;;
 	/* if the trace system requested to abort syscall, set $r38 to
 	 * non implemented syscall */
-	cmoved.dnez $r0? $r38 = $r41
+	cmoved.dnez $r0? $r38 = sys_ni_syscall
 	;;
 	/* Restore registers since the do_syscall_trace_enter call might
 	 * have clobbered them and we need them for the actual syscall
@@ -1384,14 +1366,12 @@ trace_syscall_enter:
 	goto do_syscall
 	;;
 trace_syscall_exit:
-	sd PT_R38[$sp] = $r38
-	;;
 	copyd $r0 = $sp
 	call do_syscall_trace_exit
 	;;
-	/* Restore r38 (task flags) which might have been clobbered by
-	 * do_syscall_trace_exit and needed by check_work_pending */
-	ld $r38 = PT_R38[$sp]
+	get $r36 = $sr
+	;;
+	ld $r38 = TASK_TI_FLAGS[$r36]
 	goto check_work_pending
 	;;
 ENDPROC(k1c_syscall_handler)
