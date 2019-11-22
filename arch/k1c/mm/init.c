@@ -204,6 +204,16 @@ static void __init setup_bootmem(void)
 	setup_memblock_nodes();
 }
 
+static void * __init alloc_page_table(void)
+{
+	void *pgt;
+
+	pgt = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
+	BUG_ON(!pgt);
+
+	return pgt;
+}
+
 static pte_t *fixmap_pte_p;
 
 static void __init fixedrange_init(void)
@@ -221,18 +231,12 @@ static void __init fixedrange_init(void)
 	pgd = pgd_offset_raw(swapper_pg_dir, vaddr);
 	pud = pud_offset(pgd, vaddr);
 	/* Allocate the PMD page */
-	fixmap_pmd_p = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
-	if (!fixmap_pmd_p)
-		panic("%s: failed to allocate pmd page for fixmap\n", __func__);
-	memset(fixmap_pmd_p, 0, PAGE_SIZE);
+	fixmap_pmd_p = alloc_page_table();
 	set_pud(pud, __pud(__pa(fixmap_pmd_p)));
 
 	pmd = pmd_offset(pud, vaddr);
 	/* Allocate the PTE page */
-	fixmap_pte_p = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
-	if (!fixmap_pte_p)
-		panic("%s: failed to allocate pte page for fixmap\n", __func__);
-	memset(fixmap_pte_p, 0, PAGE_SIZE);
+	fixmap_pte_p = alloc_page_table();
 	set_pmd(pmd, __pmd(__pa(fixmap_pte_p)));
 }
 
