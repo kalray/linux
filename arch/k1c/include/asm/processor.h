@@ -38,8 +38,6 @@ static inline void prefetchw(const void *x)
 #define STACK_TOP		TASK_SIZE
 #define STACK_TOP_MAX		STACK_TOP
 
-extern char _exception_start;
-
 #define cpu_relax()         barrier()
 
 /* Size for register saving area for refill handler (enough for 3 quad regs) */
