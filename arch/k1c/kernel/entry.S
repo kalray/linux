@@ -298,15 +298,43 @@ asn_error_panic_str_label:
 #endif
 .endm
 
+/***********************************************************************
+*                Exception vectors trampolines
+***********************************************************************/
+#define exception_trampoline(__type) \
+.section .exception.## __type, "ax", @progbits ;\
+ENTRY(k1c_##__type ##_handler_trampoline): ;\
+	goto k1c_## __type ##_handler ;\
+	;; ;\
+ENDPROC(k1c_ ## __type ## _handler_trampoline) ;\
+.section .early_exception.## __type, "ax", @progbits ;\
+ENTRY(k1c_## __type ##_early_handler): ;\
+1:	nop ;\
+	;; ;\
+	goto 1b ;\
+	;; ;\
+ENDPROC(k1c_ ## __type ## _early_handler)
+
+exception_trampoline(debug)
+exception_trampoline(trap)
+exception_trampoline(interrupt)
+exception_trampoline(syscall)
+
+#define EXCEPTION_ENTRY(__name) \
+.section .exception.text, "ax", @progbits ;\
+ENTRY(__name)
+
+
+/***********************************************************************
+*                  Common exception return path
+***********************************************************************/
 /**
  * Restore registers after exception
  * When entering this macro, $sp must be located right before regs
  * storage.
  */
-.macro restore_regs_after_exception
-	LOCAL _restore_regs
+EXCEPTION_ENTRY(return_from_exception)
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
-	LOCAL _check_ok
 	ld $r1 = 0[$sp]
 	;;
 	sbfd $r1 = $r1, $sp
@@ -438,33 +466,9 @@ _restore_regs:
 	/* Finally, restore $r0 value */
 	rswap $r0 = TMP_SCRATCH_SR
 	;;
-.endm
-
-/***********************************************************************
-*                Exception vectors trampolines
-***********************************************************************/
-#define exception_trampoline(__type) \
-.section .exception.## __type, "ax", @progbits ;\
-ENTRY(k1c_##__type ##_handler_trampoline): ;\
-	goto k1c_## __type ##_handler ;\
-	;; ;\
-ENDPROC(k1c_ ## __type ## _handler_trampoline) ;\
-.section .early_exception.## __type, "ax", @progbits ;\
-ENTRY(k1c_## __type ##_early_handler): ;\
-1:	nop ;\
-	;; ;\
-	goto 1b ;\
-	;; ;\
-ENDPROC(k1c_ ## __type ## _early_handler)
-
-exception_trampoline(debug)
-exception_trampoline(trap)
-exception_trampoline(interrupt)
-exception_trampoline(syscall)
-
-#define EXCEPTION_ENTRY(__name) \
-.section .exception.text, "ax", @progbits ;\
-ENTRY(__name)
+	rfe
+	;;
+ENDPROC(return_from_exception)
 
 /***********************************************************************
 *                      Debug handling
@@ -482,15 +486,15 @@ debug_save_regs:
 	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r2
 	;;
 	get $r1 = $ea
+	/* tail-call for return_from_exception */
+	make $r3 = return_from_exception
+	;;
+	set $ra = $r3
 	;;
 	/* Handler call */
 	get $r0 = $es
 	;;
-	call debug_handler
-	;;
-	restore_regs_after_exception
-	;;
-	rfe
+	goto debug_handler
 	;;
 ENDPROC(k1c_debug_handler)
 
@@ -1076,15 +1080,15 @@ trap_save_regs:
 	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r2
 	;;
 	get $r1 = $ea
+	/* tail-call for return_from_exception */
+	make $r3 = return_from_exception
+	;;
+	set $ra = $r3
 	;;
 	/* Handler call */
 	get $r0 = $es
 	;;
-	call trap_handler
-	;;
-	restore_regs_after_exception
-	;;
-	rfe
+	goto trap_handler
 	;;
 ENDPROC(k1c_trap_handler)
 
@@ -1156,9 +1160,7 @@ it_save_regs:
 	;;
 	wfxl $ps = $r0
 	;;
-	restore_regs_after_exception
-	;;
-	rfe
+	goto return_from_exception
 	;;
 ENDPROC(k1c_interrupt_handler)
 
@@ -1637,7 +1639,7 @@ ENTRY(ret_from_fork)
 ret_from_kernel:
 	/*
 	 * When returning from a fork, the child will take this path.
-	 * Since we did not restore callee in restore_regs_after_exception, we
+	 * Since we did not restore callee in return_from_exception, we
 	 * must do it before.
 	 */
 	lo $r28r29r30r31 = PT_Q28[$sp]
@@ -1658,9 +1660,7 @@ ret_from_kernel:
 	sd 0[$sp] = $sp
 #endif
 	;;
-	restore_regs_after_exception
-	;;
-	rfe
+	goto return_from_exception
 	;;
 ENDPROC(ret_from_fork)
 
