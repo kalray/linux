@@ -14,10 +14,13 @@
 #include <linux/netdevice.h>
 #include <linux/types.h>
 
+#include "k1c-net-hdr.h"
+
 #define K1C_ETH_LANE_NB      (4)
 #define K1C_ETH_PFC_CLASS_NB (8)
 
-#define K1C_ETH_DISPATCH_TABLE_IDX (128)
+#define DISPATCH_TABLE_IDX        (128)
+#define DISPATCH_TABLE_PARSER_IDX (DISPATCH_TABLE_IDX + 1)
 
 #define REG(b, o) pr_info("%-50s: @0x%lx - 0x%lx\n", #o, (u32)o, readl(b + o))
 #define K1C_ETH_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
@@ -57,11 +60,11 @@ enum default_dispatch_policy {
 	DEFAULT_DISPATCH_POLICY_NB,
 };
 
-enum dispatch_policy {
+enum parser_dispatch_policy {
 	PARSER_DISABLED = 0x0,
-	PARSER_ROUND_ROBIN = 0x1,
+	PARSER_DROP = 0x1,
 	PARSER_HASH_LUT = 0x2,
-	PARSER_DROP = 0x3,
+	PARSER_ROUND_ROBIN = 0x3,
 	PARSER_FORWARD = 0x4,
 	PARSER_NOCX = 0x5,
 	PARSER_POLICY_NB,
@@ -293,6 +296,7 @@ static inline u32 k1c_eth_readl(struct k1c_eth_hw *hw, const u64 off)
 
 u32 noc_route_c2eth(enum k1c_eth_io eth_id);
 u32 noc_route_eth2c(enum k1c_eth_io eth_id);
+void k1c_eth_dump_rx_hdr(struct k1c_eth_hw *hw, struct rx_metadata *hdr);
 
 /* MAC */
 void k1c_mac_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu);
@@ -307,8 +311,9 @@ u32 k1c_eth_lb_has_footer(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_lb_set_default(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *c);
 void k1c_eth_lb_dump_status(struct k1c_eth_hw *hw, int lane_id);
 void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
-void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
-				struct k1c_eth_lane_cfg *cfg, u32 rx_tag);
+void k1c_eth_fill_dispatch_table(struct k1c_eth_hw *hw,
+				 struct k1c_eth_lane_cfg *cfg,
+				 u32 rx_tag);
 void k1c_eth_pfc_f_set_default(struct k1c_eth_hw *hw,
 			       struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_pfc_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
@@ -319,6 +324,11 @@ void k1c_eth_tx_set_default(struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_tx_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_tx_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 u32  k1c_eth_tx_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+
+/* PARSING */
+int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
+		  int parser_id, enum parser_dispatch_policy policy);
+void parser_disp(struct k1c_eth_hw *hw, unsigned int parser_id);
 
 /* STATS */
 void k1c_eth_update_stats64(struct k1c_eth_hw *hw, int lane_id,
