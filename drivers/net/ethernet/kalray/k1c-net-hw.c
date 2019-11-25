@@ -6,7 +6,6 @@
  *
  * Copyright (C) 2019 Kalray Inc.
  */
-
 #include <linux/device.h>
 #include <linux/io.h>
 
@@ -80,6 +79,10 @@ void k1c_eth_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu)
 	RX_LB_DEFAULT_RULE_LANE_RR_TARGET_OFFSET + \
 	(RR_TARGET) * RX_LB_DEFAULT_RULE_LANE_RR_TARGET_ELEM_SIZE)
 
+#define RX_LB_PARSER_RR_TARGET(PARSER_ID, RR_TARGET) \
+	(PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * (PARSER_ID) + \
+	PARSER_CTRL_RR_TARGET + (RR_TARGET) * PARSER_CTRL_RR_TARGET_ELEM_SIZE)
+
 #define RX_DISPATCH_TABLE_ENTRY(ENTRY) \
 	(RX_DISPATCH_TABLE_OFFSET + RX_DISPATCH_TABLE_ENTRY_OFFSET + \
 	(ENTRY) * RX_DISPATCH_TABLE_ENTRY_ELEM_SIZE)
@@ -99,25 +102,6 @@ void k1c_eth_lb_dump_status(struct k1c_eth_hw *hw, int lane_id)
 	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_TOTAL_OFFSET);
 	DUMP_REG(hw, off + RX_LB_DROP_CNT_LANE_RULE_OFFSET);
 	DUMP_REG(hw, RX_LB_DEFAULT_RULE_LANE_CTRL(lane_id) + 4); // hit_cnt
-}
-
-int k1c_eth_utils_get_rr_target(struct k1c_eth_hw *hw, int lane,
-				u32 dispatch_table_idx,
-				u32 *dispatch_row, u32 *dispatch_mask)
-{
-	u32 nbit = dispatch_table_idx % BITS_PER_TYPE(u32);
-	u32 row = 0;
-	u32 mask = 0;
-
-	// 320 entries splitted as: 10 x 32 bit masks (per lane)
-	row = dispatch_table_idx / BITS_PER_TYPE(u32); // [0, 9]
-	mask = k1c_eth_readl(hw, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(lane, row));
-	set_bit(nbit, (unsigned long *)&mask);
-
-	*dispatch_row = row;
-	*dispatch_mask = mask;
-
-	return 0;
 }
 
 void k1c_eth_pfc_f_set_default(struct k1c_eth_hw *hw,
@@ -264,19 +248,61 @@ void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 	k1c_eth_cl_f_cfg(hw, cfg);
 }
 
-void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
-				struct k1c_eth_lane_cfg *cfg, u32 rx_tag)
+/**
+ * enable_default_dispatch_entry() - Writes route cfg for DEFAULT RR policy
+ * @hw: HW description
+ * @cfg: Lane config
+ * @dispatch_table_idx: Entry index to be set
+ */
+static void enable_default_dispatch_entry(struct k1c_eth_hw *hw,
+				  struct k1c_eth_lane_cfg *cfg,
+				  int dispatch_table_idx)
 {
-	int dispatch_table_idx = K1C_ETH_DISPATCH_TABLE_IDX;
-	u32 row = 0, mask = 0; // dispatch line and bitmask
-	int lane = cfg->id;
-	u64 val = 0;
+	int l = cfg->id;
+	u32 nbit = dispatch_table_idx % BITS_PER_TYPE(u32);
+	/*
+	 * Dispatch line and bitmask
+	 * 320 entries splitted as: 10 x 32 bit masks (per lane)
+	 */
+	u32 row = dispatch_table_idx / BITS_PER_TYPE(u32); // [0, 9]
+	u32 mask = k1c_eth_readl(hw, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(l, row));
 
-	// Enable dispatch entry
-	k1c_eth_utils_get_rr_target(hw, lane, dispatch_table_idx, &row, &mask);
-	dev_dbg(hw->dev, "dispatch_table_idx: %d rr_row: %d, rr_mask: 0x%x\n",
-		dispatch_table_idx, row, mask);
-	k1c_eth_writel(hw, mask, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(lane, row));
+	set_bit(nbit, (unsigned long *)&mask);
+
+	dev_dbg(hw->dev, "%s dispatch_table_idx: %d rr_row: %d, rr_mask: 0x%x\n",
+		__func__, dispatch_table_idx, row, mask);
+	k1c_eth_writel(hw, mask, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(l, row));
+}
+
+/**
+ * enable_default_dispatch_entry() - Writes route cfg for PARSER RR policy
+ * @hw: HW description
+ * @cfg: Lane config
+ * @dispatch_table_idx: Entry index to be set
+ */
+static void enable_parser_dispatch_entry(struct k1c_eth_hw *hw,
+				  int parser_id, int dispatch_table_idx)
+{
+	u32 nbit = dispatch_table_idx % BITS_PER_TYPE(u32);
+	/*
+	 * Dispatch line and bitmask
+	 * 320 entries splitted as: 10 x 32 bit masks (per parser_id)
+	 */
+	u32 row = dispatch_table_idx / BITS_PER_TYPE(u32); // [0, 9]
+	u32 mask = k1c_eth_readl(hw, RX_LB_PARSER_RR_TARGET(parser_id, row));
+
+	set_bit(nbit, (unsigned long *)&mask);
+
+	dev_dbg(hw->dev, "%s dispatch_table_idx: %d rr_row: %d, rr_mask: 0x%x\n",
+		__func__, dispatch_table_idx, row, mask);
+	k1c_eth_writel(hw, mask, RX_LB_PARSER_RR_TARGET(parser_id, row));
+}
+
+static void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
+				struct k1c_eth_lane_cfg *cfg,
+			       int dispatch_table_idx, u32 rx_tag)
+{
+	u64 val = 0;
 
 	val = K1C_ETH_SETF(noc_route_eth2c(K1C_ETH0),
 			   RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE);
@@ -288,6 +314,20 @@ void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
 	k1c_eth_writeq(hw, val, RX_DISPATCH_TABLE_ENTRY(dispatch_table_idx));
 	dev_dbg(hw->dev, "table_entry[%d]: 0x%llx asn: %d\n",
 		dispatch_table_idx, val, hw->asn);
+}
+
+void k1c_eth_fill_dispatch_table(struct k1c_eth_hw *hw,
+				 struct k1c_eth_lane_cfg *cfg,
+				 u32 rx_tag)
+{
+	int i, idx = DISPATCH_TABLE_IDX;
+
+	k1c_eth_dispatch_table_cfg(hw, cfg, idx, rx_tag);
+	enable_default_dispatch_entry(hw, cfg, idx);
+
+	/* As of now, matching packets will use the same dispatch entry */
+	for (i = 0; i < K1C_ETH_PARSER_NB; ++i)
+		enable_parser_dispatch_entry(hw, i, idx);
 }
 
 u32 k1c_eth_lb_has_header(struct k1c_eth_hw *hw,
@@ -304,4 +344,25 @@ u32 k1c_eth_lb_has_footer(struct k1c_eth_hw *hw,
 	u32 lb_ctrl = k1c_eth_readl(hw, RX_LB_CTRL(lane_cfg->id));
 
 	return K1C_ETH_GETF(lb_ctrl, RX_LB_CTRL_ADD_FOOTER);
+}
+
+void k1c_eth_dump_rx_hdr(struct k1c_eth_hw *hw, struct rx_metadata *hdr)
+{
+	dev_dbg(hw->dev, "Timestamp    :   %lld\n", hdr->timestamp);
+	dev_dbg(hw->dev, "pkt_size     :   %d\n", hdr->f.pkt_size);
+	dev_dbg(hw->dev, "hash_key     : 0x%x\n", hdr->f.hash_key);
+	dev_dbg(hw->dev, "lut_entry    : 0x%x\n", hdr->f.lut_entry);
+	dev_dbg(hw->dev, "lane_id      :   %d\n", hdr->f.lane_id);
+	dev_dbg(hw->dev, "eth_id       :   %d\n", hdr->f.eth_id);
+	dev_dbg(hw->dev, "coolidge_id  :   %d\n", hdr->f.coolidge_id);
+	dev_dbg(hw->dev, "parser_id    :   %d\n", hdr->f.parser_id);
+	dev_dbg(hw->dev, "default_rule :   %d\n", hdr->f.default_rule);
+	dev_dbg(hw->dev, "fcs_errors   : 0x%x\n", hdr->f.fcs_errors);
+	dev_dbg(hw->dev, "crc_errors   : 0x%x\n", hdr->f.crc_errors);
+	dev_dbg(hw->dev, "index0       :   %d\n", hdr->index0);
+	dev_dbg(hw->dev, "index1       :   %d\n", hdr->index1);
+	dev_dbg(hw->dev, "index2       :   %d\n", hdr->index2);
+	dev_dbg(hw->dev, "index3       :   %d\n", hdr->index3);
+	dev_dbg(hw->dev, "global_pkt_id:   %d\n", hdr->global_pkt_id);
+	dev_dbg(hw->dev, "rule_pkt_id  :   %d\n", hdr->rule_pkt_id);
 }
