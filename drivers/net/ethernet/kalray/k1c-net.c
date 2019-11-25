@@ -440,6 +440,8 @@ static netdev_tx_t k1c_eth_netdev_start_xmit(struct sk_buff *skb,
 
 	tx->skb = skb;
 	tx->len = 0;
+	netdev_dbg(netdev, "%s Sending skb: 0x%llx len: %d data_len: %d\n",
+		   __func__, (u64)skb, skb->len, skb->data_len);
 
 	/* prepare sg */
 	if (k1c_eth_map_skb(dev, tx)) {
@@ -459,8 +461,6 @@ static netdev_tx_t k1c_eth_netdev_start_xmit(struct sk_buff *skb,
 	tx->cb_p.cb_param = tx;
 	txd->callback_param = &tx->cb_p;
 
-	netdev_dbg(netdev, "%s Sending skb: 0x%llx len: %d\n", __func__,
-		   (u64)skb, skb->len);
 	skb_orphan(skb);
 
 	/* submit and issue descriptor */
@@ -592,22 +592,27 @@ static int k1c_eth_clean_rx_irq(struct k1c_eth_netdev *ndev,
 		++rx_count;
 		skb->ip_summed = CHECKSUM_NONE;
 		skb_put(skb, rx->len);
-		skb->protocol = eth_type_trans(skb, netdev);
 		if (k1c_eth_lb_has_header(ndev->hw, &ndev->cfg)) {
+			netdev_dbg(netdev, "%s header rx (skb->len: %d data_len: %d)\n",
+				   __func__, skb->len, skb->data_len);
 			hdr = (struct rx_metadata *)skb->data;
 			skb_pull(skb, hdr_size);
 			skb->ip_summed = CHECKSUM_UNNECESSARY;
 		}
 		if (k1c_eth_lb_has_footer(ndev->hw, &ndev->cfg)) {
+			netdev_dbg(netdev, "%s footer rx (skb->len: %d data_len: %d)\n",
+				   __func__, skb->len, skb->data_len);
 			hdr = (struct rx_metadata *)(skb_tail_pointer(skb) -
 						     hdr_size);
+			k1c_eth_dump_rx_hdr(ndev->hw, hdr);
 			skb_trim(skb, skb->len - hdr_size);
 			skb->ip_summed = CHECKSUM_UNNECESSARY;
 		}
 
-		netdev_dbg(netdev, "%s skb: 0x%llx len: %d/%d data_len:%d\n",
-			   __func__, (u64)skb, (int)rx->len, skb->len,
-			   skb->data_len);
+		skb->protocol = eth_type_trans(skb, netdev);
+		netdev_dbg(netdev, "%s skb: 0x%llx protocol: 0x%x len: %d/%d data_len:%d\n",
+			    __func__, (u64)skb, skb->protocol,
+			    (int)rx->len, skb->len, skb->data_len);
 		napi_gro_receive(&ndev->napi, skb);
 		if (unlikely(rx_count >= K1C_ETH_MIN_RX_WRITE)) {
 			k1c_eth_alloc_rx_buffers(ndev, rx_count);
@@ -1088,8 +1093,8 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 	k1c_eth_lb_set_default(&dev->hw, &ndev->cfg);
 	k1c_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
 	k1c_eth_lb_f_cfg(&dev->hw, &ndev->cfg);
-	k1c_eth_dispatch_table_cfg(&dev->hw, &ndev->cfg,
-				   ndev->dma_cfg.rx_chan_id.start);
+	k1c_eth_fill_dispatch_table(&dev->hw, &ndev->cfg,
+				    ndev->dma_cfg.rx_chan_id.start);
 	k1c_eth_tx_f_cfg(&dev->hw, &ndev->cfg);
 
 	ret = k1c_eth_sysfs_init(ndev);
