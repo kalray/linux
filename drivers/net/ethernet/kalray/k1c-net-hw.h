@@ -186,6 +186,28 @@ struct k1c_eth_lane_cfg {
 	struct k1c_eth_mac_f mac_f;
 };
 
+enum k1c_eth_layer {
+	K1C_NET_LAYER_2 = 0,
+	K1C_NET_LAYER_3,
+	K1C_NET_LAYER_4,
+	K1C_NET_LAYER_NB,
+};
+
+struct k1c_eth_filter {
+	union filter_desc *desc;
+	void *rule_spec; /* Opaque type */
+};
+
+struct k1c_eth_parser {
+	struct k1c_eth_filter filters[K1C_NET_LAYER_NB];
+	unsigned int enabled;
+};
+
+struct k1c_eth_parsing {
+	struct k1c_eth_parser parsers[K1C_ETH_PARSER_NB];
+	int active_filters_nb;
+};
+
 /**
  * struct k1c_eth_hw - HW adapter
  * @dev: device
@@ -198,6 +220,7 @@ struct k1c_eth_lane_cfg {
 struct k1c_eth_hw {
 	struct device *dev;
 	struct k1c_eth_res res[K1C_ETH_NUM_RES];
+	struct k1c_eth_parsing parsing;
 	u32 asn;
 	u32 vchan;
 	u32 max_frame_size;
@@ -268,6 +291,12 @@ struct k1c_eth_rx_dispatch_table_entry {
 	u64 asn;
 };
 
+enum k1c_eth_ctrl_values {
+	K1C_ETH_CTRL_MATCH_EQUAL = 0,
+	K1C_ETH_CTRL_MATCH_BETWEEN = 1,
+	K1C_ETH_CTRL_DONT_CARE = 2,
+};
+
 /* Helpers */
 static inline void k1c_eth_writeq(struct k1c_eth_hw *hw, u64 val, const u64 off)
 {
@@ -327,8 +356,10 @@ u32  k1c_eth_tx_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 
 /* PARSING */
 int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
-		  int parser_id, enum parser_dispatch_policy policy);
+		  int parser_id, struct k1c_eth_filter *rules, int rules_len,
+		  enum parser_dispatch_policy policy);
 void parser_disp(struct k1c_eth_hw *hw, unsigned int parser_id);
+int parser_disable(struct k1c_eth_hw *hw, int parser_id);
 
 /* STATS */
 void k1c_eth_update_stats64(struct k1c_eth_hw *hw, int lane_id,

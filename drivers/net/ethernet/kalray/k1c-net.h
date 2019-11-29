@@ -29,6 +29,8 @@
 #define K1C_ETH_MAX_RX_BUF            (32)
 #define K1C_ETH_MAX_TX_BUF            (32)
 
+#define INDEX_TO_LAYER(l) ((l)+2)
+
 /**
  * struct k1c_eth_dev - K1C ETH hardware device
  * @pdev: associated platform device
@@ -84,6 +86,10 @@ struct k1c_dma_config {
 	struct k1c_eth_node_id rx_chan_id;
 	struct k1c_eth_node_id rx_compq_id;
 };
+
+extern const union mac_filter_desc mac_filter_default;
+extern const union ipv4_filter_desc ipv4_filter_default;
+extern const union tcp_filter_desc tcp_filter_default;
 
 /**
  * struct k1c_eth_netdev - K1C net device
