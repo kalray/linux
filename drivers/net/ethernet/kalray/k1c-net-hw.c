@@ -214,7 +214,7 @@ void k1c_eth_lb_set_default(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 	cfg->lb_f.default_dispatch_policy = DEFAULT_ROUND_ROBIN;
 	cfg->lb_f.store_and_forward = 1;
 	/* 0: Drop, 1: keep all pkt with crc error */
-	cfg->lb_f.keep_all_crc_error_pkt = 0;
+	cfg->lb_f.keep_all_crc_error_pkt = 1;
 	cfg->lb_f.add_header = 0;
 	cfg->lb_f.add_footer = 1;
 
