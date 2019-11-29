@@ -11,6 +11,7 @@
 #include <linux/io.h>
 #include <linux/iopoll.h>
 
+#include "k1c-net.h"
 #include "k1c-net-hw.h"
 
 #define HASH_SEED               (0xFFFU)
@@ -248,12 +249,26 @@ static int parser_add_filter(struct k1c_eth_hw *hw, unsigned int parser_id,
 	return ret;
 }
 
+static union filter_desc *get_default_rule(struct k1c_eth_hw *hw,
+		enum k1c_eth_layer layer)
+{
+	switch (layer) {
+	case K1C_NET_LAYER_2:
+		return (union filter_desc *) &mac_filter_default;
+	case K1C_NET_LAYER_3:
+		return (union filter_desc *) &ipv4_filter_default;
+	default:
+		dev_err(hw->dev, "Default rules make no sense for layer superior than 3\n");
+		return NULL;
+	}
+}
+
 /** parser_disable() - Disable parser parser_id
  * Context: can not be called in interrupt context (readq_poll_timeout)
  *
  * Return: 0 on success, negative on failure
  */
-static int parser_disable(struct k1c_eth_hw *hw, int parser_id)
+int parser_disable(struct k1c_eth_hw *hw, int parser_id)
 {
 	u32 off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * parser_id;
 	u32 val = K1C_ETH_SETF(PARSER_DISABLED,
@@ -279,19 +294,39 @@ static int parser_disable(struct k1c_eth_hw *hw, int parser_id)
  * Return: 0 on success, negative on failure
  */
 int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
-		  int parser_id, enum parser_dispatch_policy policy)
+		  int parser_id, struct k1c_eth_filter *rules, int rules_len,
+		  enum parser_dispatch_policy policy)
 {
-	int ret, word_index = 0;
+	int ret, rule, word_index = 0;
+	union filter_desc *filter_desc;
 
 	ret = parser_disable(hw, parser_id);
 	if (ret)
 		return ret;
 
+	for (rule = 0; rule < rules_len; ++rule) {
+		filter_desc = rules[rule].desc;
+		if (filter_desc == NULL) {
+			filter_desc = get_default_rule(hw, rule);
+			if (filter_desc == NULL)
+				return -EINVAL;
+		}
+		word_index = parser_add_filter(hw, parser_id,
+				word_index, filter_desc);
+	}
+	if (word_index < 0) {
+		dev_err(hw->dev, "Failed to add filter[%d] to parser[%d] (ret: %d)\n",
+				rule, parser_id, word_index);
+		return -EINVAL;
+	}
+
 	word_index = parser_commit_filter(hw, cfg, parser_id, word_index,
 					  policy, PARSER_DEFAULT_PRIORITY);
-	if (word_index < 0)
+	if (word_index < 0) {
 		dev_err(hw->dev, "Failed to commit filters to parser[%d]\n",
 			parser_id);
+		return -EBUSY;
+	}
 
 	return 0;
 }
