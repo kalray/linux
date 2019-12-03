@@ -25,3 +25,4 @@ DECLARE_EXPORT(__multi3);
 DECLARE_EXPORT(clear_page);
 DECLARE_EXPORT(copy_page);
 DECLARE_EXPORT(memset);
+DECLARE_EXPORT(asm_clear_user);
