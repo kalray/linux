@@ -1104,6 +1104,7 @@ static int k1c_dma_allocate_phy(struct k1c_dma_dev *dev)
 			p->comp_count = 0;
 			p->asn = dev->asn;
 			p->vchan = dev->vchan;
+			p->msi_cfg.ptr = (void *)&dev->task;
 
 			if (k1c_dma_dbg_init(p, dev->dbg))
 				dev_warn(dev->dma.dev, "Failed to init debugfs\n");
