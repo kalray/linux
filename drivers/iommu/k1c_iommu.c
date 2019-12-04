@@ -1269,8 +1269,8 @@ static void k1c_iommu_detach_dev(struct iommu_domain *domain,
  * Return: the amount of memory that has been unmapped or an error.
  */
 static size_t k1c_iommu_unmap(struct iommu_domain *domain,
-			      unsigned long iova,
-			      size_t size)
+			      unsigned long iova, size_t size,
+			      struct iommu_iotlb_gather *gather)
 {
 	struct k1c_iommu_domain *k1c_domain;
 	struct k1c_iommu_hw *iommu_hw[K1C_IOMMU_NB_TYPE];
@@ -1339,7 +1339,7 @@ static int k1c_iommu_map(struct iommu_domain *domain,
 		if (ret) {
 			pr_err("%s: failed to map 0x%lx -> 0x%lx (err %d)\n",
 			       __func__, iova, (unsigned long)start, ret);
-			k1c_iommu_unmap(domain, iova, size);
+			k1c_iommu_unmap(domain, iova, size, NULL);
 			return ret;
 		}
 		start += K1C_IOMMU_4K_SIZE;
@@ -1639,11 +1639,8 @@ static int k1c_iommu_probe(struct platform_device *pdev)
 			}
 
 			irq = platform_get_irq_byname(pdev, irq_name);
-			if (irq < 0) {
-				dev_err(dev, "failed to get IRQ %s (err %d)\n",
-					irq_name, irq);
+			if (irq < 0)
 				return -ENODEV;
-			}
 
 			iommu_hw->irqs[j] = irq;
 		}
