@@ -50,14 +50,14 @@ static const u32 noc_route_table[7][7] = {
 		0x821  /* Eth1 -> C1 -> Eth1 */}
 };
 
-u32 noc_route_c2eth(enum k1c_eth_io eth_id)
+u32 noc_route_c2eth(enum k1c_eth_io eth_id, int cluster_id)
 {
-	return noc_route_table[k1c_cluster_id()][5 + eth_id];
+	return noc_route_table[cluster_id][5 + eth_id];
 }
 
-u32 noc_route_eth2c(enum k1c_eth_io eth_id)
+u32 noc_route_eth2c(enum k1c_eth_io eth_id, int cluster_id)
 {
-	return noc_route_table[5 + eth_id][k1c_cluster_id()];
+	return noc_route_table[5 + eth_id][cluster_id];
 }
 
 void k1c_eth_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu)
@@ -300,11 +300,11 @@ static void enable_parser_dispatch_entry(struct k1c_eth_hw *hw,
 
 static void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
 				struct k1c_eth_lane_cfg *cfg,
-			       int dispatch_table_idx, u32 rx_tag)
+			       int dispatch_table_idx, int cluster, u32 rx_tag)
 {
 	u64 val = 0;
 
-	val = K1C_ETH_SETF(noc_route_eth2c(K1C_ETH0),
+	val = K1C_ETH_SETF(noc_route_eth2c(K1C_ETH0, cluster),
 			   RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE);
 	val |= K1C_ETH_SETF((u64)rx_tag, RX_DISPATCH_TABLE_ENTRY_RX_CHAN);
 	val |= K1C_ETH_SETF((u64)hw->vchan, RX_DISPATCH_TABLE_ENTRY_NOC_VCHAN);
@@ -320,9 +320,24 @@ void k1c_eth_fill_dispatch_table(struct k1c_eth_hw *hw,
 				 struct k1c_eth_lane_cfg *cfg,
 				 u32 rx_tag)
 {
-	int i, idx = DISPATCH_TABLE_IDX;
+	int i, cid, idx = 0;
 
-	k1c_eth_dispatch_table_cfg(hw, cfg, idx, rx_tag);
+	/* Add dispatch entries for other clusters (parser policy) */
+	for (cid = 0; cid < NB_CLUSTER; ++cid) {
+		/* Current cluster channels are used for default policy only */
+		if (cid == k1c_cluster_id())
+			continue;
+		/**
+		 * Split headers / payload config per PE
+		 * Even rx_tags will be used for headers, and odd rx_tags are
+		 * reserved for payload
+		 */
+		for (i = 0; i < NB_PE; ++i, ++idx)
+			k1c_eth_dispatch_table_cfg(hw, cfg, idx, cid, 2 * i);
+	}
+
+	/* Default policy for current cluster */
+	k1c_eth_dispatch_table_cfg(hw, cfg, idx, k1c_cluster_id(), rx_tag);
 	enable_default_dispatch_entry(hw, cfg, idx);
 
 	/* As of now, matching packets will use the same dispatch entry */
