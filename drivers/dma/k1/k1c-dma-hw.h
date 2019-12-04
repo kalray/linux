@@ -79,14 +79,27 @@ struct k1c_dma_job_queue_list {
 	struct k1c_dma_hw_queue rx[K1C_DMA_RX_JOB_QUEUE_NUMBER];
 	atomic_t rx_refcount[K1C_DMA_RX_JOB_QUEUE_NUMBER];
 };
+/**
+ * struct msi_cfg - MSI setup for phy
+ * @msi_mb_dmaaddr: Mailbox dma mapped addr for DMA IT
+ * @msi_data: Data used for MB notification
+ * @msi: Phy associated msi
+ * @msi_index: msi internal index
+ * @ptr: opaque pointer for irq handler
+ */
+struct msi_cfg {
+	u64 msi_mb_dmaaddr;
+	u32 msi_data;
+	unsigned int irq;
+	u32 msi_index;
+	void *ptr;
+};
 
 /**
  * struct k1c_dma_phy - HW description, limited to one transfer type
  * @dev: This device
  * @base: Base addr of DMA device
- * @msi_mb_paddr: Mailbox physical addr for DMA IT
- * @msi_data: Data used for MB notification
- * @irq: Interrupt_number
+ * @msi_data: MSI related data
  * @max_desc: Max fifo size (= dma_requests)
  * @size_log2: log2 channel fifo size
  * @comp_count: completion count (completion queue write pointer)
@@ -106,9 +119,7 @@ struct k1c_dma_job_queue_list {
 struct k1c_dma_phy {
 	struct device *dev;
 	void __iomem *base;
-	u64 msi_mb_paddr;
-	u32 msi_data;
-	unsigned int irq;
+	struct msi_cfg msi_cfg;
 	u16 max_desc;
 	u16 size_log2;
 	u64 comp_count;
@@ -149,6 +160,8 @@ struct k1c_dma_tx_job_desc {
 };
 
 int is_asn_global(u32 asn);
+int k1c_dma_request_irq(struct k1c_dma_phy *phy);
+void k1c_dma_free_irq(struct k1c_dma_phy *phy);
 
 /* RX queues */
 int k1c_dma_pkt_rx_queue_push_desc(struct k1c_dma_phy *phy, u64 pkt_paddr,
