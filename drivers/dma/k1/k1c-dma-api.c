@@ -7,6 +7,7 @@
  * Copyright (C) 2019 Kalray Inc.
  */
 
+#include <linux/msi.h>
 #include <linux/interrupt.h>
 #include <linux/dma/k1c-dma-api.h>
 
@@ -124,7 +125,7 @@ void k1c_dma_enable_irq(struct platform_device *pdev, unsigned int id)
 	if (!p)
 		return;
 
-	enable_irq(p->irq);
+	enable_irq(p->msi_cfg.irq);
 }
 EXPORT_SYMBOL_GPL(k1c_dma_enable_irq);
 
@@ -136,9 +137,7 @@ void k1c_dma_disable_irq(struct platform_device *pdev, unsigned int id)
 	if (!p)
 		return;
 
-	disable_irq_nosync(p->irq);
+	disable_irq_nosync(p->msi_cfg.irq);
 }
 EXPORT_SYMBOL_GPL(k1c_dma_disable_irq);
-
-
 
