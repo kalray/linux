@@ -12,8 +12,6 @@
 #include "k1c-net.h"
 #include "k1c-net-regs.h"
 
-#define RSS_NB_RX_RINGS     (64)
-
 #define STAT(n, m)   { n, FIELD_SIZEOF(struct k1c_eth_hw_stats, m), \
 	offsetof(struct k1c_eth_hw_stats, m) }
 
