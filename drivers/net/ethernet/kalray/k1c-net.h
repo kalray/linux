@@ -30,6 +30,7 @@
 #define K1C_ETH_MAX_TX_BUF            (32)
 
 #define INDEX_TO_LAYER(l) ((l)+2)
+#define RSS_NB_RX_RINGS               (NB_PE * (NB_CLUSTER - 1))
 
 /**
  * struct k1c_eth_dev - K1C ETH hardware device
