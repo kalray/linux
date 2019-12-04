@@ -16,11 +16,10 @@
 
 #include "k1c-net-hdr.h"
 
-#define K1C_ETH_LANE_NB      (4)
-#define K1C_ETH_PFC_CLASS_NB (8)
-
-#define DISPATCH_TABLE_IDX        (128)
-#define DISPATCH_TABLE_PARSER_IDX (DISPATCH_TABLE_IDX + 1)
+#define NB_PE                      16
+#define NB_CLUSTER                 5
+#define K1C_ETH_LANE_NB            4
+#define K1C_ETH_PFC_CLASS_NB       8
 
 #define REG(b, o) pr_info("%-50s: @0x%lx - 0x%lx\n", #o, (u32)o, readl(b + o))
 #define K1C_ETH_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
@@ -323,8 +322,8 @@ static inline u32 k1c_eth_readl(struct k1c_eth_hw *hw, const u64 off)
 #define DUMP_REG64(hw, off) { u64 v = k1c_eth_readq(hw, off); \
 			  pr_info("%s @ 0x%x - 0x%llx\n", #off, (u32)off, v); }
 
-u32 noc_route_c2eth(enum k1c_eth_io eth_id);
-u32 noc_route_eth2c(enum k1c_eth_io eth_id);
+u32 noc_route_c2eth(enum k1c_eth_io eth_id, int cluster_id);
+u32 noc_route_eth2c(enum k1c_eth_io eth_id, int cluster_id);
 void k1c_eth_dump_rx_hdr(struct k1c_eth_hw *hw, struct rx_metadata *hdr);
 
 /* MAC */
