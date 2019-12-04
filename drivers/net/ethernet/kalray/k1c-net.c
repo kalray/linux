@@ -844,7 +844,7 @@ int k1c_eth_alloc_tx_res(struct net_device *netdev)
 	ring->config.cfg.direction = DMA_MEM_TO_DEV;
 	ring->config.trans_type = K1C_DMA_TYPE_MEM2ETH;
 	ring->config.dir = K1C_DMA_DIR_TYPE_TX;
-	ring->config.noc_route = noc_route_c2eth(K1C_ETH0);
+	ring->config.noc_route = noc_route_c2eth(K1C_ETH0, k1c_cluster_id());
 	ring->config.qos_id = 0;
 
 	ring->chan = of_dma_request_slave_channel(ndev->dev->of_node, "tx");
