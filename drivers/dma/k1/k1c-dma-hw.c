@@ -215,9 +215,9 @@ static int k1c_dma_fifo_rx_channel_queue_init(struct k1c_dma_phy *phy)
 	k1c_dma_q_writeq_relaxed(phy, 0, K1C_DMA_RX_CHAN_COMP_Q_RP_OFFSET);
 	k1c_dma_q_writeq_relaxed(phy, 0,
 			K1C_DMA_RX_CHAN_COMP_Q_VALID_RP_OFFSET);
-	k1c_dma_q_writeq_relaxed(phy, phy->msi_mb_paddr,
+	k1c_dma_q_writeq_relaxed(phy, phy->msi_cfg.msi_mb_dmaaddr,
 			K1C_DMA_RX_CHAN_COMP_Q_NOTIF_ADDR_OFFSET);
-	k1c_dma_q_writeq_relaxed(phy, phy->msi_data,
+	k1c_dma_q_writeq_relaxed(phy, phy->msi_cfg.msi_data,
 			K1C_DMA_RX_CHAN_COMP_Q_NOTIF_ARG_OFFSET);
 	k1c_dma_q_writeq_relaxed(phy, phy->asn,
 				 K1C_DMA_RX_CHAN_COMP_Q_ASN_OFFSET);
@@ -292,9 +292,9 @@ static int k1c_dma_pkt_rx_channel_queue_init(struct k1c_dma_phy *phy)
 	k1c_dma_q_writeq_relaxed(phy, 0, K1C_DMA_RX_CHAN_COMP_Q_RP_OFFSET);
 	k1c_dma_q_writeq_relaxed(phy, 0,
 			K1C_DMA_RX_CHAN_COMP_Q_VALID_RP_OFFSET);
-	k1c_dma_q_writeq_relaxed(phy, phy->msi_mb_paddr,
+	k1c_dma_q_writeq_relaxed(phy, phy->msi_cfg.msi_mb_dmaaddr,
 			K1C_DMA_RX_CHAN_COMP_Q_NOTIF_ADDR_OFFSET);
-	k1c_dma_q_writeq_relaxed(phy, phy->msi_data,
+	k1c_dma_q_writeq_relaxed(phy, phy->msi_cfg.msi_data,
 			K1C_DMA_RX_CHAN_COMP_Q_NOTIF_ARG_OFFSET);
 	k1c_dma_q_writeq_relaxed(phy, phy->asn,
 				 K1C_DMA_RX_CHAN_COMP_Q_ASN_OFFSET);
@@ -339,9 +339,9 @@ int k1c_dma_pkt_rx_job_queue_init(struct k1c_dma_phy *phy)
 	k1c_dma_jobq_writeq_relaxed(phy, 0, K1C_DMA_RX_JOB_Q_WP_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, 0, K1C_DMA_RX_JOB_Q_VALID_WP_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, 0, K1C_DMA_RX_JOB_Q_RP_OFFSET);
-	k1c_dma_jobq_writeq_relaxed(phy, phy->msi_mb_paddr,
+	k1c_dma_jobq_writeq_relaxed(phy, phy->msi_cfg.msi_mb_dmaaddr,
 			K1C_DMA_RX_JOB_Q_NOTIF_ADDR_OFFSET);
-	k1c_dma_jobq_writeq_relaxed(phy, phy->msi_data,
+	k1c_dma_jobq_writeq_relaxed(phy, phy->msi_cfg.msi_data,
 			K1C_DMA_RX_JOB_Q_NOTIF_ARG_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, K1C_DMA_RX_Q_ENABLE,
 			K1C_DMA_RX_JOB_Q_NOTIF_MODE_OFFSET);
@@ -468,9 +468,9 @@ int k1c_dma_tx_job_queue_init(struct k1c_dma_phy *phy)
 	k1c_dma_jobq_writeq_relaxed(phy, 0, K1C_DMA_TX_JOB_Q_WP_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, 0, K1C_DMA_TX_JOB_Q_VALID_WP_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, 0, K1C_DMA_TX_JOB_Q_RP_OFFSET);
-	k1c_dma_jobq_writeq_relaxed(phy, phy->msi_mb_paddr,
+	k1c_dma_jobq_writeq_relaxed(phy, phy->msi_cfg.msi_mb_dmaaddr,
 			K1C_DMA_TX_JOB_Q_NOTIF_ADDR_OFFSET);
-	k1c_dma_jobq_writeq_relaxed(phy, phy->msi_data,
+	k1c_dma_jobq_writeq_relaxed(phy, phy->msi_cfg.msi_data,
 			K1C_DMA_TX_JOB_Q_NOTIF_ARG_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, phy->asn, K1C_DMA_TX_JOB_Q_ASN_OFFSET);
 	k1c_dma_jobq_writeq_relaxed(phy, K1C_DMA_THREAD_ID,
@@ -517,9 +517,9 @@ int k1c_dma_tx_completion_init(struct k1c_dma_phy *phy)
 	k1c_dma_compq_writeq_relaxed(phy, 0, K1C_DMA_TX_COMP_Q_WP_OFFSET);
 	k1c_dma_compq_writeq_relaxed(phy, 0, K1C_DMA_TX_COMP_Q_RP_OFFSET);
 	k1c_dma_compq_writeq_relaxed(phy, 0, K1C_DMA_TX_COMP_Q_VALID_RP_OFFSET);
-	k1c_dma_compq_writeq_relaxed(phy, phy->msi_mb_paddr,
+	k1c_dma_compq_writeq_relaxed(phy, phy->msi_cfg.msi_mb_dmaaddr,
 			K1C_DMA_TX_COMP_Q_NOTIF_ADDR_OFFSET);
-	k1c_dma_compq_writeq_relaxed(phy, phy->msi_data,
+	k1c_dma_compq_writeq_relaxed(phy, phy->msi_cfg.msi_data,
 			K1C_DMA_TX_COMP_Q_NOTIF_ARG_OFFSET);
 
 	/* Activate once configuration is done and commited in memory */
@@ -601,15 +601,7 @@ int k1c_dma_init_tx_queues(struct k1c_dma_phy *phy)
 int k1c_dma_check_rx_q_enabled(struct k1c_dma_phy *phy,
 			       int rx_cache_id)
 {
-	int idx = K1C_DMA_NB_RX_JOB_QUEUE_PER_CACHE * rx_cache_id;
-	u64 val = readq(phy->base + K1C_DMA_RX_JOB_Q_OFFSET +
-			idx * K1C_DMA_RX_JOB_Q_ELEM_SIZE +
-			K1C_DMA_RX_JOB_Q_STATUS_OFFSET);
-
-	if ((val & 0x3) != 0)
-		return -EBUSY;
-
-	val = readq(phy->base + K1C_DMA_RX_CHAN_OFFSET +
+	u64 val = readq(phy->base + K1C_DMA_RX_CHAN_OFFSET +
 		    phy->hw_id * K1C_DMA_RX_CHAN_ELEM_SIZE +
 		    K1C_DMA_RX_CHAN_ACTIVATED_OFFSET);
 
@@ -803,6 +795,10 @@ int k1c_dma_allocate_queues(struct k1c_dma_phy *phy,
 		phy->compq.base = phy->base + K1C_DMA_TX_COMP_Q_OFFSET +
 			phy->hw_id * K1C_DMA_TX_COMP_Q_ELEM_SIZE;
 	}
+	ret = k1c_dma_request_irq(phy);
+	if (ret)
+		goto err;
+
 	return 0;
 
 err:
@@ -829,6 +825,7 @@ void k1c_dma_release_queues(struct k1c_dma_phy *phy,
 			    struct k1c_dma_job_queue_list *jobq_list)
 {
 	k1c_dma_stop_queues(phy);
+	k1c_dma_free_irq(phy);
 
 	k1c_dma_release_queue(phy, &phy->q);
 	k1c_dma_release_queue(phy, &phy->compq);
