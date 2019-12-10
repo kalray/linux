@@ -330,11 +330,16 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	;;
 	cmoved.dnez $r20? $r21 = $r2
 	;;
-	/* Go to firmware */
-	make $r20 = __rm_firmware_start
+	/* Second argument is regs size */
+	make $r1 = __rm_firmware_regs_end
+	/* First argument is regs address */
 	make $r0 = __rm_firmware_regs_start
-	copyd $r1 = $r21
 	;;
+	make $r20 = __rm_firmware_start
+	/* Third argument is dtb address */
+	copyd $r2 = $r21
+	;;
+	/* Go to firmware */
 	igoto $r20
 	;;
 ENDPROC(asm_rm_cfg_pwr_ctrl)
