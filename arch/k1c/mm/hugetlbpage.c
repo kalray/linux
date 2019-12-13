@@ -27,11 +27,9 @@ static unsigned int get_nr_cont_huge_pages(unsigned long ptev)
 	psize = (ptev & K1C_PAGE_SZ_MASK) >> K1C_PAGE_SZ_SHIFT;
 
 	if (psize == TLB_PS_64K)
-		/* Huge page of 64K are hold in PTE table */
-		nr_cont = 1UL << (K1C_PAGE_64K_SHIFT - PAGE_SHIFT);
+		nr_cont = K1C_PAGE_64K_NR_CONT;
 	else if (psize == TLB_PS_512M)
-		/* Huge page of 512M are hold in PMD table */
-		nr_cont = 1UL << (K1C_PAGE_512M_SHIFT - PMD_SHIFT);
+		nr_cont = K1C_PAGE_512M_NR_CONT;
 	else
 		/* Only page of 64Ko and 512Mo require more than 1 entry */
 		nr_cont = 1;
@@ -75,13 +73,13 @@ pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
 
 	switch (shift) {
 	case K1C_PAGE_64K_SHIFT:
-		ptev |= (TLB_PS_64K << K1C_PAGE_SZ_SHIFT);
+		ptev |= _PAGE_SZ_64K;
 		break;
 	case K1C_PAGE_2M_SHIFT:
-		ptev |= (TLB_PS_2M << K1C_PAGE_SZ_SHIFT);
+		ptev |= _PAGE_SZ_2M;
 		break;
 	case K1C_PAGE_512M_SHIFT:
-		ptev |= (TLB_PS_512M << K1C_PAGE_SZ_SHIFT);
+		ptev |= _PAGE_SZ_512M;
 		break;
 	default:
 		ptev = 0;
