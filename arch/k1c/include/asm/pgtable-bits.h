@@ -48,6 +48,9 @@
 #define _PAGE_GLOBAL    (1 << _PAGE_GLOBAL_SHIFT)  /* Global */
 #define _PAGE_HUGE      (1 << _PAGE_HUGE_SHIFT)    /* Huge page */
 /* Bits 10 - 11 reserved for page size */
+#define _PAGE_SZ_64K		(TLB_PS_64K << K1C_PAGE_SZ_SHIFT)
+#define _PAGE_SZ_2M		(TLB_PS_2M << K1C_PAGE_SZ_SHIFT)
+#define _PAGE_SZ_512M		(TLB_PS_512M << K1C_PAGE_SZ_SHIFT)
 #define _PAGE_SOFT      (1 << 12)   /* Reserved for software */
 
 #define _PAGE_SPECIAL   _PAGE_SOFT
@@ -59,6 +62,11 @@
 
 #define K1C_PAGE_SZ_SHIFT	10
 #define K1C_PAGE_SZ_MASK	K1C_SFR_TEL_PS_MASK
+
+/* Huge page of 64K are hold in PTE table */
+#define K1C_PAGE_64K_NR_CONT	(1UL << (K1C_PAGE_64K_SHIFT - PAGE_SHIFT))
+/* Huge page of 512M are hold in PMD table */
+#define K1C_PAGE_512M_NR_CONT	(1UL << (K1C_PAGE_512M_SHIFT - PMD_SHIFT))
 
 #define K1C_PAGE_CP_SHIFT	2
 #define K1C_PAGE_CP_MASK	K1C_SFR_TEL_CP_MASK
