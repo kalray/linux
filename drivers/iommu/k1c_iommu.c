@@ -336,6 +336,24 @@ static void read_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 }
 
 /**
+ * tlb_entries_are_equal() - compare two entries
+ * @entry1: the first entry
+ * @entry2: the second entry
+ *
+ * As there are reserved bits and we are not sure how they are used we compare
+ * entries without comparing reserved bits.
+ *
+ * Return: true if both are equal, false otherwise.
+ */
+static bool tlb_entries_are_equal(struct k1c_iommu_tlb_entry *entry1,
+				  struct k1c_iommu_tlb_entry *entry2)
+{
+	return ((entry1->teh_val == entry2->teh_val) &&
+		((entry1->tel_val & K1C_IOMMU_TEL_MASK) ==
+		 (entry2->tel_val & K1C_IOMMU_TEL_MASK)));
+}
+
+/**
  * write_tlb_entry() - write tel, teh and mtn operation
  * @iommu_hw: the HW IOMMU we want to manage
  * @way: the way we want to use
@@ -352,6 +370,7 @@ static void write_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 			    unsigned int way,
 			    struct k1c_iommu_tlb_entry *entry)
 {
+	struct k1c_iommu_tlb_entry new_entry;
 	struct k1c_iommu_mtn_entry mtn = { .mtn_val = 0x0 };
 	int set;
 
@@ -377,6 +396,13 @@ static void write_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 
 	/* Update the software cache */
 	iommu_hw->tlb_cache[set][way] = *entry;
+
+	/* And before quitting ensure that write has been done */
+	new_entry.teh_val = 0;
+	new_entry.tel_val = 0;
+	read_tlb_entry(iommu_hw, set, way, &new_entry);
+
+	BUG_ON(!tlb_entries_are_equal(entry, &new_entry));
 }
 
 /**
@@ -445,24 +471,6 @@ static void reset_tlb(struct k1c_iommu_hw *iommu_hw)
 }
 
 /**
- * tlb_entries_are_equal() - compare two entries
- * @entry1: the first entry
- * @entry2: the second entry
- *
- * As there are reserved bits and we are not sure how they are used we compare
- * entries without comparing reserved bits.
- *
- * Return: true if both are equal, false otherwise.
- */
-static bool tlb_entries_are_equal(struct k1c_iommu_tlb_entry *entry1,
-				  struct k1c_iommu_tlb_entry *entry2)
-{
-	return ((entry1->teh_val == entry2->teh_val) &&
-		((entry1->tel_val & K1C_IOMMU_TEL_MASK) ==
-		 (entry2->tel_val & K1C_IOMMU_TEL_MASK)));
-}
-
-/**
  * tlb_entry_is_present() - check if an entry is already in TLB
  * @iommu_hw: the IOMMU that owns the cache
  * @entry: the entry we want to check
@@ -486,42 +494,6 @@ static int tlb_entry_is_present(struct k1c_iommu_hw *iommu_hw,
 		if ((cur->tel_val == entry->tel_val) &&
 		    (cur->teh_val == entry->teh_val))
 			return 1;
-	}
-
-	return 0;
-}
-
-/**
- * check_tlb_cache_coherency() - check coherency between the TLB and the cache
- * @iommu: the iommu the holds the TLB that we want to check
- *
- * Lock must be taken before calling this function
- *
- * Return: 0 in case of success, another value otherwise.
- */
-int check_tlb_cache_coherency(struct k1c_iommu_hw *iommu_hw)
-{
-	struct k1c_iommu_tlb_entry cache_entry = {.teh_val = 0, .tel_val = 0};
-	struct k1c_iommu_tlb_entry tlb_entry = {.teh_val = 0, .tel_val = 0};
-	unsigned int set, way;
-
-	for (set = 0; set < iommu_hw->sets; set++) {
-		for (way = 0; way < iommu_hw->ways; way++) {
-			cache_entry = iommu_hw->tlb_cache[set][way];
-			read_tlb_entry(iommu_hw, set, way, &tlb_entry);
-
-			if (tlb_entries_are_equal(&cache_entry, &tlb_entry))
-				continue;
-
-			dev_err(iommu_hw->dev, "Find a mismatch between the cache and the TLB on IOMMU %s (@ 0x%lx)\n",
-				iommu_hw->name,
-				(unsigned long)iommu_hw);
-			dev_err(iommu_hw->dev, "The cache entry is:\n");
-			print_tlb_entry(set, way, &cache_entry);
-			dev_err(iommu_hw->dev, "The TLB entry is:\n");
-			print_tlb_entry(set, way, &tlb_entry);
-			return 1;
-		}
 	}
 
 	return 0;
@@ -1020,9 +992,6 @@ static int map_page_in_tlb(struct k1c_iommu_hw *hw[K1C_IOMMU_NB_TYPE],
 
 		write_tlb_entry(hw[i], way, &entry);
 
-#ifdef CONFIG_K1C_IOMMU_CHECK_COHERENCY
-		BUG_ON(check_tlb_cache_coherency(hw[i]) != 0);
-#endif
 		spin_unlock_irqrestore(&hw[i]->tlb_lock, flags);
 
 		pr_debug("%s: 0x%llx -> 0x%llx has been mapped on IOMMU %s (0x%lx)\n",
@@ -1321,6 +1290,18 @@ static int k1c_iommu_map(struct iommu_domain *domain,
 	phys_addr_t start;
 	unsigned long num_pages;
 	int i, ret;
+
+	if (iova & K1C_IOMMU_ADDR_MASK_VIRT) {
+		pr_err("%s: Found ignored bits in iova (0x%lx)\n",
+				__func__, iova);
+		return -EINVAL;
+	}
+
+	if ((unsigned long)paddr & K1C_IOMMU_ADDR_MASK_PHYS) {
+		pr_err("%s: Found ignored bits in paddr (0x%lx)\n",
+				__func__, (unsigned long)paddr);
+		return -EINVAL;
+	}
 
 	k1c_domain = to_k1c_domain(domain);
 	iommu = k1c_domain->iommu;
