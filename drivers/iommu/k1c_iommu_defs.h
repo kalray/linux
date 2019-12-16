@@ -108,6 +108,10 @@
 #define K1C_IOMMU_ASSOCIATION_TABLE_OFFSET 0x400
 #define K1C_IOMMU_ASSOCIATION_TABLE_SIZE   0x200
 
+/* 40 bits are used for physical addresses and 41 bits for virtual ones */
+#define K1C_IOMMU_ADDR_MASK_PHYS 0xFFFFFF0000000000UL
+#define K1C_IOMMU_ADDR_MASK_VIRT 0xFFFFFE0000000000UL
+
 /* General Control */
 #define K1C_IOMMU_GENERAL_CTRL_OFFSET              0x0
 #define K1C_IOMMU_GENERAL_CTRL_ENABLE_SHIFT        0x0
