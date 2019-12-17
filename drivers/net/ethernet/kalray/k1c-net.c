@@ -514,6 +514,8 @@ static void k1c_eth_alloc_rx_buffers(struct k1c_eth_netdev *ndev, int count)
 		rx->len = 0;
 		sg_set_buf(rx->sg, rx->skb->data, ndev->rx_buffer_len);
 		dma_len = dma_map_sg(dev, &rx->sg[0], 1, DMA_FROM_DEVICE);
+		netdev_dbg(netdev, "map rx skb[%d]: 0x%llx rx->sg[0]: 0x%llx\n",
+			    rx_w, (u64)skb, sg_dma_address(&rx->sg[0]));
 		ret = dma_mapping_error(dev, sg_dma_address(&rx->sg[0]));
 		if (dma_len == 0 || ret) {
 			netdev_err(netdev, "Failed to map dma rx[%d]: %d\n",
@@ -571,13 +573,10 @@ static int k1c_eth_clean_rx_irq(struct k1c_eth_netdev *ndev,
 	*work_done = 0;
 	while (!k1c_dma_get_rx_completed(dma_cfg->pdev,
 					 dma_cfg->rx_chan_id.start, &pkt)) {
-		if (*work_done >= work_left)
-			break;
-
 		rx = &rxr->rx_buf[rx_r];
 		if (pkt.base != sg_dma_address(&rx->sg[0])) {
-			netdev_err(netdev, "%s pkt.base 0x%llx != rx->sg[0] 0x%llx pkt.byte: %lld skb data: 0x%llx\n",
-			   __func__,  pkt.base, sg_dma_address(&rx->sg[0]),
+			netdev_err(netdev, "%s rx: %d pkt.base 0x%llx != rx->sg[0] 0x%llx pkt.byte: %lld skb data: 0x%llx\n",
+			   __func__, rx_r, pkt.base, sg_dma_address(&rx->sg[0]),
 			   pkt.byte, (u64)rx->skb->data);
 			break;
 		}
@@ -620,6 +619,9 @@ static int k1c_eth_clean_rx_irq(struct k1c_eth_netdev *ndev,
 		}
 		++rx_r;
 		rx_r = (rx_r < rxr->count) ? rx_r : 0;
+
+		if (*work_done >= work_left)
+			break;
 	}
 	rxr->next_to_clean = rx_r;
 	rx_count = k1c_eth_desc_unused(rxr);
@@ -642,13 +644,10 @@ static int k1c_eth_netdev_poll(struct napi_struct *napi, int budget)
 	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 	int work_done = 0;
 
-	k1c_dma_disable_irq(dma_cfg->pdev, dma_cfg->rx_chan_id.start);
 	k1c_eth_clean_rx_irq(ndev, &work_done, budget);
 
-	if (work_done < budget) {
+	if (work_done < budget)
 		napi_complete_done(napi, work_done);
-		k1c_dma_enable_irq(dma_cfg->pdev, dma_cfg->rx_chan_id.start);
-	}
 
 	return work_done;
 }
@@ -750,11 +749,11 @@ static const struct net_device_ops k1c_eth_netdev_ops = {
 static void k1c_eth_dma_irq_rx(void *data)
 {
 	struct k1c_eth_ring *ring = data;
-	struct k1c_eth_netdev *ndev;
+	struct k1c_eth_netdev *ndev = netdev_priv(ring->netdev);
+	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 
-	ndev = netdev_priv(ring->netdev);
-
-	napi_schedule(&ndev->napi);
+	/* Disabling irq in irq_context -> must use disable_irq_nosync */
+	napi_schedule_irqoff(&ndev->napi);
 }
 
 /* k1c_eth_alloc_rx_res() - Allocate RX resources
