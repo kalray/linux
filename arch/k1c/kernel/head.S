@@ -373,6 +373,10 @@ ENDPROC(asm_rm_cfg_pwr_ctrl)
 	wfxl $psow = $r21 ;\
 	;; ;\
 	wfxm $psow = $r22 ;\
+	;; ;\
+	make $r21 = DO_WFXL_VALUE_##__pl ;\
+	;; ;\
+	wfxl $dow = $r21 ;\
 	;;
 
 /**
