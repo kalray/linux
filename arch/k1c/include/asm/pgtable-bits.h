@@ -87,11 +87,8 @@
 #define K1C_ACCESS_PERMS_INDEX(x) \
 	((unsigned int)(x & K1C_ACCESS_PERMS_MASK) >> K1C_ACCESS_PERMS_OFFSET)
 
-/**
- * Set of bits to preserve across pte_modify()
- * TODO: Check this !
- */
-#define _PAGE_CHG_MASK  (~(unsigned long)(_PAGE_PRESENT | _PAGE_READ |	\
-					  _PAGE_WRITE | _PAGE_EXEC | \
-					  _PAGE_GLOBAL))
+/* Bits read, write, exec and global are not preserved across pte_modify() */
+#define _PAGE_CHG_MASK  (~(unsigned long)(_PAGE_READ | _PAGE_WRITE | \
+					  _PAGE_EXEC | _PAGE_GLOBAL))
+
 #endif
