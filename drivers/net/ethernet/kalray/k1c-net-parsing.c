@@ -161,21 +161,6 @@ static int parser_add_ipv6_filter(struct k1c_eth_hw *hw, unsigned int parser_id,
 }
 
 /**
- * parser_ram_disp() - Displays first rules of parser_id
- * Parser must be disabled
- */
-static void parser_ram_disp(struct k1c_eth_hw *hw, unsigned int parser_id)
-{
-	int i, ram_line;
-	u32 off = RAM(parser_id);
-
-	for (ram_line = 0; ram_line < 6; ++ram_line)
-		for (i = 0; i < PARSER_RAM_WORD_NB; ++i)
-			DUMP_REG(hw, off + RAM_LINE(ram_line) +
-				 i * PARSER_RAM_WORD_SIZE);
-}
-
-/**
  * parser_add_filter() - Adds a new rule to parser_id
  * @hw: HW description
  * @parser_id: id of selected parser
