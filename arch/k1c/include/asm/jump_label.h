@@ -14,7 +14,9 @@
 
 #include <linux/types.h>
 
-#define JUMP_LABEL_NOP_SIZE 4
+#include <asm/insns_defs.h>
+
+#define JUMP_LABEL_NOP_SIZE (K1C_INSN_NOP_SIZE * K1C_INSN_SYLLABLE_WIDTH)
 
 static __always_inline bool arch_static_branch(struct static_key *key,
 					       bool branch)
