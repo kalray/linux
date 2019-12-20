@@ -34,12 +34,13 @@
 #define TIF_NEED_RESCHED	3	/* rescheduling necessary */
 #define TIF_SINGLESTEP		4	/* restore singlestep on return to user mode */
 #define TIF_UPROBE		5
-#define TIF_SYSCALL_TRACEPOINT  8	/* for ftrace syscall instrumentation */
+#define TIF_SYSCALL_TRACEPOINT  6	/* syscall tracepoint instrumentation */
 #define TIF_RESTORE_SIGMASK     9
 #define TIF_POLLING_NRFLAG	16	/* true if poll_idle() is polling TIF_NEED_RESCHED */
 #define TIF_MEMDIE              17
 
 #define _TIF_SYSCALL_TRACE	(1 << TIF_SYSCALL_TRACE)
+#define _TIF_SYSCALL_TRACEPOINT	(1 << TIF_SYSCALL_TRACEPOINT)
 #define _TIF_POLLING_NRFLAG	(1 << TIF_POLLING_NRFLAG)
 #define _TIF_NOTIFY_RESUME	(1 << TIF_NOTIFY_RESUME)
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
@@ -47,6 +48,9 @@
 
 #define _TIF_WORK_MASK \
 	(_TIF_NOTIFY_RESUME | _TIF_SIGPENDING | _TIF_NEED_RESCHED)
+
+#define _TIF_SYSCALL_WORK \
+	(_TIF_SYSCALL_TRACE | _TIF_SYSCALL_TRACEPOINT)
 
 #ifndef __ASSEMBLY__
 /*
