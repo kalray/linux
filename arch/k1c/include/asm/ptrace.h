@@ -190,6 +190,11 @@ static inline unsigned long instruction_pointer(struct pt_regs *regs)
 	return regs->spc;
 }
 
+static inline unsigned long regs_return_value(struct pt_regs *regs)
+{
+	return regs->r0;
+}
+
 static inline unsigned long user_stack_pointer(struct pt_regs *regs)
 {
 	return regs->sp;

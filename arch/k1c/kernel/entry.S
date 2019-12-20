@@ -1204,7 +1204,7 @@ EXCEPTION_ENTRY(k1c_syscall_handler):
 	/* Compute syscall func addr (ie sys_call_table[$r32])*/
 	ld.xs $r38 = $r32[$r42]
 	/* True if trace syscall enable */
-	andd $r37 = $r39, _TIF_SYSCALL_TRACE
+	andd $r37 = $r39, _TIF_SYSCALL_WORK
 	get $r42 = $sps
 	;;
 	/* Restore kernel stack pointer */
@@ -1283,7 +1283,7 @@ do_syscall:
 	;;
 	ld $r38 = TASK_TI_FLAGS[$r36]
 	;;
-	andd $r37 = $r38, _TIF_SYSCALL_TRACE
+	andd $r37 = $r38, _TIF_SYSCALL_WORK
 	;;
 	/* Save r0 which was returned from do_scall previously and
 	 * will be cloberred by do_work_pending(and potentially
