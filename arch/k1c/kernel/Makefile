@@ -13,7 +13,7 @@ obj-y	:= setup.o process.o traps.o common.o time.o prom.o \
 		k1_ksyms.o delay.o irq.o cpuinfo.o ptrace.o \
 		entry.o syscall_table.o signal.o sys_k1c.o \
 		stacktrace.o dame_handler.o vdso.o perf_event.o \
-		return_address.o
+		return_address.o insns.o
 
 obj-$(CONFIG_JUMP_LABEL) += jump_label.o
 obj-$(CONFIG_SMP) += smp.o smpboot.o
