@@ -14,6 +14,9 @@
 
 #include <asm/ptrace.h>
 
+/* The array of function pointers for syscalls. */
+extern void *sys_call_table[];
+
 void scall_machine_exit(unsigned char value);
 
 /**
@@ -66,7 +69,6 @@ static inline void syscall_get_arguments(struct task_struct *task,
 	args++;
 	memcpy(args, &regs->r1, 5 * sizeof(args[0]));
 }
-
 
 int __init setup_syscall_sigreturn_page(void *sigpage_addr);
 
