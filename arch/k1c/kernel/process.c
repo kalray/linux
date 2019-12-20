@@ -122,7 +122,7 @@ int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
 		 * in assembly
 		 */
 		p->thread.ctx_switch.r20 =
-			task_thread_info(p)->flags & _TIF_SYSCALL_TRACE;
+			task_thread_info(p)->flags & _TIF_SYSCALL_WORK;
 		p->thread.ctx_switch.ra = (unsigned long) ret_from_fork;
 
 		childregs->r0 = 0; /* Return value of fork() */
