@@ -6,9 +6,12 @@
 * Kalray net controller
 
 Required properties:
-- compatible: Should be "kalray,k1c-eth";
+- compatible: Should be "kalray,k1c-eth"
 - reg: {phy, mac, eth} registers and length
 - reg-names: {phy, mac, eth} names
+
+Optional properties:
+- cell-index: ethernet hw index, used for packet routing
 
 * Kalray netdev
 
@@ -40,12 +43,14 @@ Example:
 			};
 		};
 	};
-	ethernet: ethernet@10050000 {
+
+	eth0: ethernet@10050000 {
 		compatible = "kalray,k1c-eth";
 		reg = <0x0 0x10040000 0x0 0xB4>,
 		      <0x0 0x10050000 0x0 0x8ED0>,
 		      <0x0 0x10090000 0x0 0x16400>;
 		reg-names = "phy", "mac", "eth";
+		cell-index = <0>;
 
 		port0: ethernet-port@0 {
 			compatible = "kalray,k1c-net";
