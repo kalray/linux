@@ -304,7 +304,7 @@ static void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
 {
 	u64 val = 0;
 
-	val = K1C_ETH_SETF(noc_route_eth2c(K1C_ETH0, cluster),
+	val = K1C_ETH_SETF(noc_route_eth2c(hw->eth_id, cluster),
 			   RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE);
 	val |= K1C_ETH_SETF((u64)rx_tag, RX_DISPATCH_TABLE_ENTRY_RX_CHAN);
 	val |= K1C_ETH_SETF((u64)hw->vchan, RX_DISPATCH_TABLE_ENTRY_NOC_VCHAN);
