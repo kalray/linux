@@ -220,6 +220,7 @@ struct k1c_eth_hw {
 	struct device *dev;
 	struct k1c_eth_res res[K1C_ETH_NUM_RES];
 	struct k1c_eth_parsing parsing;
+	u32 eth_id;
 	u32 asn;
 	u32 vchan;
 	u32 max_frame_size;
