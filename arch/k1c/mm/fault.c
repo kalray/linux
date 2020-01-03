@@ -107,6 +107,9 @@ void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	/* By default we retry and fault task can be killed */
 	flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
+	if (user_mode(regs))
+		flags |= FAULT_FLAG_USER;
+
 	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, ea);
 
 retry:
@@ -117,11 +120,10 @@ retry:
 		goto bad_area;
 	if (likely(vma->vm_start <= ea))
 		goto good_area;
-
-	if (vma->vm_flags & VM_GROWSDOWN && !expand_stack(vma, ea))
-		goto good_area;
-
-	goto bad_area;
+	if (unlikely(!(vma->vm_flags & VM_GROWSDOWN)))
+		goto bad_area;
+	if (unlikely(expand_stack(vma, ea)))
+		goto bad_area;
 
 good_area:
 	/* Handle access type */
