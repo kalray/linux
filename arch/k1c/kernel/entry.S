@@ -1421,6 +1421,10 @@ trace_syscall_exit:
 	copyd $r0 = $sp
 	call do_syscall_trace_exit
 	;;
+	/* ptrace_notify might re-enable interrupts, disable them to be sure
+	 * it will not mess up context restoration path */
+	disable_interrupt $r36
+	;;
 	get $r36 = $sr
 	;;
 	ld $r38 = TASK_TI_FLAGS[$r36]
