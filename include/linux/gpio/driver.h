@@ -733,6 +733,18 @@ void gpiochip_unlock_as_irq(struct gpio_chip *chip, unsigned int offset);
 
 struct gpio_chip *gpiod_to_chip(const struct gpio_desc *desc);
 
+#ifdef CONFIG_GPIO_ACPI
+
+void acpi_gpiochip_request_interrupts(struct gpio_chip *chip);
+
+#else
+
+static inline void acpi_gpiochip_request_interrupts(struct gpio_chip *chip)
+{
+}
+
+#endif /* CONFIG_GPIO_ACPI */
+
 #else /* CONFIG_GPIOLIB */
 
 static inline struct gpio_chip *gpiod_to_chip(const struct gpio_desc *desc)
