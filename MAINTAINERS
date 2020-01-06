@@ -19931,13 +19931,13 @@ F:	drivers/tty/serial/8250/8250_dw.c
 F:	drivers/tty/serial/8250/8250_dwlib.*
 F:	drivers/tty/serial/8250/8250_lpss.c
 
-SYNOPSYS DESIGNWARE APB GPIO DRIVER
+SYNOPSYS DESIGNWARE APB PINCTRL & GPIO DRIVER
 M:	Hoan Tran <hoan@os.amperecomputing.com>
 M:	Serge Semin <fancer.lancer@gmail.com>
 L:	linux-gpio@vger.kernel.org
 S:	Maintained
 F:	Documentation/devicetree/bindings/pinctrl/snps,dw-apb-gpio.yaml
-F:	drivers/gpio/gpio-dwapb.c
+F:	drivers/pinctrl/dw/pinctrl-dwapb.c
 
 SYNOPSYS DESIGNWARE APB SSI DRIVER
 M:	Serge Semin <fancer.lancer@gmail.com>
