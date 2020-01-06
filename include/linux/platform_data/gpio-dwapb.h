@@ -13,6 +13,7 @@ struct dwapb_port_property {
 	unsigned int	gpio_base;
 	int		irq[32];
 	bool		irq_shared;
+	bool		has_pinctrl;
 };
 
 struct dwapb_platform_data {
