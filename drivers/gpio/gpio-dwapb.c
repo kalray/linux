@@ -532,7 +532,7 @@ static int dwapb_gpio_add_port(struct dwapb_gpio *gpio,
 	if (pp->has_irq)
 		dwapb_configure_irqs(gpio, port, pp);
 
-	err = gpiochip_add_data(&port->gc, port);
+	err = devm_gpiochip_add_data(gpio->dev, &port->gc, port);
 	if (err)
 		dev_err(gpio->dev, "failed to register gpiochip for port%d\n",
 			port->idx);
@@ -544,15 +544,6 @@ static int dwapb_gpio_add_port(struct dwapb_gpio *gpio,
 		acpi_gpiochip_request_interrupts(&port->gc);
 
 	return err;
-}
-
-static void dwapb_gpio_unregister(struct dwapb_gpio *gpio)
-{
-	unsigned int m;
-
-	for (m = 0; m < gpio->nr_ports; ++m)
-		if (gpio->ports[m].is_registered)
-			gpiochip_remove(&gpio->ports[m].gc);
 }
 
 static struct dwapb_platform_data *
@@ -722,7 +713,6 @@ static int dwapb_gpio_probe(struct platform_device *pdev)
 	return 0;
 
 out_unregister:
-	dwapb_gpio_unregister(gpio);
 	dwapb_irq_teardown(gpio);
 	clk_disable_unprepare(gpio->clk);
 
@@ -733,7 +723,6 @@ static int dwapb_gpio_remove(struct platform_device *pdev)
 {
 	struct dwapb_gpio *gpio = platform_get_drvdata(pdev);
 
-	dwapb_gpio_unregister(gpio);
 	dwapb_irq_teardown(gpio);
 	reset_control_assert(gpio->rst);
 	clk_disable_unprepare(gpio->clk);
