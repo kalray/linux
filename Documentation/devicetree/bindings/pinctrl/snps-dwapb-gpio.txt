@@ -1,4 +1,4 @@
-* Synopsys DesignWare APB GPIO controller
+* Synopsys DesignWare APB GPIO & pinmux controller
 
 Required properties:
 - compatible : Should contain "snps,dw-apb-gpio"
@@ -33,7 +33,15 @@ controller.
   use the interrupts-extended property to specify the interrupts and set the
   interrupt controller handle for unused interrupts to 0.
 - snps,nr-gpios : The number of pins in the port, a single cell.
+- snps,has-pinctrl : If present, register the pinctrl controller.
 - resets : Reset line for the controller.
+
+Required properties for pin configuration node:
+- function: string representing a function to mux for pins
+    dw apb controller only has two functions for each pins (sw and hw). When set
+    in software mode, the gpio controller controls the pin output. When
+    configured in hardware mode, an external peripheral controls the pin signal.
+- pins: string array of pins to be muxed.
 
 Example:
 
@@ -60,6 +68,17 @@ gpio: gpio@20000 {
 		gpio-controller;
 		#gpio-cells = <2>;
 		snps,nr-gpios = <8>;
+		snps,has-pinctrl;
 		reg = <1>;
+
+		uart0_pins: pinmux_uart0_pins {
+			function = "hw";
+			pins = "pin0", "pin1";
+		};
+
+		uart1_pins: pinmux_uart1_pins {
+			function = "hw";
+			pins = "pin2", "pin3";
+		};
 	};
 };
