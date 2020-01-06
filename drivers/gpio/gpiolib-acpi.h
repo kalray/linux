@@ -34,9 +34,6 @@ struct acpi_gpio_info {
 void acpi_gpiochip_add(struct gpio_chip *chip);
 void acpi_gpiochip_remove(struct gpio_chip *chip);
 
-void acpi_gpiochip_request_interrupts(struct gpio_chip *chip);
-void acpi_gpiochip_free_interrupts(struct gpio_chip *chip);
-
 int acpi_gpio_update_gpiod_flags(enum gpiod_flags *flags,
 				 struct acpi_gpio_info *info);
 int acpi_gpio_update_gpiod_lookup_flags(unsigned long *lookupflags,
@@ -55,12 +52,6 @@ int acpi_gpio_count(struct device *dev, const char *con_id);
 #else
 static inline void acpi_gpiochip_add(struct gpio_chip *chip) { }
 static inline void acpi_gpiochip_remove(struct gpio_chip *chip) { }
-
-static inline void
-acpi_gpiochip_request_interrupts(struct gpio_chip *chip) { }
-
-static inline void
-acpi_gpiochip_free_interrupts(struct gpio_chip *chip) { }
 
 static inline int
 acpi_gpio_update_gpiod_flags(enum gpiod_flags *flags, struct acpi_gpio_info *info)
