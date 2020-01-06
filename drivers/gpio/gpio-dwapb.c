@@ -510,7 +510,7 @@ static int dwapb_gpio_add_port(struct dwapb_gpio *gpio,
 	if (pp->idx == 0)
 		dwapb_configure_irqs(gpio, port, pp);
 
-	err = gpiochip_add_data(&port->gc, port);
+	err = devm_gpiochip_add_data(gpio->dev, &port->gc, port);
 	if (err) {
 		dev_err(gpio->dev, "failed to register gpiochip for port%d\n",
 			port->idx);
@@ -536,7 +536,6 @@ static void dwapb_gpio_unregister(struct dwapb_gpio *gpio)
 			continue;
 
 		acpi_gpiochip_free_interrupts(&port->gc);
-		gpiochip_remove(&port->gc);
 	}
 }
 
