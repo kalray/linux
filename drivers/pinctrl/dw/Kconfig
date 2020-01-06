@@ -1,0 +1,10 @@
+config GPIO_DWAPB
+	tristate "Synopsys DesignWare APB Pinctrl & GPIO driver"
+	select GPIOLIB
+	select GPIOLIB_IRQCHIP
+	select GPIO_GENERIC
+	select PINMUX
+	select GENERIC_PINCONF
+	help
+	  Say Y or M here to build support for the Synopsys DesignWare APB
+	  GPIO block.
