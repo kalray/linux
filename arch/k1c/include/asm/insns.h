@@ -7,4 +7,6 @@
 
 int k1c_insns_write(u32 *insns, unsigned long insns_len, u32 *addr);
 
+int k1c_insns_read(u32 *insns, unsigned long insns_len, u32 *addr);
+
 #endif
