@@ -87,3 +87,8 @@ int k1c_insns_write(u32 *insns, unsigned long insns_len, u32 *addr)
 	return stop_machine_cpuslocked(patch_insns_percpu,
 				&ip, NULL);
 }
+
+int k1c_insns_read(u32 *insns, unsigned long insns_len, u32 *addr)
+{
+	return probe_kernel_read(insns, addr, insns_len);
+}
