@@ -11,9 +11,12 @@
 #include <linux/string.h>
 #include <linux/atomic.h>
 #include <linux/cpumask.h>
+#include <linux/uaccess.h>
 #include <linux/stop_machine.h>
 
 #include <asm/cacheflush.h>
+#include <asm/insns_defs.h>
+#include <asm/fixmap.h>
 
 struct insns_patch {
 	atomic_t cpu_count;
@@ -22,17 +25,62 @@ struct insns_patch {
 	unsigned long insns_len;
 };
 
-static int write_insns(u32 *insns, unsigned long insns_len, u32 *insn_addr)
+static void *insn_patch_map(void *addr)
 {
-	unsigned long laddr = (unsigned long) insn_addr;
+	unsigned long uintaddr = (uintptr_t) addr;
+	bool module = !core_kernel_text(uintaddr);
+	struct page *page;
 
-	/* Patch insns */
-	memcpy(insn_addr, insns, insns_len);
+	if (module && IS_ENABLED(CONFIG_STRICT_MODULE_RWX))
+		page = vmalloc_to_page(addr);
+	else if (!module && IS_ENABLED(CONFIG_STRICT_KERNEL_RWX))
+		page = phys_to_page(__pa_symbol(addr));
+	else
+		return addr;
+
+	BUG_ON(!page);
+	return (void *)set_fixmap_offset(FIX_TEXT_PATCH, page_to_phys(page) +
+			(uintaddr & ~PAGE_MASK));
+}
+
+static void insn_patch_unmap(void)
+{
+	clear_fixmap(FIX_TEXT_PATCH);
+}
+
+static int write_insns(u32 *insns, u8 insns_len, u32 *insn_addr)
+{
+	unsigned long current_insn_addr = (unsigned long) insn_addr;
+	unsigned long len_remain = insns_len;
+	unsigned long next_insn_page, patch_len;
+	void *map_patch_addr;
+	int ret = 0;
+
+	do {
+		/* Compute next upper page boundary */
+		next_insn_page = (current_insn_addr + PAGE_SIZE) & PAGE_MASK;
+
+		patch_len = min(next_insn_page - current_insn_addr, len_remain);
+		len_remain -= patch_len;
+
+		/* Map & patch patch insns */
+		map_patch_addr = insn_patch_map((void *) current_insn_addr);
+		ret = probe_kernel_write(map_patch_addr, insns, patch_len);
+		if (ret)
+			break;
+
+		insns = (void *) insns + patch_len;
+		current_insn_addr = next_insn_page;
+
+	} while (len_remain);
+
+	insn_patch_unmap();
 
 	/* Flush & invalidate icache to reload instructions from memory */
-	local_flush_icache_range(laddr, laddr + insns_len);
+	local_flush_icache_range((unsigned long) insn_addr,
+				 (unsigned long) insn_addr + insns_len);
 
-	return 0;
+	return ret;
 }
 
 static int patch_insns_percpu(void *data)
