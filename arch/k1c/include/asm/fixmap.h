@@ -31,6 +31,8 @@
 enum fixed_addresses {
 	FIX_EARLYCON_MEM_BASE,
 	FIX_GDB_BARE_DISPLACED_MEM_BASE,
+	/* Used to access text early in RW mode (jump label) */
+	FIX_TEXT_PATCH,
 	__end_of_fixed_addresses
 };
 
