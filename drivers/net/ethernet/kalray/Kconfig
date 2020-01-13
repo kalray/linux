@@ -17,7 +17,7 @@ if NET_VENDOR_KALRAY
 config NET_K1C_SOC
 	tristate "Kalray ethernet support"
 	depends on K1C_DMA_NOC
-	select PHYLIB
+	select PHYLINK
 	help
 	  This driver supports the K1C Ethernet hardware using dma_noc driver
 	  as dependency.

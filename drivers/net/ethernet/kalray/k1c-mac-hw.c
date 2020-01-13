@@ -17,7 +17,9 @@
 #include "k1c-phy-regs.h"
 
 #define MAC_LOOPBACK_LATENCY  4
-#define RESET_TIMEOUT_MS 50
+
+#define DUMP_PHY_REG(hw, off) { u32 v = k1c_phy_readl(hw, off); \
+			  pr_debug("%s @ 0x%x - 0x%x\n", #off, (u32)off, v); }
 
 #define k1c_poll(read, reg, mask, exp, timeout_in_ms) \
 ({ \
@@ -139,7 +141,7 @@ static int k1c_eth_emac_init(struct k1c_eth_hw *hw,
 static int k1c_eth_pmac_init(struct k1c_eth_hw *hw,
 			     struct k1c_eth_lane_cfg *cfg)
 {
-	u32 off, val = 0;
+	u32 off, val;
 
 	/* Preembtible MAC */
 	val = K1C_ETH_SETF(1, PMAC_CMD_CFG_TX_EN);
@@ -175,6 +177,313 @@ static int k1c_eth_pmac_init(struct k1c_eth_hw *hw,
 	return 0;
 }
 
+#define RESET_TIMEOUT_MS 50
+static void k1c_eth_phy_reset(struct k1c_eth_hw *hw, int phy_reset)
+{
+	u32 val = k1c_phy_readl(hw, PHY_RESET_OFFSET);
+
+	dev_dbg(hw->dev, "Phy Reset RX/TX serdes (0x%x)\n", val);
+	if (phy_reset)
+		val |= K1C_ETH_SETF(1, PHY_RST);
+	/* 0xF for all lanes */
+	val |= K1C_ETH_SETF(0xF, PHY_RESET_SERDES_RX);
+	val |= K1C_ETH_SETF(0xF, PHY_RESET_SERDES_TX);
+	k1c_phy_writel(hw, val, PHY_RESET_OFFSET);
+
+	k1c_poll(k1c_phy_readl, PHY_RESET_OFFSET, val, val, RESET_TIMEOUT_MS);
+
+	k1c_phy_writel(hw, 0, PHY_RESET_OFFSET);
+	val = k1c_phy_readl(hw, PHY_RESET_OFFSET);
+
+	dev_dbg(hw->dev, "Phy release reset (0x%x)\n", val);
+	k1c_poll(k1c_phy_readl, PHY_RESET_OFFSET, 0x1FFU, 0, RESET_TIMEOUT_MS);
+}
+
+int k1c_eth_phy_init(struct k1c_eth_hw *hw)
+{
+	u32 val = 0;
+
+	/* Default PLLA/PLLB are available */
+	set_bit(PLL_A, &hw->pll_cfg.avail);
+	set_bit(PLL_B, &hw->pll_cfg.avail);
+
+	if (of_device_is_compatible(hw->dev->of_node, "kalray,haps-eth")) {
+		/* FPGA only */
+		dev_dbg(hw->dev, "HAPS Phy force sigdet (0x%x)\n", val);
+		val = K1C_ETH_SETF(0xF, PHY_SERDES_CTRL_FORCE_SIGNAL_DET);
+		update_bits(k1c_phy, PHY_SERDES_CTRL_OFFSET,
+				    PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK, val);
+	}
+
+	return 0;
+}
+
+/**
+ * PHY / MAC configuration
+ */
+static void k1c_eth_phy_pll(struct k1c_eth_hw *hw, enum pll_id pll, u32 r10G_en)
+{
+	u32 val = k1c_phy_readl(hw, PHY_PLL_OFFSET);
+
+	if (pll == PLL_A) {
+		val |= K1C_ETH_SETF(r10G_en, PHY_PLL_PLLA_RATE_10G_EN);
+		val |= K1C_ETH_SETF(1, PHY_PLL_PLLA_FORCE_EN);
+	} else {
+		val |= K1C_ETH_SETF(1, PHY_PLL_PLLB_FORCE_EN);
+	}
+	k1c_phy_writel(hw, val, PHY_PLL_OFFSET);
+}
+
+/**
+ * k1c_eth_phy_serdes() - Config serdes
+ * @hw: hardware description
+ * @cfg: current netdev configuration
+ *
+ * Called for each netdev addition
+ *
+ * Unavalaible configs: 1G + 10G , n x 40G, n x 100G
+ *       PLLA-> used for 1G and/or 10G
+ *       PLLB -> 25G only
+ */
+int k1c_eth_phy_serdes_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	struct pll_cfg *pll = &hw->pll_cfg;
+	int serdes_id = 0;
+
+	if (hw->pll_cfg.serdes_mask)
+		serdes_id = fls(hw->pll_cfg.serdes_mask);
+
+	if (of_device_is_compatible(hw->dev->of_node, "kalray,haps-eth"))
+		return 0;
+
+	switch (cfg->speed) {
+	case SPEED_10:
+	case SPEED_100:
+	case SPEED_1000:
+		if (test_and_clear_bit(PLL_A, &pll->avail)) {
+			pll->rate_plla = SPEED_1000;
+			k1c_eth_phy_pll(hw, PLL_A, 0);
+		} else {
+			if (pll->rate_plla != SPEED_1000)
+				return -EINVAL;
+		}
+		clear_bit(serdes_id, &pll->serdes_pll_master);
+		set_bit(serdes_id, &pll->serdes_mask);
+		++serdes_id;
+		break;
+	case SPEED_10000:
+		if (test_and_clear_bit(PLL_A, &pll->avail)) {
+			pll->rate_plla = SPEED_10000;
+			k1c_eth_phy_pll(hw, PLL_A, 1);
+		} else {
+			if (pll->rate_plla != SPEED_10000)
+				return -EINVAL;
+		}
+		if (test_and_clear_bit(PLL_B, &pll->avail))
+			k1c_eth_phy_pll(hw, PLL_B, 0);
+		clear_bit(serdes_id, &pll->serdes_pll_master);
+		set_bit(serdes_id, &pll->serdes_mask);
+		++serdes_id;
+		break;
+	case SPEED_25000:
+		if (test_and_clear_bit(PLL_B, &pll->avail))
+			k1c_eth_phy_pll(hw, PLL_B, 0);
+		set_bit(serdes_id, &pll->serdes_pll_master);
+		set_bit(serdes_id, &pll->serdes_mask);
+		++serdes_id;
+		break;
+	case SPEED_40000:
+		if (serdes_id || !test_bit(PLL_A, &pll->avail) ||
+		    !test_bit(PLL_B, &pll->avail)) {
+			dev_err(hw->dev, "Failed to set serdes for 40G\n");
+			return -EINVAL;
+		}
+		clear_bit(PLL_A, &pll->avail);
+		pll->rate_plla = SPEED_10000;
+		k1c_eth_phy_pll(hw, PLL_A, 1);
+		clear_bit(PLL_B, &pll->avail);
+		k1c_eth_phy_pll(hw, PLL_B, 0);
+		pll->serdes_pll_master = 0;
+		pll->serdes_mask = 0xF;
+		serdes_id += 4;
+		break;
+	case SPEED_50000:
+		if (serdes_id % 2) {
+			dev_err(hw->dev, "Failed to set serdes for 50G\n");
+			return -EINVAL;
+		}
+		if (test_and_clear_bit(PLL_B, &pll->avail))
+			k1c_eth_phy_pll(hw, PLL_B, 0);
+		set_bit(serdes_id, &pll->serdes_pll_master);
+		set_bit(serdes_id + 1, &pll->serdes_pll_master);
+		set_bit(serdes_id, &pll->serdes_mask);
+		set_bit(serdes_id + 1, &pll->serdes_mask);
+		serdes_id += 2;
+		break;
+	case SPEED_100000:
+		if (serdes_id) {
+			dev_err(hw->dev, "Failed to set serdes for 100G\n");
+			return -EINVAL;
+		}
+		if (test_and_clear_bit(PLL_B, &pll->avail))
+			k1c_eth_phy_pll(hw, PLL_B, 0);
+		pll->serdes_pll_master = 0xF;
+		pll->serdes_mask = 0xF;
+		serdes_id += 4;
+		break;
+	default:
+		dev_err(hw->dev, "Unsupported speed for serdes cfg\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static void dump_phy_status(struct k1c_eth_hw *hw)
+{
+	u32 val = k1c_phy_readl(hw, PHY_PLL_STATUS_OFFSET);
+
+	dev_dbg(hw->dev, "phy status\n");
+	dev_dbg(hw->dev, "plla_status: %ld\n",
+		K1C_ETH_GETF(val, PHY_PLL_STATUS_PLLA));
+	dev_dbg(hw->dev, "pllb_status: %ld\n",
+		K1C_ETH_GETF(val, PHY_PLL_STATUS_PLLB));
+	dev_dbg(hw->dev, "ref_clk_detected: %ld\n",
+		K1C_ETH_GETF(val, PHY_PLL_STATUS_REF_CLK_DETECTED));
+
+	val = k1c_phy_readl(hw, PHY_PLL_OFFSET);
+	dev_dbg(hw->dev, "phy PLL: 0x%x\n", val);
+}
+
+#define SERDES_ACK_TIMEOUT_MS 30
+
+/* k1c_eth_phy_serdes_cfg() - config of serdes based on initialized hw->pll_cfg
+ * @hw: hardware configuration
+ */
+static int k1c_eth_phy_serdes_cfg(struct k1c_eth_hw *hw,
+				  struct k1c_eth_lane_cfg *cfg)
+{
+	struct pll_cfg *pll = &hw->pll_cfg;
+	int serdes_nb = 0;
+	u32 pll_status_mask = 0;
+	u32 ack_mask = (PHY_SERDES_STATUS_RX_ACK_MASK |
+			PHY_SERDES_STATUS_TX_ACK_MASK);
+	u32 off, val;
+	int i;
+
+	if (pll->serdes_mask)
+		serdes_nb = fls(pll->serdes_mask);
+	dev_dbg(hw->dev, "serdes_nb: %d (serdes_mask: 0x%lx serdes_pll_master: 0x%lx avail: 0x%lx)\n",
+		serdes_nb, pll->serdes_mask,
+		pll->serdes_pll_master, pll->avail);
+	/* Enable CR interface */
+	k1c_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
+
+	/* Select the MAC PLL ref clock */
+	if (pll->rate_plla == SPEED_1000 && !test_bit(PLL_A, &pll->avail) &&
+	    test_bit(PLL_B, &pll->avail))
+		k1c_phy_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
+	else
+		k1c_phy_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
+	/* Configure serdes PLL master */
+	val = pll->serdes_pll_master << PHY_SERDES_PLL_CFG_TX_PLL_SEL_SHIFT;
+	k1c_phy_writel(hw, val, PHY_SERDES_PLL_CFG_OFFSET);
+
+	/*
+	 * Enable serdes, pstate: 3: off, 2, 1, 0: running
+	 * Do not set pstate in running mode during PLL serdes boot
+	 */
+	for (i = 0; i < serdes_nb; ++i) {
+		off = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
+		val = k1c_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		val |= ((u32)2 << PHY_LANE_RX_SERDES_CFG_PSTATE_SHIFT) |
+			BIT(PHY_LANE_RX_SERDES_CFG_DISABLE_SHIFT);
+		val &= ~PHY_LANE_RX_SERDES_CFG_LPD_MASK;
+		k1c_phy_writel(hw, val, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		DUMP_PHY_REG(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+
+		val = k1c_phy_readl(hw, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
+		val |= ((u32)2 << PHY_LANE_TX_SERDES_CFG_PSTATE_SHIFT) |
+			BIT(PHY_LANE_TX_SERDES_CFG_DISABLE_SHIFT);
+		val &= ~PHY_LANE_RX_SERDES_CFG_LPD_MASK;
+		k1c_phy_writel(hw, val, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
+		DUMP_PHY_REG(hw, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
+	}
+	k1c_eth_phy_reset(hw, 1);
+	/* Waits for the ack signals be low */
+	k1c_poll(k1c_phy_readl, PHY_SERDES_STATUS_OFFSET, ack_mask, 0,
+		     SERDES_ACK_TIMEOUT_MS);
+
+	pll_status_mask = PHY_PLL_STATUS_REF_CLK_DETECTED_MASK;
+	if (!test_bit(PLL_A, &pll->avail))
+		pll_status_mask |= BIT(PHY_PLL_STATUS_PLLA_SHIFT);
+	if (!test_bit(PLL_B, &pll->avail))
+		pll_status_mask |=  BIT(PHY_PLL_STATUS_PLLB_SHIFT);
+
+	/* Waits for PLL lock */
+	k1c_poll(k1c_phy_readl, PHY_PLL_STATUS_OFFSET, pll_status_mask,
+		 pll_status_mask, SERDES_ACK_TIMEOUT_MS);
+
+	val = 0xF << PHY_SERDES_CTRL_TX_CLK_RDY_SHIFT;
+	update_bits(k1c_phy, PHY_SERDES_CTRL_OFFSET,
+			    PHY_SERDES_CTRL_TX_CLK_RDY_MASK, val);
+
+	/* Enables serdes */
+	val = (u32)pll->serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_EN_SHIFT;
+	update_bits(k1c_phy, PHY_SERDES_PLL_CFG_OFFSET,
+			    PHY_SERDES_PLL_CFG_TX_PLL_EN_MASK, val);
+	for (i = 0; i < serdes_nb; ++i) {
+		off = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
+		val = k1c_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		val &= ~PHY_LANE_RX_SERDES_CFG_PSTATE_MASK;
+		val &= ~PHY_LANE_RX_SERDES_CFG_DISABLE_MASK;
+		k1c_phy_writel(hw, val, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		DUMP_PHY_REG(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		val = k1c_phy_readl(hw, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
+		val &= ~PHY_LANE_RX_SERDES_CFG_PSTATE_MASK;
+		val &= ~PHY_LANE_RX_SERDES_CFG_DISABLE_MASK;
+		k1c_phy_writel(hw, val, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
+		DUMP_PHY_REG(hw, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
+	}
+
+	if (cfg->mac_f.loopback_mode == PHY_PMA_LOOPBACK) {
+		/* Must be set in pstate P0 */
+		dev_info(hw->dev, "Mac/Phy TX2RX loopback!!!\n");
+		val = (u32)0xF << PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT;
+		update_bits(k1c_phy, PHY_SERDES_CTRL_OFFSET,
+				    PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, val);
+	}
+
+	val = PHY_SERDES_CTRL_RX_REQ_MASK | PHY_SERDES_CTRL_TX_REQ_MASK;
+	update_bits(k1c_phy, PHY_SERDES_CTRL_OFFSET, val, val);
+
+	/* Waits for the ack signals be high */
+	k1c_poll(k1c_phy_readl, PHY_SERDES_STATUS_OFFSET, ack_mask, ack_mask,
+		 SERDES_ACK_TIMEOUT_MS);
+
+	/* Clear serdes req signals */
+	update_bits(k1c_phy, PHY_SERDES_CTRL_OFFSET,
+		PHY_SERDES_CTRL_RX_REQ_MASK | PHY_SERDES_CTRL_TX_REQ_MASK, 0);
+
+	k1c_poll(k1c_phy_readl, PHY_SERDES_STATUS_OFFSET, ack_mask, 0,
+		 SERDES_ACK_TIMEOUT_MS);
+
+	dump_phy_status(hw);
+	dev_dbg(hw->dev, "Serdes cfg done\n");
+
+	return 0;
+}
+
+static int k1c_eth_phy_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	int ret = 0;
+
+	if (!of_device_is_compatible(hw->dev->of_node, "kalray,haps-eth"))
+		ret = k1c_eth_phy_serdes_cfg(hw, cfg);
+
+	return 0;
+}
+
 int k1c_eth_mac_reset(struct k1c_eth_hw *hw)
 {
 	int ret = 0;
@@ -189,7 +498,7 @@ int k1c_eth_mac_reset(struct k1c_eth_hw *hw)
 	}
 
 	/* MAC loopback mode */
-	val = (u32)MAC_LOOPBACK_LATENCY << MAC_BYPASS_LOOPBACK_LATENCY_SHIFT;
+	val = (u32)4 << MAC_BYPASS_LOOPBACK_LATENCY_SHIFT;
 	k1c_mac_writel(hw, val, MAC_BYPASS_OFFSET);
 
 	return 0;
@@ -405,8 +714,8 @@ static int k1c_eth_wait_link_up(struct k1c_eth_hw *hw,
 	if (cfg->speed <= SPEED_1000) {
 		reg = MAC_1G_OFFSET + MAC_1G_ELEM_SIZE * cfg->id;
 		ret = k1c_poll(k1c_mac_readl, reg + MAC_1G_STATUS_OFFSET,
-			   MAC_1G_STATUS_LINK_STATUS_MASK,
-			   MAC_1G_STATUS_LINK_STATUS_MASK, MAC_SYNC_TIMEOUT_MS);
+			 MAC_1G_STATUS_LINK_STATUS_MASK,
+			 MAC_1G_STATUS_LINK_STATUS_MASK, MAC_SYNC_TIMEOUT_MS);
 		if (ret) {
 			dev_err(hw->dev, "Link up 1G failed\n");
 			return ret;
@@ -462,8 +771,13 @@ static int k1c_eth_wait_link_up(struct k1c_eth_hw *hw,
  */
 int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
-	int ret = 0;
-	u32 val;
+	int i, ret = 0;
+	u32 off, val, mask;
+
+	/* Setup PHY + serdes */
+	ret = k1c_eth_phy_cfg(hw, cfg);
+	if (ret)
+		return ret;
 
 	ret = k1c_eth_mac_reset(hw);
 	if (ret)
@@ -544,6 +858,23 @@ int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 		     mask, SIGDET_TIMEOUT_MS);
 	if (ret)
 		dev_err(hw->dev, "Signal detection timeout.\n");
+
+	for (i = 0; i < K1C_ETH_LANE_NB; ++i) {
+		if (!test_bit(i, &hw->pll_cfg.serdes_mask))
+			continue;
+		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
+		val = k1c_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		val |= BIT(PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_SHIFT);
+		k1c_phy_writel(hw, val, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		val = k1c_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+		dev_dbg(hw->dev, "PHY_LANE_RX_SERDES_STATUS[%d] (data_en): 0x%x\n",
+			i, val);
+	}
+
+	mask = (u32)(hw->pll_cfg.serdes_mask <<
+		     PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT);
+	k1c_poll(k1c_phy_readl, PHY_SERDES_STATUS_OFFSET, mask,
+		     mask, SIGDET_TIMEOUT_MS);
 
 	for (i = 0; i < K1C_ETH_LANE_NB; ++i) {
 		if (!test_bit(i, &hw->pll_cfg.serdes_mask))
