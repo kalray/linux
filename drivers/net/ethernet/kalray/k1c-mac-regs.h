@@ -285,5 +285,4 @@
 #define STAT64_TX_OFFSET                           0x800
 #define STAT64_TX_ELEM_SIZE                        0x200
 
-
 #endif /* ASM_K1C_MAC_REGS_H */
