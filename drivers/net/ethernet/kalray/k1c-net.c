@@ -68,6 +68,7 @@ static void k1c_eth_link_change(struct net_device *netdev)
 {
 	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
 	struct phy_device *phydev = netdev->phydev;
+	int ret = 0;
 
 	if (phydev->link != ndev->cfg.link ||
 	    phydev->speed != ndev->cfg.speed ||
@@ -76,6 +77,19 @@ static void k1c_eth_link_change(struct net_device *netdev)
 		ndev->cfg.speed = phydev->speed;
 		ndev->cfg.duplex = phydev->duplex;
 		phy_print_status(phydev);
+	}
+
+	netdev_info(netdev, "%s cfg->id: %d\n", __func__, ndev->cfg.id);
+
+	/* Retrieve head */
+	list_for_each_prev(n, &ndev->node) {
+		if (list_is_first(n, &ndev->node))
+			break;
+	}
+
+	list_for_each_entry(nd, n, node) {
+		netdev_info(netdev, "Iterate netdev cfg->id: %d\n", nd->cfg.id);
+		ret = k1c_eth_phy_serdes_init(nd->hw, &nd->cfg);
 	}
 }
 
@@ -86,7 +100,8 @@ static int k1c_eth_netdev_open(struct net_device *netdev)
 {
 	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
 
-	phy_start(ndev->phy);
+	if (netdev->phydev)
+		phy_start(netdev->phydev);
 
 	k1c_eth_up(netdev);
 	return 0;
@@ -132,8 +147,10 @@ static int k1c_eth_init_netdev(struct k1c_eth_netdev *ndev)
 	ndev->rx_buffer_len = ALIGN(ndev->hw->max_frame_size,
 				    K1C_ETH_PKT_ALIGN);
 
-	ndev->cfg.speed = SPEED_1000;
+	ndev->cfg.speed = SPEED_100000;
 	ndev->cfg.duplex = DUPLEX_FULL;
+	ndev->hw->fec_en = 0;
+	ndev->cfg.mac_f.loopback_mode = NO_LOOPBACK;
 
 	return 0;
 }
@@ -978,7 +995,7 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	int ret, i = 0;
 	struct list_head *n;
 
-	netdev = alloc_etherdev(sizeof(struct k1c_eth_netdev));
+	netdev = devm_alloc_etherdev(&pdev->dev, sizeof(struct k1c_eth_netdev));
 	if (!netdev) {
 		dev_err(&pdev->dev, "Failed to alloc netdev\n");
 		return NULL;
@@ -1002,7 +1019,7 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	eth_hw_addr_random(netdev);
 	memcpy(ndev->cfg.mac_f.addr, netdev->dev_addr, ETH_ALEN);
 	/* As of now keep tx_fifo = lane_id -> needs to be updated */
-	ndev->cfg.tx_fifo = ndev->cfg.id % TX_FIFO_NB;
+	ndev->cfg.tx_fifo = ndev->cfg.id;
 
 	/* Allocate RX/TX rings */
 	ret = k1c_eth_alloc_rx_res(netdev);
@@ -1018,7 +1035,6 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	ret = register_netdev(netdev);
 	if (ret) {
 		netdev_err(netdev, "Failed to register netdev %d\n", ret);
-		ret = -ENODEV;
 		goto err;
 	}
 
@@ -1073,10 +1089,10 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 	dev = platform_get_drvdata(ppdev);
 	/* Config DMA */
 	dmaengine_get();
-
 	ndev = k1c_eth_create_netdev(pdev, dev);
 	if (!ndev) {
-		ret = -ENODEV;
+		dev_err(&pdev->dev, "Probe defer\n");
+		ret = -EPROBE_DEFER;
 		goto err;
 	}
 
@@ -1084,12 +1100,6 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 	ret = k1c_eth_init_netdev(ndev);
 	if (ret)
 		goto err;
-
-	ret = k1c_eth_mac_cfg(&dev->hw, &ndev->cfg);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to init MAC\n");
-		goto err;
-	}
 
 	k1c_mac_set_addr(&dev->hw, &ndev->cfg);
 	k1c_eth_tx_set_default(&ndev->cfg);
