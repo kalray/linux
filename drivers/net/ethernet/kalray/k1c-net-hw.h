@@ -28,6 +28,10 @@
 #define K1C_ETH_SETF(val, field) (((val) << field ## _SHIFT) & (field ## _MASK))
 #define K1C_ETH_GETF(reg, field) (((reg) & field ## _MASK) >> (field ## _SHIFT))
 
+#define update_bits(bl, off, mask, v) { \
+	u32 vv = bl##_readl(hw, off) & ~(mask); \
+	bl##_writel(hw, ((v) | (vv)), off); }
+
 enum k1c_eth_io {
 	K1C_ETH0 = 0,
 	K1C_ETH1
@@ -42,10 +46,16 @@ enum k1c_eth_resource {
 };
 
 enum k1c_eth_loopback_mode {
+	NO_LOOPBACK = 0,
 	/* Bypass PHY (Mac serdes Tx drives Mac serdes Rx) */
-	K1C_ETH_MAC_SERDES_LOOPBACK,
+	MAC_SERDES_LOOPBACK,
+	/* Phy serdes Tx drives Phy serdes Rx */
+	PHY_PMA_LOOPBACK,
+	/* HOST LOOPBACK */
+	/* Phy data loopback (host loopback) */
+	PHY_RX2TX_LOOPBACK,
 	/* MAC data loopback (host loopback) */
-	K1C_ETH_MAC_RX2TX_LOOPBACK,
+	MAC_RX2TX_LOOPBACK,
 };
 
 struct k1c_eth_res {
