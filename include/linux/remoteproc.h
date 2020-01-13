@@ -124,6 +124,7 @@ enum fw_resource_type {
 };
 
 #define FW_RSC_ADDR_ANY (-1)
+#define FW_RSC_NOTIFY_ID_ANY (-1)
 
 /**
  * struct fw_rsc_carveout - physically contiguous memory request
