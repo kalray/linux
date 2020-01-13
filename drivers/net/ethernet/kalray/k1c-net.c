@@ -69,6 +69,8 @@ static void k1c_eth_link_change(struct net_device *netdev)
 	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
 	struct phy_device *phydev = netdev->phydev;
 	int ret = 0;
+	struct list_head *n;
+	struct k1c_eth_netdev *nd;
 
 	if (phydev->link != ndev->cfg.link ||
 	    phydev->speed != ndev->cfg.speed ||
@@ -79,8 +81,6 @@ static void k1c_eth_link_change(struct net_device *netdev)
 		phy_print_status(phydev);
 	}
 
-	netdev_info(netdev, "%s cfg->id: %d\n", __func__, ndev->cfg.id);
-
 	/* Retrieve head */
 	list_for_each_prev(n, &ndev->node) {
 		if (list_is_first(n, &ndev->node))
@@ -88,7 +88,7 @@ static void k1c_eth_link_change(struct net_device *netdev)
 	}
 
 	list_for_each_entry(nd, n, node) {
-		netdev_info(netdev, "Iterate netdev cfg->id: %d\n", nd->cfg.id);
+		netdev_dbg(netdev, "Iterate netdev cfg->id: %d\n", nd->cfg.id);
 		ret = k1c_eth_phy_serdes_init(nd->hw, &nd->cfg);
 	}
 }
@@ -98,8 +98,6 @@ static void k1c_eth_link_change(struct net_device *netdev)
  */
 static int k1c_eth_netdev_open(struct net_device *netdev)
 {
-	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
-
 	if (netdev->phydev)
 		phy_start(netdev->phydev);
 
@@ -915,6 +913,7 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *np_dma;
+	struct phy_device *phy;
 	int ret = 0;
 
 	np_dma = of_parse_phandle(np, "dmas", 0);
@@ -970,12 +969,10 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 		return -EINVAL;
 	}
 
-	ndev->phy = of_phy_get_and_connect(ndev->netdev, np,
-					   k1c_eth_link_change);
-	if (!ndev->phy) {
+	/* Set up netdev->phydev */
+	phy = of_phy_get_and_connect(ndev->netdev, np, k1c_eth_link_change);
+	if (!phy)
 		dev_err(ndev->dev, "Unable to get phy\n");
-		return -EINVAL;
-	}
 
 	return 0;
 }
@@ -1101,6 +1098,14 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
+	ret = k1c_eth_phy_serdes_init(ndev->hw, &ndev->cfg);
+
+	ret = k1c_eth_mac_cfg(ndev->hw, &ndev->cfg);
+	if (ret) {
+		netdev_err(ndev->netdev, "Failed to configure MAC\n");
+		goto err;
+	}
+
 	k1c_mac_set_addr(&dev->hw, &ndev->cfg);
 	k1c_eth_tx_set_default(&ndev->cfg);
 	k1c_eth_lb_set_default(&dev->hw, &ndev->cfg);
@@ -1208,9 +1213,11 @@ static int k1c_eth_probe(struct platform_device *pdev)
 	}
 	dev->hw.dev = &pdev->dev;
 
-	ret = k1c_eth_mac_reset(&dev->hw);
-	if (ret)
+	ret = k1c_eth_phy_init(&dev->hw);
+	if (ret) {
+		dev_err(&pdev->dev, "Mac/Phy init failed (ret: %d)\n", ret);
 		goto err;
+	}
 
 	dev_info(&pdev->dev, "K1C network driver\n");
 	return devm_of_platform_populate(&pdev->dev);
