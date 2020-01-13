@@ -113,7 +113,6 @@ struct k1c_eth_netdev {
 	struct device *dev;
 	struct k1c_eth_hw *hw;
 	/* Connection to PHY device */
-	struct phy_device *phy;
 	struct k1c_eth_lane_cfg cfg;
 	struct k1c_dma_config dma_cfg;
 	struct napi_struct napi;
