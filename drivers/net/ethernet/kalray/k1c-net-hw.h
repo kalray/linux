@@ -232,6 +232,29 @@ struct k1c_eth_parsing {
 	u8 rx_hash_fields[K1C_TT_PROTOS_NB];
 };
 
+enum pll_id {
+	PLL_A = 0,
+	PLL_B,
+	PLL_COUNT,
+};
+
+/**
+ * struct pll_cfg - Persistent pll and serdes configuration
+ *    PLLA-> used for 1G and/or 10G
+ *    PLLB -> 25G only
+ *
+ * @serdes_mask: 4 serdes
+ * @serdes_pll_master: pll configuration per serdes
+ * @pll: availability (2 PLLs)
+ * @rate_plla: PLLA rate
+ */
+struct pll_cfg {
+	unsigned long serdes_mask;
+	unsigned long serdes_pll_master;
+	unsigned long avail;
+	unsigned int rate_plla;
+};
+
 /**
  * struct k1c_eth_hw - HW adapter
  * @dev: device
@@ -246,6 +269,7 @@ struct k1c_eth_hw {
 	struct k1c_eth_res res[K1C_ETH_NUM_RES];
 	struct k1c_eth_parsing parsing;
 	u32 eth_id;
+	struct pll_cfg pll_cfg;
 	u32 asn;
 	u32 vchan;
 	u32 max_frame_size;
@@ -358,9 +382,13 @@ u32 noc_route_c2eth(enum k1c_eth_io eth_id, int cluster_id);
 u32 noc_route_eth2c(enum k1c_eth_io eth_id, int cluster_id);
 void k1c_eth_dump_rx_hdr(struct k1c_eth_hw *hw, struct rx_metadata *hdr);
 
+/* PHY */
+int k1c_eth_phy_serdes_init(struct k1c_eth_hw *h, struct k1c_eth_lane_cfg *cfg);
+
 /* MAC */
 void k1c_mac_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu);
 void k1c_mac_set_addr(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *lane_cfg);
+int k1c_eth_phy_init(struct k1c_eth_hw *hw);
 int k1c_eth_mac_reset(struct k1c_eth_hw *hw);
 int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *lane_cfg);
 
