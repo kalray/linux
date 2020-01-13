@@ -201,6 +201,9 @@ struct vring_virtqueue {
 	/* DMA, allocation, and size information */
 	bool we_own_ring;
 
+	/* Work struct for vq callback handling */
+	struct work_struct work;
+
 #ifdef DEBUG
 	/* They're supposed to lock for us. */
 	unsigned int in_use;
@@ -2426,6 +2429,18 @@ static inline bool more_used(const struct vring_virtqueue *vq)
 	return vq->packed_ring ? more_used_packed(vq) : more_used_split(vq);
 }
 
+static void vring_work_handler(struct work_struct *work_struct)
+{
+	struct vring_virtqueue *vq = container_of(work_struct,
+						  struct vring_virtqueue,
+						  work);
+	if (vq->event)
+		vq->event_triggered = true;
+	pr_debug("virtqueue callback for %p (%p)\n", vq, vq->vq.callback);
+
+	vq->vq.callback(&vq->vq);
+}
+
 /**
  * vring_interrupt - notify a virtqueue on an interrupt
  * @irq: the IRQ number (ignored)
@@ -2453,13 +2468,9 @@ irqreturn_t vring_interrupt(int irq, void *_vq)
 #endif
 	}
 
-	/* Just a hint for performance: so it's ok that this can be racy! */
-	if (vq->event)
-		vq->event_triggered = true;
 
-	pr_debug("virtqueue callback for %p (%p)\n", vq, vq->vq.callback);
 	if (vq->vq.callback)
-		vq->vq.callback(&vq->vq);
+		schedule_work(&vq->work);
 
 	return IRQ_HANDLED;
 }
@@ -2515,6 +2526,16 @@ static struct virtqueue *__vring_new_virtqueue(unsigned int index,
 	}
 
 	virtqueue_vring_init_split(vring_split, vq);
+	INIT_WORK(&vq->work, vring_work_handler);
+
+	vq->split.desc_state = kmalloc_array(vring.num,
+			sizeof(struct vring_desc_state_split), GFP_KERNEL);
+	if (!vq->split.desc_state)
+		goto err_state;
+
+	vq->split.desc_extra = vring_alloc_desc_extra(vq, vring.num);
+	if (!vq->split.desc_extra)
+		goto err_extra;
 
 	virtqueue_init(vq, vring_split->vring.num);
 	virtqueue_vring_attach_split(vq, vring_split);
@@ -2644,6 +2665,11 @@ EXPORT_SYMBOL_GPL(vring_new_virtqueue);
 static void vring_free(struct virtqueue *_vq)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
+
+	cancel_work_sync(&vq->work);
+	spin_lock(&vq->vq.vdev->vqs_list_lock);
+	list_del(&_vq->list);
+	spin_unlock(&vq->vq.vdev->vqs_list_lock);
 
 	if (vq->we_own_ring) {
 		if (vq->packed_ring) {
