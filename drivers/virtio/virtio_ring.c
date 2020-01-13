@@ -183,6 +183,9 @@ struct vring_virtqueue {
 	/* DMA, allocation, and size information */
 	bool we_own_ring;
 
+	/* Work struct for vq callback handling */
+	struct work_struct work;
+
 #ifdef DEBUG
 	/* They're supposed to lock for us. */
 	unsigned int in_use;
@@ -2029,6 +2032,16 @@ static inline bool more_used(const struct vring_virtqueue *vq)
 	return vq->packed_ring ? more_used_packed(vq) : more_used_split(vq);
 }
 
+static void vring_work_handler(struct work_struct *work_struct)
+{
+	struct vring_virtqueue *vq = container_of(work_struct,
+						  struct vring_virtqueue,
+						  work);
+	pr_debug("virtqueue callback for %p (%p)\n", vq, vq->vq.callback);
+
+	vq->vq.callback(&vq->vq);
+}
+
 irqreturn_t vring_interrupt(int irq, void *_vq)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
@@ -2041,9 +2054,8 @@ irqreturn_t vring_interrupt(int irq, void *_vq)
 	if (unlikely(vq->broken))
 		return IRQ_HANDLED;
 
-	pr_debug("virtqueue callback for %p (%p)\n", vq, vq->vq.callback);
 	if (vq->vq.callback)
-		vq->vq.callback(&vq->vq);
+		schedule_work(&vq->work);
 
 	return IRQ_HANDLED;
 }
@@ -2109,6 +2121,8 @@ struct virtqueue *__vring_new_virtqueue(unsigned int index,
 			vq->split.vring.avail->flags = cpu_to_virtio16(vdev,
 					vq->split.avail_flags_shadow);
 	}
+
+	INIT_WORK(&vq->work, vring_work_handler);
 
 	vq->split.desc_state = kmalloc_array(vring.num,
 			sizeof(struct vring_desc_state_split), GFP_KERNEL);
@@ -2178,6 +2192,8 @@ EXPORT_SYMBOL_GPL(vring_new_virtqueue);
 void vring_del_virtqueue(struct virtqueue *_vq)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
+
+	cancel_work_sync(&vq->work);
 
 	if (vq->we_own_ring) {
 		if (vq->packed_ring) {
