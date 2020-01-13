@@ -362,14 +362,27 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	/*
 	 * Assign an rproc-wide unique index for this vring
 	 * TODO: assign a notifyid for rvdev updates as well
-	 * TODO: support predefined notifyids (via resource table)
 	 */
-	ret = idr_alloc(&rproc->notifyids, rvring, 0, 0, GFP_KERNEL);
-	if (ret < 0) {
-		dev_err(dev, "idr_alloc failed: %d\n", ret);
-		return ret;
+	if (rsc->vring[i].notifyid == FW_RSC_NOTIFY_ID_ANY) {
+		ret = idr_alloc(&rproc->notifyids, rvring, 0, 0, GFP_KERNEL);
+		if (ret < 0) {
+			dev_err(dev, "idr_alloc failed: %d\n", ret);
+			return ret;
+		}
+		notifyid = ret;
+
+		/* Let the rproc know the notifyid of this vring.*/
+		rsc->vring[i].notifyid = notifyid;
+	} else {
+		/* Reserve requested notify_id */
+		notifyid = rsc->vring[i].notifyid;
+		ret = idr_alloc(&rproc->notifyids, rvring, notifyid,
+				notifyid + 1, GFP_KERNEL);
+		if (ret < 0) {
+			dev_err(dev, "idr_alloc failed: %d\n", ret);
+			return ret;
+		}
 	}
-	notifyid = ret;
 
 	/* Potentially bump max_notifyid */
 	if (notifyid > rproc->max_notifyid)
@@ -377,8 +390,6 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 
 	rvring->notifyid = notifyid;
 
-	/* Let the rproc know the notifyid of this vring.*/
-	rsc->vring[i].notifyid = notifyid;
 	return 0;
 }
 
