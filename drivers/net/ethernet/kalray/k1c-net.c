@@ -646,7 +646,6 @@ static int k1c_eth_netdev_poll(struct napi_struct *napi, int budget)
 {
 	struct k1c_eth_netdev *ndev = container_of(napi,
 						   struct k1c_eth_netdev, napi);
-	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 	int work_done = 0;
 
 	k1c_eth_clean_rx_irq(ndev, &work_done, budget);
@@ -755,7 +754,6 @@ static void k1c_eth_dma_irq_rx(void *data)
 {
 	struct k1c_eth_ring *ring = data;
 	struct k1c_eth_netdev *ndev = netdev_priv(ring->netdev);
-	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 
 	/* Disabling irq in irq_context -> must use disable_irq_nosync */
 	napi_schedule_irqoff(&ndev->napi);
