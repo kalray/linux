@@ -27,6 +27,12 @@
 #include "../pci.h"
 #include "../pcie/portdrv.h"
 #include "pcie-k1c-nwl.h"
+#include "pcie-k1c-phycore.h"
+
+#define PHYCORE_REGMAP_NAME		"kalray,phycore-dev"
+#define INVALID_NFURC			0xFFFFFFFF
+#define NB_CORE_CTRL			8
+#define NB_PHY				4
 
 #define ROOT_BUS_NO			0
 #define BUS_MAX				255
@@ -92,9 +98,18 @@
 #define EGRESS_ENABLE			(0x01)
 #define EGRESS_SIZE_SHIFT		(16)
 
-/* Axi master mask bit*/
-#define CFG_M_MAX_RD_RQ_SIZE_256	(0x2 << 4)
-#define CFG_M_MAX_WR_RQ_SIZE_256	(0x2 << 0)
+/**
+ * AXI master mask bit
+ * This value must not be changed to a lower value
+ * otherwize in case a read request of 512 byte is performed
+ * by an endpoint a split transaction will be done on the AXI.
+ * In that case the kalray interconnect does not guaranties that
+ * the transaction will be returned in order which might cause
+ * some problem. So this value must match the size of the AXI order
+ * buffer in the interconnect.
+ */
+#define CFG_M_MAX_RD_RQ_SIZE_512	(0x3 << 4)
+#define CFG_M_MAX_WR_RQ_SIZE_512	(0x3 << 0)
 
 /* Msg filter mask bits */
 #define CFG_ENABLE_PM_MSG_FWD		BIT(1)
@@ -159,9 +174,10 @@
 
 /* PHY control registers */
 /* Reading the link status */
-#define PHYCORE_DL_LINK_UP_OFFSET	0x24
-#define PHYCORE_DL_LINK_UP_MASK		1
+#define PHYCORE_LTSSM_DISABLE_OFFSET	0x20
 
+#define PCIE_GEN_4			0x3
+#define AUTO_LINK_SPEEDUP_NEGOTIATE     0x80000000
 
 #define ERR_INJECT_RATE_MAX		7
 #define ERR_INJECTION_EN		BIT(3)
@@ -185,14 +201,13 @@
  * @dev: pointer to root complex device instance
  * @breg_base: virtual address to read/write internal bridge registers
  * @csr_base: virtual address to read/write internal core registers
- * @bar_decoder_base: virtual address to read/write bar decoder registers
  * @ecam_base: virtual address to read/write to PCIe ECAM region
- * @phycore_base: virtual address to read/write to phy registers
  * @phys_breg_base: Physical address Bridge Registers
  * @phys_csr_reg_base: Physical address CSR register
- * @phys_bar_decoder_base: Physical Bar decoder Base
  * @phys_ecam_base: Physical Configuration Base
- * @ftu_regmap: virtual address to read/write system shared registers
+ * @mst_asn_regmap: Map to root complex ASN register
+ * @phycore_regmap: Map to phycore registers
+ * @bridge: Pointer to host bridge structure
  * @ctrl_num: index of controller from 0 up to 7
  * @nb_lane: number of pcie lane
  * @irq_intx: legacy irq handler interrupt number
@@ -208,15 +223,12 @@ struct nwl_pcie {
 	struct device *dev;
 	void __iomem *breg_base;
 	void __iomem *csr_base;
-	void __iomem *bar_decoder_base;
 	void __iomem *ecam_base;
-	void __iomem *phycore_base;
 	phys_addr_t phys_breg_base;
 	phys_addr_t phys_csr_reg_base;
-	phys_addr_t phys_bar_decoder_base;
 	phys_addr_t phys_ecam_base;
-	struct regmap *ftu_regmap;
 	struct regmap *mst_asn_regmap;
+	struct regmap *phycore_regmap;
 	struct pci_host_bridge *bridge;
 	u32 ctrl_num;
 	u32 nb_lane;
@@ -243,17 +255,28 @@ static inline void nwl_core_writel(struct nwl_pcie *pcie, u32 val, u32 off)
 	writel(val, pcie->csr_base + off);
 }
 
-static inline void ftu_writel(struct nwl_pcie *pcie, u32 val, u32 off)
+static inline void k1c_phycore_writel(struct regmap *phycore_regmap, u32 val,
+				      u32 off)
 {
-	int ret = regmap_write(pcie->ftu_regmap, off, val);
+	int ret = regmap_write(phycore_regmap, off, val);
 
-	if (ret)
-		dev_err(pcie->dev, "regmap_write failed, err = %d\n", ret);
+	WARN_ON(ret);
 }
 
-static inline void bar_decoder_writel(struct nwl_pcie *pcie, u32 val, u32 off)
+static inline u32 k1c_phycore_readl(struct regmap *phycore_regmap, u32 off)
 {
-	writel(val, pcie->bar_decoder_base + off);
+	int val;
+	int ret = regmap_read(phycore_regmap, off, &val);
+
+	WARN_ON(ret);
+	return (u32)val;
+}
+
+static inline void ftu_writel(struct regmap *ftu_regmap, u32 val, u32 off)
+{
+	int ret = regmap_write(ftu_regmap, off, val);
+
+	WARN_ON(ret);
 }
 
 static inline u32 nwl_bridge_readl(struct nwl_pcie *pcie, u32 off)
@@ -268,10 +291,14 @@ static inline void nwl_bridge_writel(struct nwl_pcie *pcie, u32 val, u32 off)
 
 static bool nwl_pcie_link_up(struct nwl_pcie *pcie)
 {
-	void __iomem *addr = pcie->phycore_base + PHYCORE_DL_LINK_UP_OFFSET;
-	u32 link = readl(addr);
+	u32 link;
+	u32 offset = K1_PCIE_PHY_CORE_CTRL_OFFSET +
+		     K1_PCIE_PHY_CORE_CTRL_DL_LINK_UP_OFFSET;
 
-	if (link & PHYCORE_DL_LINK_UP_MASK)
+	offset += pcie->ctrl_num * K1_PCIE_PHY_CORE_CTRL_ELEM_SIZE;
+	link = k1c_phycore_readl(pcie->phycore_regmap, offset);
+
+	if (link & K1_PCIE_PHY_CORE_CTRL_DL_LINK_UP_MASK)
 		return true;
 	return false;
 }
@@ -487,14 +514,14 @@ static int nwl_pcie_init_irq_domain(struct nwl_pcie *pcie)
 	return 0;
 }
 
-static void bar_decoder_init(struct nwl_pcie *pcie)
+static void bar_decoder_init(void __iomem *addr)
 {
 	/*
-	 * The bar decoder is akalray specific feature.
+	 * The bar decoder is a kalray specific feature.
 	 * Since only root complex is being used ensure there is no interaction
 	 * with enpoint functions by disabling the BAR decoder
 	 */
-	bar_decoder_writel(pcie, 1, BAR_DECODER_BYPASS_EN);
+	writel(1, addr + BAR_DECODER_BYPASS_EN);
 }
 
 static void csr_pcie_lane_cfg(struct nwl_pcie *pcie)
@@ -556,17 +583,21 @@ static int pcie_asn_init(struct nwl_pcie *pcie)
 {
 	int ret;
 	u32 rc_offset;
+	u32 num_to_index[] = {0, 4, 2, 5, 1, 6, 3, 7};
 
 	pcie->mst_asn_regmap = syscon_regmap_lookup_by_phandle(
 					pcie->dev->of_node,
 					"kalray,mst-asn-dev");
+
+	BUG_ON(pcie->ctrl_num >= ARRAY_SIZE(num_to_index));
+
 	if (IS_ERR(pcie->mst_asn_regmap)) {
 		ret = PTR_ERR(pcie->mst_asn_regmap);
 		return ret;
 	}
 
 	rc_offset = RC_X16_ASN_OFFSET;
-	rc_offset += sizeof(u32) * pcie->ctrl_num;
+	rc_offset += sizeof(u32) * num_to_index[pcie->ctrl_num];
 
 	ret = regmap_write(pcie->mst_asn_regmap, rc_offset, pcie->ctrl_num);
 	if (ret) {
@@ -585,23 +616,18 @@ static int pcie_asn_init(struct nwl_pcie *pcie)
 	return 0;
 }
 
+static inline u32 ctrl_ltssm_disable_offset(int num_rc)
+{
+	u32 offset = K1_PCIE_PHY_CORE_CTRL_OFFSET +
+		 K1_PCIE_PHY_CORE_CTRL_LTSSM_DISABLE_OFFSET;
+	offset += num_rc * K1_PCIE_PHY_CORE_CTRL_ELEM_SIZE;
+
+	return offset;
+}
+
 static int nwl_pcie_core_init(struct nwl_pcie *pcie)
 {
 	u32 val;
-	u32 mask;
-	int ret;
-
-	pcie->ftu_regmap = syscon_regmap_lookup_by_phandle(pcie->dev->of_node,
-							   K1C_FTU_NAME);
-	if (IS_ERR(pcie->ftu_regmap)) {
-		ret = PTR_ERR(pcie->ftu_regmap);
-		return ret;
-	}
-
-	/* force reset then release it */
-	ftu_writel(pcie, 0, K1C_FTU_PCIE_RESET_CTRL);
-	mask = K1C_FTU_PCIE_CSR_RESETN_SHIFT | K1C_FTU_PCIE_PHY_RESETN_SHIFT;
-	ftu_writel(pcie, mask, K1C_FTU_PCIE_RESET_CTRL);
 
 	/* PCIe lane config */
 	csr_pcie_lane_cfg(pcie);
@@ -609,6 +635,14 @@ static int nwl_pcie_core_init(struct nwl_pcie *pcie)
 	/* implement root complex configuration as in SNPS
 	 * Expresso 4.0 Core User Guide (see 22.1)
 	 */
+
+	/**
+	 * Allow Root complex to automatically negociate
+	 * link speed up, up to GEN4
+	 */
+	nwl_core_writel(pcie, PCIE_GEN_4, CSR_FTL_INITIAL);
+	nwl_core_writel(pcie, AUTO_LINK_SPEEDUP_NEGOTIATE|PCIE_GEN_4,
+			CSR_TLB_LTSSM_DS_INITIAL_AUTO);
 
 	/* Set root port mode for ltssm */
 	val = nwl_core_readl(pcie, CSR_TLB_LTSSM_PORT_TYPE);
@@ -680,6 +714,10 @@ static int nwl_pcie_core_init(struct nwl_pcie *pcie)
 	val |= CSR_FTL_SLOT_CAP_EM_INTERLOCK_PRESENT_MASK;
 	nwl_core_writel(pcie, val, CSR_FTL_SLOT_CAP);
 
+	/* Let LTSSM start configuring the link */
+	k1c_phycore_writel(pcie->phycore_regmap, 0,
+			   ctrl_ltssm_disable_offset(pcie->ctrl_num));
+
 	return 0;
 }
 
@@ -715,7 +753,7 @@ static int nwl_pcie_bridge_init(struct nwl_pcie *pcie)
 
 	/* define maximum allowed request size */
 	nwl_bridge_writel(pcie,
-			  CFG_M_MAX_RD_RQ_SIZE_256 | CFG_M_MAX_WR_RQ_SIZE_256,
+			  CFG_M_MAX_RD_RQ_SIZE_512 | CFG_M_MAX_WR_RQ_SIZE_512,
 			  BRCFG_AXI_MASTER);
 
 	/* Enable msg filtering details */
@@ -877,6 +915,7 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 			     struct platform_device *pdev)
 {
 	struct device *dev = pcie->dev;
+	void __iomem *bar_decoder;
 	struct resource *res;
 	int ret;
 
@@ -892,12 +931,6 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 		return PTR_ERR(pcie->csr_base);
 	pcie->phys_csr_reg_base = res->start;
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-					   "bar_decoder_reg");
-	pcie->bar_decoder_base = devm_ioremap_resource(dev, res);
-	if (IS_ERR(pcie->bar_decoder_base))
-		return PTR_ERR(pcie->bar_decoder_base);
-	pcie->phys_bar_decoder_base = res->start;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ecam_reg");
 	pcie->ecam_base = devm_pci_remap_cfg_resource(dev, res);
@@ -905,10 +938,13 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 		return PTR_ERR(pcie->ecam_base);
 	pcie->phys_ecam_base = res->start;
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "phycore_reg");
-	pcie->phycore_base = devm_ioremap_resource(dev, res);
-	if (IS_ERR(pcie->phycore_base))
-		return PTR_ERR(pcie->phycore_base);
+	pcie->phycore_regmap =
+		syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
+						PHYCORE_REGMAP_NAME);
+	if (IS_ERR(pcie->phycore_regmap)) {
+		ret = PTR_ERR(pcie->phycore_regmap);
+		return ret;
+	}
 
 	ret = of_property_read_u32(pdev->dev.of_node, "kalray,ctrl-num",
 				   &pcie->ctrl_num);
@@ -919,6 +955,20 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 		return -EINVAL;
 	}
 	dev_dbg(dev, "PCIe rc num : %u\n", pcie->ctrl_num);
+
+	if (pcie->ctrl_num == 0) {
+		/*
+		 * Only for controller 0 the bar decoder shall be disabled or
+		 * a endpoint will not be able to write to system memory.
+		 */
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+						   "bar_decoder_reg");
+		bar_decoder = devm_ioremap_resource(&pdev->dev, res);
+		if (IS_ERR(bar_decoder))
+			return PTR_ERR(bar_decoder);
+
+		bar_decoder_init(bar_decoder);
+	}
 
 	ret = of_property_read_u32(pdev->dev.of_node, "kalray,nb-lane",
 				   &pcie->nb_lane);
@@ -972,7 +1022,6 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	bar_decoder_init(pcie);
 
 	err = pcie_asn_init(pcie);
 	if (err) {
@@ -1237,11 +1286,127 @@ static struct platform_driver nwl_pcie_driver = {
 };
 builtin_platform_driver(nwl_pcie_driver);
 
+static inline u32 sram_ctrl_bypass_offset(int phy_num)
+{
+	u32 offset = K1_PCIE_PHY_CORE_SRAM_CTRL_OFFSET +
+		     K1_PCIE_PHY_CORE_SRAM_CTRL_BYPASS_OFFSET;
+	offset += phy_num * K1_PCIE_PHY_CORE_SRAM_CTRL_ELEM_SIZE;
+
+	return offset;
+}
+
+static inline u32 sram_ctrl_load_done_offset(int phy_num)
+{
+	u32 offset = K1_PCIE_PHY_CORE_SRAM_CTRL_OFFSET +
+		K1_PCIE_PHY_CORE_SRAM_CTRL_LOAD_DONE_OFFSET;
+	offset += phy_num * K1_PCIE_PHY_CORE_SRAM_CTRL_ELEM_SIZE;
+
+	return offset;
+}
+
+static int pcie_overide_fsbl_settings(struct platform_device *pdev)
+{
+	int i;
+	int ret;
+	u32 mask;
+	u32 nfurc;
+	u64 offset;
+	struct regmap *ftu;
+	struct regmap *phycore;
+
+	ftu = NULL;
+	ret = of_property_read_u32(pdev->dev.of_node,
+				   "kalray,ovrd-nfurc", &nfurc);
+	if (ret != 0)
+		nfurc = INVALID_NFURC;
+
+	phycore = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
+						  PHYCORE_REGMAP_NAME);
+	if (IS_ERR(phycore)) {
+		ret = PTR_ERR(phycore);
+		return ret;
+	}
+
+	ftu = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
+					      K1C_FTU_NAME);
+	if (IS_ERR(ftu)) {
+		ret = PTR_ERR(ftu);
+		return ret;
+	}
+
+	/**
+	 * Override and disable PCIE auto
+	 * Force PHY reset
+	 * Force CSR reset
+	 */
+	mask = 0;
+	mask |= BIT(K1C_FTU_PCIE_AUTO_OVRD_SHIFT); /* override */
+	mask &= ~BIT(K1C_FTU_PCIE_AUTO_SHIFT); /* disable auto */
+	mask &= ~BIT(K1C_FTU_PCIE_CSR_RESETN_SHIFT); /* reset CSR */
+	mask &= ~BIT(K1C_FTU_PCIE_PHY_RESETN_SHIFT); /* reset PHY*/
+	ftu_writel(ftu, mask, K1C_FTU_PCIE_RESET_CTRL);
+
+	/* release CSR or phy core registers cannot be accessed */
+	mask |= BIT(K1C_FTU_PCIE_CSR_RESETN_SHIFT); /* reset CSR */
+	ftu_writel(ftu, mask, K1C_FTU_PCIE_RESET_CTRL);
+
+	/**
+	 * Disable LTSSM on all cores.
+	 * This is required in order for PHY link equalization start
+	 * only once the PCIe core has been properly configured. This
+	 * include parameters such as link width, link speed ...
+	 */
+	offset = K1_PCIE_PHY_CORE_CTRL_OFFSET +
+		K1_PCIE_PHY_CORE_CTRL_LTSSM_DISABLE_OFFSET;
+	for (i = 0; i < NB_CORE_CTRL; i++) {
+		k1c_phycore_writel(phycore, 1, offset);
+		offset += K1_PCIE_PHY_CORE_CTRL_ELEM_SIZE;
+	}
+
+	/* Change default n-furcation setting if user specified one */
+	if (nfurc != INVALID_NFURC) {
+		k1c_phycore_writel(phycore, nfurc,
+				   K1_PCIE_PHY_CORE_NFURC_OFFSET);
+	}
+
+	/**
+	 * Ensure phy reset is driven by the FTU
+	 * (The PCIe core will remain in reset as long as phy are
+	 * in reset)
+	 */
+	offset = K1_PCIE_PHY_CORE_PHY_RST_OFFSET +
+		K1_PCIE_PHY_CORE_PHY_RST_OVRD_OFFSET;
+	k1c_phycore_writel(phycore, 0, offset);
+
+	/* Ensure the PHY status drive core reset */
+	offset = K1_PCIE_PHY_CORE_CTRL_ENGINE_OFFSET +
+		K1_PCIE_PHY_CORE_CTRL_ENGINE_OVRD_OFFSET;
+	k1c_phycore_writel(phycore, 0, offset);
+
+	/* Use PHY configuration from ROM (bypass SRAM) */
+	for (i = 0; i < NB_PHY; i++) {
+		k1c_phycore_writel(phycore, 1, sram_ctrl_bypass_offset(i));
+		k1c_phycore_writel(phycore, 1, sram_ctrl_load_done_offset(i));
+	}
+
+	/**
+	 * It is safe to release PHY reset immediatelly because the
+	 * LTSSM has been disabled on all pcie core, thus equalization
+	 * will not start immediatelly but only once the core
+	 * configuration has been completed by the driver
+	 */
+	mask |=	BIT(K1C_FTU_PCIE_PHY_RESETN_SHIFT);
+	ftu_writel(ftu, mask, K1C_FTU_PCIE_RESET_CTRL);
+
+	return 0;
+}
+
 static int pcie_subsys_probe(struct platform_device *pdev)
 {
 	void __iomem *pcie_subsys;
 	struct resource *res;
 	u32 dame;
+	u32 phy_rst;
 	int ret;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "pcie_subsys");
@@ -1261,6 +1426,17 @@ static int pcie_subsys_probe(struct platform_device *pdev)
 
 		dev_info(&pdev->dev, "disable_dame: %s\n",
 			 dame == 0 ? "false" : "true");
+	}
+
+	ret = of_property_read_u32(pdev->dev.of_node, "kalray,force-phy-rst",
+				   &phy_rst);
+	if (ret != 0)
+		phy_rst = 0;
+
+	if (phy_rst) {
+		ret = pcie_overide_fsbl_settings(pdev);
+		if (ret != 0)
+			return ret;
 	}
 
 	return devm_of_platform_populate(&pdev->dev);
