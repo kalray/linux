@@ -26,4 +26,11 @@ extern int isa_dma_bridge_buggy;
 #define PCIBIOS_MIN_IO          0UL
 #define PCIBIOS_MIN_MEM         0UL
 
+#ifdef CONFIG_PCI_DOMAINS
+static inline int pci_proc_domain(struct pci_bus *bus)
+{
+		return pci_domain_nr(bus);
+}
+#endif /*  CONFIG_PCI_DOMAINS */
+
 #endif /* _ASM_K1C_PCI_H */
