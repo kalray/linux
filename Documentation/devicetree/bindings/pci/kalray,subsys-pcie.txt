@@ -9,23 +9,53 @@ case of failed transaction a recovery procedure is started.
 
 Required properties:
 - compatible: Should contain "kalray,subsys-pcie"
-- reg = contains pcie subsystem address and length
+- reg = contains "pcie subsystem" and "bar decoder" address and length
 - reg-names = must include "pcie_subsys"
+- #address-cells: Address representation, must be set to <2>
+- #size-cells: Size representation, must be set to <2>
+- kalray,ftu-dev : must contain a reference to syscon ftu device
+- kalray,kalray,phycore-dev : must contain a reference to syscon phycore device
 
 Optional properties:
 - kalray,disable-dame
 	- if not present use default (at reset) settings
 	- = <0> : DAME generation is enabled
 	- = <1> : DAME generation is disabled
+- kalray,force-phy-rst : If absent the value 0 is assumed.
+	When 1, all PCIe PHY will be reseted, this might have an impact on already
+	configured enpoints by the FSBL, this should only be used for test purpose.
+- kalray,ovrd-nfurc : if absent 0 is assumed, otherwize change the n-furcation
+  settings.
 
-Example:
-++++++++
+Example 1 :
++++++++++++
+This is a minimal example which keep all default settings
 
 pcie_subsys: pcie_subsys@5128350000 {
 	compatible = "kalray,subsys-pcie";
 	reg = <0x51 0x28350000 0x0 0x1000>; /* pcie subsystem */
-	reg-names = "pcie_subsys";
-	kalray,disable-dame = <1>;
+	reg-names = "pcie_subsys", "bar_decoder";
+	kalray,ftu-dev = <&ftu>;
+	kalray,phycore-dev = <&pcie_rc_phycore>;
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
 };
 
+Example 2 :
++++++++++++
+This is an advanced settings which overide default settings.
 
+pcie_subsys: pcie_subsys@5128350000 {
+			compatible = "kalray,subsys-pcie";
+			reg = <0x51 0x28350000 0x0 0x1000>; /* pcie subsystem */
+			reg-names = "pcie_subsys", "bar_decoder";
+			kalray,ftu-dev = <&ftu>;
+			kalray,phycore-dev = <&pcie_rc_phycore>;
+			kalray,force-phy-rst = <1>; /* if 1 force reset of all PCIe PHYs */
+			kalray,ovrd-nfurc = <1>; /* if present define n-furcation mode --> 2X8 */
+			kalray,disable-dame = <0>; /* if 1 do not generate DAME when read access fail */
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+}
