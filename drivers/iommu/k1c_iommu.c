@@ -712,8 +712,31 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 			    k1c_iommu_irq_status2_off[i]);
 
 		asn = K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_IRQ_NOMAPPING_ASN);
-		flags = K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_IRQ_NOMAPPING_FLAGS);
 		rwb = K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_IRQ_NOMAPPING_RWB);
+		flags = K1C_IOMMU_REG_VAL(reg, K1C_IOMMU_IRQ_NOMAPPING_FLAGS);
+
+		switch (flags) {
+		case 0:
+			dev_err(iommu_hw->dev,
+				"%s: no error was detected, error log is meaningless\n",
+				k1c_iommu_irq_names[i]);
+			break;
+		case 1:
+			dev_err(iommu_hw->dev,
+				"%s: one error was detected\n",
+				k1c_iommu_irq_names[i]);
+			break;
+		case 3:
+			dev_err(iommu_hw->dev,
+				"%s: several errors were detected, the first erroneous access is described below\n",
+				k1c_iommu_irq_names[i]);
+			break;
+		default:
+			dev_err(iommu_hw->dev,
+				"%s: %d is an illegal flags value, this should never occurs\n",
+				k1c_iommu_irq_names[i], flags);
+			break;
+		}
 
 		k1c_domain = find_dom_from_asn(iommu_hw->drvdata, asn);
 		if (k1c_domain) {
@@ -725,23 +748,17 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 		}
 
 		if (!k1c_domain || ret == -ENOSYS)
-			dev_err_ratelimited(iommu_hw->dev,
-					    "%s fault at 0x%lx on IOMMU %s (0x%lx) [ASN=%d RWB=0x%x FLAGS=0x%x]\n",
-					    k1c_iommu_irq_names[i],
-					    addr, iommu_hw->name,
-					    (unsigned long) iommu_hw,
-					    asn, rwb, flags);
+			dev_err(iommu_hw->dev,
+				"%s: error detected on a %s operation at 0x%lx on IOMMU %s (0x%lx) [ASN=%d]\n",
+				k1c_iommu_irq_names[i],
+				rwb ? "read" : "write",
+				addr, iommu_hw->name,
+				(unsigned long) iommu_hw,
+				asn);
 
 		/* Write register to clear flags and reset IRQ line */
 		writeq(0x0, iommu_hw->base + K1C_IOMMU_IRQ_OFFSET +
 			    k1c_iommu_irq_status2_off[i]);
-
-		/*
-		 * As we don't do anything special on error like managing the
-		 * no mapping just drop the request and replay others.
-		 */
-		writeq(K1C_IOMMU_DROP_AND_REPLAY,
-		       iommu_hw->base + K1C_IOMMU_STALL_ACTION_OFFSET);
 
 		return IRQ_HANDLED;
 	}
@@ -840,11 +857,11 @@ static u64 init_ctrl_reg(void)
 	 */
 	reg = K1C_IOMMU_SET_FIELD(K1C_IOMMU_ENABLED,
 				  K1C_IOMMU_GENERAL_CTRL_ENABLE);
-	reg |= K1C_IOMMU_SET_FIELD(K1C_IOMMU_STALL,
+	reg |= K1C_IOMMU_SET_FIELD(K1C_IOMMU_DROP,
 				   K1C_IOMMU_GENERAL_CTRL_NOMAPPING_BEHAVIOR);
-	reg |= K1C_IOMMU_SET_FIELD(K1C_IOMMU_STALL,
+	reg |= K1C_IOMMU_SET_FIELD(K1C_IOMMU_DROP,
 				   K1C_IOMMU_GENERAL_CTRL_PROTECTION_BEHAVIOR);
-	reg |= K1C_IOMMU_SET_FIELD(K1C_IOMMU_STALL,
+	reg |= K1C_IOMMU_SET_FIELD(K1C_IOMMU_DROP,
 				   K1C_IOMMU_GENERAL_CTRL_PARITY_BEHAVIOR);
 	reg |= K1C_IOMMU_SET_FIELD((K1C_IOMMU_PMJ_4K | K1C_IOMMU_PMJ_64K),
 				   K1C_IOMMU_GENERAL_CTRL_PMJ);
