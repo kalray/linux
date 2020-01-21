@@ -30,11 +30,6 @@
 				  K1C_IOMMU_2M_SIZE  | \
 				  K1C_IOMMU_512M_SIZE)
 
-#define K1C_IOMMU_4K_MASK       (~(K1C_IOMMU_4K_SIZE - 1))
-#define K1C_IOMMU_64_MASK       (~(K1C_IOMMU_64K_SIZE - 1))
-#define K1C_IOMMU_2M_MASK       (~(K1C_IOMMU_2M_SIZE - 1))
-#define K1C_IOMMU_512M_MASK     (~(K1C_IOMMU_512M_SIZE - 1))
-
 #define K1C_IOMMU_PN_SHIFT	12 /* PN as multiple of 4KB */
 
 #define K1C_IOMMU_PMJ_4K   0x1
@@ -48,6 +43,7 @@
 #define K1C_IOMMU_PS_64K  0x1
 #define K1C_IOMMU_PS_2M   0x2
 #define K1C_IOMMU_PS_512M 0x3
+#define K1C_IOMMU_PS_NB   4
 
 #define K1C_IOMMU_PA_NA 0x0 /* No access  */
 #define K1C_IOMMU_PA_RO 0x1 /* Read only  */
