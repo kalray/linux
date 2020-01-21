@@ -89,6 +89,20 @@ static const unsigned int k1c_iommu_irq_status2_off[K1C_IOMMU_IRQ_NB_TYPE] = {
 	[K1C_IOMMU_IRQ_PARITY] = K1C_IOMMU_IRQ_PARITY_STATUS_2_OFFSET,
 };
 
+static const unsigned int k1c_iommu_get_page_size[K1C_IOMMU_PS_NB] = {
+	[K1C_IOMMU_PS_4K] = K1C_IOMMU_4K_SIZE,
+	[K1C_IOMMU_PS_64K] = K1C_IOMMU_64K_SIZE,
+	[K1C_IOMMU_PS_2M] = K1C_IOMMU_2M_SIZE,
+	[K1C_IOMMU_PS_512M] = K1C_IOMMU_512M_SIZE,
+};
+
+static const unsigned int k1c_iommu_get_page_shift[K1C_IOMMU_PS_NB] = {
+	[K1C_IOMMU_PS_4K] = K1C_IOMMU_4K_SHIFT,
+	[K1C_IOMMU_PS_64K] = K1C_IOMMU_64K_SHIFT,
+	[K1C_IOMMU_PS_2M] = K1C_IOMMU_2M_SHIFT,
+	[K1C_IOMMU_PS_512M] = K1C_IOMMU_512M_SHIFT,
+};
+
 /**
  * struct k1c_iommu_tel - Describe a TLB entry low (aligned 64bits)
  * @es: entry status
@@ -175,6 +189,8 @@ struct k1c_iommu_mtn_entry {
  * @irqs: list of IRQs managed by this IOMMU driver
  * @tlb_lock: lock used to manage TLB
  * @tlb_cache: software cache of the TLB
+ * @nb_writes: number of writes p/ page size since reset of the TLB
+ * @nb_invals: number of invalidations p/ page size since the reset of the TLB
  */
 struct k1c_iommu_hw {
 	struct device *dev;
@@ -192,6 +208,8 @@ struct k1c_iommu_hw {
 	spinlock_t tlb_lock;
 	struct k1c_iommu_tlb_entry tlb_cache[K1C_IOMMU_MAX_SETS]
 					    [K1C_IOMMU_MAX_WAYS];
+	unsigned long nb_writes[K1C_IOMMU_PS_NB];
+	unsigned long nb_invals[K1C_IOMMU_PS_NB];
 };
 
 /**
@@ -263,28 +281,11 @@ static inline bool asn_is_invalid(u32 asn)
  * @teh: the TLB entry high
  * @set_size: the size of the set
  *
- * Return: the set extracted from PN of the given entry, -1 in case of error.
+ * Return: the set extracted from PN of the given entry.
  */
 static int teh_to_set(struct k1c_iommu_teh *teh, unsigned int set_size)
 {
-	int shift_val;
-
-	switch (teh->ps) {
-	case K1C_IOMMU_PS_4K:
-		shift_val = K1C_IOMMU_4K_SHIFT;
-		break;
-	case K1C_IOMMU_PS_64K:
-		shift_val = K1C_IOMMU_64K_SHIFT;
-		break;
-	case K1C_IOMMU_PS_2M:
-		shift_val = K1C_IOMMU_2M_SHIFT;
-		break;
-	case K1C_IOMMU_PS_512M:
-		shift_val = K1C_IOMMU_512M_SHIFT;
-		break;
-	default:
-		return -1;
-	}
+	int shift_val = k1c_iommu_get_page_shift[teh->ps];
 
 	return ((teh->pn << K1C_IOMMU_PN_SHIFT) >> shift_val) &
 		(set_size - 1);
@@ -428,12 +429,16 @@ static int update_tlb_cache(struct k1c_iommu_hw *iommu_hw)
 			read_tlb_entry(iommu_hw, set, way, &entry);
 
 			if (entry.teh.g) {
-				dev_err(iommu_hw->dev, "IOMMU %s: failed to update TLB cache, global entry are not supported\n",
+				dev_err(iommu_hw->dev, "IOMMU %s: failed to update TLB cache, global entries are not supported\n",
 					iommu_hw->name);
-				return -1;
+				return -EINVAL;
 			}
 
 			iommu_hw->tlb_cache[set][way] = entry;
+
+			/* Takes into account writes done by someone else */
+			if (entry.tel.es == K1C_IOMMU_ES_VALID)
+				iommu_hw->nb_writes[entry.teh.ps]++;
 		}
 
 	return 0;
@@ -454,6 +459,7 @@ static void reset_tlb(struct k1c_iommu_hw *iommu_hw)
 	struct k1c_iommu_tlb_entry entry;
 	unsigned int set, way;
 	unsigned long flags;
+	int i;
 
 	entry.teh_val = 0x0;
 	entry.tel_val = 0x0;
@@ -466,6 +472,10 @@ static void reset_tlb(struct k1c_iommu_hw *iommu_hw)
 		for (way = 0; way < iommu_hw->ways; way++)
 			write_tlb_entry(iommu_hw, way, &entry);
 	}
+
+	/* reset counters */
+	for (i = 0; i < K1C_IOMMU_PS_NB; i++)
+		iommu_hw->nb_writes[i] = iommu_hw->nb_invals[i] = 0;
 
 	spin_unlock_irqrestore(&iommu_hw->tlb_lock, flags);
 }
@@ -603,15 +613,31 @@ static struct k1c_iommu_domain *to_k1c_domain(struct iommu_domain *dom)
  * @asn: address space number
  */
 static void invalidate_tlb_entry(struct k1c_iommu_hw *iommu_hw,
-				 unsigned long iova, u32 asn)
+				 unsigned long iova, u32 asn,
+				 unsigned long psize)
 {
 	struct k1c_iommu_tlb_entry entry = {.tel_val = 0, .teh_val = 0};
 	unsigned int way;
 	int set;
 	unsigned long flags;
 
-	/* Only 4K is supported currently. Set TEH to compute the correct set */
-	entry.teh.ps = K1C_IOMMU_PS_4K;
+	switch (psize) {
+	case K1C_IOMMU_4K_SIZE:
+		entry.teh.ps = K1C_IOMMU_PS_4K;
+		break;
+	case K1C_IOMMU_64K_SIZE:
+		entry.teh.ps = K1C_IOMMU_PS_64K;
+		break;
+	case K1C_IOMMU_2M_SIZE:
+		entry.teh.ps = K1C_IOMMU_PS_2M;
+		break;
+	case K1C_IOMMU_512M_SIZE:
+		entry.teh.ps = K1C_IOMMU_PS_512M;
+		break;
+	default:
+		BUG_ON(1);
+	}
+
 	entry.teh.pn = iova >> K1C_IOMMU_PN_SHIFT;
 
 	set = teh_to_set(&entry.teh, iommu_hw->sets);
@@ -620,6 +646,9 @@ static void invalidate_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 			__func__, iova);
 		return;
 	}
+
+	pr_debug("%s: iova 0x%lx, asn %d, iommu_hw 0x%lx\n",
+			__func__, iova, asn, (unsigned long)iommu_hw);
 
 	spin_lock_irqsave(&iommu_hw->tlb_lock, flags);
 
@@ -634,6 +663,8 @@ static void invalidate_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 			break;
 		}
 	}
+
+	iommu_hw->nb_invals[entry.teh.ps]++;
 
 	spin_unlock_irqrestore(&iommu_hw->tlb_lock, flags);
 }
@@ -863,7 +894,8 @@ static u64 init_ctrl_reg(void)
 				   K1C_IOMMU_GENERAL_CTRL_PROTECTION_BEHAVIOR);
 	reg |= K1C_IOMMU_SET_FIELD(K1C_IOMMU_DROP,
 				   K1C_IOMMU_GENERAL_CTRL_PARITY_BEHAVIOR);
-	reg |= K1C_IOMMU_SET_FIELD((K1C_IOMMU_PMJ_4K | K1C_IOMMU_PMJ_64K),
+	reg |= K1C_IOMMU_SET_FIELD((K1C_IOMMU_PMJ_4K | K1C_IOMMU_PMJ_64K |
+				    K1C_IOMMU_PMJ_2M | K1C_IOMMU_PMJ_512M),
 				   K1C_IOMMU_GENERAL_CTRL_PMJ);
 
 	return reg;
@@ -943,19 +975,36 @@ static void unregister_iommu_irqs(struct platform_device *pdev)
 static int map_page_in_tlb(struct k1c_iommu_hw *hw[K1C_IOMMU_NB_TYPE],
 			   phys_addr_t paddr,
 			   dma_addr_t iova,
-			   u32 asn)
+			   u32 asn,
+			   unsigned long psize)
 {
 	struct k1c_iommu_tlb_entry entry = {.teh_val = 0, .tel_val = 0};
 	int i, set, way;
 
 	entry.teh.pn  = iova >> K1C_IOMMU_PN_SHIFT;
-	entry.teh.ps  = K1C_IOMMU_PS_4K;
 	entry.teh.g   = K1C_IOMMU_G_USE_ASN;
 	entry.teh.asn = asn;
 
 	entry.tel.fn = paddr >> K1C_IOMMU_PN_SHIFT;
 	entry.tel.pa = K1C_IOMMU_PA_RW;
 	entry.tel.es = K1C_IOMMU_ES_VALID;
+
+	switch (psize) {
+	case K1C_IOMMU_4K_SIZE:
+		entry.teh.ps = K1C_IOMMU_PS_4K;
+		break;
+	case K1C_IOMMU_64K_SIZE:
+		entry.teh.ps = K1C_IOMMU_PS_64K;
+		break;
+	case K1C_IOMMU_2M_SIZE:
+		entry.teh.ps = K1C_IOMMU_PS_2M;
+		break;
+	case K1C_IOMMU_512M_SIZE:
+		entry.teh.ps = K1C_IOMMU_PS_512M;
+		break;
+	default:
+		BUG_ON(1);
+	}
 
 	if (asn_is_invalid(asn)) {
 		pr_err("%s: ASN %d is not valid\n", __func__, asn);
@@ -1008,6 +1057,7 @@ static int map_page_in_tlb(struct k1c_iommu_hw *hw[K1C_IOMMU_NB_TYPE],
 		}
 
 		write_tlb_entry(hw[i], way, &entry);
+		hw[i]->nb_writes[entry.teh.ps]++;
 
 		spin_unlock_irqrestore(&hw[i]->tlb_lock, flags);
 
@@ -1270,16 +1320,15 @@ static size_t k1c_iommu_unmap(struct iommu_domain *domain,
 	iommu_hw[K1C_IOMMU_RX] = &k1c_domain->iommu->iommu_hw[K1C_IOMMU_RX];
 	iommu_hw[K1C_IOMMU_TX] = &k1c_domain->iommu->iommu_hw[K1C_IOMMU_TX];
 
-	/* Currently we are only managing 4K pages */
-	num_pages = iommu_num_pages(iova, size, K1C_IOMMU_4K_SIZE);
+	num_pages = iommu_num_pages(iova, size, size);
 
 	start = iova;
 	asn = k1c_domain->asn;
 
 	for (i = 0; i < num_pages; i++) {
-		invalidate_tlb_entry(iommu_hw[K1C_IOMMU_RX], start, asn);
-		invalidate_tlb_entry(iommu_hw[K1C_IOMMU_TX], start, asn);
-		start += K1C_IOMMU_4K_SIZE;
+		invalidate_tlb_entry(iommu_hw[K1C_IOMMU_RX], start, asn, size);
+		invalidate_tlb_entry(iommu_hw[K1C_IOMMU_TX], start, asn, size);
+		start += size;
 	}
 
 	return size;
@@ -1327,21 +1376,19 @@ static int k1c_iommu_map(struct iommu_domain *domain,
 	iommu_hw[K1C_IOMMU_RX] = &iommu->iommu_hw[K1C_IOMMU_RX];
 	iommu_hw[K1C_IOMMU_TX] = &iommu->iommu_hw[K1C_IOMMU_TX];
 
-	/* Currently we are only managing 4K pages */
-	num_pages = iommu_num_pages(paddr, size, K1C_IOMMU_4K_SIZE);
+	num_pages = iommu_num_pages(paddr, size, size);
+	start = paddr;
 
-	start = paddr & K1C_IOMMU_4K_MASK;
 	for (i = 0; i < num_pages; i++) {
 		ret = map_page_in_tlb(iommu_hw, start, (dma_addr_t)iova,
-				      k1c_domain->asn);
+				      k1c_domain->asn, size);
 		if (ret) {
 			pr_err("%s: failed to map 0x%lx -> 0x%lx (err %d)\n",
 			       __func__, iova, (unsigned long)start, ret);
-			k1c_iommu_unmap(domain, iova, size, NULL);
 			return ret;
 		}
-		start += K1C_IOMMU_4K_SIZE;
-		iova += K1C_IOMMU_4K_SIZE;
+		start += size;
+		iova += size;
 	}
 
 	return 0;
@@ -1419,9 +1466,6 @@ static void k1c_iommu_remove_device(struct device *dev)
  * @domain: the domain used to look for the IOVA
  * @iova: the iova that needs to be converted
  *
- * The current function is only working for 4K page size. This is the only size
- * that is supported by the IOMMU.
- *
  * Return: the physical address if any, 0 otherwise.
  */
 static phys_addr_t k1c_iommu_iova_to_phys(struct iommu_domain *domain,
@@ -1438,22 +1482,26 @@ static phys_addr_t k1c_iommu_iova_to_phys(struct iommu_domain *domain,
 	if (!k1c_domain)
 		return 0;
 
-	/* To compute the set we can use the number of set from RX or TX */
+	/*
+	 * To compute the set we can use the number of set from RX or TX.
+	 * Also as RX and TX IOMMU are used symetrically we just need to search
+	 * the translation into one IOMMU. Let's use RX. As we don't know the
+	 * size of the page we are looking for we must search for all sizes
+	 * starting from 4Ko.
+	 */
 	iommu_hw = &k1c_domain->iommu->iommu_hw[K1C_IOMMU_RX];
-
 	entry.teh.pn  = iova >> K1C_IOMMU_PN_SHIFT;
-	entry.teh.ps  = K1C_IOMMU_PS_4K;
-
-	set = teh_to_set(&entry.teh, iommu_hw->sets);
-	if (set < 0) {
-		dev_err(iommu_hw->dev, "%s: failed to convert TEH to set\n",
-			__func__);
-		return 0;
-	}
 
 	paddr = 0;
-	for (i = 0; i < K1C_IOMMU_NB_TYPE; i++) {
-		iommu_hw = &k1c_domain->iommu->iommu_hw[i];
+	for (i = 0; i < K1C_IOMMU_PS_NB; i++) {
+		entry.teh.ps = i;
+
+		set = teh_to_set(&entry.teh, iommu_hw->sets);
+		if (set < 0) {
+			dev_err(iommu_hw->dev, "%s: failed to convert TEH to set\n",
+					__func__);
+			return 0;
+		}
 
 		for (way = 0; way < iommu_hw->ways; way++) {
 			cur = &iommu_hw->tlb_cache[set][way];
@@ -1461,9 +1509,10 @@ static phys_addr_t k1c_iommu_iova_to_phys(struct iommu_domain *domain,
 				/* Get the frame number */
 				paddr = cur->tel.fn << K1C_IOMMU_PN_SHIFT;
 				/* Add the offset of the IOVA and we are done */
-				paddr |= iova & ~K1C_IOMMU_4K_MASK;
-				/* No need to look in another HW IOMMU */
-				i = K1C_IOMMU_NB_TYPE;
+				paddr |=
+					iova & (k1c_iommu_get_page_size[i] - 1);
+				/* No need to look another page size */
+				i = K1C_IOMMU_PS_NB;
 				break;
 			}
 		}
