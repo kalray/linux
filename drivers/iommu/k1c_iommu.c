@@ -1627,6 +1627,105 @@ static const struct of_device_id k1c_iommu_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, k1c_iommu_ids);
 
+static int dev_to_k1c_iommu_hw(struct device *dev,
+		struct k1c_iommu_hw **rx,
+		struct k1c_iommu_hw **tx)
+{
+	struct iommu_device *iommu_dev = dev_to_iommu_device(dev);
+	struct k1c_iommu_drvdata *k1c_iommu_dev;
+
+	if (iommu_dev == NULL) {
+		dev_err(dev, "%s: iommu_dev is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	k1c_iommu_dev =
+		container_of(iommu_dev, struct k1c_iommu_drvdata, iommu);
+
+	if (k1c_iommu_dev == NULL) {
+		dev_err(dev, "%s: k1c_iommu_dev is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	/*
+	 * We don't really need to get right for TX and RX because currently
+	 * they are used in a symetrical way.
+	 */
+	*rx = &k1c_iommu_dev->iommu_hw[0];
+	*tx = &k1c_iommu_dev->iommu_hw[1];
+
+	return 0;
+}
+
+static ssize_t writes_invals_show(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
+{
+	struct k1c_iommu_hw *rx, *tx;
+	int ret = dev_to_k1c_iommu_hw(dev, &rx, &tx);
+
+	return ret ? ret :
+		sprintf(buf, "RX: 4ko   : writes/invals [%lu/%lu]\n"
+			     "    64ko  : writes/invals [%lu/%lu]\n"
+			     "    2Mo   : writes/invals [%lu/%lu]\n"
+			     "    512Mo : writes/invals [%lu/%lu]\n"
+			     "TX: 4ko   : writes/invals [%lu/%lu]\n"
+			     "    64ko  : writes/invals [%lu/%lu]\n"
+			     "    2Mo   : writes/invals [%lu/%lu]\n"
+			     "    512Mo : writes/invals [%lu/%lu]\n",
+			     rx->nb_writes[0], rx->nb_invals[0],
+			     rx->nb_writes[1], rx->nb_invals[1],
+			     rx->nb_writes[2], rx->nb_invals[2],
+			     rx->nb_writes[3], rx->nb_invals[3],
+			     tx->nb_writes[0], tx->nb_invals[0],
+			     tx->nb_writes[1], tx->nb_invals[1],
+			     tx->nb_writes[2], tx->nb_invals[2],
+			     tx->nb_writes[3], tx->nb_invals[3]
+		       );
+}
+static DEVICE_ATTR_RO(writes_invals);
+
+static ssize_t ways_show(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
+{
+	struct k1c_iommu_hw *rx, *tx;
+	int ret = dev_to_k1c_iommu_hw(dev, &rx, &tx);
+
+	return ret ? ret :
+		sprintf(buf, "RX:ways: %u\nTX:ways: %u\n", rx->ways, tx->ways);
+}
+static DEVICE_ATTR_RO(ways);
+
+static ssize_t sets_show(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
+{
+	struct k1c_iommu_hw *rx, *tx;
+	int ret = dev_to_k1c_iommu_hw(dev, &rx, &tx);
+
+	return ret ? ret :
+		sprintf(buf, "RX:sets: %u\nTX:sets: %u\n", rx->sets, tx->sets);
+}
+static DEVICE_ATTR_RO(sets);
+
+static struct attribute *k1c_iommu_metrics_attrs[] = {
+	&dev_attr_writes_invals.attr,
+	&dev_attr_ways.attr,
+	&dev_attr_sets.attr,
+	NULL
+};
+
+const struct attribute_group k1c_iommu_info_group = {
+	.name = "k1c-iommu-infos",
+	.attrs = k1c_iommu_metrics_attrs,
+};
+
+const struct attribute_group *k1c_iommu_groups[] = {
+	&k1c_iommu_info_group,
+	NULL,
+};
+
 /**
  * k1c_iommu_probe() - called when IOMMU device is probed
  * @pdev: the platform device
@@ -1743,8 +1842,10 @@ static int k1c_iommu_probe(struct platform_device *pdev)
 	BUG_ON(drvdata->iommu_hw[K1C_IOMMU_RX].sets !=
 	       drvdata->iommu_hw[K1C_IOMMU_TX].sets);
 
-	ret = iommu_device_sysfs_add(&drvdata->iommu, dev, NULL,
-				     dev_name(drvdata->dev));
+	ret = iommu_device_sysfs_add(&drvdata->iommu,
+			dev,
+			k1c_iommu_groups,
+			dev_name(drvdata->dev));
 
 	iommu_device_set_ops(&drvdata->iommu, &k1c_iommu_ops);
 	iommu_device_set_fwnode(&drvdata->iommu, &dev->of_node->fwnode);
