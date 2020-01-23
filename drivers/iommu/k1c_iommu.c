@@ -656,7 +656,8 @@ static void invalidate_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 		entry = iommu_hw->tlb_cache[set][way];
 
 		if ((entry.teh.pn == (iova >> K1C_IOMMU_PN_SHIFT)) &&
-		    (entry.teh.asn == asn)) {
+		    (entry.teh.asn == asn) &&
+		    (entry.tel.es == K1C_IOMMU_ES_VALID)) {
 			entry.tel.es = K1C_IOMMU_ES_INVALID;
 			write_tlb_entry(iommu_hw, way, &entry);
 			/* Nothing more to do */
