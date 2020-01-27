@@ -192,14 +192,11 @@ enum k1c_eth_layer {
 	K1C_NET_LAYER_NB,
 };
 
-struct k1c_eth_filter {
-	union filter_desc *desc;
-	void *rule_spec; /* Opaque type */
-};
-
 struct k1c_eth_parser {
-	struct k1c_eth_filter filters[K1C_NET_LAYER_NB];
+	union filter_desc *filters[K1C_NET_LAYER_NB];
+	void *rule_spec; /* Opaque type */
 	unsigned int enabled;
+	enum k1c_eth_layer nb_layers;
 };
 
 struct k1c_eth_parsing {
@@ -291,10 +288,16 @@ struct k1c_eth_rx_dispatch_table_entry {
 	u64 asn;
 };
 
-enum k1c_eth_ctrl_values {
-	K1C_ETH_CTRL_MATCH_EQUAL = 0,
-	K1C_ETH_CTRL_MATCH_BETWEEN = 1,
-	K1C_ETH_CTRL_DONT_CARE = 2,
+enum k1c_eth_addr_match_values {
+	K1C_ETH_ADDR_MATCH_EQUAL = 0,
+	K1C_ETH_ADDR_MATCH_BETWEEN = 1,
+	K1C_ETH_ADDR_DONT_CARE = 2,
+};
+
+enum k1c_eth_etype_match_values {
+	K1C_ETH_ETYPE_DONT_CARE = 0,
+	K1C_ETH_ETYPE_MATCH_EQUAL = 1,
+	K1C_ETH_ETYPE_MATCH_DIFFER = 2,
 };
 
 /* Helpers */
@@ -356,8 +359,7 @@ u32  k1c_eth_tx_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 
 /* PARSING */
 int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
-		  int parser_id, struct k1c_eth_filter *rules, int rules_len,
-		  enum parser_dispatch_policy policy);
+		  int parser_id, enum parser_dispatch_policy policy);
 void parser_disp(struct k1c_eth_hw *hw, unsigned int parser_id);
 int parser_disable(struct k1c_eth_hw *hw, int parser_id);
 
