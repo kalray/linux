@@ -8,6 +8,7 @@
  */
 
 #include <linux/ethtool.h>
+#include <linux/etherdevice.h>
 
 #include "k1c-net.h"
 #include "k1c-net-regs.h"
@@ -207,12 +208,12 @@ static int find_rule(struct k1c_eth_netdev *ndev, int parser_id,
 		return -ENOENT;
 
 	for (i = K1C_NET_LAYER_NB - 1; i >= 0; i--) {
-		struct k1c_eth_filter *filter =
-			&parsing->parsers[parser_id].filters[i];
-		if (filter->rule_spec != NULL) {
+		struct k1c_eth_parser *parser =
+			&parsing->parsers[parser_id];
+		if (parser->rule_spec != NULL) {
 			if (found_rule != NULL)
 				*found_rule = (struct ethtool_rx_flow_spec *)
-					filter->rule_spec;
+					parser->rule_spec;
 			return 0;
 		}
 	}
@@ -241,7 +242,6 @@ static int k1c_eth_get_all_rules_loc(struct k1c_eth_netdev *ndev,
 	int err = 0;
 	int i;
 
-	cmd->data = ndev->hw->parsing.active_filters_nb;
 	for (i = 0; i < K1C_ETH_PARSER_NB; i++) {
 		err = find_rule(ndev, i, NULL);
 		if (!err)
@@ -252,35 +252,255 @@ static int k1c_eth_get_all_rules_loc(struct k1c_eth_netdev *ndev,
 		netdev_err(ndev->netdev, "Fetched rules number differs from internally saved rule number, this should never happen.\n");
 		return -EINVAL;
 	}
+	cmd->data = idx;
 	return 0;
 }
 
-static inline int delete_rule(struct k1c_eth_netdev *ndev, unsigned int
+static inline int delete_filter(struct k1c_eth_netdev *ndev, unsigned int
 		parser_index, enum k1c_eth_layer layer)
 {
 	struct k1c_eth_hw *hw = ndev->hw;
-	struct k1c_eth_filter *filter;
+	struct k1c_eth_parser *parser;
 
 	if (parser_index >= K1C_ETH_PARSER_NB)
 		return -EINVAL;
 
-	filter = &hw->parsing.parsers[parser_index].filters[layer];
-
-	if (filter->desc == NULL)
-		return -EINVAL;
+	parser = &hw->parsing.parsers[parser_index];
 
 	/* Free hw resource */
-	kfree(filter->desc);
-	filter->desc = NULL;
-	/* Free copied matching ethtool rule */
-	kfree(filter->rule_spec);
-	filter->rule_spec = NULL;
-
-	hw->parsing.parsers[parser_index].enabled = 0;
-
-	hw->parsing.active_filters_nb--;
+	kfree(parser->filters[layer]);
+	parser->filters[layer] = NULL;
 
 	return 0;
+}
+
+static void fill_tcp_filter(struct k1c_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs, union filter_desc *flt)
+{
+	union tcp_filter_desc *filter = (union tcp_filter_desc *) flt;
+	struct ethtool_tcpip4_spec *l4_val  = &fs->h_u.tcp_ip4_spec;
+	struct ethtool_tcpip4_spec *l4_mask = &fs->m_u.tcp_ip4_spec;
+	int src_port = ntohs(l4_val->psrc);
+	int src_mask = ntohs(l4_mask->psrc);
+	int dst_port = ntohs(l4_val->pdst);
+	int dst_mask = ntohs(l4_mask->pdst);
+
+	memcpy(filter, &tcp_filter_default, sizeof(tcp_filter_default));
+
+	if (src_mask != 0) {
+		filter->src_min_port = src_port;
+		filter->src_max_port = src_port;
+		filter->src_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
+	}
+
+	if (dst_mask != 0) {
+		filter->dst_min_port = dst_port;
+		filter->dst_max_port = dst_port;
+		filter->dst_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
+	}
+}
+
+static void fill_udp_filter(struct k1c_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs, union filter_desc *flt)
+{
+	union udp_filter_desc *filter = (union udp_filter_desc *) flt;
+	struct ethtool_tcpip4_spec *l4_val  = &fs->h_u.udp_ip4_spec;
+	struct ethtool_tcpip4_spec *l4_mask = &fs->m_u.udp_ip4_spec;
+	int src_port = ntohs(l4_val->psrc);
+	int src_mask = ntohs(l4_mask->psrc);
+	int dst_port = ntohs(l4_val->pdst);
+	int dst_mask = ntohs(l4_mask->pdst);
+
+	memcpy(filter, &udp_filter_default, sizeof(udp_filter_default));
+
+	if (src_mask != 0) {
+		filter->src_min_port = src_port;
+		filter->src_max_port = src_port;
+		filter->src_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
+	}
+
+	if (dst_mask != 0) {
+		filter->dst_min_port = dst_port;
+		filter->dst_max_port = dst_port;
+		filter->dst_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
+	}
+}
+
+static void fill_ipv4_filter(struct k1c_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
+		int ptype)
+{
+	union ipv4_filter_desc *filter = (union ipv4_filter_desc *) flt;
+	struct ethtool_usrip4_spec *l3_val  = &fs->h_u.usr_ip4_spec;
+	struct ethtool_usrip4_spec *l3_mask  = &fs->m_u.usr_ip4_spec;
+	int src_ip = ntohl(l3_val->ip4src);
+	int src_mask = ntohl(l3_mask->ip4src);
+	int dst_ip = ntohl(l3_val->ip4dst);
+	int dst_mask = ntohl(l3_mask->ip4dst);
+
+	memcpy(filter, &ipv4_filter_default, sizeof(ipv4_filter_default));
+
+	if (src_mask != 0) {
+		filter->sa = src_ip;
+		filter->sa_mask = src_mask;
+	}
+
+	if (dst_mask != 0) {
+		filter->da = dst_ip;
+		filter->da_mask = dst_mask;
+	}
+
+	if (ptype != 0) {
+		filter->protocol = ptype;
+		filter->protocol_mask = 0xff;
+	}
+}
+
+#define K1C_FORMAT_IP6_TO_HW(src, dst) \
+	do { \
+		dst[0] = ((u64)ntohl(src[0]) << 32) | ntohl(src[1]); \
+		dst[1] = ((u64)ntohl(src[2]) << 32) | ntohl(src[3]); \
+	} while (0)
+
+static void fill_ipv6_filter(struct k1c_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
+		int ptype)
+{
+	struct ipv6_filter_desc *filter = (struct ipv6_filter_desc *) flt;
+	struct ethtool_usrip6_spec *l3_val  = &fs->h_u.usr_ip6_spec;
+	struct ethtool_usrip6_spec *l3_mask  = &fs->m_u.usr_ip6_spec;
+	u64 src_addr[2] = {0};
+	u64 src_mask[2] = {0};
+	u64 dst_addr[2] = {0};
+	u64 dst_mask[2] = {0};
+
+	K1C_FORMAT_IP6_TO_HW(l3_val->ip6src, src_addr);
+	K1C_FORMAT_IP6_TO_HW(l3_mask->ip6src, src_mask);
+	K1C_FORMAT_IP6_TO_HW(l3_val->ip6dst, dst_addr);
+	K1C_FORMAT_IP6_TO_HW(l3_mask->ip6dst, dst_mask);
+
+	memcpy(filter, &ipv6_filter_default, sizeof(ipv6_filter_default));
+
+	if (src_mask[0] != 0 || src_mask[1] != 0) {
+		filter->d1.src_msb = src_addr[0];
+		filter->d1.src_lsb = src_addr[1];
+		filter->d1.src_msb_mask = src_mask[0];
+		filter->d1.src_lsb_mask = src_mask[1];
+	}
+
+	if (dst_mask[0] != 0 || dst_mask[1] != 0) {
+		filter->d2.dst_msb = dst_addr[0];
+		filter->d2.dst_lsb = dst_addr[1];
+		filter->d2.dst_msb_mask = dst_mask[0];
+		filter->d2.dst_lsb_mask = dst_mask[1];
+	}
+
+	if (ptype != 0) {
+		filter->d0.nh = ptype;
+		filter->d0.nh_mask = 0xff;
+	}
+}
+
+static void *fill_eth_filter(struct k1c_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
+		int ethertype)
+{
+	union mac_filter_desc *filter = (union mac_filter_desc *) flt;
+	struct ethhdr *eth_val = &fs->h_u.ether_spec;
+	struct ethhdr *eth_mask = &fs->m_u.ether_spec;
+	u64 src_addr = 0;
+	u64 src_mask = 0;
+	u64 dst_addr = 0;
+	u64 dst_mask = 0;
+	int i;
+	int j = (ETH_ALEN - 1) * BITS_PER_BYTE;
+	int proto = fs->flow_type & ~(FLOW_EXT | FLOW_MAC_EXT);
+
+	/* Mac address can be set in mac_ext, take care of it */
+	if (fs->flow_type & FLOW_MAC_EXT) {
+		for (i = 0; i < ETH_ALEN; i++, j -= BITS_PER_BYTE) {
+			dst_addr |= ((u64)fs->h_ext.h_dest[i] << j);
+			dst_mask |= ((u64)fs->m_ext.h_dest[i] << j);
+		}
+	} else if (proto == ETHER_FLOW) {
+		for (i = 0; i < ETH_ALEN; i++, j -= BITS_PER_BYTE) {
+			src_addr |= ((u64)eth_val->h_source[i] << j);
+			src_mask |= ((u64)eth_mask->h_source[i] << j);
+			dst_addr |= ((u64)eth_val->h_dest[i] << j);
+			dst_mask |= ((u64)eth_mask->h_dest[i] << j);
+		}
+	}
+
+	memcpy(filter, &mac_filter_default, sizeof(mac_filter_default));
+
+	if (src_mask != 0) {
+		filter->sa = src_addr;
+		filter->sa_mask = src_mask;
+	}
+	if (dst_mask != 0) {
+		filter->da = dst_addr;
+		filter->da_mask = dst_mask;
+	}
+	if (ethertype != 0) {
+		filter->etype = ethertype;
+		filter->etype_cmp_polarity = K1C_ETH_ETYPE_MATCH_EQUAL;
+	}
+
+	return (union filter_desc *)filter;
+}
+
+static int delete_parser_cfg(struct k1c_eth_netdev *ndev, int location)
+{
+	int i, err;
+	struct k1c_eth_parser *parser;
+
+	if (location >= K1C_ETH_PARSER_NB)
+		return -EINVAL;
+
+	parser = &ndev->hw->parsing.parsers[location];
+
+	/* If we have not found any matching rule, we exit */
+	if (!parser->enabled)
+		return -EINVAL;
+
+	/* Delete all the parser rules */
+	for (i = 0; i < K1C_NET_LAYER_NB; i++)
+		delete_filter(ndev, location, i);
+
+	/* Disable parser */
+	err = parser_disable(ndev->hw, location);
+	if (err)
+		return err;
+
+	/* Free copied matching ethtool rule */
+	kfree(parser->rule_spec);
+	parser->rule_spec = NULL;
+
+	parser->enabled = 0;
+	ndev->hw->parsing.active_filters_nb--;
+
+	return 0;
+}
+
+static int alloc_filters(struct k1c_eth_netdev *ndev, union filter_desc **flt,
+		unsigned int layer_nb)
+{
+	int layer;
+
+	for (layer = 0; layer < layer_nb; layer++) {
+		flt[layer] = kzalloc(sizeof(*flt[0]), GFP_KERNEL);
+		if (flt[layer] == NULL)
+			goto err;
+	}
+
+	return 0;
+
+err:
+	for (layer = 0; layer < layer_nb; layer++) {
+		kfree(flt[layer]);
+		flt[layer] = NULL;
+	}
+	return -ENOMEM;
 }
 
 static int k1c_eth_parse_ethtool_rule(struct k1c_eth_netdev *ndev,
@@ -290,78 +510,96 @@ static int k1c_eth_parse_ethtool_rule(struct k1c_eth_netdev *ndev,
 	struct k1c_eth_hw *hw = ndev->hw;
 	enum k1c_eth_layer layer = 0;
 	struct ethtool_rx_flow_spec *rule;
-	int ret;
+	int ret, i;
+	int proto = fs->flow_type & ~(FLOW_EXT | FLOW_MAC_EXT);
+	union filter_desc **flt = hw->parsing.parsers[parser_index].filters;
 
-	switch (fs->flow_type & ~(FLOW_EXT | FLOW_MAC_EXT)) {
+	ret = delete_parser_cfg(ndev, parser_index);
+	if (ret == 0) {
+		netdev_warn(ndev->netdev, "Overriding parser %d filters",
+				parser_index);
+	}
+
+	switch (proto) {
 	case TCP_V4_FLOW:
-		{
-		union tcp_filter_desc *tcp_filter = NULL;
-		struct ethtool_tcpip4_spec *l4_mask = &fs->m_u.tcp_ip4_spec;
-		struct ethtool_tcpip4_spec *l4_val  = &fs->h_u.tcp_ip4_spec;
-		int dst_port = ntohs(l4_val->pdst);
-		int dst_mask = ntohs(l4_mask->pdst);
-
+	case UDP_V4_FLOW:
+	case TCP_V6_FLOW:
+	case UDP_V6_FLOW:
 		layer = K1C_NET_LAYER_4;
-		ret = delete_rule(ndev, parser_index,
-				layer);
-		if (ret == 0)
-			netdev_warn(ndev->netdev, "Filter for index %d (layer %d) already present in parser %d, overriding.\n",
-					layer, INDEX_TO_LAYER(layer),
-					parser_index);
-		tcp_filter = kmalloc(sizeof(*tcp_filter),
-				GFP_KERNEL);
-		if (tcp_filter == NULL)
-			return -ENOMEM;
-		memcpy(tcp_filter, &tcp_filter_default,
-				sizeof(*tcp_filter));
-
-		tcp_filter->dst_min_port = dst_port;
-		tcp_filter->dst_max_port = dst_port;
-		tcp_filter->dst_hash_mask = dst_mask;
-		tcp_filter->dst_ctrl = K1C_ETH_CTRL_MATCH_EQUAL;
-
-		hw->parsing.parsers[parser_index].filters[layer].desc =
-			(union filter_desc *) tcp_filter;
-		hw->parsing.parsers[parser_index].enabled = 1;
 		break;
-		}
+	case IP_USER_FLOW:
+		layer = K1C_NET_LAYER_3;
+		break;
+	case ETHER_FLOW:
+		layer = K1C_NET_LAYER_2;
+		break;
 	default:
-		netdev_err(ndev->netdev, "Only TCP transport is supported\n");
+		netdev_err(ndev->netdev, "Unsupported protocol (expect TCP, UDP, IP4, IP6, ETH)\n");
+		return -EINVAL;
+	}
+
+	ret = alloc_filters(ndev, flt, layer + 1);
+	if (ret != 0)
+		return ret;
+
+	/* Apply correct filer */
+	switch (proto) {
+	/* tcp/udp layer */
+	case TCP_V4_FLOW:
+		fill_tcp_filter(ndev, fs, flt[K1C_NET_LAYER_4]);
+		fill_ipv4_filter(ndev, fs, flt[K1C_NET_LAYER_3], IPPROTO_TCP);
+		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IP);
+		break;
+	case UDP_V4_FLOW:
+		fill_udp_filter(ndev, fs, flt[K1C_NET_LAYER_4]);
+		fill_ipv4_filter(ndev, fs, flt[K1C_NET_LAYER_3], IPPROTO_UDP);
+		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IP);
+		break;
+	case TCP_V6_FLOW:
+		fill_tcp_filter(ndev, fs, flt[K1C_NET_LAYER_4]);
+		fill_ipv6_filter(ndev, fs, flt[K1C_NET_LAYER_3], IPPROTO_TCP);
+		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IPV6);
+		break;
+	case UDP_V6_FLOW:
+		fill_udp_filter(ndev, fs, flt[K1C_NET_LAYER_4]);
+		fill_ipv6_filter(ndev, fs, flt[K1C_NET_LAYER_3], IPPROTO_UDP);
+		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IPV6);
+		break;
+	/* ip layer */
+	case IP_USER_FLOW:
+		fill_ipv4_filter(ndev, fs, flt[K1C_NET_LAYER_3], 0);
+		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IP);
+		break;
+	case IPV6_USER_FLOW:
+		fill_ipv6_filter(ndev, fs, flt[K1C_NET_LAYER_3], 0);
+		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IPV6);
+		break;
+	/* mac layer */
+	case ETHER_FLOW:
+		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], 0);
+		break;
+	default:
+		/* Should never happen as it is checked earlier */
 		return -EINVAL;
 	}
 
 	/* Copy ethtool rule for retrieving it when needed */
 	rule = kmalloc(sizeof(*rule), GFP_KERNEL);
+	if (rule == NULL)
+		goto err;
 	memcpy(rule, fs, sizeof(*rule));
-	hw->parsing.parsers[parser_index].filters[layer].rule_spec =
-		(void *) rule;
+	hw->parsing.parsers[parser_index].rule_spec = (void *) rule;
 
 	hw->parsing.active_filters_nb++;
+	hw->parsing.parsers[parser_index].enabled = 1;
+	hw->parsing.parsers[parser_index].nb_layers = layer + 1;
 
 	return 0;
-}
 
-static int delete_parser_cfg(struct k1c_eth_netdev *ndev, int location)
-{
-	int i, err, found = 0;
-
-	/* Delete all the parser rules */
-	for (i = 0; i < K1C_NET_LAYER_NB; i++) {
-		err = delete_rule(ndev, location, i);
-		if (err == 0)
-			found = 1;
-	}
-
-	/* If we have not found any matching rule, we exit */
-	if (!found)
-		return -EINVAL;
-
-	/* Disable parser */
-	err = parser_disable(ndev->hw, location);
-	if (err)
-		return err;
-
-	return 0;
+err:
+	for (i = 0; i < layer + 1; i++)
+		delete_filter(ndev, parser_index, i);
+	return -ENOMEM;
 }
 
 static int add_parser_filter(struct k1c_eth_netdev *ndev,
@@ -385,7 +623,7 @@ static int add_parser_filter(struct k1c_eth_netdev *ndev,
 	/* Parse flow */
 	err = k1c_eth_parse_ethtool_rule(ndev, &cmd->fs, parser_index);
 	if (err != 0)
-		return -EINVAL;
+		return err;
 
 	/* Check drop action */
 	if (action == ETHTOOL_RXNTUPLE_ACTION_DROP)
@@ -393,8 +631,7 @@ static int add_parser_filter(struct k1c_eth_netdev *ndev,
 
 	/* Write flow to hardware */
 	if (parser_config(ndev->hw, &ndev->cfg, parser_index,
-				ndev->hw->parsing.parsers[parser_index].filters,
-				K1C_NET_LAYER_NB, dispatch_policy) != 0) {
+			dispatch_policy) != 0) {
 		delete_parser_cfg(ndev, parser_index);
 		return -EBUSY;
 	}
