@@ -11,6 +11,7 @@
 #include <linux/etherdevice.h>
 
 #include "k1c-net.h"
+#include "k1c-net-hw.h"
 #include "k1c-net-regs.h"
 
 #define STAT(n, m)   { n, FIELD_SIZEOF(struct k1c_eth_hw_stats, m), \
@@ -86,6 +87,8 @@ static struct k1c_stats k1c_str_stats[] = {
 };
 
 #define K1C_STATS_LEN   ARRAY_SIZE(k1c_str_stats)
+
+#define REMOVE_FLOW_EXTS(f) (f & ~(FLOW_EXT | FLOW_MAC_EXT))
 
 static void
 k1c_eth_get_drvinfo(struct net_device *netdev, struct ethtool_drvinfo *drvinfo)
@@ -274,6 +277,22 @@ static inline int delete_filter(struct k1c_eth_netdev *ndev, unsigned int
 	return 0;
 }
 
+static enum k1c_traffic_types flow_type_to_traffic_type(u32 flow_type)
+{
+	switch (REMOVE_FLOW_EXTS(flow_type)) {
+	case TCP_V4_FLOW:
+		return K1C_TT_TCP4;
+	case TCP_V6_FLOW:
+		return K1C_TT_TCP6;
+	case UDP_V4_FLOW:
+		return K1C_TT_UDP4;
+	case UDP_V6_FLOW:
+		return K1C_TT_UDP6;
+	default:
+		return K1C_TT_PROTOS_NB;
+	}
+}
+
 static void fill_tcp_filter(struct k1c_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt)
 {
@@ -284,6 +303,8 @@ static void fill_tcp_filter(struct k1c_eth_netdev *ndev,
 	int src_mask = ntohs(l4_mask->psrc);
 	int dst_port = ntohs(l4_val->pdst);
 	int dst_mask = ntohs(l4_mask->pdst);
+	int tt = flow_type_to_traffic_type(fs->flow_type);
+	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 
 	memcpy(filter, &tcp_filter_default, sizeof(tcp_filter_default));
 
@@ -298,6 +319,11 @@ static void fill_tcp_filter(struct k1c_eth_netdev *ndev,
 		filter->dst_max_port = dst_port;
 		filter->dst_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
 	}
+
+	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_SPORT) != 0)
+		filter->src_hash_mask = 0xffff;
+	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_DPORT) != 0)
+		filter->dst_hash_mask = 0xffff;
 }
 
 static void fill_udp_filter(struct k1c_eth_netdev *ndev,
@@ -310,6 +336,8 @@ static void fill_udp_filter(struct k1c_eth_netdev *ndev,
 	int src_mask = ntohs(l4_mask->psrc);
 	int dst_port = ntohs(l4_val->pdst);
 	int dst_mask = ntohs(l4_mask->pdst);
+	int tt = flow_type_to_traffic_type(fs->flow_type);
+	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 
 	memcpy(filter, &udp_filter_default, sizeof(udp_filter_default));
 
@@ -324,6 +352,11 @@ static void fill_udp_filter(struct k1c_eth_netdev *ndev,
 		filter->dst_max_port = dst_port;
 		filter->dst_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
 	}
+
+	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_SPORT) != 0)
+		filter->src_hash_mask = 0xffff;
+	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_DPORT) != 0)
+		filter->dst_hash_mask = 0xffff;
 }
 
 static void fill_ipv4_filter(struct k1c_eth_netdev *ndev,
@@ -337,6 +370,8 @@ static void fill_ipv4_filter(struct k1c_eth_netdev *ndev,
 	int src_mask = ntohl(l3_mask->ip4src);
 	int dst_ip = ntohl(l3_val->ip4dst);
 	int dst_mask = ntohl(l3_mask->ip4dst);
+	int tt = flow_type_to_traffic_type(fs->flow_type);
+	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 
 	memcpy(filter, &ipv4_filter_default, sizeof(ipv4_filter_default));
 
@@ -354,6 +389,11 @@ static void fill_ipv4_filter(struct k1c_eth_netdev *ndev,
 		filter->protocol = ptype;
 		filter->protocol_mask = 0xff;
 	}
+
+	if ((rx_hash_field & K1C_HASH_FIELD_SEL_SRC_IP) != 0)
+		filter->sa_hash_mask = 0xffffffff;
+	if ((rx_hash_field & K1C_HASH_FIELD_SEL_DST_IP) != 0)
+		filter->da_hash_mask = 0xffffffff;
 }
 
 #define K1C_FORMAT_IP6_TO_HW(src, dst) \
@@ -373,6 +413,8 @@ static void fill_ipv6_filter(struct k1c_eth_netdev *ndev,
 	u64 src_mask[2] = {0};
 	u64 dst_addr[2] = {0};
 	u64 dst_mask[2] = {0};
+	int tt = flow_type_to_traffic_type(fs->flow_type);
+	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 
 	K1C_FORMAT_IP6_TO_HW(l3_val->ip6src, src_addr);
 	K1C_FORMAT_IP6_TO_HW(l3_mask->ip6src, src_mask);
@@ -399,6 +441,15 @@ static void fill_ipv6_filter(struct k1c_eth_netdev *ndev,
 		filter->d0.nh = ptype;
 		filter->d0.nh_mask = 0xff;
 	}
+
+	if ((rx_hash_field & K1C_HASH_FIELD_SEL_SRC_IP) != 0) {
+		filter->d1.src_lsb_hash_mask = 0xffffffffffffffffULL;
+		filter->d1.src_msb_hash_mask = 0xffffffffffffffffULL;
+	}
+	if ((rx_hash_field & K1C_HASH_FIELD_SEL_DST_IP) != 0) {
+		filter->d2.dst_lsb_hash_mask = 0xffffffffffffffffULL;
+		filter->d2.dst_msb_hash_mask = 0xffffffffffffffffULL;
+	}
 }
 
 static void *fill_eth_filter(struct k1c_eth_netdev *ndev,
@@ -414,7 +465,7 @@ static void *fill_eth_filter(struct k1c_eth_netdev *ndev,
 	u64 dst_mask = 0;
 	int i;
 	int j = (ETH_ALEN - 1) * BITS_PER_BYTE;
-	int proto = fs->flow_type & ~(FLOW_EXT | FLOW_MAC_EXT);
+	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
 
 	/* Mac address can be set in mac_ext, take care of it */
 	if (fs->flow_type & FLOW_MAC_EXT) {
@@ -489,8 +540,10 @@ static int alloc_filters(struct k1c_eth_netdev *ndev, union filter_desc **flt,
 
 	for (layer = 0; layer < layer_nb; layer++) {
 		flt[layer] = kzalloc(sizeof(*flt[0]), GFP_KERNEL);
-		if (flt[layer] == NULL)
+		if (flt[layer] == NULL) {
+			netdev_warn(ndev->netdev, "Can't allocate memory for filter");
 			goto err;
+		}
 	}
 
 	return 0;
@@ -503,22 +556,11 @@ err:
 	return -ENOMEM;
 }
 
-static int k1c_eth_parse_ethtool_rule(struct k1c_eth_netdev *ndev,
-				struct ethtool_rx_flow_spec *fs,
-				unsigned int parser_index)
+static int get_layer(struct k1c_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs)
 {
-	struct k1c_eth_hw *hw = ndev->hw;
-	enum k1c_eth_layer layer = 0;
-	struct ethtool_rx_flow_spec *rule;
-	int ret, i;
-	int proto = fs->flow_type & ~(FLOW_EXT | FLOW_MAC_EXT);
-	union filter_desc **flt = hw->parsing.parsers[parser_index].filters;
-
-	ret = delete_parser_cfg(ndev, parser_index);
-	if (ret == 0) {
-		netdev_warn(ndev->netdev, "Overriding parser %d filters",
-				parser_index);
-	}
+	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
+	int layer;
 
 	switch (proto) {
 	case TCP_V4_FLOW:
@@ -537,10 +579,16 @@ static int k1c_eth_parse_ethtool_rule(struct k1c_eth_netdev *ndev,
 		netdev_err(ndev->netdev, "Unsupported protocol (expect TCP, UDP, IP4, IP6, ETH)\n");
 		return -EINVAL;
 	}
+	return layer;
+}
 
-	ret = alloc_filters(ndev, flt, layer + 1);
-	if (ret != 0)
-		return ret;
+static int k1c_eth_fill_parser(struct k1c_eth_netdev *ndev,
+				struct ethtool_rx_flow_spec *fs,
+				unsigned int parser_index)
+{
+	struct k1c_eth_hw *hw = ndev->hw;
+	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
+	union filter_desc **flt = hw->parsing.parsers[parser_index].filters;
 
 	/* Apply correct filer */
 	switch (proto) {
@@ -583,16 +631,49 @@ static int k1c_eth_parse_ethtool_rule(struct k1c_eth_netdev *ndev,
 		return -EINVAL;
 	}
 
+	hw->parsing.parsers[parser_index].enabled = 1;
+	hw->parsing.parsers[parser_index].nb_layers = get_layer(ndev, fs) + 1;
+
+	return 0;
+}
+
+static int k1c_eth_parse_ethtool_rule(struct k1c_eth_netdev *ndev,
+				struct ethtool_rx_flow_spec *fs,
+				unsigned int parser_index)
+{
+	struct k1c_eth_hw *hw = ndev->hw;
+	struct ethtool_rx_flow_spec *rule;
+	union filter_desc **flt = hw->parsing.parsers[parser_index].filters;
+	int ret, layer, i;
+
+	ret = get_layer(ndev, fs);
+	if (ret < 0)
+		return ret;
+	layer = ret;
+
+	ret = delete_parser_cfg(ndev, parser_index);
+	if (ret == 0) {
+		netdev_warn(ndev->netdev, "Overriding parser %d filters",
+				parser_index);
+	}
+
+	ret = alloc_filters(ndev, flt, layer + 1);
+	if (ret != 0)
+		return ret;
+
+	ret = k1c_eth_fill_parser(ndev, fs, parser_index);
+	if (ret != 0)
+		return ret;
+	hw->parsing.active_filters_nb++;
+
 	/* Copy ethtool rule for retrieving it when needed */
 	rule = kmalloc(sizeof(*rule), GFP_KERNEL);
-	if (rule == NULL)
+	if (rule == NULL) {
+		netdev_warn(ndev->netdev, "Can't allocate memory for ethtool rule");
 		goto err;
+	}
 	memcpy(rule, fs, sizeof(*rule));
 	hw->parsing.parsers[parser_index].rule_spec = (void *) rule;
-
-	hw->parsing.active_filters_nb++;
-	hw->parsing.parsers[parser_index].enabled = 1;
-	hw->parsing.parsers[parser_index].nb_layers = layer + 1;
 
 	return 0;
 
@@ -639,6 +720,98 @@ static int add_parser_filter(struct k1c_eth_netdev *ndev,
 	return 0;
 }
 
+static int update_parsers(struct k1c_eth_netdev *ndev,
+		enum k1c_traffic_types tt)
+{
+	int i, ret;
+	enum k1c_traffic_types rule_tt;
+	struct ethtool_rx_flow_spec *rule;
+	struct k1c_eth_parser *parser;
+
+	for (i = 0; i < K1C_ETH_PARSER_NB; i++) {
+		parser = &ndev->hw->parsing.parsers[i];
+		if (!parser->enabled)
+			continue;
+		rule = (struct ethtool_rx_flow_spec *) parser->rule_spec;
+		rule_tt = flow_type_to_traffic_type(rule->flow_type);
+		if (rule_tt != tt)
+			continue;
+
+		/* Update the parser with the same rule to use RSS */
+		ret = k1c_eth_fill_parser(ndev, rule, i);
+		if (ret != 0)
+			return ret;
+	}
+	return 0;
+}
+
+static int set_rss_hash_opt(struct k1c_eth_netdev *ndev,
+				 struct ethtool_rxnfc *nfc)
+{
+	enum k1c_traffic_types tt;
+	int ret;
+	u8 rx_hash_field = 0;
+
+	if (nfc->flow_type != TCP_V4_FLOW &&
+	    nfc->flow_type != TCP_V6_FLOW &&
+	    nfc->flow_type != UDP_V4_FLOW &&
+	    nfc->flow_type != UDP_V6_FLOW)
+		return -EOPNOTSUPP;
+
+	if (nfc->data & ~(RXH_IP_SRC | RXH_IP_DST |
+			  RXH_L4_B_0_1 | RXH_L4_B_2_3))
+		return -EOPNOTSUPP;
+
+	tt = flow_type_to_traffic_type(nfc->flow_type);
+	if (tt == K1C_TT_PROTOS_NB)
+		return -EINVAL;
+
+	if (nfc->data & RXH_IP_SRC)
+		rx_hash_field |= K1C_HASH_FIELD_SEL_SRC_IP;
+	if (nfc->data & RXH_IP_DST)
+		rx_hash_field |= K1C_HASH_FIELD_SEL_DST_IP;
+	if (nfc->data & RXH_L4_B_0_1)
+		rx_hash_field |= K1C_HASH_FIELD_SEL_L4_SPORT;
+	if (nfc->data & RXH_L4_B_2_3)
+		rx_hash_field |= K1C_HASH_FIELD_SEL_L4_DPORT;
+
+	/* If no change don't reprogram parsers */
+	if (rx_hash_field == ndev->hw->parsing.rx_hash_fields[tt])
+		return 0;
+
+	ndev->hw->parsing.rx_hash_fields[tt] = rx_hash_field;
+	ret = update_parsers(ndev, tt);
+	if (ret != 0)
+		return ret;
+
+	return 0;
+}
+
+static int k1c_get_rss_hash_opt(struct k1c_eth_netdev *ndev,
+				  struct ethtool_rxnfc *nfc)
+{
+	enum k1c_traffic_types tt;
+	u8 hash_field = 0;
+
+	tt = flow_type_to_traffic_type(nfc->flow_type);
+	if (tt == K1C_TT_PROTOS_NB)
+		return -EINVAL;
+
+	hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+	nfc->data = 0;
+
+	if (hash_field & K1C_HASH_FIELD_SEL_SRC_IP)
+		nfc->data |= RXH_IP_SRC;
+	if (hash_field & K1C_HASH_FIELD_SEL_DST_IP)
+		nfc->data |= RXH_IP_DST;
+	if (hash_field & K1C_HASH_FIELD_SEL_L4_SPORT)
+		nfc->data |= RXH_L4_B_0_1;
+	if (hash_field & K1C_HASH_FIELD_SEL_L4_DPORT)
+		nfc->data |= RXH_L4_B_2_3;
+
+	return 0;
+}
+
 static int k1c_eth_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd)
 {
 	struct k1c_eth_netdev *ndev = netdev_priv(dev);
@@ -650,6 +823,9 @@ static int k1c_eth_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd)
 		break;
 	case ETHTOOL_SRXCLSRLDEL:
 		ret = delete_parser_cfg(ndev, cmd->fs.location);
+		break;
+	case ETHTOOL_SRXFH:
+		ret = set_rss_hash_opt(ndev, cmd);
 		break;
 	default:
 		break;
@@ -680,6 +856,9 @@ static int k1c_eth_get_rxnfc(struct net_device *netdev,
 		break;
 	case ETHTOOL_GRXCLSRULE:
 		ret = k1c_eth_get_rule(ndev, cmd, cmd->fs.location);
+		break;
+	case ETHTOOL_GRXFH:
+		ret = k1c_get_rss_hash_opt(ndev, cmd);
 		break;
 	}
 	return ret;
