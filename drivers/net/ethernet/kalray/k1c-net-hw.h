@@ -192,6 +192,21 @@ enum k1c_eth_layer {
 	K1C_NET_LAYER_NB,
 };
 
+enum k1c_traffic_types {
+	K1C_TT_TCP4 = 0,
+	K1C_TT_TCP6,
+	K1C_TT_UDP4,
+	K1C_TT_UDP6,
+	K1C_TT_PROTOS_NB,
+};
+
+enum {
+	K1C_HASH_FIELD_SEL_SRC_IP	= BIT(0),
+	K1C_HASH_FIELD_SEL_DST_IP	= BIT(1),
+	K1C_HASH_FIELD_SEL_L4_SPORT	= BIT(2),
+	K1C_HASH_FIELD_SEL_L4_DPORT	= BIT(3),
+};
+
 struct k1c_eth_parser {
 	union filter_desc *filters[K1C_NET_LAYER_NB];
 	void *rule_spec; /* Opaque type */
@@ -202,6 +217,7 @@ struct k1c_eth_parser {
 struct k1c_eth_parsing {
 	struct k1c_eth_parser parsers[K1C_ETH_PARSER_NB];
 	int active_filters_nb;
+	u8 rx_hash_fields[K1C_TT_PROTOS_NB];
 };
 
 /**
