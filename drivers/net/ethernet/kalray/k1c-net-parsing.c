@@ -279,9 +279,10 @@ int parser_disable(struct k1c_eth_hw *hw, int parser_id)
  * Return: 0 on success, negative on failure
  */
 int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
-		  int parser_id, struct k1c_eth_filter *rules, int rules_len,
-		  enum parser_dispatch_policy policy)
+		  int parser_id, enum parser_dispatch_policy policy)
 {
+	union filter_desc **rules = hw->parsing.parsers[parser_id].filters;
+	int rules_len =  hw->parsing.parsers[parser_id].nb_layers;
 	int ret, rule, word_index = 0;
 	union filter_desc *filter_desc;
 
@@ -290,7 +291,7 @@ int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
 		return ret;
 
 	for (rule = 0; rule < rules_len; ++rule) {
-		filter_desc = rules[rule].desc;
+		filter_desc = rules[rule];
 		if (filter_desc == NULL) {
 			filter_desc = get_default_rule(hw, rule);
 			if (filter_desc == NULL)
