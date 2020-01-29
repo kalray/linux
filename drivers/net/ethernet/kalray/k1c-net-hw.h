@@ -24,6 +24,7 @@
 #define REG(b, o) pr_info("%-50s: @0x%lx - 0x%lx\n", #o, (u32)o, readl(b + o))
 #define K1C_ETH_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
 
+/* Must *NOT* be used to clear field */
 #define K1C_ETH_SETF(val, field) (((val) << field ## _SHIFT) & (field ## _MASK))
 #define K1C_ETH_GETF(reg, field) (((reg) & field ## _MASK) >> (field ## _SHIFT))
 
@@ -34,6 +35,7 @@ enum k1c_eth_io {
 
 enum k1c_eth_resource {
 	K1C_ETH_RES_PHY = 0,
+	K1C_ETH_RES_PHYMAC,
 	K1C_ETH_RES_MAC,
 	K1C_ETH_RES_ETH,
 	K1C_ETH_NUM_RES
