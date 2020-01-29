@@ -15,6 +15,7 @@
 #include <linux/sched.h>
 #include <linux/sched.h>
 #include <linux/audit.h>
+#include <linux/irqflags.h>
 #include <linux/tracehook.h>
 #include <linux/thread_info.h>
 #include <linux/context_tracking.h>
@@ -416,6 +417,8 @@ void user_disable_single_step(struct task_struct *child)
 void debug_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
 	int debug_cause = debug_dc(es);
+
+	trace_hardirqs_off();
 
 	switch (debug_cause) {
 	case DEBUG_CAUSE_STEPI:
