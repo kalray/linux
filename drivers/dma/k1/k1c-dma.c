@@ -1071,8 +1071,10 @@ static void k1c_dma_free_phy(struct k1c_dma_dev *dev)
 	spin_lock(&dev->lock);
 	for (dir = 0; dir < K1C_DMA_DIR_TYPE_MAX; ++dir) {
 		p = dev->phy[dir];
-		for (i = 0; i < k1c_dma_get_phy_nb(dir); ++i)
+		for (i = 0; i < k1c_dma_get_phy_nb(dir); ++i) {
 			p[i].used = 0;
+			k1c_dma_free_irq(&p[i]);
+		}
 	}
 	spin_unlock(&dev->lock);
 }
