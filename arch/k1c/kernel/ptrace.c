@@ -420,6 +420,10 @@ void debug_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 
 	trace_hardirqs_off();
 
+	/* debug triggered from kernel is invalid ! */
+	if (!user_mode(regs))
+		panic("Entered debug from kernel !\n");
+
 	switch (debug_cause) {
 	case DEBUG_CAUSE_STEPI:
 		if (check_hw_watchpoint_stepped(regs))
