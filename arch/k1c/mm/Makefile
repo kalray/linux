@@ -9,3 +9,4 @@
 obj-y := init.o ioremap.o mmu.o fault.o tlb.o extable.o dma-mapping.o
 obj-$(CONFIG_HUGETLB_PAGE) += hugetlbpage.o
 obj-$(CONFIG_K1C_MMU_STATS) += mmu_stats.o
+obj-$(CONFIG_STRICT_KERNEL_RWX) += kernel_rwx.o
