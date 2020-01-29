@@ -1046,10 +1046,10 @@ exit:
 static int k1c_eth_free_netdev(struct k1c_eth_netdev *ndev)
 {
 	list_del(&ndev->node);
-	unregister_netdev(ndev->netdev);
 	netif_napi_del(&ndev->napi);
 	k1c_eth_release_tx_res(ndev->netdev);
 	k1c_eth_release_rx_res(ndev->netdev);
+	unregister_netdev(ndev->netdev);
 	free_netdev(ndev->netdev);
 	return 0;
 }
@@ -1145,9 +1145,10 @@ static struct platform_driver k1c_netdev_driver = {
 
 module_platform_driver(k1c_netdev_driver);
 
-static const char *k1c_eth_res_names[K1C_ETH_NUM_RES] = {"phy", "mac", "eth"};
+static const char *k1c_eth_res_names[K1C_ETH_NUM_RES] = {
+	"phy", "phymac", "mac", "eth" };
 
-/* k1c_eth_probe() - Prove generic device
+/* k1c_eth_probe() - Probe generic device
  * @pdev: Platform device
  *
  * Return: 0 on success, < 0 on failure
@@ -1211,7 +1212,6 @@ err:
  *
  * Return: 0
  */
-
 static int k1c_eth_remove(struct platform_device *pdev)
 {
 	platform_set_drvdata(pdev, NULL);
