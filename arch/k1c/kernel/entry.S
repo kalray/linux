@@ -628,8 +628,8 @@ k1c_perf_tlb_refill:
 k1c_std_tlb_refill:
 	/* extract PGD offset */
 	extfz $r3 = $r0, (ASM_PGDIR_SHIFT + ASM_PGDIR_BITS - 1), ASM_PGDIR_SHIFT
-	/* is mm NULL ? */
-	cb.deqz $r1? refill_err_out
+	/* is mm NULL ? if so, use init_mm */
+	cmoved.deqz $r1? $r1 = init_mm
 	;;
 	get $r7 = $pcr
 	/* Load pgd base address into $r1 */

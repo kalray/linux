@@ -98,6 +98,8 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define PAGE_KERNEL_EXEC	__pgprot(_PAGE_KERNEL_EXEC)
 #define PAGE_KERNEL_NOCACHE	__pgprot(_PAGE_KERNEL | _PAGE_UNCACHED)
 #define PAGE_DEVICE		__pgprot(_PAGE_KERNEL | _PAGE_DEVICE)
+#define PAGE_KERNEL_RO		__pgprot((_PAGE_KERNEL | _PAGE_CACHED) & ~(_PAGE_WRITE))
+#define PAGE_KERNEL_ROX		__pgprot(_PAGE_KERNEL_EXEC  & ~(_PAGE_WRITE))
 
 /* MAP_PRIVATE permissions: xwr (copy-on-write) */
 #define __P000	PAGE_NONE
