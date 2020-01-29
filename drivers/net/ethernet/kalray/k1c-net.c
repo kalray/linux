@@ -427,6 +427,7 @@ static netdev_tx_t k1c_eth_netdev_start_xmit(struct sk_buff *skb,
 	struct k1c_eth_ring *txr = &ndev->tx_ring;
 	u32 tx_w = txr->next_to_use;
 	struct k1c_eth_netdev_tx *tx = &txr->tx_buf[tx_w];
+	int unused_tx;
 
 	netif_trans_update(netdev);
 
@@ -471,6 +472,10 @@ static netdev_tx_t k1c_eth_netdev_start_xmit(struct sk_buff *skb,
 
 	tx_w++;
 	txr->next_to_use = (tx_w < txr->count) ? tx_w : 0;
+
+	unused_tx = k1c_eth_desc_unused(txr);
+	if (unlikely(unused_tx == 0))
+		netif_stop_queue(ndev->netdev);
 
 	skb_tx_timestamp(skb);
 	return NETDEV_TX_OK;
