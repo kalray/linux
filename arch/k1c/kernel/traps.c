@@ -9,6 +9,7 @@
 #include <linux/context_tracking.h>
 #include <linux/sched/task_stack.h>
 #include <linux/sched/debug.h>
+#include <linux/irqflags.h>
 #include <linux/uaccess.h>
 #include <linux/kdebug.h>
 #include <linux/module.h>
@@ -222,6 +223,8 @@ void trap_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	enum ctx_state prev_state = exception_enter();
 	int htc = trap_cause(es);
 	trap_handler_func trap_func = trap_handler_table[htc];
+
+	trace_hardirqs_off();
 
 	/* Normal traps number should and must be between 0 and 15 included */
 	if (unlikely(htc >= K1C_TRAP_COUNT)) {
