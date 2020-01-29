@@ -28,6 +28,7 @@
 #include <asm/dame.h>
 #include <asm/ptrace.h>
 #include <asm/syscall.h>
+#include <asm/break_hook.h>
 #include <asm/cacheflush.h>
 #include <asm/hw_breakpoint.h>
 
@@ -373,22 +374,20 @@ void do_syscall_trace_exit(struct pt_regs *regs)
 #endif
 }
 
-void k1c_breakpoint(void)
+static int k1c_bkpt_handler(u64 es, u64 ea, struct pt_regs *regs)
 {
-	struct pt_regs *regs = task_pt_regs(current);
-
-	pr_debug("%s pc=0x%llx\n", __func__, regs->spc);
+	/* Unexpected breakpoint */
+	if (!(current->ptrace & PT_PTRACED))
+		return BREAK_HOOK_ERROR;
 
 	/* deliver the signal to userspace */
 	force_sig_fault(SIGTRAP, TRAP_BRKPT, (void __user *) regs->spc);
+
+	return BREAK_HOOK_HANDLED;
 }
 
-static void k1c_stepi(void)
+static void k1c_stepi(struct pt_regs *regs)
 {
-	struct pt_regs *regs = task_pt_regs(current);
-
-	pr_debug("%s pc=0x%llx\n", __func__, regs->spc);
-
 	/* deliver the signal to userspace */
 	force_sig_fault(SIGTRAP, TRAP_TRACE, (void __user *) regs->spc);
 }
@@ -429,7 +428,7 @@ void debug_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 		if (check_hw_watchpoint_stepped(regs))
 			user_disable_single_step(current);
 		else
-			k1c_stepi();
+			k1c_stepi(regs);
 		break;
 	case DEBUG_CAUSE_BREAKPOINT:
 		check_hw_breakpoint(regs);
@@ -444,3 +443,18 @@ void debug_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 
 	dame_irq_check(regs);
 }
+
+static struct break_hook bkpt_break_hook = {
+	.id = BREAK_CAUSE_BKPT,
+	.handler = k1c_bkpt_handler,
+	.mode = BREAK_MODE_USER,
+};
+
+static int __init arch_init_breakpoint(void)
+{
+	break_hook_register(&bkpt_break_hook);
+
+	return 0;
+}
+
+postcore_initcall(arch_init_breakpoint);

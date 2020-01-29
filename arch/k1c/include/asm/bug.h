@@ -4,7 +4,7 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2019 Kalray Inc.
+ * Copyright (C) 2019-2020 Kalray Inc.
  */
 
 #ifndef _ASM_K1C_BUG_H
@@ -14,11 +14,11 @@
 #include <linux/const.h>
 #include <linux/types.h>
 
+#include <asm/break_hook.h>
+
 #ifdef CONFIG_GENERIC_BUG
 
-typedef u32 bug_insn_t;
-
-#define BUG_INSN	0x0000009f
+#define BUG_INSN	K1C_BREAK_INSN(BREAK_CAUSE_BUG)
 
 #define __BUG_ENTRY_ADDR	".dword 1b"
 
