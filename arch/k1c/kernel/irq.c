@@ -8,6 +8,7 @@
  */
 
 #include <linux/irqdomain.h>
+#include <linux/irqflags.h>
 #include <linux/hardirq.h>
 #include <linux/irqchip.h>
 #include <linux/bitops.h>
@@ -24,6 +25,8 @@ void do_IRQ(unsigned long hwirq_mask, struct pt_regs *regs)
 	struct pt_regs *old_regs = set_irq_regs(regs);
 	int irq;
 	unsigned int hwirq;
+
+	trace_hardirqs_off();
 
 	irq_enter();
 
