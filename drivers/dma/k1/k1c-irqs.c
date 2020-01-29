@@ -98,10 +98,21 @@ static irqreturn_t k1c_dma_irq_handler(int chirq, void *arg)
 	return IRQ_HANDLED;
 }
 
+/**
+ * k1c_dma_request_irq() - request and disable irq for specific channel
+ * @phy: Current channel phy
+ *
+ * Can not be called in atomic context
+ */
 int k1c_dma_request_irq(struct k1c_dma_phy *phy)
 {
-	return devm_request_irq(phy->dev, phy->msi_cfg.irq,
+	int ret = devm_request_irq(phy->dev, phy->msi_cfg.irq,
 			       k1c_dma_irq_handler, 0, NULL, phy);
+
+	if (ret)
+		return ret;
+
+	return 0;
 }
 
 void k1c_dma_free_irq(struct k1c_dma_phy *phy)
@@ -133,6 +144,12 @@ int k1c_dma_request_msi(struct platform_device *pdev)
 		phy = k1c_dma_get_phy_id(msi);
 		phy->msi_cfg.irq = msi->irq;
 		phy->msi_cfg.msi_index = msi->platform.msi_index;
+		rc = k1c_dma_request_irq(phy);
+		if (rc) {
+			dev_err(dev->dma.dev, "Failed to request irq[%d]\n",
+				phy->msi_cfg.msi_index);
+			return rc;
+		}
 	}
 
 	return rc;
