@@ -30,25 +30,53 @@ Currently, the memory mapping is the following for 4KB page:
 | 0000 0040 0000 0000   | 0000 007F FFFF FFFF   | ---  | 256GB |   MMAP       |
 | 0000 0080 0000 0000   | FFFF FF7F FFFF FFFF   | ---  | ---   | Gap          |
 | FFFF FF80 0000 0000   | FFFF FFFF FFFF FFFF   | ---  | 512GB | Kernel       |
-|   FFFF FF80 0000 0000 |   FFFF FF80 3FFF FFFF | R-X  | 1GB   |   Text       |
-|   FFFF FF80 4000 0000 |   FFFF FF80 7FFF FFFF | RWX  | 1GB   |   Vmalloc    |
-|   FFFF FF80 8000 0000 |   FFFF FFFF FFFF FFFF | RW   | 510GB |   Free area  |
+|   FFFF FF80 0000 0000 |   FFFF FF8F FFFF FFFF | RWX  | 64GB  |   Direct Map |
+|   FFFF FF90 0000 0000 |   FFFF FF90 3FFF FFFF | RWX  | 1GB   |   Vmalloc    |
+|   FFFF FF90 4000 0000 |   FFFF FFFF FFFF FFFF | RW   | 447GB |   Free area  |
 +-----------------------+-----------------------+------+-------+--------------+
 
 Enable the MMU
 ==============
 
-Except the k1c_start() function which loaded at 0x0 in physical memory, all other kernel
-functions and symbols are in virtual memory. To be able to switch from physical
-addresses to virtual addresses there is different solution. We choose to setup the
-TLB at the very beginning of the boot process to be able to run both piece of code.
-For this we added two entries in the LTLB. The first one, LTLB[0], contains the
-mapping between virtual memory and DDR. Its size is 1Go. The second entry, LTLB[1],
-contains a flat mapping of the first 512Ko of the SMEM. Once those two entries
-are present we can enable the MMU. LTLB[1] will be removed during paging_init()
-because once we are really running in virtual space we don't need it anymore.
-This entry is then reused to map devices mmu entry. This mapping is used for
-ioremap.
+All kernel functions and symbols are in virtual memory except for k1c_start()
+function which is loaded at 0x0 in physical memory.
+To be able to switch from physical addresses to virtual addresses we choose to
+setup the TLB at the very beginning of the boot process to be able to map both
+pieces of code. For this we added two entries in the LTLB. The first one,
+LTLB[0], contains the mapping between virtual memory and DDR. Its size is 512MB.
+The second entry, LTLB[1], contains a flat mapping of the first 2MB of the SMEM.
+Once those two entries are present we can enable the MMU. LTLB[1] will be
+removed during paging_init() because once we are really running in virtual space
+it will not be used anymore.
+In order to access more than 512MB DDR memory, the remaining memory (> 512MB) is
+refill using a comparison in kernel_perf_refill that does not walk the kernel
+page table, thus having a faster refill time for kernel. These entries are
+inserted into the LTLB for easier computation (4 LTLB entries). The drawback of
+this approach is that mapped entries are using RWX protection attributes,
+leading to no protection at all.
+
+Kernel strict RWX
+=================
+
+CONFIG_STRICT_KERNEL_RWX is enabled by default in default_defconfig.
+Once booted, if CONFIG_STRICT_KERNEL_RWX is enable, the kernel text and memory
+will be mapped in the init_mm page table. Once mapped, the refill routine for
+the kernel is patched to always do a page table walk, bypassing the faster
+comparison but enforcing page protection attributes when refilling.
+Finally, the LTLB[0] entry is replaced by a 4K one, mapping only exceptions with
+RX protection. It allows us to never trigger nomapping on nomapping refill
+routine which would (obviously) not work... Once this is done, we can flush the
+4 LTLB entries for kernel refill in order to be sure there is no stalled
+entries and that new entries inserted in JTLB will apply.
+
+By default, the following policy is applied on vmlinux sections:
+- init_data: RW
+- init_text: RX (or RWX if parameter rodata=off)
+- text: RX (or RWX if parameter rodata=off)
+- rodata: RW before init, RO after init
+- sdata: RW
+
+Kernel RWX mode can then be switched on/off using /sys/k1c/kernel_rwx file.
 
 Privilege Level
 ================
@@ -101,18 +129,19 @@ released will now be used by the buddy allocator.
 Peripherals
 ===========
 
-Currently, peripherals are fully mapped in a single 1G page. This is not
-the final mapping since we would like to use a dynamic mapping for that.
-Moreover, PCIe mapping will be necessary dynamic and using JTLB.
-The current ioremap implementation is simply adding the peripheral virtual
-address offset to the requested io address. We do not add any mapping
-since we use the existing resident full peripheral mapping.
+Peripherals are mapped using standard ioremap infrastructure and hence
+mapped addresses are located in the vmalloc space.
 
 LTLB Usage
 ==========
 
 LTLB is used to add resident mapping which allows for faster MMU lookup.
-Currently, the LTLB is used to map some mandatory kernel pages.
+Currently, the LTLB is used to map some mandatory kernel pages and to allow fast
+accesses to l2 cache (mailbox and registers).
+When CONFIG_STRICT_KERNEL_RWX is disabled, 4 entries are reserved for kernel
+TLB refill using 512MB pages. When CONFIG_STRICT_KERNEL_RWX is enabled, these
+entries are unused since kernel is paginated using the same mecanism than for
+user (page walking and entries in JTLB)
 
 Page Table
 ==========
@@ -168,22 +197,19 @@ About the format of the PTE entry, as we are not forced by hardware for choices,
 we choose to follow the format described in the RiscV implementation as a
 starting point.
 
-  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
-  | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-  +---------+--------+----+--------+---+---+---+---+---+---+---+---+---+---+
-      PFN     Unused   S    PageSZ   H  UNC DEV  D   A   G   X   W   R   P
-
+ +---------+--------+----+--------+---+---+---+---+---+---+------+---+---+
+ | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3..2 | 1 | 0 |
+ +---------+--------+----+--------+---+---+---+---+---+---+------+---+---+
+     PFN     Unused   S    PageSZ   H   G   X   W   R   D    CP    A   P
        where:
         P: Present
+        A: Accessed
+        CP: Cache policy
+        D: Dirty
         R: Read
         W: Write
         X: Executable
-        U: User
         G: Global
-        A: Accessed
-        D: Dirty
-        DEV: Device space mapping
-        UNC: Uncached mapping
         H: Huge page
         PageSZ: Page size as set in TLB format (0:4Ko, 1:64Ko, 2:2Mo, 3:512Mo)
         S: Soft/Special
@@ -202,13 +228,16 @@ K1C core does not feature a hardware page walker. This work must be done
 by the core in software. In order to optimize TLB refill, a special fast
 path is taken when entering in kernel space.
 In order to speed up the process, the following actions are taken:
-1 - save some registers in a per process scratchpad
-2 - If the trap is a nomapping then try the fastpath
-3 - Save some more registers for this fastpath
-4 - Try to walk the page table
-  4.1 - If entry is not present, take the slowpath
-5 - Refill the tlb properly
-6 - Exit by restoring only a few registers
+# Save some registers in a per process scratchpad
+# If the trap is a nomapping then try the fastpath
+# Save some more registers for this fastpath
+# Check if faulting address is a memory direct mapping one.
+ # If entry is a direct mapping one and RWX is not enabled, add an entry into LTLB
+ # If not, continue
+# Try to walk the page table
+ # If entry is not present, take the slowpath (do_page_fault)
+# Refill the tlb properly
+# Exit by restoring only a few registers
 
 ASN Handling
 ============
@@ -251,3 +280,19 @@ To support other huge page sizes (64Ko and 512Mo) we need to use several
 contiguous entries in the page table. For huge page of 64Ko we will need to
 use 16 entries in the PTE and for a huge page of 512Mo it means that 256
 entries in PMD will be used.
+
+Debug
+=====
+
+In order to debug the page table and tlb entries, gdb scripts contains commands
+which allows to dump the page table:
+- lx-k1c-page-table-walk
+ - Display the current process page table by default
+- lx-k1c-tlb-decode
+ - Display the content of $tel and $teh into something readable
+
+Other commands available in k1-gdb are the following:
+- mppa-dump-tlb
+ - Display the content of TLBs (JTLB and LTLB)
+- mppa-lookup-addr
+ - Find physical address matching a virtual one
