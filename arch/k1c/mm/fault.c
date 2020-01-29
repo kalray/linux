@@ -232,9 +232,14 @@ no_context:
 	 * terminate things with extreme prejudice.
 	 */
 	bust_spinlocks(1);
-	pr_alert(CUT_HERE "Unable to handle kernel %s at virtual address %016llx\n",
-		 (ea < PAGE_SIZE) ? "NULL pointer dereference" :
-		 "paging request", ea);
+	if (k1c_sfr_field_val(es, ES, HTC) == K1C_TRAP_PROTECTION)
+		pr_alert(CUT_HERE "Kernel protection trap at virtual address %016llx\n",
+			 ea);
+	else {
+		pr_alert(CUT_HERE "Unable to handle kernel %s at virtual address %016llx\n",
+			 (ea < PAGE_SIZE) ? "NULL pointer dereference" :
+			 "paging request", ea);
+	}
 	die(regs, ea, "Oops");
 	bust_spinlocks(0);
 	do_exit(SIGKILL);
