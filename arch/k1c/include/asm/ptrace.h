@@ -164,8 +164,6 @@ struct pt_regs {
 #define DEBUG_CAUSE_STEPI	2
 #define DEBUG_CAUSE_DSU_BREAK	3
 
-void k1c_breakpoint(void);
-
 static inline bool in_syscall(struct pt_regs const *regs)
 {
 	return es_ec(regs) == ES_SYSCALL;

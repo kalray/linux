@@ -20,6 +20,7 @@
 #include <asm/dame.h>
 #include <asm/traps.h>
 #include <asm/ptrace.h>
+#include <asm/break_hook.h>
 #include <asm/stacktrace.h>
 
 int show_unhandled_signals = 1;
@@ -118,42 +119,42 @@ static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
 	do_exit(SIGKILL);
 }
 
-#ifdef CONFIG_GENERIC_BUG
 int is_valid_bugaddr(unsigned long pc)
 {
-	bug_insn_t insn;
-
-	if (!__kernel_text_address(pc))
-		return 0;
-
-	if (probe_kernel_address((bug_insn_t *)pc, insn))
-		return 0;
-
-	return (insn == BUG_INSN);
+	/*
+	 * Since the bug was reported, this means that the break hook handling
+	 * already check the faulting instruction so there is no need for
+	 * additionnal check here. This is a BUG for sure.
+	 */
+	return 1;
 }
-#endif /* CONFIG_GENERIC_BUG */
 
-static void opcode_trap_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
+static int bug_break_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
-#ifdef CONFIG_GENERIC_BUG
-	if (!user_mode(regs)) {
-		enum bug_trap_type type;
+	enum bug_trap_type type;
 
-		type = report_bug(regs->spc, regs);
-		switch (type) {
-		case BUG_TRAP_TYPE_NONE:
-			break;
-		case BUG_TRAP_TYPE_WARN:
-			/* Skip over BUG */
-			regs->spc += sizeof(bug_insn_t);
-			return;
-		case BUG_TRAP_TYPE_BUG:
-			die(regs, ea, "Kernel BUG");
-		}
+	type = report_bug(regs->spc, regs);
+	switch (type) {
+	case BUG_TRAP_TYPE_NONE:
+		return BREAK_HOOK_ERROR;
+	case BUG_TRAP_TYPE_WARN:
+		break;
+	case BUG_TRAP_TYPE_BUG:
+		die(regs, ea, "Kernel BUG");
+		break;
 	}
-#endif /* CONFIG_GENERIC_BUG */
-	panic_or_kill(es, ea, regs, SIGILL, ILL_ILLOPC);
+
+	/* Skip over break insn if we survived ! */
+	k1c_skip_break_insn(regs);
+
+	return BREAK_HOOK_HANDLED;
 }
+
+static struct break_hook bug_break_hook = {
+	.handler = bug_break_handler,
+	.id = BREAK_CAUSE_BUG,
+	.mode = BREAK_MODE_KERNEL,
+};
 
 #define GEN_TRAP_HANDLER(__name, __sig, __code) \
 static void __name ## _trap_handler(uint64_t es, uint64_t ea, \
@@ -166,6 +167,7 @@ GEN_TRAP_HANDLER(default, SIGKILL, SI_KERNEL);
 GEN_TRAP_HANDLER(privilege, SIGILL, ILL_PRVREG);
 GEN_TRAP_HANDLER(dmisalign, SIGBUS, BUS_ADRALN);
 GEN_TRAP_HANDLER(syserror, SIGBUS, BUS_ADRERR);
+GEN_TRAP_HANDLER(opcode, SIGILL, ILL_ILLOPC);
 
 static void register_trap_handler(unsigned int trap_nb, trap_handler_func fn)
 {
@@ -178,21 +180,17 @@ static void register_trap_handler(unsigned int trap_nb, trap_handler_func fn)
 
 static void do_vsfr_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
-	/* check if it the breakpoint instruction: set $vsfr0=$r63*/
-	if ((current->ptrace & PT_PTRACED) &&
-	     trap_sfri(es) == K1C_TRAP_SFRI_SET &&
-	     trap_gprp(es) == 63 &&
-	     trap_sfrp(es) == K1C_SFR_VSFR0) {
-		k1c_breakpoint();
+	if (break_hook_handler(es, ea, regs) == BREAK_HOOK_HANDLED)
 		return;
-	}
 
-	default_trap_handler(es, ea, regs);
+	panic_or_kill(es, ea, regs, SIGILL, ILL_PRVREG);
 }
 
 void __init trap_init(void)
 {
 	int i;
+
+	break_hook_register(&bug_break_hook);
 
 	for (i = 0; i < K1C_TRAP_COUNT; i++)
 		register_trap_handler(i, default_trap_handler);
