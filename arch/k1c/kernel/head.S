@@ -36,6 +36,7 @@
 			PS_VAL_WFXL(MME, 1) | \
 			PS_VAL_WFXL(MMUP, 1) | \
 			PS_VAL_WFXL(ET, 0) | \
+			PS_VAL_WFXL(HTD, 0) | \
 			PS_VAL_WFXL(PMJ, K1C_SUPPORTED_PSIZE)
 
 #define PCR_VAL_WFXM(__field, __val) \
@@ -226,6 +227,10 @@ clear_bss:
 	addd $sp = $r40, THREAD_SIZE
 	/* Clear frame pointer */
 	make $fp = 0x0
+	/* Setup the exception handler */
+	make $r27 = __exception_start
+	;;
+	set $ev = $r27
 	/* Here we go ! start the C stuff */
 	make $r20 = arch_low_level_start
 	;;
@@ -542,6 +547,9 @@ ENTRY(smp_secondary_start)
 	ld.xs $r25 = $r24[$r25]
 	;;
 	set $sr = $r25
+	make $r27 = __exception_start
+	;;
+	set $ev = $r27
 	make $r26 = start_kernel_secondary
 	;;
 	icall $r26
