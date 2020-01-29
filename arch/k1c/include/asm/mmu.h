@@ -245,6 +245,15 @@ static inline int tlb_entry_match_addr(struct k1c_tlb_format tlbe,
 
 extern void k1c_mmu_early_setup(void);
 
+
+#if defined(CONFIG_STRICT_KERNEL_RWX)
+void mmu_disable_kernel_perf_refill(void);
+void local_mmu_enable_kernel_rwx(void);
+#else
+static inline void mmu_disable_kernel_perf_refill(void) {};
+static inline void local_mmu_enable_kernel_rwx(void) {};
+#endif
+
 void k1c_mmu_ltlb_remove_entry(unsigned long vaddr);
 void k1c_mmu_ltlb_add_entry(unsigned long vaddr, phys_addr_t paddr,
 			    pgprot_t flags, unsigned long page_shift);

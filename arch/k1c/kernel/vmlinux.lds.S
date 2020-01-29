@@ -80,6 +80,11 @@ SECTIONS
 
 	_stext = .;
 	__init_begin = .;
+	__inittext_start = .;
+	.exit.text : AT(ADDR(.exit.text) - LOAD_OFFSET)
+	{
+		EXIT_TEXT
+	}
 
 	.early_exception ALIGN(EXCEPTION_ALIGNMENT) :
 				AT(ADDR(.early_exception) - LOAD_OFFSET)
@@ -89,14 +94,13 @@ SECTIONS
 
 	HEAD_TEXT_SECTION
 	INIT_TEXT_SECTION(PAGE_SIZE)
+	. = ALIGN(PAGE_SIZE);
+	__inittext_end = .;
+	__initdata_start = .;
 	INIT_DATA_SECTION(16)
 
 	/* we have to discard exit text and such at runtime, not link time */
-	.exit.text :
-	{
-		EXIT_TEXT
-	}
-	.exit.data :
+	.exit.data : AT(ADDR(.exit.data) - LOAD_OFFSET)
 	{
 		EXIT_DATA
 	}
@@ -109,13 +113,17 @@ SECTIONS
 		. += DTB_DEFAULT_SIZE;
 		__dtb_end = .;
 	}
+	. = ALIGN(PAGE_SIZE);
+	__initdata_end = .;
 	__init_end = .;
 
+	/* Everything below this point will be mapped RO EXEC up to _etext */
 	.text ALIGN(PAGE_SIZE) : AT(ADDR(.text) - LOAD_OFFSET)
 	{
 		_text = .;
 		EXCEPTION_SECTIONS(exception)
 		*(.exception.text)
+		. = ALIGN(PAGE_SIZE);
 		__exception_end = .;
 		TEXT_TEXT
 		SCHED_TEXT
@@ -125,27 +133,34 @@ SECTIONS
 		ENTRY_TEXT
 		IRQENTRY_TEXT
 		*(.fixup)
-		_etext = .;
 	}
+	. = ALIGN(PAGE_SIZE);
 	_etext = .;
 
+	/* Everything below this point will be mapped RO NOEXEC up to _sdata */
+	__rodata_start = .;
+	RO_DATA_SECTION(PAGE_SIZE)
+	EXCEPTION_TABLE(8)
+	NOTES
+	. = ALIGN(PAGE_SIZE);
+	__rodata_end = .;
+
+	/* Everything below this point will be mapped RW NOEXEC up to _end */
+	_sdata = .;
+	RW_DATA_SECTION(L1_CACHE_BYTES, PAGE_SIZE, THREAD_SIZE)
+	_edata = .;
+
+	BSS_SECTION(32, 32, 32)
+	. = ALIGN(PAGE_SIZE);
+	_end = .;
+
+	/* This page will be mapped using a FIXMAP */
 	.gdb_page ALIGN(PAGE_SIZE) : AT(ADDR(.gdb_page) - LOAD_OFFSET)
 	{
 		_debug_start = ADDR(.gdb_page) - LOAD_OFFSET;
 		. += PAGE_SIZE;
 	}
 	_debug_start_lma = ASM_FIX_TO_VIRT(FIX_GDB_MEM_BASE_IDX);
-
-	_sdata = .;
-	RO_DATA_SECTION(PAGE_SIZE)
-	RW_DATA_SECTION(L1_CACHE_BYTES, PAGE_SIZE, THREAD_SIZE)
-	_edata = .;
-
-	EXCEPTION_TABLE(8)
-	NOTES
-
-	BSS_SECTION(32, 32, 32)
-	_end = .;
 
 	/* Debugging sections */
 	STABS_DEBUG
