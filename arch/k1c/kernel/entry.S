@@ -279,23 +279,20 @@ asn_error_panic_str_label:
 	so PT_LC_LE_LS_RA[$r63] = $r4r5r6r7
 	/* Clear frame pointer */
 	make $fp = 0
+	;;
+	/* Copy regs stack pointer for macro caller */
+	copyd \pt_regs_sp = $sp
+#ifdef CONFIG_DEBUG_EXCEPTION_STACK
+	addd $sp = $sp, -REG_SIZE
+	;;
+	sd VA_TO_PA_OFFSET[$sp] = $sp
+	;;
+#endif
 	/* Reenable hwloop, MMU and clear exception taken */
 	make $r8 = PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS
 	;;
 	wfxl $ps, $r8
 	;;
-	/* When entering exceptions, IRQs are always disabled */
-	call_trace_hardirqs off
-	;;
-	/* Copy regs stack pointer for macro caller */
-	copyd \pt_regs_sp = $sp
-	;;
-#ifdef CONFIG_DEBUG_EXCEPTION_STACK
-	addd $sp = $sp, -REG_SIZE
-	;;
-	sd 0[$sp] = $sp
-	;;
-#endif
 .endm
 
 /***********************************************************************
