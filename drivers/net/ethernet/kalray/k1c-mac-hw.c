@@ -27,12 +27,12 @@ static u64 k1c_mac_readq(struct k1c_eth_hw *hw, u64 off)
 
 static void k1c_phy_writel(struct k1c_eth_hw *hw, u32 val, u64 off)
 {
-	writel(val, hw->res[K1C_ETH_RES_PHY].base + off);
+	writel(val, hw->res[K1C_ETH_RES_PHYMAC].base + off);
 }
 
 static u32 k1c_phy_readl(struct k1c_eth_hw *hw, u64 off)
 {
-	u32 val = readl(hw->res[K1C_ETH_RES_PHY].base + off);
+	u32 val = readl(hw->res[K1C_ETH_RES_PHYMAC].base + off);
 	return val;
 }
 
