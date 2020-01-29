@@ -795,9 +795,6 @@ int k1c_dma_allocate_queues(struct k1c_dma_phy *phy,
 		phy->compq.base = phy->base + K1C_DMA_TX_COMP_Q_OFFSET +
 			phy->hw_id * K1C_DMA_TX_COMP_Q_ELEM_SIZE;
 	}
-	ret = k1c_dma_request_irq(phy);
-	if (ret)
-		goto err;
 
 	return 0;
 
@@ -825,7 +822,6 @@ void k1c_dma_release_queues(struct k1c_dma_phy *phy,
 			    struct k1c_dma_job_queue_list *jobq_list)
 {
 	k1c_dma_stop_queues(phy);
-	k1c_dma_free_irq(phy);
 
 	k1c_dma_release_queue(phy, &phy->q);
 	k1c_dma_release_queue(phy, &phy->compq);
