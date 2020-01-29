@@ -240,12 +240,256 @@ static void __init fixedrange_init(void)
 	set_pmd(pmd, __pmd(__pa(fixmap_pte_p)));
 }
 
+#ifdef CONFIG_STRICT_KERNEL_RWX
+
+static bool use_huge_page(unsigned long start, unsigned long end,
+			  phys_addr_t phys, unsigned long page_size)
+{
+	unsigned long size = end - start;
+
+	return IS_ALIGNED(start | phys, page_size) && (size >= page_size);
+}
+
+static void create_pte_mapping(pmd_t *pmdp, unsigned long va_start,
+			       unsigned long va_end, phys_addr_t phys,
+			       pgprot_t prot, bool alloc_pgtable)
+{
+	pmd_t pmd = READ_ONCE(*pmdp);
+	unsigned long nr_cont, i;
+	pte_t *ptep = NULL;
+	pgprot_t pte_prot;
+
+	if (pmd_none(pmd)) {
+		BUG_ON(!alloc_pgtable);
+		ptep = alloc_page_table();
+		set_pmd(pmdp, __pmd(__pa(ptep)));
+		pmd = READ_ONCE(*pmdp);
+	}
+	BUG_ON(pmd_bad(pmd));
+
+	ptep = pte_offset_kernel(pmdp, va_start);
+
+	do {
+		/* Try to use 64K page whenever it is possible */
+		if (use_huge_page(va_start, va_end, phys, K1C_PAGE_64K_SIZE)) {
+			pte_prot = __pgprot(pgprot_val(prot) | _PAGE_SZ_64K |
+					    _PAGE_HUGE);
+			nr_cont = K1C_PAGE_64K_NR_CONT;
+		} else {
+			pte_prot = prot;
+			nr_cont = 1;
+		}
+
+		for (i = 0; i < nr_cont; i++) {
+			set_pte(ptep, pfn_pte(phys_to_pfn(phys), pte_prot));
+			ptep++;
+		}
+
+		phys += nr_cont * PAGE_SIZE;
+		va_start += nr_cont * PAGE_SIZE;
+	} while (va_start != va_end);
+}
+
+static void create_pmd_mapping(pgd_t *pgdp, unsigned long va_start,
+			       unsigned long va_end, phys_addr_t phys,
+			       pgprot_t prot, bool alloc_pgtable)
+{
+	unsigned long next, huge_size, i, nr_cont;
+	pgprot_t pmd_prot;
+	bool use_huge;
+	pmd_t *pmdp;
+	pud_t *pudp;
+	pud_t pud;
+	pte_t pte;
+
+	pudp = pud_offset(pgdp, va_start);
+	pud = READ_ONCE(*pudp);
+
+	if (pud_none(pud)) {
+		BUG_ON(!alloc_pgtable);
+		pmdp = alloc_page_table();
+		set_pud(pudp, __pud(__pa(pmdp)));
+		pud = READ_ONCE(*pudp);
+	}
+	BUG_ON(pud_bad(pud));
+
+	pmdp = pmd_offset(pudp, va_start);
+
+	do {
+		next = pmd_addr_end(va_start, va_end);
+
+		/* Try to use huge pages (2M, 512M) whenever it is possible */
+		if (use_huge_page(va_start, next, phys, K1C_PAGE_2M_SIZE)) {
+			pmd_prot = __pgprot(pgprot_val(prot) | _PAGE_SZ_2M);
+			nr_cont = 1;
+			huge_size = K1C_PAGE_2M_SIZE;
+			use_huge = true;
+		} else if (use_huge_page(va_start, next, phys,
+					 K1C_PAGE_512M_SIZE)) {
+			pmd_prot = __pgprot(pgprot_val(prot) | _PAGE_SZ_512M);
+			nr_cont = K1C_PAGE_512M_NR_CONT;
+			huge_size = K1C_PAGE_512M_SIZE;
+			use_huge = true;
+		} else {
+			use_huge = false;
+		}
+
+		if (use_huge) {
+			pmd_prot = __pgprot(pgprot_val(pmd_prot) | _PAGE_HUGE);
+			pte = pfn_pte(phys_to_pfn(phys), pmd_prot);
+			for (i = 0; i < nr_cont; i++) {
+				set_pmd(pmdp, __pmd(pte_val(pte)));
+				pmdp++;
+			}
+		} else {
+			create_pte_mapping(pmdp, va_start, next, phys, prot,
+					   alloc_pgtable);
+			pmdp++;
+		}
+
+		phys += next - va_start;
+	} while (va_start = next, va_start != va_end);
+}
+
+static void create_pgd_mapping(pgd_t *pgdir, phys_addr_t phys,
+				 unsigned long va_start, unsigned long va_end,
+				 pgprot_t prot, bool alloc_pgtable)
+{
+	unsigned long next;
+	pgd_t *pgdp = pgd_offset_raw(pgdir, va_start);
+
+	BUG_ON(!PAGE_ALIGNED(phys));
+	BUG_ON(!PAGE_ALIGNED(va_start));
+	BUG_ON(!PAGE_ALIGNED(va_end));
+
+	do {
+		next = pgd_addr_end(va_start, va_end);
+		create_pmd_mapping(pgdp, va_start, next, phys, prot,
+				   alloc_pgtable);
+		phys += next - va_start;
+	} while (pgdp++, va_start = next, va_start != va_end);
+}
+
+static void __init map_kernel_segment(pgd_t *pgdp, void *va_start, void *va_end,
+				      pgprot_t prot)
+{
+	phys_addr_t pa_start = __pa(va_start);
+
+	create_pgd_mapping(pgdp, pa_start, (unsigned long) va_start,
+			     (unsigned long) va_end, prot, true);
+}
+
+static void remap_kernel_segment(pgd_t *pgdp, void *va_start, void *va_end,
+				 pgprot_t prot)
+{
+	phys_addr_t pa_start = __pa(va_start);
+
+	create_pgd_mapping(pgdp, pa_start, (unsigned long) va_start,
+			     (unsigned long) va_end, prot, false);
+
+	flush_tlb_kernel_range((unsigned long) va_start,
+			       (unsigned long) va_end);
+}
+
+/*
+ * Create fine-grained mappings for the kernel.
+ */
+static void __init map_kernel(void)
+{
+	pgprot_t text_prot = PAGE_KERNEL_ROX;
+
+	/*
+	 * External debuggers may need to write directly to the text
+	 * mapping to install SW breakpoints. Allow this (only) when
+	 * explicitly requested with rodata=off.
+	 */
+	if (!rodata_enabled)
+		text_prot = PAGE_KERNEL_EXEC;
+
+	map_kernel_segment(swapper_pg_dir, __inittext_start, __inittext_end,
+			   text_prot);
+	map_kernel_segment(swapper_pg_dir, __initdata_start, __initdata_end,
+			   PAGE_KERNEL);
+	map_kernel_segment(swapper_pg_dir, __rodata_start, __rodata_end,
+			   PAGE_KERNEL);
+	map_kernel_segment(swapper_pg_dir, _sdata, _end, PAGE_KERNEL);
+	/* We skip exceptions mapping to avoid multimappings */
+	map_kernel_segment(swapper_pg_dir, __exception_end, _etext, text_prot);
+}
+
+static void __init map_memory(void)
+{
+	phys_addr_t start, end;
+	struct memblock_region *reg;
+	phys_addr_t kernel_start = __pa(__inittext_start);
+	phys_addr_t kernel_end = __pa_symbol(_end);
+
+	/**
+	 * Mark the full kernel text/data as nomap to avoid remapping all
+	 * section as RW.
+	 */
+	memblock_mark_nomap(kernel_start, kernel_end - kernel_start);
+
+	/* Map all memory banks */
+	for_each_memblock(memory, reg) {
+		start = reg->base;
+		end = start + reg->size;
+
+		if (start >= end)
+			break;
+		if (memblock_is_nomap(reg))
+			continue;
+
+		create_pgd_mapping(swapper_pg_dir, start,
+				   (unsigned long) __va(start),
+				   (unsigned long) __va(end), PAGE_KERNEL_EXEC,
+				   true);
+	}
+	memblock_clear_nomap(kernel_start, kernel_end - kernel_start);
+}
+
+void mark_rodata_ro(void)
+{
+	remap_kernel_segment(swapper_pg_dir, __rodata_start, __rodata_end,
+			     PAGE_KERNEL_RO);
+}
+
+static void __init setup_kernel_paging(void)
+{
+	map_kernel();
+	map_memory();
+}
+
+static int __init parse_rodata(char *arg)
+{
+	strtobool(arg, &rodata_enabled);
+
+	return 0;
+}
+early_param("rodata", parse_rodata);
+
+#else
+
+static void __init setup_kernel_paging(void)
+{
+}
+
+static void remap_kernel_segment(pgd_t *pgdp, void *va_start, void *va_end,
+				 pgprot_t prot)
+{
+}
+
+#endif
 
 void __init setup_arch_memory(void)
 {
 	setup_bootmem();
 	paging_init();
 	fixedrange_init();
+	setup_kernel_paging();
+
+	mmu_disable_kernel_perf_refill();
+	local_mmu_enable_kernel_rwx();
 }
 
 void __init mem_init(void)
@@ -272,6 +516,10 @@ void __init free_initrd_mem(unsigned long start, unsigned long end)
 
 void free_initmem(void)
 {
+	/* Remap init text as RW to allow writing to it */
+	remap_kernel_segment(swapper_pg_dir, __inittext_start, __inittext_end,
+			     PAGE_KERNEL);
+
 #ifdef CONFIG_POISON_INITMEM
 	free_initmem_default(0x0);
 #else
