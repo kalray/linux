@@ -15,6 +15,9 @@
 #include <linux/of_gpio.h>
 #include <asm-generic/pci.h>
 
+#define ARCH_GENERIC_PCI_MMAP_RESOURCE	1
+#define HAVE_PCI_MMAP			1
+
 extern int isa_dma_bridge_buggy;
 
 /* Can be used to override the logic in pci_scan_bus for skipping
