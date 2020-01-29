@@ -150,7 +150,12 @@ When handling a signal, the path is the following:
 Registers handling
 ==================
 
-Registers are handled differently regarding the exception paths.
+MMU is disabled in all exceptions paths, during register save and restoration.
+This will prevent from triggering MMU fault (such as TLB miss) which could
+clobber the current register state. Such event can occurs when RWX mode is
+enabled and the memory accessed to save register can trigger a TLB miss.
+Aside from that which is common for all exceptions path, registers are saved
+differently regarding the type of exception.
 
 Interrupts and traps
 --------------------
