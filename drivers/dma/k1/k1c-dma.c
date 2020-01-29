@@ -643,6 +643,7 @@ static void k1c_dma_free_chan_resources(struct dma_chan *chan)
 	vchan_free_chan_resources(vc);
 	rhashtable_destroy(&c->rhtb);
 	kmem_cache_destroy(c->txd_cache);
+	clear_bit(K1C_DMA_HW_INIT_DONE, &c->state);
 }
 
 /**
