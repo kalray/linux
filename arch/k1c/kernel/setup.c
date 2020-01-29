@@ -64,20 +64,6 @@ static void __init setup_user_privilege(void)
  */
 void __init setup_processor(void)
 {
-	/* Setup exception vector */
-	uint64_t ev_val = (uint64_t) __exception_start;
-
-	k1c_sfr_set(K1C_SFR_EV, ev_val);
-
-	/* Exception taken bit is set to 1 after boot, we must clear it
-	 * before entering interrupts or we will take a trap,
-	 * not exactly what we want...
-	 */
-	k1c_sfr_clear_bit(K1C_SFR_PS, K1C_SFR_PS_ET_SHIFT);
-
-	/* Make sure nobody disabled traps before booting and reenable them */
-	k1c_sfr_clear_bit(K1C_SFR_PS, K1C_SFR_PS_HTD_SHIFT);
-
 	/* Clear performance monitor 0 */
 	k1c_sfr_set_mask(K1C_SFR_PMC, K1C_SFR_PMC_PM0C_WFXL_MASK, 0);
 
