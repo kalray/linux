@@ -454,10 +454,11 @@ void mark_rodata_ro(void)
 			     PAGE_KERNEL_RO);
 }
 
-static void __init setup_kernel_paging(void)
+void __init setup_kernel_paging(void)
 {
 	map_kernel();
 	map_memory();
+	init_kernel_rwx();
 }
 
 static int __init parse_rodata(char *arg)
@@ -469,10 +470,6 @@ static int __init parse_rodata(char *arg)
 early_param("rodata", parse_rodata);
 
 #else
-
-static void __init setup_kernel_paging(void)
-{
-}
 
 static void remap_kernel_segment(pgd_t *pgdp, void *va_start, void *va_end,
 				 pgprot_t prot)
@@ -486,10 +483,6 @@ void __init setup_arch_memory(void)
 	setup_bootmem();
 	paging_init();
 	fixedrange_init();
-	setup_kernel_paging();
-
-	mmu_disable_kernel_perf_refill();
-	local_mmu_enable_kernel_rwx();
 }
 
 void __init mem_init(void)
