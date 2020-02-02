@@ -186,6 +186,6 @@ void __init k1c_mmu_early_setup(void)
 			k1c_mmu_add_entry(MMC_SB_LTLB, bit, tlbe);
 		}
 
-		local_mmu_enable_kernel_rwx();
+		init_kernel_rwx();
 	}
 }
