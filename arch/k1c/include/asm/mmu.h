@@ -247,11 +247,11 @@ extern void k1c_mmu_early_setup(void);
 
 
 #if defined(CONFIG_STRICT_KERNEL_RWX)
-void mmu_disable_kernel_perf_refill(void);
-void local_mmu_enable_kernel_rwx(void);
+void init_kernel_rwx(void);
+void setup_kernel_paging(void);
 #else
-static inline void mmu_disable_kernel_perf_refill(void) {};
-static inline void local_mmu_enable_kernel_rwx(void) {};
+
+static inline void setup_kernel_paging(void) {}
 #endif
 
 void k1c_mmu_ltlb_remove_entry(unsigned long vaddr);
