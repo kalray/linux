@@ -99,12 +99,16 @@ void __init setup_arch(char **cmdline_p)
 	setup_processor();
 	setup_arch_memory();
 
+	/* Parameters might set static keys */
+	jump_label_init();
 	/*
 	 * Parse early param after setting up arch memory since
 	 * we need fixmap for earlycon and fixedmap need to do
 	 * memory allocation (fixed_range_init).
 	 */
 	parse_early_param();
+
+	setup_kernel_paging();
 
 	setup_device_tree();
 

@@ -73,7 +73,7 @@ static void map_kernel_in_ltlb(void)
 	k1c_mmu_add_entry(MMC_SB_LTLB, LTLB_ENTRY_KERNEL_TEXT, tlbe);
 }
 
-void mmu_disable_kernel_perf_refill(void)
+static void mmu_disable_kernel_perf_refill(void)
 {
 	unsigned int off = k1c_std_tlb_refill - k1c_perf_tlb_refill;
 	u32 goto_insn;
@@ -100,7 +100,7 @@ static void enable_kernel_perf_refill(void)
 	BUG_ON(ret);
 }
 
-void local_mmu_enable_kernel_rwx(void)
+static void local_mmu_enable_kernel_rwx(void)
 {
 	int i;
 	struct k1c_tlb_format tlbe;
@@ -115,6 +115,24 @@ void local_mmu_enable_kernel_rwx(void)
 	for (i = 0; i < REFILL_PERF_ENTRIES; i++)
 		k1c_mmu_add_entry(MMC_SB_LTLB, LTLB_KERNEL_RESERVED + i, tlbe);
 
+}
+
+/**
+ * init_kernel_rwx - Initialize kernel struct RWX at boot time
+ * This function MUST be used only at boot time to setup kernel strict RWX mode
+ * Once done, kernel rwx mode can be enabled/disabled using sysfs entry.
+ */
+void init_kernel_rwx(void)
+{
+	/* Kernel strict RWX mode disabled */
+	if (!kernel_rwx)
+		return;
+
+	/* First processor only will disable perf refill by patching code */
+	if (raw_smp_processor_id() == 0)
+		mmu_disable_kernel_perf_refill();
+
+	local_mmu_enable_kernel_rwx();
 }
 
 static void ipi_enable_kernel_rwx(void *arg)
