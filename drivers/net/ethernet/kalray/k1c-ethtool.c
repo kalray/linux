@@ -689,7 +689,7 @@ static int add_parser_filter(struct k1c_eth_netdev *ndev,
 	int err;
 	int action = cmd->fs.ring_cookie;
 	unsigned int parser_index = cmd->fs.location;
-	enum parser_dispatch_policy dispatch_policy = PARSER_ROUND_ROBIN;
+	enum parser_dispatch_policy dispatch_policy = PARSER_HASH_LUT;
 
 	if (parser_index < 0 || parser_index >= K1C_ETH_PARSER_NB) {
 		netdev_err(ndev->netdev, "Invalid parser identifier in location parameter (max: %d)\n",
