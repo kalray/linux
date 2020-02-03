@@ -27,6 +27,7 @@
 #define REPLICATE_32_MASK 0x0804020108040201
 
 #define PS_HWLOOP_ENABLE	(K1C_SFR_PS_HLE_MASK << 32)
+#define PS_HWLOOP_DISABLE	(K1C_SFR_PS_HLE_MASK)
 #define PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS	\
 	(PS_HWLOOP_ENABLE | K1C_SFR_PS_ET_MASK | SFR_SET_VAL_WFXL(PS, DAUS, 0))
 #define PS_ET_CLEAR K1C_SFR_PS_ET_MASK
@@ -157,15 +158,16 @@ asn_error_panic_str_label:
 /**
  * Disable MMU using a specified register
  * scratch_reg: Scratch register to be used for $ps modification (clobbered)
+ * ps_val: Additionnal $ps modifications after returning disabling MMU
  */
-.macro disable_mmu scratch_reg
+.macro disable_mmu scratch_reg ps_val=0
 	/* Disable MME in $sps */
 	make \scratch_reg = MME_WFXL(0)
 	;;
 	wfxl $sps = \scratch_reg
 	;;
 	/* Enable DAUS in $ps */
-	make \scratch_reg = SFR_SET_VAL_WFXL(PS, DAUS, 1)
+	make \scratch_reg = SFR_SET_VAL_WFXL(PS, DAUS, 1) | \ps_val
 	;;
 	wfxl $ps = \scratch_reg
 	/* We are now accessing data with MMU disabled */
@@ -395,7 +397,7 @@ _restore_regs:
 	;;
 1:
 #endif
-	disable_mmu $r0
+	disable_mmu $r0, PS_HWLOOP_DISABLE
 	;;
 	lo $r0r1r2r3 = __PA(PT_CS_SPC_SPS_ES)[$sp]
 	/* Compute physical address of stack to avoid using 64bits immediate */
@@ -1301,7 +1303,7 @@ check_work_pending:
 	cb.dnez $r1? call_work_pending
 	;;
 ret_to_user:
-	disable_mmu $r60
+	disable_mmu $r60, PS_HWLOOP_DISABLE
 	;;
 	/* Compute $sp virtual address to avoid using 64 bits offset */
 	addd $r15 = $sp, VA_TO_PA_OFFSET
