@@ -21,16 +21,19 @@
 #define K1C_ETH_LANE_NB            4
 #define K1C_ETH_PFC_CLASS_NB       8
 
-#define REG(b, o) pr_info("%-50s: @0x%lx - 0x%lx\n", #o, (u32)o, readl(b + o))
 #define K1C_ETH_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
+
+#define DUMP_REG(hw, bl, off) { \
+	u32 v = readl(hw->res[K1C_ETH_RES_##bl].base + off); \
+	pr_debug("%s @ 0x%x - 0x%x\n", #off, (u32)off, v); }
 
 /* Must *NOT* be used to clear field */
 #define K1C_ETH_SETF(val, field) (((val) << field ## _SHIFT) & (field ## _MASK))
 #define K1C_ETH_GETF(reg, field) (((reg) & field ## _MASK) >> (field ## _SHIFT))
 
-#define update_bits(bl, off, mask, v) { \
-	u32 vv = bl##_readl(hw, off) & ~(mask); \
-	bl##_writel(hw, ((v) | (vv)), off); }
+#define updatel_bits(hw, bl, off, mask, v) { \
+	u32 regval = readl(hw->res[K1C_ETH_RES_##bl].base + off) & ~(mask); \
+	writel(((v) | (regval)), hw->res[K1C_ETH_RES_##bl].base + off); }
 
 enum k1c_eth_io {
 	K1C_ETH0 = 0,
@@ -373,10 +376,6 @@ static inline u32 k1c_eth_readl(struct k1c_eth_hw *hw, const u64 off)
 	return readl(hw->res[K1C_ETH_RES_ETH].base + off);
 }
 
-#define DUMP_REG(hw, off) { u32 v = k1c_eth_readl(hw, off); \
-			  pr_info("%s @ 0x%x - 0x%x\n", #off, (u32)off, v); }
-#define DUMP_REG64(hw, off) { u64 v = k1c_eth_readq(hw, off); \
-			  pr_info("%s @ 0x%x - 0x%llx\n", #off, (u32)off, v); }
 
 u32 noc_route_c2eth(enum k1c_eth_io eth_id, int cluster_id);
 u32 noc_route_eth2c(enum k1c_eth_io eth_id, int cluster_id);

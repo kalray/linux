@@ -21,21 +21,21 @@ void k1c_eth_tx_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 	u32 noc_if = off + TX_NOC_IF_OFFSET +
 		k1c_cluster_id() * TX_NOC_IF_ELEM_SIZE;
 
-	DUMP_REG(hw, off + TX_FIFO_CTRL_OFFSET);
-	DUMP_REG(hw, off + TX_FIFO_STATUS_OFFSET);
-	DUMP_REG(hw, off + TX_FIFO_DROP_CNT_OFFSET);
-	DUMP_REG(hw, off + TX_FIFO_XOFF_CTRL_OFFSET);
+	DUMP_REG(hw, ETH, off + TX_FIFO_CTRL_OFFSET);
+	DUMP_REG(hw, ETH, off + TX_FIFO_STATUS_OFFSET);
+	DUMP_REG(hw, ETH, off + TX_FIFO_DROP_CNT_OFFSET);
+	DUMP_REG(hw, ETH, off + TX_FIFO_XOFF_CTRL_OFFSET);
 
-	DUMP_REG(hw, noc_if + hw->vchan * TX_NOC_IF_VCHAN_OFFSET +
+	DUMP_REG(hw, ETH, noc_if + hw->vchan * TX_NOC_IF_VCHAN_OFFSET +
 		 TX_NOC_IF_VCHAN_CTRL);
-	DUMP_REG(hw, noc_if + hw->vchan * TX_NOC_IF_VCHAN_OFFSET +
+	DUMP_REG(hw, ETH, noc_if + hw->vchan * TX_NOC_IF_VCHAN_OFFSET +
 		 TX_NOC_IF_VCHAN_FIFO_MONITORING);
 
-	DUMP_REG(hw, noc_if + TX_NOC_IF_PARITY_ERR_CNT);
-	DUMP_REG(hw, noc_if + TX_NOC_IF_CRC_ERR_CNT);
-	DUMP_REG(hw, noc_if + TX_NOC_IF_PERM_ERR_CNT);
-	DUMP_REG(hw, noc_if + TX_NOC_IF_FIFO_ERR_CNT);
-	DUMP_REG(hw, noc_if + TX_NOC_IF_NOC_PKT_DROP_CNT);
+	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_PARITY_ERR_CNT);
+	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_CRC_ERR_CNT);
+	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_PERM_ERR_CNT);
+	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_FIFO_ERR_CNT);
+	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_NOC_PKT_DROP_CNT);
 }
 
 void k1c_eth_tx_set_default(struct k1c_eth_lane_cfg *cfg)
