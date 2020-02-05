@@ -1099,6 +1099,10 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 		goto err;
 
 	ret = k1c_eth_phy_serdes_init(ndev->hw, &ndev->cfg);
+	if (ret) {
+		netdev_err(ndev->netdev, "Failed to initialize serdes\n");
+		goto err;
+	}
 
 	ret = k1c_eth_mac_cfg(ndev->hw, &ndev->cfg);
 	if (ret) {
