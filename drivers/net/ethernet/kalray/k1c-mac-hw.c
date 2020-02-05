@@ -18,9 +18,6 @@
 
 #define MAC_LOOPBACK_LATENCY  4
 
-#define DUMP_PHY_REG(hw, off) { u32 v = k1c_phy_readl(hw, off); \
-			  pr_debug("%s @ 0x%x - 0x%x\n", #off, (u32)off, v); }
-
 #define k1c_poll(read, reg, mask, exp, timeout_in_ms) \
 ({ \
 	unsigned long t = jiffies + msecs_to_jiffies(timeout_in_ms); \
@@ -53,13 +50,6 @@ static void k1c_mac_writel(struct k1c_eth_hw *hw, u32 val, u64 off)
 static u32 k1c_mac_readl(struct k1c_eth_hw *hw, u64 off)
 {
 	u32 val = readl(hw->res[K1C_ETH_RES_MAC].base + off);
-
-	return val;
-}
-
-static u64 k1c_mac_readq(struct k1c_eth_hw *hw, u64 off)
-{
-	u64 val = readq(hw->res[K1C_ETH_RES_MAC].base + off);
 
 	return val;
 }
@@ -211,8 +201,8 @@ int k1c_eth_phy_init(struct k1c_eth_hw *hw)
 		/* FPGA only */
 		dev_dbg(hw->dev, "HAPS Phy force sigdet (0x%x)\n", val);
 		val = K1C_ETH_SETF(0xF, PHY_SERDES_CTRL_FORCE_SIGNAL_DET);
-		update_bits(k1c_phy, PHY_SERDES_CTRL_OFFSET,
-				    PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK, val);
+		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
+			    PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK, val);
 	}
 
 	return 0;
@@ -400,14 +390,14 @@ static int k1c_eth_phy_serdes_cfg(struct k1c_eth_hw *hw,
 			BIT(PHY_LANE_RX_SERDES_CFG_DISABLE_SHIFT);
 		val &= ~PHY_LANE_RX_SERDES_CFG_LPD_MASK;
 		k1c_phy_writel(hw, val, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
-		DUMP_PHY_REG(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		DUMP_REG(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
 
 		val = k1c_phy_readl(hw, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
 		val |= ((u32)2 << PHY_LANE_TX_SERDES_CFG_PSTATE_SHIFT) |
 			BIT(PHY_LANE_TX_SERDES_CFG_DISABLE_SHIFT);
 		val &= ~PHY_LANE_RX_SERDES_CFG_LPD_MASK;
 		k1c_phy_writel(hw, val, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
-		DUMP_PHY_REG(hw, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
+		DUMP_REG(hw, PHYMAC, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
 	}
 	k1c_eth_phy_reset(hw, 1);
 	/* Waits for the ack signals be low */
@@ -425,44 +415,44 @@ static int k1c_eth_phy_serdes_cfg(struct k1c_eth_hw *hw,
 		 pll_status_mask, SERDES_ACK_TIMEOUT_MS);
 
 	val = 0xF << PHY_SERDES_CTRL_TX_CLK_RDY_SHIFT;
-	update_bits(k1c_phy, PHY_SERDES_CTRL_OFFSET,
-			    PHY_SERDES_CTRL_TX_CLK_RDY_MASK, val);
+	updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
+		     PHY_SERDES_CTRL_TX_CLK_RDY_MASK, val);
 
 	/* Enables serdes */
 	val = (u32)pll->serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_EN_SHIFT;
-	update_bits(k1c_phy, PHY_SERDES_PLL_CFG_OFFSET,
-			    PHY_SERDES_PLL_CFG_TX_PLL_EN_MASK, val);
+	updatel_bits(hw, PHYMAC, PHY_SERDES_PLL_CFG_OFFSET,
+		     PHY_SERDES_PLL_CFG_TX_PLL_EN_MASK, val);
 	for (i = 0; i < serdes_nb; ++i) {
 		off = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
 		val = k1c_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
 		val &= ~PHY_LANE_RX_SERDES_CFG_PSTATE_MASK;
 		val &= ~PHY_LANE_RX_SERDES_CFG_DISABLE_MASK;
 		k1c_phy_writel(hw, val, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
-		DUMP_PHY_REG(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		DUMP_REG(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
 		val = k1c_phy_readl(hw, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
 		val &= ~PHY_LANE_RX_SERDES_CFG_PSTATE_MASK;
 		val &= ~PHY_LANE_RX_SERDES_CFG_DISABLE_MASK;
 		k1c_phy_writel(hw, val, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
-		DUMP_PHY_REG(hw, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
+		DUMP_REG(hw, PHYMAC, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
 	}
 
 	if (cfg->mac_f.loopback_mode == PHY_PMA_LOOPBACK) {
 		/* Must be set in pstate P0 */
 		dev_info(hw->dev, "Mac/Phy TX2RX loopback!!!\n");
 		val = (u32)0xF << PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT;
-		update_bits(k1c_phy, PHY_SERDES_CTRL_OFFSET,
-				    PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, val);
+		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
+			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, val);
 	}
 
 	val = PHY_SERDES_CTRL_RX_REQ_MASK | PHY_SERDES_CTRL_TX_REQ_MASK;
-	update_bits(k1c_phy, PHY_SERDES_CTRL_OFFSET, val, val);
+	updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET, val, val);
 
 	/* Waits for the ack signals be high */
 	k1c_poll(k1c_phy_readl, PHY_SERDES_STATUS_OFFSET, ack_mask, ack_mask,
 		 SERDES_ACK_TIMEOUT_MS);
 
 	/* Clear serdes req signals */
-	update_bits(k1c_phy, PHY_SERDES_CTRL_OFFSET,
+	updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
 		PHY_SERDES_CTRL_RX_REQ_MASK | PHY_SERDES_CTRL_TX_REQ_MASK, 0);
 
 	k1c_poll(k1c_phy_readl, PHY_SERDES_STATUS_OFFSET, ack_mask, 0,
@@ -510,8 +500,8 @@ static void update_ipg_len_compensation(struct k1c_eth_hw *hw, int lane_id,
 	u32 val, off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * lane_id;
 
 	val = ((u32)marker_comp << PMAC_TX_IPG_LEN_COMPENSATION_SHIFT);
-	update_bits(k1c_mac, off + PMAC_TX_IPG_LEN_OFFSET,
-		    PMAC_TX_IPG_LEN_COMPENSATION_MASK, val);
+	updatel_bits(hw, MAC, off + PMAC_TX_IPG_LEN_OFFSET,
+		     PMAC_TX_IPG_LEN_COMPENSATION_MASK, val);
 }
 
 static void update_set_vendor_cl_intvl(struct k1c_eth_hw *hw, int lane_id,
@@ -556,17 +546,17 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 		break;
 	case SPEED_10000:
 		/* Set MAC interface to XGMII */
-		update_bits(k1c_mac, PMAC_XIF_OFFSET,
-			    PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
+		updatel_bits(hw, MAC, PMAC_XIF_OFFSET,
+			     PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
 		/* Set MAC marker compensation to 0, IPG bias mode disabled,
 		 * idle blocks are removed.
 		 */
 		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * cfg->id;
 		val = XPCS_VENDOR_PCS_MODE_ENA_CLAUSE49_MASK |
 			XPCS_VENDOR_PCS_MODE_ST_DISABLE_MLD_MASK;
-		update_bits(k1c_mac, reg +
+		updatel_bits(hw, MAC, reg +
 			    XPCS_VENDOR_PCS_MODE_OFFSET, val, val);
-		update_bits(k1c_mac, reg + XPCS_CTRL1_OFFSET,
+		updatel_bits(hw, MAC, reg + XPCS_CTRL1_OFFSET,
 				  XPCS_CTRL1_RESET_MASK, XPCS_CTRL1_RESET_MASK);
 		/* Check speed selection is set to 10G (0x0) */
 		val = k1c_mac_readl(hw, reg + XPCS_CTRL1_OFFSET);
@@ -578,8 +568,8 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 	case SPEED_25000:
 		mc = MARKER_COMP_25G;
 		/* Set MAC interface into XGMII */
-		update_bits(k1c_mac, PMAC_XIF_OFFSET,
-			    PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
+		updatel_bits(hw, MAC, PMAC_XIF_OFFSET,
+			     PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
 
 		if (hw->fec_en) {
 			update_set_vendor_cl_intvl(hw, cfg->id, mc);
@@ -686,11 +676,15 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 			k1c_mac_writel(hw, thresh, reg +
 				       XPCS_VENDOR_TXLANE_THRESH_OFFSET);
 			update_set_vendor_cl_intvl(hw, i, mc);
+			DUMP_REG(hw, MAC, reg + XPCS_CTRL1_OFFSET);
+			DUMP_REG(hw, MAC, reg + XPCS_STATUS1_OFFSET);
 		}
 		reg = PCS_100G_OFFSET;
 		k1c_mac_writel(hw, mc, reg + PCS_100G_VL_INTVL_OFFSET);
 		/* Lane 0 */
 		update_ipg_len_compensation(hw, 0, mc);
+		DUMP_REG(hw, MAC, PCS_100G_OFFSET + PCS_100G_CTRL1_OFFSET);
+		DUMP_REG(hw, MAC, PCS_100G_OFFSET + PCS_100G_STATUS1_OFFSET);
 		break;
 
 	default:
@@ -831,7 +825,7 @@ int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 
 	if (cfg->speed <= SPEED_1000) {
 		val |= MAC_1G_MODE_SGMII_EN_MASK;
-		update_bits(k1c_mac, MAC_1G_MODE_OFFSET,
+		updatel_bits(hw, MAC, MAC_1G_MODE_OFFSET,
 				MAC_1G_MODE_SGMII_SPEED_MASK |
 				MAC_1G_MODE_SGMII_EN_MASK, val);
 	}
@@ -869,6 +863,8 @@ int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 			i, val);
 	}
 
+	k1c_eth_wait_link_up(hw, cfg);
+
 	return 0;
 }
 
@@ -877,15 +873,18 @@ void k1c_eth_update_stats64(struct k1c_eth_hw *hw, int lane_id,
 {
 	int i;
 	u64 *p = (u64 *)&s->rx;
+	void __iomem *b = hw->res[K1C_ETH_RES_MAC].base;
 
 	if (k1c_mac_readl(hw, MAC_RESET_OFFSET))
 		return;
 
 	memset(s, 0, sizeof(*s));
 	for (i = 0; i < sizeof(s->rx); i += 8)
-		*p++ = k1c_mac_readq(hw, STAT64_OFFSET + STAT64_RX_OFFSET + i);
+		*p++ = readq(b + STAT64_OFFSET + STAT64_RX_OFFSET +
+			     lane_id * STAT64_RX_ELEM_SIZE + i);
 
 	p = (u64 *)&s->tx;
 	for (i = 0; i < sizeof(s->tx); i += 8)
-		*p++ = k1c_mac_readq(hw, STAT64_OFFSET + STAT64_TX_OFFSET + i);
+		*p++ = readq(b + STAT64_OFFSET + STAT64_TX_OFFSET +
+			    lane_id * STAT64_TX_ELEM_SIZE + i);
 }
