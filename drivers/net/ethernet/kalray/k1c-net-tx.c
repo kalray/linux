@@ -54,19 +54,19 @@ void k1c_eth_tx_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 	u32 val = 0;
 	u8 *a;
 
-	val = K1C_ETH_SETF(f->pause_en, TX_FIFO_LANE_CTRL_PAUSE_EN);
-	val |= K1C_ETH_SETF(f->pfc_en, TX_FIFO_LANE_CTRL_PFC_EN);
-	val |= K1C_ETH_SETF(f->rr_trigger, TX_FIFO_LANE_CTRL_RR_TRIGGER);
+	val = ((u32)f->pause_en << TX_FIFO_LANE_CTRL_PAUSE_EN_SHIFT) |
+		((u32)f->pfc_en << TX_FIFO_LANE_CTRL_PFC_EN_SHIFT) |
+		((u32)f->rr_trigger << TX_FIFO_LANE_CTRL_RR_TRIGGER_SHIFT);
 	k1c_eth_writel(hw, val, off + TX_FIFO_LANE_CTRL_OFFSET +
 		       f->lane_id * TX_FIFO_LANE_CTRL_ELEM_SIZE);
 
-	val = K1C_ETH_SETF((u32)f->drop_en, TX_FIFO_CTRL_DROP_EN);
-	val |= K1C_ETH_SETF((u32)f->nocx_en, TX_FIFO_CTRL_NOCX_EN);
-	val |= K1C_ETH_SETF((u32)f->nocx_pack_en, TX_FIFO_CTRL_NOCX_PACK_EN);
-	val |= K1C_ETH_SETF((u32)f->header_en, TX_FIFO_CTRL_HEADER_EN);
-	val |= K1C_ETH_SETF((u32)f->lane_id, TX_FIFO_CTRL_LANE_ID);
-	val |= K1C_ETH_SETF((u32)f->global, TX_FIFO_CTRL_GLOBAL);
-	val |= K1C_ETH_SETF((u32)hw->asn, TX_FIFO_CTRL_ASN);
+	val = ((u32)f->drop_en << TX_FIFO_CTRL_DROP_EN_SHIFT) |
+		((u32)f->nocx_en << TX_FIFO_CTRL_NOCX_EN_SHIFT) |
+		((u32)f->nocx_pack_en << TX_FIFO_CTRL_NOCX_PACK_EN_SHIFT) |
+		((u32)f->header_en << TX_FIFO_CTRL_HEADER_EN_SHIFT)|
+		((u32)f->lane_id << TX_FIFO_CTRL_LANE_ID_SHIFT) |
+		((u32)f->global << TX_FIFO_CTRL_GLOBAL_SHIFT) |
+		((u32)hw->asn << TX_FIFO_CTRL_ASN_SHIFT);
 	k1c_eth_writel(hw, val, off + TX_FIFO_CTRL_OFFSET);
 	dev_dbg(hw->dev, "Lane[%d] TX_FIFO_CTRL_OFFSET: 0x%x asn: %d\n",
 		 cfg->id, k1c_eth_readl(hw, off + TX_FIFO_CTRL_OFFSET),
@@ -83,6 +83,6 @@ u32 k1c_eth_tx_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
 	u32 v = k1c_eth_readl(hw, TX_FIFO(cfg->tx_fifo) + TX_FIFO_CTRL_OFFSET);
 
-	return K1C_ETH_GETF(v, TX_FIFO_CTRL_HEADER_EN);
+	return GETF(v, TX_FIFO_CTRL_HEADER_EN);
 }
 
