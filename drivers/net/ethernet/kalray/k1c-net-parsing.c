@@ -43,9 +43,9 @@ void parser_disp(struct k1c_eth_hw *hw, unsigned int parser_id)
 	u32 off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * parser_id;
 
 	dev_dbg(hw->dev, "Parser[%d]\n", parser_id);
-	DUMP_REG(hw, off + PARSER_CTRL_CTL);
-	DUMP_REG(hw, off + PARSER_CTRL_STATUS);
-	DUMP_REG(hw, off + PARSER_CTRL_HIT_CNT);
+	DUMP_REG(hw, ETH, off + PARSER_CTRL_CTL);
+	DUMP_REG(hw, ETH, off + PARSER_CTRL_STATUS);
+	DUMP_REG(hw, ETH, off + PARSER_CTRL_HIT_CNT);
 }
 
 /**
