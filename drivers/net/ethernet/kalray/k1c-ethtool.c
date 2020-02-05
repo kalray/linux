@@ -667,12 +667,11 @@ static int k1c_eth_parse_ethtool_rule(struct k1c_eth_netdev *ndev,
 	hw->parsing.active_filters_nb++;
 
 	/* Copy ethtool rule for retrieving it when needed */
-	rule = kmalloc(sizeof(*rule), GFP_KERNEL);
-	if (rule == NULL) {
+	rule = kmemdup(fs, sizeof(*rule), GFP_KERNEL);
+	if (!rule) {
 		netdev_warn(ndev->netdev, "Can't allocate memory for ethtool rule");
 		goto err;
 	}
-	memcpy(rule, fs, sizeof(*rule));
 	hw->parsing.parsers[parser_index].rule_spec = (void *) rule;
 
 	return 0;
