@@ -93,12 +93,12 @@ static int k1c_eth_emac_init(struct k1c_eth_hw *hw,
 {
 	u32 val, off;
 
-	val = K1C_ETH_SETF(1, EMAC_CMD_CFG_TX_EN);
-	val |= K1C_ETH_SETF(1, EMAC_CMD_CFG_RX_EN);
 	/* No MAC addr filtering */
-	val |= K1C_ETH_SETF(1, EMAC_CMD_CFG_PROMIS_EN);
-	val |= K1C_ETH_SETF(1, EMAC_CMD_CFG_CNTL_FRAME_EN);
-	val |= K1C_ETH_SETF(1, EMAC_CMD_CFG_SW_RESET);
+	val = (u32)BIT(EMAC_CMD_CFG_TX_EN_SHIFT)      |
+		BIT(EMAC_CMD_CFG_RX_EN_SHIFT)         |
+		BIT(EMAC_CMD_CFG_PROMIS_EN_SHIFT)     |
+		BIT(EMAC_CMD_CFG_CNTL_FRAME_EN_SHIFT) |
+		BIT(EMAC_CMD_CFG_SW_RESET_SHIFT);
 
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	k1c_mac_writel(hw, val, off + EMAC_CMD_CFG_OFFSET);
@@ -109,14 +109,13 @@ static int k1c_eth_emac_init(struct k1c_eth_hw *hw,
 	/* MAC Threshold for emitting pkt (low threshold -> low latency
 	 * but risk underflow -> bad tx transmission)
 	 */
-	val = k1c_mac_readl(hw, off + EMAC_TX_FIFO_SECTIONS_OFFSET);
-	val |= K1C_ETH_SETF(BIT(4), EMAC_TX_FIFO_SECTION_FULL);
-	k1c_mac_writel(hw, val, off + EMAC_TX_FIFO_SECTIONS_OFFSET);
-
+	updatel_bits(hw, MAC, off + EMAC_TX_FIFO_SECTIONS_OFFSET,
+		    EMAC_TX_FIFO_SECTION_FULL_MASK,
+		    BIT(4) << EMAC_TX_FIFO_SECTION_FULL_SHIFT);
 	val = k1c_mac_readl(hw, off + EMAC_CMD_CFG_OFFSET);
-	if (K1C_ETH_GETF(val, EMAC_CMD_CFG_SW_RESET)) {
+	if (GETF(val, EMAC_CMD_CFG_SW_RESET)) {
 		dev_err(hw->dev, "EMAC Lane[%d] sw_reset != 0(0x%x)\n", cfg->id,
-			(u32)K1C_ETH_GETF(val, EMAC_CMD_CFG_SW_RESET));
+			(u32)GETF(val, EMAC_CMD_CFG_SW_RESET));
 		return -EINVAL;
 	}
 
@@ -134,13 +133,13 @@ static int k1c_eth_pmac_init(struct k1c_eth_hw *hw,
 	u32 off, val;
 
 	/* Preembtible MAC */
-	val = K1C_ETH_SETF(1, PMAC_CMD_CFG_TX_EN);
-	val |= K1C_ETH_SETF(1, PMAC_CMD_CFG_RX_EN);
-	val |= K1C_ETH_SETF(1, PMAC_CMD_CFG_PROMIS_EN);
-	val |= K1C_ETH_SETF(1, PMAC_CMD_CFG_CRC_FWD);
-	val |= K1C_ETH_SETF(1, PMAC_CMD_CFG_TX_PAD_EN);
-	val |= K1C_ETH_SETF(1, PMAC_CMD_CFG_SW_RESET);
-	val |= K1C_ETH_SETF(1, PMAC_CMD_CFG_CNTL_FRAME_EN);
+	val = BIT(PMAC_CMD_CFG_TX_EN_SHIFT)       |
+		BIT(PMAC_CMD_CFG_RX_EN_SHIFT)     |
+		BIT(PMAC_CMD_CFG_PROMIS_EN_SHIFT) |
+		BIT(PMAC_CMD_CFG_CRC_FWD_SHIFT)   |
+		BIT(PMAC_CMD_CFG_TX_PAD_EN_SHIFT) |
+		BIT(PMAC_CMD_CFG_SW_RESET_SHIFT)  |
+		BIT(PMAC_CMD_CFG_CNTL_FRAME_EN_SHIFT);
 
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	k1c_mac_writel(hw, val, off + PMAC_CMD_CFG_OFFSET);
@@ -150,12 +149,12 @@ static int k1c_eth_pmac_init(struct k1c_eth_hw *hw,
 	/* MAC Threshold for emitting pkt (low threshold -> low latency
 	 * but risk underflow -> bad tx transmission)
 	 */
-	val = k1c_mac_readl(hw, off + PMAC_TX_FIFO_SECTIONS_OFFSET);
-	val |= K1C_ETH_SETF(BIT(4), PMAC_TX_FIFO_SECTION_FULL);
-	k1c_mac_writel(hw, val, off + PMAC_TX_FIFO_SECTIONS_OFFSET);
+	updatel_bits(hw, MAC, off + PMAC_TX_FIFO_SECTIONS_OFFSET,
+		    PMAC_TX_FIFO_SECTION_FULL_MASK,
+		    BIT(4) << PMAC_TX_FIFO_SECTION_FULL_SHIFT);
 
 	val = k1c_mac_readl(hw, off + PMAC_CMD_CFG_OFFSET);
-	if (K1C_ETH_GETF(val, PMAC_CMD_CFG_SW_RESET)) {
+	if (GETF(val, PMAC_CMD_CFG_SW_RESET)) {
 		dev_err(hw->dev, "PMAC Lane[%d] sw_reset != 0\n", cfg->id);
 		val = k1c_mac_readl(hw, off + PMAC_STATUS_OFFSET);
 		dev_dbg(hw->dev, "Lane[%d] PMAC status: 0x%x\n", cfg->id, val);
@@ -174,10 +173,8 @@ static void k1c_eth_phy_reset(struct k1c_eth_hw *hw, int phy_reset)
 
 	dev_dbg(hw->dev, "Phy Reset RX/TX serdes (0x%x)\n", val);
 	if (phy_reset)
-		val |= K1C_ETH_SETF(1, PHY_RST);
-	/* 0xF for all lanes */
-	val |= K1C_ETH_SETF(0xF, PHY_RESET_SERDES_RX);
-	val |= K1C_ETH_SETF(0xF, PHY_RESET_SERDES_TX);
+		val |= BIT(PHY_RST_SHIFT);
+	val |= (u32)(PHY_RESET_SERDES_RX_MASK | PHY_RESET_SERDES_TX_MASK);
 	k1c_phy_writel(hw, val, PHY_RESET_OFFSET);
 
 	k1c_poll(k1c_phy_readl, PHY_RESET_OFFSET, val, val, RESET_TIMEOUT_MS);
@@ -191,18 +188,16 @@ static void k1c_eth_phy_reset(struct k1c_eth_hw *hw, int phy_reset)
 
 int k1c_eth_phy_init(struct k1c_eth_hw *hw)
 {
-	u32 val = 0;
-
 	/* Default PLLA/PLLB are available */
 	set_bit(PLL_A, &hw->pll_cfg.avail);
 	set_bit(PLL_B, &hw->pll_cfg.avail);
 
 	if (of_device_is_compatible(hw->dev->of_node, "kalray,haps-eth")) {
 		/* FPGA only */
-		dev_dbg(hw->dev, "HAPS Phy force sigdet (0x%x)\n", val);
-		val = K1C_ETH_SETF(0xF, PHY_SERDES_CTRL_FORCE_SIGNAL_DET);
+		dev_dbg(hw->dev, "HAPS Phy force sigdet\n");
 		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
-			    PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK, val);
+			    PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK,
+			    PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK);
 	}
 
 	return 0;
@@ -216,10 +211,12 @@ static void k1c_eth_phy_pll(struct k1c_eth_hw *hw, enum pll_id pll, u32 r10G_en)
 	u32 val = k1c_phy_readl(hw, PHY_PLL_OFFSET);
 
 	if (pll == PLL_A) {
-		val |= K1C_ETH_SETF(r10G_en, PHY_PLL_PLLA_RATE_10G_EN);
-		val |= K1C_ETH_SETF(1, PHY_PLL_PLLA_FORCE_EN);
+		val &= ~(PHY_PLL_PLLA_RATE_10G_EN_MASK |
+			 PHY_PLL_PLLA_FORCE_EN_MASK);
+		val |= (r10G_en << PHY_PLL_PLLA_RATE_10G_EN_SHIFT) |
+			BIT(PHY_PLL_PLLA_FORCE_EN_SHIFT);
 	} else {
-		val |= K1C_ETH_SETF(1, PHY_PLL_PLLB_FORCE_EN);
+		val |= BIT(PHY_PLL_PLLB_FORCE_EN_SHIFT);
 	}
 	k1c_phy_writel(hw, val, PHY_PLL_OFFSET);
 }
@@ -335,11 +332,11 @@ static void dump_phy_status(struct k1c_eth_hw *hw)
 
 	dev_dbg(hw->dev, "phy status\n");
 	dev_dbg(hw->dev, "plla_status: %ld\n",
-		K1C_ETH_GETF(val, PHY_PLL_STATUS_PLLA));
+		GETF(val, PHY_PLL_STATUS_PLLA));
 	dev_dbg(hw->dev, "pllb_status: %ld\n",
-		K1C_ETH_GETF(val, PHY_PLL_STATUS_PLLB));
+		GETF(val, PHY_PLL_STATUS_PLLB));
 	dev_dbg(hw->dev, "ref_clk_detected: %ld\n",
-		K1C_ETH_GETF(val, PHY_PLL_STATUS_REF_CLK_DETECTED));
+		GETF(val, PHY_PLL_STATUS_REF_CLK_DETECTED));
 
 	val = k1c_phy_readl(hw, PHY_PLL_OFFSET);
 	dev_dbg(hw->dev, "phy PLL: 0x%x\n", val);
@@ -591,7 +588,7 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 			       reg + XPCS_CTRL1_OFFSET);
 		/* Check speed selection is set to 25G (0x5) */
 		val = k1c_mac_readl(hw, reg + XPCS_CTRL1_OFFSET);
-		if (K1C_ETH_GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 5) {
+		if (GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 5) {
 			dev_err(hw->dev, "Mac 25G speed selection failed\n");
 			return -EINVAL;
 		}
@@ -621,7 +618,7 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 		/* Check speed selection is set to 40G (0x3) */
 		reg = XPCS_OFFSET;
 		val = k1c_mac_readl(hw, reg + XPCS_CTRL1_OFFSET);
-		if (K1C_ETH_GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 3) {
+		if (GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 3) {
 			dev_err(hw->dev, "Mac 40G speed selection failed\n");
 			return -EINVAL;
 		}
@@ -653,13 +650,13 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 		/* Check speed selection is set to 50G (0x5) */
 		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * s;
 		val = k1c_mac_readl(hw, reg + XPCS_CTRL1_OFFSET);
-		if (K1C_ETH_GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 5) {
+		if (GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 5) {
 			dev_err(hw->dev, "Mac 50G speed selection failed\n");
 			return -EINVAL;
 		}
 		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * (s + 1);
 		val = k1c_mac_readl(hw, reg + XPCS_CTRL1_OFFSET);
-		if (K1C_ETH_GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 5) {
+		if (GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 5) {
 			dev_err(hw->dev, "Mac 50G speed selection failed\n");
 			return -EINVAL;
 		}
@@ -871,9 +868,9 @@ int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 void k1c_eth_update_stats64(struct k1c_eth_hw *hw, int lane_id,
 			    struct k1c_eth_hw_stats *s)
 {
-	int i;
-	u64 *p = (u64 *)&s->rx;
 	void __iomem *b = hw->res[K1C_ETH_RES_MAC].base;
+	u64 *p = (u64 *)&s->rx;
+	int i;
 
 	if (k1c_mac_readl(hw, MAC_RESET_OFFSET))
 		return;
