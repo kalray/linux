@@ -1123,7 +1123,7 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 	if (ret)
 		netdev_warn(ndev->netdev, "Failed to initialize sysfs\n");
 
-	dev_err(&pdev->dev, "K1C netdev[%d] probed\n", ndev->cfg.id);
+	dev_info(&pdev->dev, "K1C netdev[%d] probed\n", ndev->cfg.id);
 
 	return 0;
 
