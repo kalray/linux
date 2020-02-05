@@ -556,7 +556,6 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 		break;
 	case SPEED_10000:
 		/* Set MAC interface to XGMII */
-		reg = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 		update_bits(k1c_mac, PMAC_XIF_OFFSET,
 			    PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
 		/* Set MAC marker compensation to 0, IPG bias mode disabled,
@@ -579,7 +578,6 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 	case SPEED_25000:
 		mc = MARKER_COMP_25G;
 		/* Set MAC interface into XGMII */
-		reg = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 		update_bits(k1c_mac, PMAC_XIF_OFFSET,
 			    PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
 
@@ -621,7 +619,7 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 			update_set_vendor_cl_intvl(hw, i, mc);
 		}
 		/* Lane 0 */
-		reg = MAC_CTRL_OFFSET;
+		reg = XPCS_OFFSET;
 		k1c_mac_writel(hw, 0, reg + XPCS_VENDOR_PCS_MODE_OFFSET);
 
 		/* All lanes */
@@ -651,9 +649,9 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 			update_set_vendor_cl_intvl(hw, s + 1, mc);
 			update_ipg_len_compensation(hw, s, mc);
 		}
-		reg = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * s;
+		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * s;
 		k1c_mac_writel(hw, 0, reg + XPCS_VENDOR_PCS_MODE_OFFSET);
-		reg = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * (s + 1);
+		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * (s + 1);
 		k1c_mac_writel(hw, 0, reg + XPCS_VENDOR_PCS_MODE_OFFSET);
 
 		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * s;
@@ -662,17 +660,17 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * (s + 1);
 		k1c_mac_writel(hw, XPCS_CTRL1_RESET_MASK,
 			       reg + XPCS_CTRL1_OFFSET);
-		/* Check speed selection is set to 25G (0x5) */
+		/* Check speed selection is set to 50G (0x5) */
 		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * s;
 		val = k1c_mac_readl(hw, reg + XPCS_CTRL1_OFFSET);
 		if (K1C_ETH_GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 5) {
-			dev_err(hw->dev, "Mac 25G speed selection failed\n");
+			dev_err(hw->dev, "Mac 50G speed selection failed\n");
 			return -EINVAL;
 		}
 		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * (s + 1);
 		val = k1c_mac_readl(hw, reg + XPCS_CTRL1_OFFSET);
 		if (K1C_ETH_GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 5) {
-			dev_err(hw->dev, "Mac 25G speed selection failed\n");
+			dev_err(hw->dev, "Mac 50G speed selection failed\n");
 			return -EINVAL;
 		}
 		break;
@@ -764,7 +762,7 @@ static int k1c_eth_wait_link_up(struct k1c_eth_hw *hw,
 	return 0;
 }
 
-#define SIGDET_TIMEOUT_MS 30
+#define SIGDET_TIMEOUT_MS 1000
 #define RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN 0x180A0
 /**
  * k1c_eth_mac_cfg() - MAC configuration
@@ -870,25 +868,6 @@ int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 		dev_dbg(hw->dev, "PHY_LANE_RX_SERDES_STATUS[%d] (data_en): 0x%x\n",
 			i, val);
 	}
-
-	mask = (u32)(hw->pll_cfg.serdes_mask <<
-		     PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT);
-	k1c_poll(k1c_phy_readl, PHY_SERDES_STATUS_OFFSET, mask,
-		     mask, SIGDET_TIMEOUT_MS);
-
-	for (i = 0; i < K1C_ETH_LANE_NB; ++i) {
-		if (!test_bit(i, &hw->pll_cfg.serdes_mask))
-			continue;
-		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
-		val = k1c_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
-		val |= BIT(PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_SHIFT);
-		k1c_phy_writel(hw, val, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
-		val = k1c_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
-		dev_dbg(hw->dev, "PHY_LANE_RX_SERDES_STATUS[%d] (data_en): 0x%x\n",
-			i, val);
-	}
-
-	k1c_eth_wait_link_up(hw, cfg);
 
 	return 0;
 }
