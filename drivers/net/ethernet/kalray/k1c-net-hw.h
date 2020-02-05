@@ -26,10 +26,7 @@
 #define DUMP_REG(hw, bl, off) { \
 	u32 v = readl(hw->res[K1C_ETH_RES_##bl].base + off); \
 	pr_debug("%s @ 0x%x - 0x%x\n", #off, (u32)off, v); }
-
-/* Must *NOT* be used to clear field */
-#define K1C_ETH_SETF(val, field) (((val) << field ## _SHIFT) & (field ## _MASK))
-#define K1C_ETH_GETF(reg, field) (((reg) & field ## _MASK) >> (field ## _SHIFT))
+#define GETF(reg, field) (((reg) & field ## _MASK) >> (field ## _SHIFT))
 
 #define updatel_bits(hw, bl, off, mask, v) { \
 	u32 regval = readl(hw->res[K1C_ETH_RES_##bl].base + off) & ~(mask); \
