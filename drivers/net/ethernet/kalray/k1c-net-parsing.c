@@ -76,11 +76,11 @@ static int parser_commit_filter(struct k1c_eth_hw *hw,
 	i++;
 
 	off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * parser_id;
-	val |= K1C_ETH_SETF(policy, PARSER_CTRL_DISPATCH_POLICY);
-	val |= K1C_ETH_SETF(cfg->id, PARSER_CTRL_LANE_SRC);
-	val |= K1C_ETH_SETF(prio, PARSER_CTRL_PRIO);
-	val |= K1C_ETH_SETF(PARSER_RR_PKT_NB, PARSER_CTRL_RR_PKT_NB);
-	val |= K1C_ETH_SETF(HASH_SEED, PARSER_CTRL_HASH_SEED);
+	val = ((u32)policy << PARSER_CTRL_DISPATCH_POLICY_SHIFT) |
+		((u32)cfg->id << PARSER_CTRL_LANE_SRC_SHIFT) |
+		((u32)prio << PARSER_CTRL_PRIO_SHIFT) |
+		((u32)PARSER_RR_PKT_NB << PARSER_CTRL_RR_PKT_NB_SHIFT) |
+		((u32)HASH_SEED << PARSER_CTRL_HASH_SEED_SHIFT);
 	k1c_eth_writel(hw, val, off + PARSER_CTRL_CTL);
 
 	return i;
@@ -256,8 +256,7 @@ static union filter_desc *get_default_rule(struct k1c_eth_hw *hw,
 int parser_disable(struct k1c_eth_hw *hw, int parser_id)
 {
 	u32 off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * parser_id;
-	u32 val = K1C_ETH_SETF(PARSER_DISABLED,
-			       PARSER_CTRL_DISPATCH_POLICY);
+	u32 val = (u32)PARSER_DISABLED << PARSER_CTRL_DISPATCH_POLICY_SHIFT;
 	int ret = 0;
 
 	k1c_eth_writel(hw, val, off + PARSER_CTRL_CTL);
