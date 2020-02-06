@@ -179,6 +179,14 @@ int sfp_parse_port(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 }
 EXPORT_SYMBOL_GPL(sfp_parse_port);
 
+bool sfp_is_qsfp_module(const struct sfp_eeprom_id *id)
+{
+	return (id->base.phys_id == SFP_PHYS_ID_QSFP ||
+		id->base.phys_id == SFP_PHYS_ID_QSFP_PLUS ||
+		id->base.phys_id == SFP_PHYS_ID_QSFP28);
+}
+EXPORT_SYMBOL_GPL(sfp_is_qsfp_module);
+
 /**
  * sfp_may_have_phy() - indicate whether the module may have a PHY
  * @bus: a pointer to the &struct sfp_bus structure for the sfp module
@@ -384,6 +392,12 @@ phy_interface_t sfp_select_interface(struct sfp_bus *bus,
 
 	if (phylink_test(link_modes, 1000baseX_Full))
 		return PHY_INTERFACE_MODE_1000BASEX;
+
+	if (phylink_test(link_modes, 100000baseKR4_Full) ||
+	    phylink_test(link_modes, 100000baseSR4_Full) ||
+	    phylink_test(link_modes, 100000baseCR4_Full) ||
+	    phylink_test(link_modes, 100000baseLR4_ER4_Full))
+		return PHY_INTERFACE_MODE_INTERNAL;
 
 	dev_warn(bus->sfp_dev, "Unable to ascertain link mode\n");
 
