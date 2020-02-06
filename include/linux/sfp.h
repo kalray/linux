@@ -311,6 +311,9 @@ enum {
 
 	SFP_PHYS_ID_SFF			= 0x02,
 	SFP_PHYS_ID_SFP			= 0x03,
+	SFP_PHYS_ID_QSFP		= 0x0C,
+	SFP_PHYS_ID_QSFP_PLUS		= 0x0D,
+	SFP_PHYS_ID_QSFP28		= 0x11,
 	SFP_PHYS_EXT_ID_SFP		= 0x04,
 	SFP_CONNECTOR_UNSPEC		= 0x00,
 	/* codes 01-05 not supportable on SFP, but some modules have single SC */
@@ -517,6 +520,7 @@ struct sfp_bus *sfp_bus_find_fwnode(struct fwnode_handle *fwnode);
 int sfp_bus_add_upstream(struct sfp_bus *bus, void *upstream,
 			 const struct sfp_upstream_ops *ops);
 void sfp_bus_del_upstream(struct sfp_bus *bus);
+bool sfp_is_qsfp_module(const struct sfp_eeprom_id *id);
 #else
 static inline int sfp_parse_port(struct sfp_bus *bus,
 				 const struct sfp_eeprom_id *id,
@@ -575,6 +579,11 @@ static inline int sfp_bus_add_upstream(struct sfp_bus *bus, void *upstream,
 
 static inline void sfp_bus_del_upstream(struct sfp_bus *bus)
 {
+}
+
+static inline bool sfp_is_qsfp_module(const struct sfp_eeprom_id *id)
+{
+	return false;
 }
 #endif
 

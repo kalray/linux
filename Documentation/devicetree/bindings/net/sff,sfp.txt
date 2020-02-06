@@ -6,6 +6,7 @@ Required properties:
 - compatible : must be one of
   "sff,sfp" for SFP modules
   "sff,sff" for soldered down SFF modules
+  "sff,qsfp" for QSFP modules
 
 - i2c-bus : phandle of an I2C bus controller for the SFP two wire serial
   interface

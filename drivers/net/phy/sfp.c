@@ -182,6 +182,9 @@ static const enum gpiod_flags gpio_flags[] = {
 struct sff_data {
 	unsigned int gpios;
 	bool (*module_supported)(const struct sfp_eeprom_id *id);
+	int (*read_eeprom_id)(struct sfp *sfp, struct sfp_eeprom_id *id,
+			      bool report);
+	int (*module_parse_power)(struct sfp *sfp);
 };
 
 struct sfp {
@@ -229,6 +232,13 @@ struct sfp {
 
 };
 
+static int sfp_read_eeprom_id(struct sfp *sfp, struct sfp_eeprom_id *id,
+			      bool report);
+static int qsfp_read_eeprom_id(struct sfp *sfp, struct sfp_eeprom_id *id,
+			       bool report);
+static int sfp_module_parse_power(struct sfp *sfp);
+static int qsfp_module_parse_power(struct sfp *sfp);
+
 static bool sff_module_supported(const struct sfp_eeprom_id *id)
 {
 	return id->base.phys_id == SFP_PHYS_ID_SFF &&
@@ -237,7 +247,9 @@ static bool sff_module_supported(const struct sfp_eeprom_id *id)
 
 static const struct sff_data sff_data = {
 	.gpios = SFP_F_LOS | SFP_F_TX_FAULT | SFP_F_TX_DISABLE,
-	.module_supported = sff_module_supported,
+	.module_supported   = sff_module_supported,
+	.read_eeprom_id     = sfp_read_eeprom_id,
+	.module_parse_power = sfp_module_parse_power,
 };
 
 static bool sfp_module_supported(const struct sfp_eeprom_id *id)
@@ -249,12 +261,28 @@ static bool sfp_module_supported(const struct sfp_eeprom_id *id)
 static const struct sff_data sfp_data = {
 	.gpios = SFP_F_PRESENT | SFP_F_LOS | SFP_F_TX_FAULT |
 		 SFP_F_TX_DISABLE | SFP_F_RATE_SELECT,
-	.module_supported = sfp_module_supported,
+	.module_supported   = sfp_module_supported,
+	.read_eeprom_id     = sfp_read_eeprom_id,
+	.module_parse_power = sfp_module_parse_power,
+};
+
+static bool qsfp_module_supported(const struct sfp_eeprom_id *id)
+{
+	return sfp_is_qsfp_module(id);
+}
+
+static const struct sff_data qsfp_data = {
+	.gpios = SFP_F_PRESENT | SFP_F_LOS | SFP_F_TX_FAULT |
+		 SFP_F_TX_DISABLE | SFP_F_RATE_SELECT,
+	.module_supported   = qsfp_module_supported,
+	.read_eeprom_id     = qsfp_read_eeprom_id,
+	.module_parse_power = qsfp_module_parse_power,
 };
 
 static const struct of_device_id sfp_of_match[] = {
 	{ .compatible = "sff,sff", .data = &sff_data, },
 	{ .compatible = "sff,sfp", .data = &sfp_data, },
+	{ .compatible = "sff,qsfp", .data = &qsfp_data, },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, sfp_of_match);
@@ -1493,6 +1521,11 @@ static void sfp_sm_probe_for_phy(struct sfp *sfp)
 		sfp_sm_probe_phy(sfp);
 }
 
+static int qsfp_module_parse_power(struct sfp *sfp)
+{
+	return T_HPOWER_LEVEL;
+}
+
 static int sfp_module_parse_power(struct sfp *sfp)
 {
 	u32 power_mW = 1000;
@@ -1569,22 +1602,53 @@ static int sfp_sm_mod_hpower(struct sfp *sfp, bool enable)
 	return 0;
 }
 
-static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
+static int sfp_page_select(struct sfp *sfp, u8 page_id)
 {
-	/* SFP module inserted - read I2C data */
-	struct sfp_eeprom_id id;
-	bool cotsworks;
-	u8 check;
+	int ret = sfp_write(sfp, false, SFP_PAGE, &page_id, sizeof(page_id));
+
+	if (ret != sizeof(page_id)) {
+		dev_err(sfp->dev, "Failed to select EEPROM page: %d\n", ret);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int qsfp_read_eeprom_id(struct sfp *sfp, struct sfp_eeprom_id *id,
+			       bool report)
+{
 	int ret;
 
-	ret = sfp_read(sfp, false, 0, &id, sizeof(id));
+	sfp_page_select(sfp, 0);
+	ret = sfp_read(sfp, false, 128, id, sizeof(*id));
+	if (ret < 0) {
+		dev_err(sfp->dev, "failed to read EEPROM: %d\n", ret);
+		return -EAGAIN;
+	}
+
+	if (ret != sizeof(*id)) {
+		dev_err(sfp->dev, "EEPROM short read: %d\n", ret);
+		return -EAGAIN;
+	}
+
+	return 0;
+}
+
+static int sfp_read_eeprom_id(struct sfp *sfp, struct sfp_eeprom_id *id,
+			      bool report)
+{
+	bool cotsworks;
+	unsigned int check;
+	int ret;
+
+	ret = sfp_read(sfp, false, 0, &id, sizeof(*id));
 	if (ret < 0) {
 		if (report)
 			dev_err(sfp->dev, "failed to read EEPROM: %d\n", ret);
 		return -EAGAIN;
 	}
 
-	if (ret != sizeof(id)) {
+	if (ret != sizeof(*id)) {
 		dev_err(sfp->dev, "EEPROM short read: %d\n", ret);
 		return -EAGAIN;
 	}
@@ -1593,39 +1657,54 @@ static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
 	 * do the final programming with the final module part number,
 	 * serial number and date code.
 	 */
-	cotsworks = !memcmp(id.base.vendor_name, "COTSWORKS       ", 16);
+	cotsworks = !memcmp(id->base.vendor_name, "COTSWORKS       ", 16);
 
 	/* Validate the checksum over the base structure */
-	check = sfp_check(&id.base, sizeof(id.base) - 1);
-	if (check != id.base.cc_base) {
+	check = sfp_check(&id->base, sizeof(id->base) - 1);
+	if (check != id->base.cc_base) {
 		if (cotsworks) {
 			dev_warn(sfp->dev,
 				 "EEPROM base structure checksum failure (0x%02x != 0x%02x)\n",
-				 check, id.base.cc_base);
+				 check, id->base.cc_base);
 		} else {
 			dev_err(sfp->dev,
 				"EEPROM base structure checksum failure: 0x%02x != 0x%02x\n",
-				check, id.base.cc_base);
+				check, id->base.cc_base);
 			print_hex_dump(KERN_ERR, "sfp EE: ", DUMP_PREFIX_OFFSET,
-				       16, 1, &id, sizeof(id), true);
+				       16, 1, id, sizeof(*id), true);
 			return -EINVAL;
 		}
 	}
 
-	check = sfp_check(&id.ext, sizeof(id.ext) - 1);
-	if (check != id.ext.cc_ext) {
+	check = sfp_check(&id->ext, sizeof(id->ext) - 1);
+	if (check != id->ext.cc_ext) {
 		if (cotsworks) {
 			dev_warn(sfp->dev,
 				 "EEPROM extended structure checksum failure (0x%02x != 0x%02x)\n",
-				 check, id.ext.cc_ext);
+				 check, id->ext.cc_ext);
 		} else {
 			dev_err(sfp->dev,
 				"EEPROM extended structure checksum failure: 0x%02x != 0x%02x\n",
-				check, id.ext.cc_ext);
+				check, id->ext.cc_ext);
 			print_hex_dump(KERN_ERR, "sfp EE: ", DUMP_PREFIX_OFFSET,
-				       16, 1, &id, sizeof(id), true);
-			memset(&id.ext, 0, sizeof(id.ext));
+				       16, 1, id, sizeof(*id), true);
+			memset(&id->ext, 0, sizeof(id->ext));
 		}
+	}
+
+	return 0;
+}
+
+static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
+{
+	/* SFP module inserted - read I2C data */
+	struct sfp_eeprom_id id;
+	int ret;
+
+	ret = sfp->type->read_eeprom_id(sfp, &id, report);
+	if (ret) {
+		dev_err(sfp->dev, "Unable to read EEPROM id (%d)", ret);
+		return ret;
 	}
 
 	sfp->id = id;
@@ -1651,7 +1730,7 @@ static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
 			 "module address swap to access page 0xA2 is not supported.\n");
 
 	/* Parse the module power requirement */
-	ret = sfp_module_parse_power(sfp);
+	ret = sfp->type->module_parse_power(sfp);
 	if (ret < 0)
 		return ret;
 
@@ -1992,6 +2071,11 @@ static int sfp_module_info(struct sfp *sfp, struct ethtool_modinfo *modinfo)
 		modinfo->type = ETH_MODULE_SFF_8079;
 		modinfo->eeprom_len = ETH_MODULE_SFF_8079_LEN;
 	}
+	if (sfp_is_qsfp_module(&sfp->id)) {
+		modinfo->type = ETH_MODULE_SFF_8636;
+		modinfo->eeprom_len = ETH_MODULE_SFF_8636_LEN;
+	}
+
 	return 0;
 }
 

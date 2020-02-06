@@ -178,6 +178,41 @@ int sfp_parse_port(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 }
 EXPORT_SYMBOL_GPL(sfp_parse_port);
 
+bool sfp_is_qsfp_module(const struct sfp_eeprom_id *id)
+{
+	return (id->base.phys_id == SFP_PHYS_ID_QSFP ||
+		id->base.phys_id == SFP_PHYS_ID_QSFP_PLUS ||
+		id->base.phys_id == SFP_PHYS_ID_QSFP28);
+}
+EXPORT_SYMBOL_GPL(sfp_is_qsfp_module);
+
+static void sfp_supported_link_codes(struct sfp_bus *bus, unsigned long *modes,
+				     u8 code)
+{
+	switch (code) {
+	case 0x00: /* Unspecified */
+		break;
+	case 0x02: /* 100Gbase-SR4 or 25Gbase-SR */
+		phylink_set(modes, 100000baseSR4_Full);
+		phylink_set(modes, 25000baseSR_Full);
+		break;
+	case 0x03: /* 100Gbase-LR4 or 25Gbase-LR */
+	case 0x04: /* 100Gbase-ER4 or 25Gbase-ER */
+		phylink_set(modes, 100000baseLR4_ER4_Full);
+		break;
+	case 0x0b: /* 100Gbase-CR4 or 25Gbase-CR CA-L */
+	case 0x0c: /* 25Gbase-CR CA-S */
+	case 0x0d: /* 25Gbase-CR CA-N */
+		phylink_set(modes, 100000baseCR4_Full);
+		phylink_set(modes, 25000baseCR_Full);
+		break;
+	default:
+		dev_warn(bus->sfp_dev, "Unknown/unsupported extended compliance code: 0x%02x\n",
+			 code);
+		break;
+	}
+}
+
 /**
  * sfp_parse_support() - Parse the eeprom id for supported link modes
  * @bus: a pointer to the &struct sfp_bus structure for the sfp module
@@ -260,29 +295,10 @@ void sfp_parse_support(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 		}
 	}
 
-	switch (id->base.extended_cc) {
-	case 0x00: /* Unspecified */
-		break;
-	case 0x02: /* 100Gbase-SR4 or 25Gbase-SR */
-		phylink_set(modes, 100000baseSR4_Full);
-		phylink_set(modes, 25000baseSR_Full);
-		break;
-	case 0x03: /* 100Gbase-LR4 or 25Gbase-LR */
-	case 0x04: /* 100Gbase-ER4 or 25Gbase-ER */
-		phylink_set(modes, 100000baseLR4_ER4_Full);
-		break;
-	case 0x0b: /* 100Gbase-CR4 or 25Gbase-CR CA-L */
-	case 0x0c: /* 25Gbase-CR CA-S */
-	case 0x0d: /* 25Gbase-CR CA-N */
-		phylink_set(modes, 100000baseCR4_Full);
-		phylink_set(modes, 25000baseCR_Full);
-		break;
-	default:
-		dev_warn(bus->sfp_dev,
-			 "Unknown/unsupported extended compliance code: 0x%02x\n",
-			 id->base.extended_cc);
-		break;
-	}
+	sfp_supported_link_codes(bus, modes, id->base.extended_cc);
+
+	if (sfp_is_qsfp_module(id))
+		sfp_supported_link_codes(bus, modes, id->ext.options & 0xFF);
 
 	/* For fibre channel SFP, derive possible BaseX modes */
 	if (id->base.fc_speed_100 ||
@@ -349,6 +365,12 @@ phy_interface_t sfp_select_interface(struct sfp_bus *bus,
 
 	if (phylink_test(link_modes, 1000baseX_Full))
 		return PHY_INTERFACE_MODE_1000BASEX;
+
+	if (phylink_test(link_modes, 100000baseKR4_Full) ||
+	    phylink_test(link_modes, 100000baseSR4_Full) ||
+	    phylink_test(link_modes, 100000baseCR4_Full) ||
+	    phylink_test(link_modes, 100000baseLR4_ER4_Full))
+		return PHY_INTERFACE_MODE_INTERNAL;
 
 	dev_warn(bus->sfp_dev, "Unable to ascertain link mode\n");
 
