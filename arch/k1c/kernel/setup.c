@@ -11,6 +11,7 @@
 
 #include <linux/start_kernel.h>
 #include <linux/screen_info.h>
+#include <linux/console.h>
 #include <linux/linkage.h>
 #include <linux/export.h>
 #include <linux/of_fdt.h>
@@ -113,6 +114,10 @@ void __init setup_arch(char **cmdline_p)
 	setup_device_tree();
 
 	smp_init_cpus();
+
+#ifdef CONFIG_VT
+	conswitchp = &dummy_con;
+#endif
 }
 
 asmlinkage __visible void __init arch_low_level_start(unsigned long r0,
