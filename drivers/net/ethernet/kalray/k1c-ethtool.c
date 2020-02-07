@@ -14,7 +14,7 @@
 #include "k1c-net-hw.h"
 #include "k1c-net-regs.h"
 
-#define STAT(n, m)   { n, FIELD_SIZEOF(struct k1c_eth_hw_stats, m), \
+#define STAT(n, m)   { n, sizeof_field(struct k1c_eth_hw_stats, m), \
 	offsetof(struct k1c_eth_hw_stats, m) }
 
 struct k1c_stats {
