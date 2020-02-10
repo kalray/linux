@@ -1349,7 +1349,8 @@ static int k1c_iommu_map(struct iommu_domain *domain,
 			 unsigned long iova,
 			 phys_addr_t paddr,
 			 size_t size,
-			 int prot)
+			 int prot,
+			 gfp_t gfp)
 {
 	struct k1c_iommu_domain *k1c_domain;
 	struct k1c_iommu_drvdata *iommu;
