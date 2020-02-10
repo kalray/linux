@@ -1717,12 +1717,12 @@ static struct attribute *k1c_iommu_metrics_attrs[] = {
 	NULL
 };
 
-const struct attribute_group k1c_iommu_info_group = {
+static const struct attribute_group k1c_iommu_info_group = {
 	.name = "k1c-iommu-infos",
 	.attrs = k1c_iommu_metrics_attrs,
 };
 
-const struct attribute_group *k1c_iommu_groups[] = {
+static const struct attribute_group *k1c_iommu_groups[] = {
 	&k1c_iommu_info_group,
 	NULL,
 };
