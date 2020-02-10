@@ -18,6 +18,7 @@ config NET_K1C_SOC
 	tristate "Kalray ethernet support"
 	depends on K1C_DMA_NOC
 	select PHYLINK
+	select NET_TI_RTM
 	help
 	  This driver supports the K1C Ethernet hardware using dma_noc driver
 	  as dependency.
@@ -25,5 +26,4 @@ config NET_K1C_SOC
 	  TX flow.
 
 	  To compile this driver as a module, choose M here.
-
 endif # NET_VENDOR_KALRAY
