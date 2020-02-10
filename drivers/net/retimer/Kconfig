@@ -1,0 +1,13 @@
+#
+# Retimer device configuration
+#
+
+config NET_TI_RTM
+	tristate "TI DS2x0DFx10 retimer support"
+	depends on I2C
+	help
+	  This driver supports the Texas Instruments DS2x0DFx10 retimer
+	  hardware family (DS280DF810, DS250DF810 and DS250DF410). Say Y if you
+	  want to use this driver to configure retimers.
+
+	  To compile this driver as a module, choose M here.
