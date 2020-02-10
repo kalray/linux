@@ -139,15 +139,14 @@ SECTIONS
 
 	/* Everything below this point will be mapped RO NOEXEC up to _sdata */
 	__rodata_start = .;
-	RO_DATA_SECTION(PAGE_SIZE)
+	RO_DATA(PAGE_SIZE)
 	EXCEPTION_TABLE(8)
-	NOTES
 	. = ALIGN(PAGE_SIZE);
 	__rodata_end = .;
 
 	/* Everything below this point will be mapped RW NOEXEC up to _end */
 	_sdata = .;
-	RW_DATA_SECTION(L1_CACHE_BYTES, PAGE_SIZE, THREAD_SIZE)
+	RW_DATA(L1_CACHE_BYTES, PAGE_SIZE, THREAD_SIZE)
 	_edata = .;
 
 	BSS_SECTION(32, 32, 32)
