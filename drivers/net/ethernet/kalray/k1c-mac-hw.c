@@ -691,7 +691,7 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 	return 0;
 }
 
-#define MAC_SYNC_TIMEOUT_MS  30
+#define MAC_SYNC_TIMEOUT_MS  1000
 #define FEC_MASK_40G         0x55
 static int k1c_eth_wait_link_up(struct k1c_eth_hw *hw,
 				struct k1c_eth_lane_cfg *cfg)
