@@ -1,0 +1,33 @@
+* TI retimer
+
+Required properties:
+- compatible: Should be "ti,retimer"
+- reg: Address on i2c bus
+- en_smb_gpios: RX/TX slave enable gpio
+  Z for E2PROM mode, 1 for I2C slave
+- ti,reg-init: I2C init sequence
+
+Optional:
+- read-en-gpios: Read enable gpio
+  if en_smb = Z, read enable must be 0 for E2PROM master mode
+  if en_smb = 1, 0 for reset, 1 for normal operation
+- done-gpios: All done gpio
+  if en_smb = 1, this gpio has the same value as read_en_gpio
+  if en_smb = 0, 0 is E2PROM success, 1 is E2PROM fail
+
+Example:
+
+axi {
+	i2c3: i2c@20198000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		rtmrx: rtmrx@18 {
+			compatible = "ti,retimer";
+			reg = <0x18>;
+			en-smb-gpios = <&gpio0_banka 9 0>;
+			read-en-gpios = <&gpio1_banka 19 0>;
+			/* register address, offset, mask, value */
+			ti,reg-init = <0x1 0 0xff 0x0>;
+		};
+	};
+};
