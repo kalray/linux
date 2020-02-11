@@ -570,6 +570,7 @@ static int get_layer(struct k1c_eth_netdev *ndev,
 		layer = K1C_NET_LAYER_4;
 		break;
 	case IP_USER_FLOW:
+	case IPV6_USER_FLOW:
 		layer = K1C_NET_LAYER_3;
 		break;
 	case ETHER_FLOW:
