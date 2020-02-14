@@ -12,6 +12,7 @@
 
 #include <linux/skbuff.h>
 #include <linux/phy.h>
+#include <linux/phylink.h>
 
 #include <linux/dma/k1c-dma.h>
 #include "k1c-net-hw.h"
@@ -99,7 +100,8 @@ extern const union udp_filter_desc udp_filter_default;
  * @netdev: net device
  * @dev: device
  * @hw: pointer to hw resources
- * @phy: phy pointer
+ * @phylink: phy pointer
+ * @phylink_cfg: phylink config
  * @cfg: lane config parameters
  * @napi: napi struct
  * @node: node in k1c_eth_dev list
@@ -113,6 +115,8 @@ struct k1c_eth_netdev {
 	struct device *dev;
 	struct k1c_eth_hw *hw;
 	/* Connection to PHY device */
+	struct phylink *phylink;
+	struct phylink_config phylink_cfg;
 	struct k1c_eth_lane_cfg cfg;
 	struct k1c_dma_config dma_cfg;
 	struct napi_struct napi;
