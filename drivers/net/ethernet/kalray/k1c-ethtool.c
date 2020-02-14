@@ -930,6 +930,23 @@ static int k1c_eth_set_rxfh(struct net_device *netdev, const u32 *indir,
 	return 0;
 }
 
+/* module_info and module_eeprom already handled in sfp drivers and ethtool */
+static int k1c_eth_get_link_ksettings(struct net_device *netdev,
+				      struct ethtool_link_ksettings *cmd)
+{
+	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
+
+	return phylink_ethtool_ksettings_get(ndev->phylink, cmd);
+}
+
+static int k1c_eth_set_link_ksettings(struct net_device *netdev,
+				      const struct ethtool_link_ksettings *cmd)
+{
+	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
+
+	return phylink_ethtool_ksettings_set(ndev->phylink, cmd);
+}
+
 static const struct ethtool_ops k1c_ethtool_ops = {
 	.get_drvinfo         = k1c_eth_get_drvinfo,
 	.get_ringparam       = k1c_eth_get_ringparam,
@@ -943,6 +960,8 @@ static const struct ethtool_ops k1c_ethtool_ops = {
 	.get_rxfh_key_size   = k1c_eth_get_rxfh_key_size,
 	.get_rxfh            = k1c_eth_get_rxfh,
 	.set_rxfh            = k1c_eth_set_rxfh,
+	.get_link_ksettings  = k1c_eth_get_link_ksettings,
+	.set_link_ksettings  = k1c_eth_set_link_ksettings,
 };
 
 void k1c_set_ethtool_ops(struct net_device *netdev)
