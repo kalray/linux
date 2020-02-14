@@ -358,11 +358,17 @@ static int k1c_eth_phy_serdes_cfg(struct k1c_eth_hw *hw,
 	u32 off, val;
 	int i;
 
-	if (pll->serdes_mask)
+	if (pll->serdes_mask) {
 		serdes_nb = fls(pll->serdes_mask);
-	dev_dbg(hw->dev, "serdes_nb: %d (serdes_mask: 0x%lx serdes_pll_master: 0x%lx avail: 0x%lx)\n",
-		serdes_nb, pll->serdes_mask,
-		pll->serdes_pll_master, pll->avail);
+		dev_dbg(hw->dev, "serdes_nb: %d (serdes_mask: 0x%lx serdes_pll_master: 0x%lx avail: 0x%lx)\n",
+			serdes_nb, pll->serdes_mask,
+			pll->serdes_pll_master, pll->avail);
+		if (serdes_nb > K1C_ETH_LANE_NB) {
+			dev_err(hw->dev, "serdes_nb %d > %d\n",
+				serdes_nb, K1C_ETH_LANE_NB);
+			return -EINVAL;
+		}
+	}
 	/* Enable CR interface */
 	k1c_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
 
@@ -688,6 +694,16 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 		dev_warn(hw->dev, "Config MAC PCS: Unsupported speed\n");
 		break;
 	}
+	return 0;
+}
+
+int k1c_eth_mac_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	u32 mask = BIT(MAC_SYNC_STATUS_LINK_STATUS_SHIFT + cfg->id);
+	u32 reg = k1c_mac_readl(hw, MAC_SYNC_STATUS_OFFSET);
+
+	cfg->link = ((reg & mask) == mask);
+
 	return 0;
 }
 
