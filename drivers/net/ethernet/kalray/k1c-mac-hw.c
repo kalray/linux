@@ -515,6 +515,53 @@ static void update_set_vendor_cl_intvl(struct k1c_eth_hw *hw, int lane_id,
 	k1c_mac_writel(hw, marker_comp, off + XPCS_VENDOR_VL_INTVL_OFFSET);
 }
 
+enum xpcs_rates {
+	XPCS_RATE_25G = 0,
+	XPCS_RATE_40G,
+	XPCS_RATE_NB,
+};
+
+struct vl_marker {
+	u8 m0, m1, m2;
+};
+
+#define XPCS_VL_NB  4
+#define VLX_OFFSET  0x8
+#define VL_OFFSET   0x4
+
+static const struct vl_marker vl_marker_value[XPCS_RATE_NB][XPCS_VL_NB] = {
+	[XPCS_RATE_25G] = {
+		{ .m0 = 0xC1, .m1 = 0x68, .m2 = 0x21 },
+		{ .m0 = 0xF0, .m1 = 0xC4, .m2 = 0xE6 },
+		{ .m0 = 0xC5, .m1 = 0x65, .m2 = 0x9B },
+		{ .m0 = 0xA2, .m1 = 0x79, .m2 = 0x3D }
+	},
+	[XPCS_RATE_40G] = {
+		{ .m0 = 0x90, .m1 = 0x76, .m2 = 0x47 },
+		{ .m0 = 0xF0, .m1 = 0xC4, .m2 = 0xE6 },
+		{ .m0 = 0xC5, .m1 = 0x65, .m2 = 0x9B },
+		{ .m0 = 0xA2, .m1 = 0x79, .m2 = 0x3D }
+	},
+};
+
+static void update_set_vendor_xpcs_vl(struct k1c_eth_hw *hw, int pcs_id,
+				      enum xpcs_rates xpcs_rate)
+{
+	u32 val, off = XPCS_OFFSET + XPCS_ELEM_SIZE * pcs_id +
+		XPCS_VENDOR_VL0_0_OFFSET;
+	struct vl_marker *marker =
+		(struct vl_marker *)vl_marker_value[xpcs_rate];
+	int i;
+
+	for (i = 0; i < XPCS_VL_NB; ++i) {
+		val = ((u32)marker[i].m1 << 8) | marker[i].m0;
+		k1c_mac_writel(hw, val, off + i * VLX_OFFSET);
+		val = marker[i].m2;
+		k1c_mac_writel(hw, val, off + i * VLX_OFFSET + VL_OFFSET);
+	}
+}
+
+
 /* IPG Biasing */
 /** One 8-byte block of Idle is removed after every 20479 blocks.
  * This is the standard compliant mode for 25Geth when using PCS
@@ -573,6 +620,7 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 		/* Set MAC interface into XGMII */
 		updatel_bits(hw, MAC, PMAC_XIF_OFFSET,
 			     PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
+		update_set_vendor_xpcs_vl(hw, cfg->id, XPCS_RATE_25G);
 
 		if (hw->fec_en) {
 			update_set_vendor_cl_intvl(hw, cfg->id, mc);
@@ -606,6 +654,7 @@ static int k1c_eth_mac_pcs_cfg(struct k1c_eth_hw *hw,
 
 		/* All lanes */
 		for (i = 0; i < K1C_ETH_LANE_NB; ++i) {
+			update_set_vendor_xpcs_vl(hw, i, XPCS_RATE_40G);
 			reg = XPCS_OFFSET + XPCS_ELEM_SIZE * i;
 			k1c_mac_writel(hw, 0x9, reg +
 				       XPCS_VENDOR_TXLANE_THRESH_OFFSET);
@@ -707,6 +756,30 @@ int k1c_eth_mac_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 	return 0;
 }
 
+/* Check PCS status */
+void k1c_eth_mac_pcs_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	switch (cfg->speed) {
+	case SPEED_100000:
+		DUMP_REG(hw, MAC, PCS_100G_CTRL1_OFFSET);
+		DUMP_REG(hw, MAC, PCS_100G_CTRL2_OFFSET);
+		DUMP_REG(hw, MAC, PCS_100G_STATUS1_OFFSET);
+		DUMP_REG(hw, MAC, PCS_100G_STATUS2_OFFSET);
+		DUMP_REG(hw, MAC, PCS_100G_SPEED_ABILITY_OFFSET);
+		break;
+	case SPEED_40000:
+	case SPEED_25000:
+		DUMP_REG(hw, MAC, XPCS_CTRL1_OFFSET);
+		DUMP_REG(hw, MAC, XPCS_CTRL2_OFFSET);
+		DUMP_REG(hw, MAC, XPCS_STATUS1_OFFSET);
+		DUMP_REG(hw, MAC, XPCS_STATUS2_OFFSET);
+		DUMP_REG(hw, MAC, XPCS_SPEED_ABILITY_OFFSET);
+		break;
+	default:
+		break;
+	}
+}
+
 #define MAC_SYNC_TIMEOUT_MS  1000
 #define FEC_MASK_40G         0x55
 static int k1c_eth_wait_link_up(struct k1c_eth_hw *hw,
@@ -735,7 +808,7 @@ static int k1c_eth_wait_link_up(struct k1c_eth_hw *hw,
 			ret = k1c_poll(k1c_mac_readl, MAC_RS_FEC_STATUS_OFFSET,
 				       ref, ref, MAC_SYNC_TIMEOUT_MS);
 			if (ret) {
-				dev_err(hw->dev, "Link 100G status (rs fec)\n");
+				dev_err(hw->dev, "Link 100G status timeout (rs fec)\n");
 				return ret;
 			}
 		} else {
@@ -751,7 +824,7 @@ static int k1c_eth_wait_link_up(struct k1c_eth_hw *hw,
 			ret = k1c_poll(k1c_mac_readl, MAC_FEC_STATUS_OFFSET,
 				       fec_mask, fec_mask, MAC_SYNC_TIMEOUT_MS);
 			if (ret) {
-				dev_err(hw->dev, "Link %s status failed (fec)\n",
+				dev_err(hw->dev, "Link %s status timeout (fec)\n",
 					phy_speed_to_str(cfg->speed));
 				return ret;
 			}
@@ -760,11 +833,13 @@ static int k1c_eth_wait_link_up(struct k1c_eth_hw *hw,
 
 	mask = BIT(MAC_SYNC_STATUS_LINK_STATUS_SHIFT + cfg->id);
 	reg = k1c_mac_readl(hw, MAC_SYNC_STATUS_OFFSET);
-	dev_dbg(hw->dev, "Link 100G status: 0x%x\n", reg);
+	dev_dbg(hw->dev, "Link sync status lane[%d]: 0x%x\n", cfg->id, reg);
 	ret = k1c_poll(k1c_mac_readl, MAC_SYNC_STATUS_OFFSET, mask,
 		 mask, MAC_SYNC_TIMEOUT_MS);
-	if (ret)
+	if (ret) {
 		dev_err(hw->dev, "Link up timeout.\n");
+		k1c_eth_mac_pcs_status(hw, cfg);
+	}
 
 	return 0;
 }
