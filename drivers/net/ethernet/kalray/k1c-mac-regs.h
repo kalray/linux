@@ -239,7 +239,13 @@
 #define XPCS_CTRL1_LOOPBACK_MASK                   0x4000UL
 #define XPCS_CTRL1_RESET_SHIFT                     0xf
 #define XPCS_CTRL1_RESET_MASK                      0x8000UL
+#define XPCS_CTRL2_OFFSET                          0x1C
+#define XPCS_CTRL2_PCS_TYPE_SHIFT                  0x0
+#define XPCS_CTRL2_PCS_TYPE_MASK                   0x7UL
 #define XPCS_STATUS1_OFFSET                        0x4
+#define XPCS_STATUS2_OFFSET                        0x20
+#define XPCS_SPEED_ABILITY_OFFSET                  0x10
+#define XPCS_VENDOR_VL0_0_OFFSET                   0x720
 #define XPCS_VENDOR_PCS_MODE_OFFSET                0x740
 #define XPCS_VENDOR_PCS_MODE_ENA_CLAUSE49_SHIFT    0x0
 #define XPCS_VENDOR_PCS_MODE_ENA_CLAUSE49_MASK     0x1UL
@@ -276,7 +282,12 @@
 #define PCS_100G_CTRL1_LOOPBACK_MASK               0x4000UL
 #define PCS_100G_CTRL1_RESET_SHIFT                 0xf
 #define PCS_100G_CTRL1_RESET_MASK                  0x8000UL
+#define PCS_100G_CTRL2_OFFSET                      0x1C
+#define PCS_100G_CTRL2_PCS_TYPE_SHIFT              0x0
+#define PCS_100G_CTRL2_PCS_TYPE_MASK               0x7UL
 #define PCS_100G_STATUS1_OFFSET                    0x4
+#define PCS_100G_STATUS2_OFFSET                    0x20
+#define PCS_100G_SPEED_ABILITY_OFFSET              0x10
 #define PCS_100G_VL_INTVL_OFFSET                   0x808
 #define PCS_100G_VL_INTVL_SHIFT                    0x0
 #define PCS_100G_VL_INTVL_MASK                     0xFFFFUL
