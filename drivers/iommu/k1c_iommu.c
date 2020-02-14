@@ -611,40 +611,45 @@ static struct k1c_iommu_domain *to_k1c_domain(struct iommu_domain *dom)
  * @iommu_hw: the hardware iommu used
  * @iova: the address we want to remove
  * @asn: address space number
+ *
+ * Return: The size of the invalidated page.
  */
-static void invalidate_tlb_entry(struct k1c_iommu_hw *iommu_hw,
+static size_t invalidate_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 				 unsigned long iova, u32 asn,
 				 unsigned long psize)
 {
 	struct k1c_iommu_tlb_entry entry = {.tel_val = 0, .teh_val = 0};
 	unsigned int way;
 	int set;
+	int ps;
 	unsigned long flags;
 
 	switch (psize) {
 	case K1C_IOMMU_4K_SIZE:
-		entry.teh.ps = K1C_IOMMU_PS_4K;
+		ps = K1C_IOMMU_PS_4K;
 		break;
 	case K1C_IOMMU_64K_SIZE:
-		entry.teh.ps = K1C_IOMMU_PS_64K;
+		ps = K1C_IOMMU_PS_64K;
 		break;
 	case K1C_IOMMU_2M_SIZE:
-		entry.teh.ps = K1C_IOMMU_PS_2M;
+		ps = K1C_IOMMU_PS_2M;
 		break;
 	case K1C_IOMMU_512M_SIZE:
-		entry.teh.ps = K1C_IOMMU_PS_512M;
+		ps = K1C_IOMMU_PS_512M;
 		break;
 	default:
 		BUG_ON(1);
 	}
 
+next:
+	entry.teh.ps = ps;
 	entry.teh.pn = iova >> K1C_IOMMU_PN_SHIFT;
 
 	set = teh_to_set(&entry.teh, iommu_hw->sets);
 	if (set < 0) {
 		dev_err(iommu_hw->dev, "%s: invalid set returned from 0x%lx",
 			__func__, iova);
-		return;
+		return 0;
 	}
 
 	pr_debug("%s: iova 0x%lx, asn %d, iommu_hw 0x%lx\n",
@@ -660,14 +665,26 @@ static void invalidate_tlb_entry(struct k1c_iommu_hw *iommu_hw,
 		    (entry.tel.es == K1C_IOMMU_ES_VALID)) {
 			entry.tel.es = K1C_IOMMU_ES_INVALID;
 			write_tlb_entry(iommu_hw, way, &entry);
-			/* Nothing more to do */
-			break;
+			goto found;
 		}
 	}
 
+	spin_unlock_irqrestore(&iommu_hw->tlb_lock, flags);
+
+	/*
+	 * No entry found. Let's try with smaller page size.
+	 */
+	if (ps--)
+		goto next;
+
+	return 0;
+
+found:
 	iommu_hw->nb_invals[entry.teh.ps]++;
 
 	spin_unlock_irqrestore(&iommu_hw->tlb_lock, flags);
+
+	return k1c_iommu_get_page_size[entry.teh.ps];
 }
 
 /**
@@ -1311,28 +1328,22 @@ static size_t k1c_iommu_unmap(struct iommu_domain *domain,
 {
 	struct k1c_iommu_domain *k1c_domain;
 	struct k1c_iommu_hw *iommu_hw[K1C_IOMMU_NB_TYPE];
-	unsigned long num_pages;
-	unsigned long start;
+	size_t rx_pgsz, tx_pgsz;
 	u32 asn;
-	int i;
 
 	k1c_domain = to_k1c_domain(domain);
 
 	iommu_hw[K1C_IOMMU_RX] = &k1c_domain->iommu->iommu_hw[K1C_IOMMU_RX];
 	iommu_hw[K1C_IOMMU_TX] = &k1c_domain->iommu->iommu_hw[K1C_IOMMU_TX];
 
-	num_pages = iommu_num_pages(iova, size, size);
-
-	start = iova;
 	asn = k1c_domain->asn;
 
-	for (i = 0; i < num_pages; i++) {
-		invalidate_tlb_entry(iommu_hw[K1C_IOMMU_RX], start, asn, size);
-		invalidate_tlb_entry(iommu_hw[K1C_IOMMU_TX], start, asn, size);
-		start += size;
-	}
+	rx_pgsz = invalidate_tlb_entry(iommu_hw[K1C_IOMMU_RX], iova, asn, size);
+	tx_pgsz	= invalidate_tlb_entry(iommu_hw[K1C_IOMMU_TX], iova, asn, size);
 
-	return size;
+	BUG_ON(rx_pgsz != tx_pgsz);
+
+	return rx_pgsz;
 }
 
 /**
