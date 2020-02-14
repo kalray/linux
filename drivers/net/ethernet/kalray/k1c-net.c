@@ -58,39 +58,7 @@ void k1c_eth_up(struct net_device *netdev)
 	napi_enable(&ndev->napi);
 	netif_start_queue(netdev);
 
-	netif_carrier_on(netdev);
-}
-
-/* k1c_eth_link_change() - Link change callback
- * @netdev: Current netdev
- */
-static void k1c_eth_link_change(struct net_device *netdev)
-{
-	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
-	struct phy_device *phydev = netdev->phydev;
-	int ret = 0;
-	struct list_head *n;
-	struct k1c_eth_netdev *nd;
-
-	if (phydev->link != ndev->cfg.link ||
-	    phydev->speed != ndev->cfg.speed ||
-	    phydev->duplex != ndev->cfg.duplex) {
-		ndev->cfg.link = phydev->link;
-		ndev->cfg.speed = phydev->speed;
-		ndev->cfg.duplex = phydev->duplex;
-		phy_print_status(phydev);
-	}
-
-	/* Retrieve head */
-	list_for_each_prev(n, &ndev->node) {
-		if (list_is_first(n, &ndev->node))
-			break;
-	}
-
-	list_for_each_entry(nd, n, node) {
-		netdev_dbg(netdev, "Iterate netdev cfg->id: %d\n", nd->cfg.id);
-		ret = k1c_eth_phy_serdes_init(nd->hw, &nd->cfg);
-	}
+	phylink_start(ndev->phylink);
 }
 
 /* k1c_eth_netdev_open() - Open ops
@@ -98,9 +66,6 @@ static void k1c_eth_link_change(struct net_device *netdev)
  */
 static int k1c_eth_netdev_open(struct net_device *netdev)
 {
-	if (netdev->phydev)
-		phy_start(netdev->phydev);
-
 	k1c_eth_up(netdev);
 	return 0;
 }
@@ -112,8 +77,8 @@ void k1c_eth_down(struct net_device *netdev)
 {
 	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
 
-	netif_carrier_off(netdev);
 	napi_disable(&ndev->napi);
+	phylink_stop(ndev->phylink);
 	netif_stop_queue(netdev);
 }
 
@@ -122,12 +87,10 @@ void k1c_eth_down(struct net_device *netdev)
  */
 static int k1c_eth_netdev_close(struct net_device *netdev)
 {
-	k1c_eth_down(netdev);
+	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
 
-	if (netdev->phydev) {
-		phy_stop(netdev->phydev);
-		phy_disconnect(netdev->phydev);
-	}
+	k1c_eth_down(netdev);
+	phylink_disconnect_phy(ndev->phylink);
 
 	return 0;
 }
@@ -145,8 +108,8 @@ static int k1c_eth_init_netdev(struct k1c_eth_netdev *ndev)
 	ndev->rx_buffer_len = ALIGN(ndev->hw->max_frame_size,
 				    K1C_ETH_PKT_ALIGN);
 
-	ndev->cfg.speed = SPEED_100000;
-	ndev->cfg.duplex = DUPLEX_FULL;
+	ndev->cfg.speed = SPEED_UNKNOWN;
+	ndev->cfg.duplex = DUPLEX_UNKNOWN;
 	ndev->hw->fec_en = 0;
 	ndev->cfg.mac_f.loopback_mode = NO_LOOPBACK;
 
@@ -913,7 +876,6 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *np_dma;
-	struct phy_device *phy;
 	int ret = 0;
 
 	np_dma = of_parse_phandle(np, "dmas", 0);
@@ -969,13 +931,113 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 		return -EINVAL;
 	}
 
-	/* Set up netdev->phydev */
-	phy = of_phy_get_and_connect(ndev->netdev, np, k1c_eth_link_change);
-	if (!phy)
-		dev_err(ndev->dev, "Unable to get phy\n");
-
+	ret = phylink_of_phy_connect(ndev->phylink, np, 0);
+	if (ret) {
+		dev_err(ndev->dev, "Unable to get phy (%i)\n", ret);
+		return ret;
+	}
 	return 0;
 }
+
+static void k1c_phylink_validate(struct phylink_config *cfg,
+			 unsigned long *supported,
+			 struct phylink_link_state *state)
+{
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
+
+	phylink_set(mask, Autoneg);
+	phylink_set_port_modes(mask);
+	phylink_set(mask, Pause);
+	phylink_set(mask, Asym_Pause);
+
+	phylink_set(mask, 100000baseKR4_Full);
+	phylink_set(mask, 100000baseCR4_Full);
+	phylink_set(mask, 40000baseKR4_Full);
+	phylink_set(mask, 40000baseCR4_Full);
+	phylink_set(mask, 40000baseSR4_Full);
+	phylink_set(mask, 40000baseLR4_Full);
+
+	bitmap_and(supported, supported, mask, __ETHTOOL_LINK_MODE_MASK_NBITS);
+	bitmap_and(state->advertising, state->advertising, mask,
+		   __ETHTOOL_LINK_MODE_MASK_NBITS);
+}
+
+static void k1c_phylink_mac_link_state(struct phylink_config *cfg,
+				      struct phylink_link_state *state)
+{
+	struct net_device *netdev = to_net_dev(cfg->dev);
+	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
+	int ret = 0;
+
+	netdev_dbg(netdev, "%s\n", __func__);
+
+	ret = k1c_eth_mac_status(ndev->hw, &ndev->cfg);
+	state->link = ndev->cfg.link;
+}
+
+static void k1c_phylink_mac_config(struct phylink_config *cfg,
+				   unsigned int mode,
+				   const struct phylink_link_state *state)
+{
+	struct net_device *netdev = to_net_dev(cfg->dev);
+	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
+	bool update_serdes = false;
+	int ret = 0;
+
+	netdev_dbg(netdev, "%s netdev: %p hw: %p\n", __func__,
+		   netdev, ndev->hw);
+
+	/* Prevent k1c_eth_phy_serdes_init being called again */
+	if (ndev->cfg.speed != state->speed ||
+	    ndev->cfg.duplex != state->duplex)
+		update_serdes = true;
+
+	if (state->speed != SPEED_UNKNOWN)
+		ndev->cfg.speed = state->speed;
+	if (state->duplex != DUPLEX_UNKNOWN)
+		ndev->cfg.duplex = state->duplex;
+
+	if (update_serdes) {
+		ret = k1c_eth_phy_serdes_init(ndev->hw, &ndev->cfg);
+		if (ret) {
+			netdev_err(ndev->netdev, "Failed to initialize serdes\n");
+			return;
+		}
+	}
+
+	ret = k1c_eth_mac_cfg(ndev->hw, &ndev->cfg);
+	if (ret)
+		netdev_err(netdev, "Failed to configure MAC\n");
+}
+
+static void k1c_phylink_mac_an_restart(struct phylink_config *cfg)
+{
+	pr_debug("%s\n", __func__);
+}
+
+static void k1c_phylink_mac_link_down(struct phylink_config *cfg,
+				      unsigned int mode,
+				      phy_interface_t interface)
+{
+	pr_debug("%s\n", __func__);
+}
+
+static void k1c_phylink_mac_link_up(struct phylink_config *cfg,
+				    unsigned int mode,
+				    phy_interface_t interface,
+				    struct phy_device *phy)
+{
+	pr_debug("%s\n", __func__);
+}
+
+const static struct phylink_mac_ops k1c_phylink_ops = {
+	.validate          = k1c_phylink_validate,
+	.mac_pcs_get_state = k1c_phylink_mac_link_state,
+	.mac_config        = k1c_phylink_mac_config,
+	.mac_an_restart    = k1c_phylink_mac_an_restart,
+	.mac_link_down     = k1c_phylink_mac_link_down,
+	.mac_link_up       = k1c_phylink_mac_link_up,
+};
 
 /* k1c_eth_create_netdev() - Create new netdev
  * @pdev: Platform device
@@ -991,6 +1053,8 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	struct net_device *netdev;
 	int ret, i = 0;
 	struct list_head *n;
+	struct phylink *phylink;
+	int phy_mode;
 
 	netdev = devm_alloc_etherdev(&pdev->dev, sizeof(struct k1c_eth_netdev));
 	if (!netdev) {
@@ -1006,10 +1070,29 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	ndev->netdev = netdev;
 	ndev->hw = &dev->hw;
 	ndev->cfg.hw = ndev->hw;
+	ndev->phylink_cfg.dev = &netdev->dev;
+	ndev->phylink_cfg.type = PHYLINK_NETDEV;
+
+	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
+	if (phy_mode < 0) {
+		dev_err(&pdev->dev, "phy mode not set\n");
+		return NULL;
+	}
+
+	phylink = phylink_create(&ndev->phylink_cfg, pdev->dev.fwnode,
+				       phy_mode, &k1c_phylink_ops);
+	if (IS_ERR(phylink)) {
+		ret = PTR_ERR(phylink);
+		dev_err(&pdev->dev, "phylink_create error (%i)\n", ret);
+		return NULL;
+	}
+	ndev->phylink = phylink;
 
 	ret = k1c_eth_parse_dt(pdev, ndev);
-	if (ret)
-		return NULL;
+	if (ret) {
+		netdev_err(netdev, "Failed to parse device tree (%i)\n", ret);
+		goto phylink_err;
+	}
 
 	netif_napi_add(netdev, &ndev->napi,
 		       k1c_eth_netdev_poll, NAPI_POLL_WEIGHT);
@@ -1031,7 +1114,7 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	/* Register the network device */
 	ret = register_netdev(netdev);
 	if (ret) {
-		netdev_err(netdev, "Failed to register netdev %d\n", ret);
+		netdev_err(netdev, "Failed to register netdev (%i)\n", ret);
 		goto err;
 	}
 
@@ -1051,6 +1134,8 @@ tx_chan_failed:
 exit:
 	netdev_err(netdev, "Failed to create netdev\n");
 	netif_napi_del(&ndev->napi);
+phylink_err:
+	phylink_destroy(ndev->phylink);
 	return NULL;
 }
 
@@ -1065,6 +1150,7 @@ static int k1c_eth_free_netdev(struct k1c_eth_netdev *ndev)
 	netif_napi_del(&ndev->napi);
 	k1c_eth_release_tx_res(ndev->netdev);
 	k1c_eth_release_rx_res(ndev->netdev);
+	phylink_destroy(ndev->phylink);
 	unregister_netdev(ndev->netdev);
 	free_netdev(ndev->netdev);
 	return 0;
@@ -1097,18 +1183,6 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 	ret = k1c_eth_init_netdev(ndev);
 	if (ret)
 		goto err;
-
-	ret = k1c_eth_phy_serdes_init(ndev->hw, &ndev->cfg);
-	if (ret) {
-		netdev_err(ndev->netdev, "Failed to initialize serdes\n");
-		goto err;
-	}
-
-	ret = k1c_eth_mac_cfg(ndev->hw, &ndev->cfg);
-	if (ret) {
-		netdev_err(ndev->netdev, "Failed to configure MAC\n");
-		goto err;
-	}
 
 	k1c_mac_set_addr(&dev->hw, &ndev->cfg);
 	k1c_eth_tx_set_default(&ndev->cfg);
