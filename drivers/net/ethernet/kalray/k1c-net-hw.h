@@ -387,6 +387,7 @@ void k1c_mac_set_addr(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *lane_cfg);
 int k1c_eth_phy_init(struct k1c_eth_hw *hw);
 int k1c_eth_mac_reset(struct k1c_eth_hw *hw);
 int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *lane_cfg);
+int k1c_eth_mac_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 
 /* LB */
 void k1c_eth_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu);
