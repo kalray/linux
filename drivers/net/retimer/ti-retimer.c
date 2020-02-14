@@ -19,6 +19,7 @@
 #define TI_RTM_GPIO_READ_EN (1)
 #define TI_RTM_GPIO_ALL_DONE (1)
 #define TI_RTM_REGINIT_NB_ELEM (4)
+#define TI_RTM_REGINIT_MAX_SIZE (64)
 #define TI_RTM_DEFAULT_TIMEOUT (500)
 
 /**
@@ -86,7 +87,11 @@ static inline int ti_rtm_i2c_read(struct i2c_client *client, u8 reg, u8 *buf,
 static inline int ti_rtm_i2c_write(struct i2c_client *client, u8 reg, u8 *buf,
 		size_t len)
 {
-	u8 i2c_buf[1 + len];
+	u8 i2c_buf[TI_RTM_REGINIT_MAX_SIZE + 1];
+
+	if (len > TI_RTM_REGINIT_MAX_SIZE)
+		return -ENOMEM;
+
 	struct i2c_msg write_cmd[] = {
 		{
 			.addr = client->addr,
@@ -186,7 +191,6 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 		} while (ret != TI_RTM_GPIO_ALL_DONE);
 	}
 	reg_init(rtm);
-	kfree(rtm->reg_init);
 
 	return 0;
 
@@ -282,7 +286,7 @@ static int ti_rtm_probe(struct i2c_client *client,
 	struct ti_rtm_dev *rtm;
 	int ret = 0;
 
-	rtm = devm_kzalloc(dev, sizeof(*dev), GFP_KERNEL);
+	rtm = devm_kzalloc(dev, sizeof(*rtm), GFP_KERNEL);
 	if (!rtm)
 		return -ENODEV;
 	rtm->client = client;
