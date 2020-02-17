@@ -200,6 +200,12 @@ static void sfp_supported_link_codes(struct sfp_bus *bus, unsigned long *modes,
 	case 0x04: /* 100Gbase-ER4 or 25Gbase-ER */
 		phylink_set(modes, 100000baseLR4_ER4_Full);
 		break;
+	case 0x07: /* 40G */
+		phylink_set(modes, 40000baseKR4_Full);
+		phylink_set(modes, 40000baseCR4_Full);
+		phylink_set(modes, 40000baseSR4_Full);
+		phylink_set(modes, 40000baseLR4_Full);
+		break;
 	case 0x0b: /* 100Gbase-CR4 or 25Gbase-CR CA-L */
 	case 0x0c: /* 25Gbase-CR CA-S */
 	case 0x0d: /* 25Gbase-CR CA-N */
@@ -369,7 +375,11 @@ phy_interface_t sfp_select_interface(struct sfp_bus *bus,
 	if (phylink_test(link_modes, 100000baseKR4_Full) ||
 	    phylink_test(link_modes, 100000baseSR4_Full) ||
 	    phylink_test(link_modes, 100000baseCR4_Full) ||
-	    phylink_test(link_modes, 100000baseLR4_ER4_Full))
+	    phylink_test(link_modes, 100000baseLR4_ER4_Full) ||
+	    phylink_test(link_modes, 40000baseKR4_Full) ||
+	    phylink_test(link_modes, 40000baseCR4_Full) ||
+	    phylink_test(link_modes, 40000baseSR4_Full) ||
+	    phylink_test(link_modes, 40000baseLR4_Full))
 		return PHY_INTERFACE_MODE_INTERNAL;
 
 	dev_warn(bus->sfp_dev, "Unable to ascertain link mode\n");
