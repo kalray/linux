@@ -396,7 +396,11 @@ phy_interface_t sfp_select_interface(struct sfp_bus *bus,
 	if (phylink_test(link_modes, 100000baseKR4_Full) ||
 	    phylink_test(link_modes, 100000baseSR4_Full) ||
 	    phylink_test(link_modes, 100000baseCR4_Full) ||
-	    phylink_test(link_modes, 100000baseLR4_ER4_Full))
+	    phylink_test(link_modes, 100000baseLR4_ER4_Full) ||
+	    phylink_test(link_modes, 40000baseKR4_Full) ||
+	    phylink_test(link_modes, 40000baseCR4_Full) ||
+	    phylink_test(link_modes, 40000baseSR4_Full) ||
+	    phylink_test(link_modes, 40000baseLR4_Full))
 		return PHY_INTERFACE_MODE_INTERNAL;
 
 	dev_warn(bus->sfp_dev, "Unable to ascertain link mode\n");
