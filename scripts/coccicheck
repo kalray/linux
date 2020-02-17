@@ -273,7 +273,11 @@ else
 fi
 
 if [ "$COCCI" = "" ] ; then
-    for f in `find $srctree/scripts/coccinelle/ -name '*.cocci' -type f | sort`; do
+    TESTS=`find $srctree/scripts/coccinelle/ -name '*.cocci' -type f | sort`
+    if [ "$COCCI_EXCLUDE" != "" ]; then
+	TESTS=`echo "$TESTS" | grep -v $COCCI_EXCLUDE`
+    fi
+    for f in $TESTS; do
 	coccinelle $f
     done
 else
