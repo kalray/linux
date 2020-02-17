@@ -34,3 +34,9 @@ void __udelay(unsigned long usecs)
 	__const_udelay(usecs * 0x10C7UL); /* 2**32 / 1000000 (rounded up) */
 }
 EXPORT_SYMBOL(__udelay);
+
+void __ndelay(unsigned long nsecs)
+{
+	__const_udelay(nsecs * 0x5UL); /* 2**32 / 1000000000 (rounded up) */
+}
+EXPORT_SYMBOL(__ndelay);
