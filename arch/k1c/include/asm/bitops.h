@@ -197,6 +197,20 @@ static inline void clear_bit(int nr, volatile unsigned long *addr)
 	__atomic_op(nr, addr, &, __NOT);
 }
 
+/**
+ * change_bit - Toggle a bit in memory
+ * @nr: Bit to change
+ * @addr: Address to start counting from
+ *
+ * change_bit()  may be reordered on other architectures than x86.
+ * Note that @nr may be almost arbitrarily large; this function is not
+ * restricted to acting on a single-word quantity.
+ */
+static inline void change_bit(int nr, volatile unsigned long *addr)
+{
+	__atomic_op(nr, addr, ^, __NOP);
+}
+
 #include <asm-generic/bitops/lock.h>
 #include <asm-generic/bitops/non-atomic.h>
 #include <asm-generic/bitops/le.h>
