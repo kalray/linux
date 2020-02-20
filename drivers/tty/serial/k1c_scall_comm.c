@@ -34,10 +34,11 @@ static void do_iss_write(const char *s, unsigned int n)
 {
 	register const char *arg1 asm("r0") = s;
 	register unsigned arg2 asm("r1") = n;
+	register unsigned arg3 asm("r2") = 1;
 
 	asm volatile ("scall 0xffe\n\t;;"
-			: : "r"(arg1), "r"(arg2)
-			: "r2", "r3", "r4", "r5", "r6", "r7", "r8", "memory");
+			: : "r"(arg1), "r"(arg2), "r" (arg3)
+			: "r3", "r4", "r5", "r6", "r7", "r8", "memory");
 }
 
 /**
