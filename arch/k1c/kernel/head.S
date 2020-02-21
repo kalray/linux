@@ -161,9 +161,12 @@ __HEAD
 ENTRY(k1c_start)
 	/* Setup 64 bit really early to avoid bugs */
 	make $r21 = PS_VAL_WFXL(V64, 1)
-	get $r20 = $pcr
 	;;
 	wfxl $ps = $r21
+	;;
+	call asm_init_pl
+	;;
+	get $r20 = $pcr
 	;;
 	andd $r21 = $r20, RM_PID_MASK
 	;;
@@ -172,8 +175,6 @@ ENTRY(k1c_start)
 	call asm_rm_cfg_pwr_ctrl
 	;;
 init_core:
-	call asm_init_pl
-	;;
 	call asm_init_mmu
 	;;
 	/* Setup default processor status */
