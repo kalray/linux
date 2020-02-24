@@ -293,70 +293,135 @@ static enum k1c_traffic_types flow_type_to_traffic_type(u32 flow_type)
 	}
 }
 
-static void fill_tcp_filter(struct k1c_eth_netdev *ndev,
+/* Fill a port range from a port and a mask
+ * k1c hardware does not support port masks, only port ranges. We use the mask
+ * as a port upper bound to match this behavior.
+ */
+#define fill_ports(filter, type, port, mask) \
+({ \
+	filter->type##_min_port = port; \
+	if (mask == 0xffff) /* No mask provided */ \
+		filter->type##_max_port = port; \
+	else { \
+		/* ethtool invert the mask: invert it back */ \
+		mask = ~mask; \
+		filter->type##_max_port = mask; \
+		if (port > mask) \
+			ret = -EINVAL; \
+	} \
+	(port > mask) ? -EINVAL : 0; \
+})
+
+static int fill_tcp_filter(struct k1c_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt)
 {
 	union tcp_filter_desc *filter = (union tcp_filter_desc *) flt;
 	struct ethtool_tcpip4_spec *l4_val  = &fs->h_u.tcp_ip4_spec;
 	struct ethtool_tcpip4_spec *l4_mask = &fs->m_u.tcp_ip4_spec;
-	int src_port = ntohs(l4_val->psrc);
-	int src_mask = ntohs(l4_mask->psrc);
-	int dst_port = ntohs(l4_val->pdst);
-	int dst_mask = ntohs(l4_mask->pdst);
+	u16 src_port = ntohs(l4_val->psrc);
+	u16 dst_port = ntohs(l4_val->pdst);
+	u16 src_mask = ntohs(l4_mask->psrc);
+	u16 dst_mask = ntohs(l4_mask->pdst);
 	int tt = flow_type_to_traffic_type(fs->flow_type);
 	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+	int ret;
 
 	memcpy(filter, &tcp_filter_default, sizeof(tcp_filter_default));
 
 	if (src_mask != 0) {
-		filter->src_min_port = src_port;
-		filter->src_max_port = src_port;
+		ret = fill_ports(filter, src, src_port, src_mask);
+		if (ret < 0) {
+			netdev_err(ndev->netdev, "Min port must be lower than max port (%d > %d)\n",
+					filter->src_min_port,
+					filter->src_max_port);
+			return ret;
+		}
 		filter->src_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
+		if (filter->src_min_port != filter->src_max_port) {
+			netdev_info(ndev->netdev, "TCP source port range [%d-%d]\n",
+					filter->src_min_port,
+					filter->src_max_port);
+		}
 	}
 
 	if (dst_mask != 0) {
-		filter->dst_min_port = dst_port;
-		filter->dst_max_port = dst_port;
+		ret = fill_ports(filter, dst, dst_port, dst_mask);
+		if (ret < 0) {
+			netdev_err(ndev->netdev, "Min port must be lower than max port (%d > %d)\n",
+					filter->dst_min_port,
+					filter->dst_max_port);
+			return ret;
+		}
 		filter->dst_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
+		if (filter->src_min_port != filter->src_max_port) {
+			netdev_info(ndev->netdev, "TCP destination port range [%d-%d]\n",
+					filter->dst_min_port,
+					filter->dst_max_port);
+		}
 	}
 
 	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_SPORT) != 0)
 		filter->src_hash_mask = 0xffff;
 	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_DPORT) != 0)
 		filter->dst_hash_mask = 0xffff;
+
+	return 0;
 }
 
-static void fill_udp_filter(struct k1c_eth_netdev *ndev,
+static int fill_udp_filter(struct k1c_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt)
 {
 	union udp_filter_desc *filter = (union udp_filter_desc *) flt;
 	struct ethtool_tcpip4_spec *l4_val  = &fs->h_u.udp_ip4_spec;
 	struct ethtool_tcpip4_spec *l4_mask = &fs->m_u.udp_ip4_spec;
-	int src_port = ntohs(l4_val->psrc);
-	int src_mask = ntohs(l4_mask->psrc);
-	int dst_port = ntohs(l4_val->pdst);
-	int dst_mask = ntohs(l4_mask->pdst);
+	u16 src_port = ntohs(l4_val->psrc);
+	u16 src_mask = ntohs(l4_mask->psrc);
+	u16 dst_port = ntohs(l4_val->pdst);
+	u16 dst_mask = ntohs(l4_mask->pdst);
 	int tt = flow_type_to_traffic_type(fs->flow_type);
 	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+	int ret;
 
 	memcpy(filter, &udp_filter_default, sizeof(udp_filter_default));
 
 	if (src_mask != 0) {
-		filter->src_min_port = src_port;
-		filter->src_max_port = src_port;
+		ret = fill_ports(filter, src, src_port, src_mask);
+		if (ret < 0) {
+			netdev_err(ndev->netdev, "Min port must be lower than max port (%d > %d)\n",
+					filter->src_min_port,
+					filter->src_max_port);
+			return ret;
+		}
 		filter->src_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
+		if (filter->src_min_port != filter->src_max_port) {
+			netdev_info(ndev->netdev, "UDP source port range [%d-%d]\n",
+					filter->src_min_port,
+					filter->src_max_port);
+		}
 	}
 
 	if (dst_mask != 0) {
-		filter->dst_min_port = dst_port;
-		filter->dst_max_port = dst_port;
+		ret = fill_ports(filter, dst, dst_port, dst_mask);
+		if (ret < 0) {
+			netdev_err(ndev->netdev, "Min port must be lower than max port (%d > %d)\n",
+					filter->dst_min_port,
+					filter->dst_max_port);
+			return ret;
+		}
 		filter->dst_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
+		if (filter->src_min_port != filter->src_max_port) {
+			netdev_info(ndev->netdev, "UDP destination port range [%d-%d]\n",
+				filter->dst_min_port,
+				filter->dst_max_port);
+		}
 	}
 
 	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_SPORT) != 0)
 		filter->src_hash_mask = 0xffff;
 	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_DPORT) != 0)
 		filter->dst_hash_mask = 0xffff;
+
+	return 0;
 }
 
 static void fill_ipv4_filter(struct k1c_eth_netdev *ndev,
@@ -606,22 +671,27 @@ static int k1c_eth_fill_parser(struct k1c_eth_netdev *ndev,
 	switch (proto) {
 	/* tcp/udp layer */
 	case TCP_V4_FLOW:
-		fill_tcp_filter(ndev, fs, flt[K1C_NET_LAYER_4]);
+		if (fill_tcp_filter(ndev, fs, flt[K1C_NET_LAYER_4]))
+			return -EINVAL;
 		fill_ipv4_filter(ndev, fs, flt[K1C_NET_LAYER_3], IPPROTO_TCP);
 		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IP);
 		break;
 	case UDP_V4_FLOW:
-		fill_udp_filter(ndev, fs, flt[K1C_NET_LAYER_4]);
+		if (fill_udp_filter(ndev, fs, flt[K1C_NET_LAYER_4]))
+			return -EINVAL;
 		fill_ipv4_filter(ndev, fs, flt[K1C_NET_LAYER_3], IPPROTO_UDP);
 		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IP);
 		break;
 	case TCP_V6_FLOW:
+		if (fill_tcp_filter(ndev, fs, flt[K1C_NET_LAYER_4]))
+			return -EINVAL;
 		fill_tcp_filter(ndev, fs, flt[K1C_NET_LAYER_4]);
 		fill_ipv6_filter(ndev, fs, flt[K1C_NET_LAYER_3], IPPROTO_TCP);
 		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IPV6);
 		break;
 	case UDP_V6_FLOW:
-		fill_udp_filter(ndev, fs, flt[K1C_NET_LAYER_4]);
+		if (fill_udp_filter(ndev, fs, flt[K1C_NET_LAYER_4]))
+			return -EINVAL;
 		fill_ipv6_filter(ndev, fs, flt[K1C_NET_LAYER_3], IPPROTO_UDP);
 		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IPV6);
 		break;
