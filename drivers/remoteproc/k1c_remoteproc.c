@@ -54,6 +54,7 @@ static const char *mem_names[K1C_MEM_MAX] = {
 
 enum fw_kalray_resource_type {
 	RSC_KALRAY_MBOX = RSC_VENDOR_START,
+	RSC_KALRAY_BOOT_PARAMS = RSC_VENDOR_START + 1,
 };
 
 /**
@@ -92,6 +93,40 @@ struct fw_rsc_kalray_mbox {
 	u32 nb_notify_ids;
 	u32 notify_ids[0];
 } __packed;
+
+/**
+ * kalray params resource version
+ */
+enum fw_rsc_kalray_boot_params_version {
+	KALRAY_BOOT_PARAMS_VERSION_1 = 1
+};
+
+/* Maximum size of executable name for remote */
+#define EXEC_NAME_LEN	64
+
+/**
+ * struct fw_rsc_kalray_boot_params - kalray parameters
+ * @version: Version of mailbox resource
+ * @spawn_type: Value of host spawn type.
+ * @exec_name: Name of executable spawned on the remtoe processor.
+ * @args_len: Argument array length
+ * @env_len: Environment array length
+ * @str: String containing both args and env
+ *
+ * args are located in str[0] and env is located at str[args_len].
+ * This string must be at least of size (args_len + env_len).
+ */
+struct fw_rsc_kalray_boot_params {
+	u32 version;
+	u32 spawn_type;
+	u8 exec_name[EXEC_NAME_LEN];
+	u16 args_len;
+	u16 env_len;
+	u8 str[0];
+} __packed;
+
+/* Spawn type identifier for rproc on Linux */
+#define KALRAY_SPAWN_TYPE_RPROC_LINUX	4
 
 /*
  * All clusters local memory maps are exposed starting from 16M
@@ -138,6 +173,8 @@ struct k1c_mbox_data {
  * @ftu_regmap: regmap struct to the ftu controller
  * @mbox: Per direction mailbox data
  * @mem: List of memories
+ * @params_args: Args for the remote processor
+ * @params_env: Env for remote processor.
  */
 struct k1c_rproc {
 	int cluster_id;
@@ -146,6 +183,8 @@ struct k1c_rproc {
 	struct regmap *ftu_regmap;
 	struct k1c_mbox_data mbox[K1C_MBOX_MAX];
 	struct k1c_rproc_mem mem[K1C_MEM_MAX];
+	char *params_args;
+	char *params_env;
 };
 
 static int k1c_rproc_start(struct rproc *rproc)
@@ -210,6 +249,14 @@ static int k1c_rproc_reset(struct k1c_rproc *k1c_rproc)
 	return 0;
 }
 
+static void k1c_rproc_free_args_env(struct k1c_rproc *k1c_rproc, char **str)
+{
+	if (*str) {
+		kfree(*str);
+		*str = NULL;
+	}
+}
+
 static int k1c_rproc_stop(struct rproc *rproc)
 {
 	int i;
@@ -219,6 +266,10 @@ static int k1c_rproc_stop(struct rproc *rproc)
 	for (i = 0; i < K1C_MBOX_MAX; i++)
 		bitmap_clear(k1c_rproc->mbox[i].vrings, 0,
 			     K1C_MAX_VRING_PER_MBOX);
+
+	/* reset args and env to avoid reusing arguments between runs */
+	k1c_rproc_free_args_env(k1c_rproc, &k1c_rproc->params_args);
+	k1c_rproc_free_args_env(k1c_rproc, &k1c_rproc->params_env);
 
 	return k1c_rproc_reset(k1c_rproc);
 }
@@ -318,6 +369,81 @@ static void *k1c_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 	return (__force void *)va;
 }
 
+static int k1c_handle_env_args(struct k1c_rproc *k1c_rproc,
+			       struct fw_rsc_kalray_boot_params *rsc, int avail,
+			       char *str, u16 dest_len, char *dst, char *name)
+
+{
+	struct device *dev = k1c_rproc->dev;
+	int ret;
+
+	if (dest_len > avail) {
+		dev_err(dev, "%s_len > rsc table avail size, malformed rst table\n",
+			name);
+		return -EINVAL;
+	}
+
+	if (!str)
+		return 0;
+
+	dev_dbg(dev, "Setting %s to \"%s\"\n", name, str);
+	ret = strscpy(dst, str, dest_len);
+	if (ret == -E2BIG) {
+		dev_warn(dev, "%s string is too long for resource table entry\n",
+			name);
+	}
+
+	return ret;
+}
+
+static int k1c_handle_boot_params(struct rproc *rproc,
+				  struct fw_rsc_kalray_boot_params *rsc,
+				  int offset, int avail)
+{
+	struct k1c_rproc *k1c_rproc = rproc->priv;
+	struct device *dev = &rproc->dev;
+	const char *fw;
+	void *addr;
+	int ret;
+
+	if (sizeof(*rsc) > avail) {
+		dev_err(dev, "kalray boot params rsc is truncated\n");
+		return -EINVAL;
+	}
+
+	if (rsc->version != KALRAY_BOOT_PARAMS_VERSION_1) {
+		dev_err(dev, "Invalid boot params resource version (%d)\n",
+			rsc->version);
+		return -EINVAL;
+	}
+
+	rsc->spawn_type = KALRAY_SPAWN_TYPE_RPROC_LINUX;
+
+	/* Use only the basename of the firmware */
+	fw = kbasename(rproc->firmware);
+	strscpy(rsc->exec_name, fw, EXEC_NAME_LEN);
+
+	avail -= sizeof(*rsc);
+	/* Args are located right after the params resource */
+	addr = rsc->str;
+	ret = k1c_handle_env_args(k1c_rproc, rsc, avail,
+				  k1c_rproc->params_args, rsc->args_len, addr,
+				  "args");
+	if (ret < 0)
+		return ret;
+
+	/* Envs are located after args */
+	addr += rsc->args_len;
+	avail -= rsc->args_len;
+	ret = k1c_handle_env_args(k1c_rproc, rsc, avail,
+			    k1c_rproc->params_env, rsc->env_len, addr,
+			    "env");
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
 static int k1c_handle_mailbox(struct rproc *rproc,
 				     struct fw_rsc_kalray_mbox *rsc,
 				     int offset,
@@ -374,6 +500,8 @@ static int k1c_rproc_handle_rsc(struct rproc *rproc, u32 type, void *rsc,
 {
 	if (type == RSC_KALRAY_MBOX)
 		return k1c_handle_mailbox(rproc, rsc, offset, avail);
+	if (type == RSC_KALRAY_BOOT_PARAMS)
+		return k1c_handle_boot_params(rproc, rsc, offset, avail);
 
 	return 1;
 }
@@ -558,6 +686,105 @@ static int k1c_rproc_get_state(struct k1c_rproc *k1c_rproc)
 	return 0;
 }
 
+#define to_rproc(d) container_of(d, struct rproc, dev)
+
+static ssize_t str_store(struct rproc *rproc,
+			      const char *buf,
+			      char **str)
+{
+	char *p;
+	int err, len;
+
+	err = mutex_lock_interruptible(&rproc->lock);
+	if (err) {
+		dev_err(&rproc->dev, "can't lock rproc %s: %d\n",
+			rproc->name, err);
+		return -EINVAL;
+	}
+
+	len = strcspn(buf, "\n");
+	if (!len) {
+		dev_err(&rproc->dev, "can't provide a NULL string\n");
+		err = -EINVAL;
+		goto out;
+	}
+
+	p = kstrndup(buf, len, GFP_KERNEL);
+	if (!p) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	kfree(*str);
+	*str = p;
+out:
+	mutex_unlock(&rproc->lock);
+
+	return err;
+}
+
+static ssize_t args_show(struct device *dev, struct device_attribute *attr,
+			  char *buf)
+{
+	struct rproc *rproc = to_rproc(dev);
+	struct k1c_rproc *k1c_rproc = rproc->priv;
+
+	return sprintf(buf, "%s\n", k1c_rproc->params_args);
+}
+
+static ssize_t args_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	int ret;
+	struct rproc *rproc = to_rproc(dev);
+	struct k1c_rproc *k1c_rproc = rproc->priv;
+
+	ret = str_store(rproc, buf, &k1c_rproc->params_args);
+
+	return ret ? ret : count;
+}
+static DEVICE_ATTR_RW(args);
+
+static ssize_t env_show(struct device *dev, struct device_attribute *attr,
+			  char *buf)
+{
+	struct rproc *rproc = to_rproc(dev);
+	struct k1c_rproc *k1c_rproc = rproc->priv;
+
+	return sprintf(buf, "%s\n", k1c_rproc->params_env);
+}
+
+static ssize_t env_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	int ret;
+	struct rproc *rproc = to_rproc(dev);
+	struct k1c_rproc *k1c_rproc = rproc->priv;
+
+	ret = str_store(rproc, buf, &k1c_rproc->params_env);
+
+	return ret ? ret : count;
+}
+static DEVICE_ATTR_RW(env);
+
+static struct attribute *k1c_remoteproc_attrs[] = {
+	&dev_attr_args.attr,
+	&dev_attr_env.attr,
+	NULL
+};
+
+static const struct attribute_group k1c_remoteproc_param_group = {
+	.name = "k1c",
+	.attrs = k1c_remoteproc_attrs,
+};
+
+static const struct attribute_group *k1c_remoteproc_groups[] = {
+	&k1c_remoteproc_param_group,
+	NULL,
+};
+
 static int k1c_rproc_probe(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -624,6 +851,8 @@ static int k1c_rproc_probe(struct platform_device *pdev)
 	/* If not running, enable clocking to allow accessing memory */
 	if (rproc->state != RPROC_RUNNING)
 		k1c_rproc_reset(k1c_rproc);
+
+	rproc->dev.groups = k1c_remoteproc_groups;
 
 	ret = rproc_add(rproc);
 	if (ret) {
