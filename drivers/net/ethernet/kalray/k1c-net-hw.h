@@ -217,6 +217,7 @@ enum {
 	K1C_HASH_FIELD_SEL_DST_IP	= BIT(1),
 	K1C_HASH_FIELD_SEL_L4_SPORT	= BIT(2),
 	K1C_HASH_FIELD_SEL_L4_DPORT	= BIT(3),
+	K1C_HASH_FIELD_SEL_VLAN		= BIT(4),
 };
 
 struct k1c_eth_parser {
@@ -351,6 +352,16 @@ enum k1c_eth_etype_match_values {
 	K1C_ETH_ETYPE_MATCH_EQUAL = 1,
 	K1C_ETH_ETYPE_MATCH_DIFFER = 2,
 };
+
+enum k1c_eth_vlan_match_values {
+	K1C_ETH_VLAN_NO = 0,
+	K1C_ETH_VLAN_ONE = 1,
+	K1C_ETH_VLAN_DUAL = 2,
+	K1C_ETH_VLAN_DONT_CARE = 3,
+};
+
+/* In TCI field only 12 LSBs are for VLAN */
+#define TCI_VLAN_HASH_MASK (0xfff)
 
 /* Helpers */
 static inline void k1c_eth_writeq(struct k1c_eth_hw *hw, u64 val, const u64 off)
