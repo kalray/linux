@@ -452,6 +452,7 @@ static void fill_ipv6_filter(struct k1c_eth_netdev *ndev,
 	}
 }
 
+/* This functions support only one VLAN level */
 static void fill_eth_filter(struct k1c_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		int ethertype)
@@ -466,6 +467,8 @@ static void fill_eth_filter(struct k1c_eth_netdev *ndev,
 	int i;
 	int j = (ETH_ALEN - 1) * BITS_PER_BYTE;
 	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
+	int tt = flow_type_to_traffic_type(fs->flow_type);
+	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 
 	/* Mac address can be set in mac_ext, take care of it */
 	if (fs->flow_type & FLOW_MAC_EXT) {
@@ -496,6 +499,15 @@ static void fill_eth_filter(struct k1c_eth_netdev *ndev,
 		filter->etype = ethertype;
 		filter->etype_cmp_polarity = K1C_ETH_ETYPE_MATCH_EQUAL;
 	}
+	/* Check VLAN presence */
+	if (fs->flow_type & FLOW_EXT) {
+		filter->tci0 = ntohs(fs->h_ext.vlan_tci);
+		filter->tci0_mask = ntohs(fs->m_ext.vlan_tci);
+		filter->vlan_ctrl = K1C_ETH_VLAN_ONE;
+	}
+
+	if ((rx_hash_field & K1C_HASH_FIELD_SEL_VLAN) != 0)
+		filter->tci0_hash_mask = TCI_VLAN_HASH_MASK;
 
 }
 
@@ -757,8 +769,8 @@ static int set_rss_hash_opt(struct k1c_eth_netdev *ndev,
 	    nfc->flow_type != UDP_V6_FLOW)
 		return -EOPNOTSUPP;
 
-	if (nfc->data & ~(RXH_IP_SRC | RXH_IP_DST |
-			  RXH_L4_B_0_1 | RXH_L4_B_2_3))
+	if (nfc->data & ~(RXH_IP_SRC | RXH_IP_DST | RXH_L4_B_0_1 |
+				RXH_L4_B_2_3 | RXH_VLAN))
 		return -EOPNOTSUPP;
 
 	tt = flow_type_to_traffic_type(nfc->flow_type);
@@ -773,6 +785,8 @@ static int set_rss_hash_opt(struct k1c_eth_netdev *ndev,
 		rx_hash_field |= K1C_HASH_FIELD_SEL_L4_SPORT;
 	if (nfc->data & RXH_L4_B_2_3)
 		rx_hash_field |= K1C_HASH_FIELD_SEL_L4_DPORT;
+	if (nfc->data & RXH_VLAN)
+		rx_hash_field |= K1C_HASH_FIELD_SEL_VLAN;
 
 	/* If no change don't reprogram parsers */
 	if (rx_hash_field == ndev->hw->parsing.rx_hash_fields[tt])
@@ -807,6 +821,8 @@ static int k1c_get_rss_hash_opt(struct k1c_eth_netdev *ndev,
 		nfc->data |= RXH_L4_B_0_1;
 	if (hash_field & K1C_HASH_FIELD_SEL_L4_DPORT)
 		nfc->data |= RXH_L4_B_2_3;
+	if (hash_field & K1C_HASH_FIELD_SEL_VLAN)
+		nfc->data |= RXH_VLAN;
 
 	return 0;
 }
