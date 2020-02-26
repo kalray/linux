@@ -132,58 +132,13 @@ static void
 kvx_eth_get_ringparam(struct net_device *netdev, struct ethtool_ringparam *ring)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_ring *txr = &ndev->tx_ring;
+	struct kvx_eth_ring *txr = &ndev->tx_ring[0];
 	struct kvx_eth_ring *rxr = &ndev->rx_ring;
 
 	ring->rx_max_pending = KVX_ETH_MAX_RX_BUF;
 	ring->tx_max_pending = KVX_ETH_MAX_TX_BUF;
 	ring->rx_pending = rxr->count;
 	ring->tx_pending = txr->count;
-}
-
-static int
-kvx_eth_set_ringparam(struct net_device *netdev, struct ethtool_ringparam *ring)
-{
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_ring *txr = &ndev->tx_ring;
-	struct kvx_eth_ring *rxr = &ndev->rx_ring;
-	struct kvx_eth_ring txr_old, txr_new, rxr_old, rxr_new;
-	int ret = 0;
-
-	txr_old = *txr; rxr_old = *rxr;
-
-	if (netif_running(ndev->netdev))
-		kvx_eth_down(ndev->netdev);
-
-	rxr->count = min_t(u32, ring->rx_pending, KVX_ETH_MAX_RX_BUF);
-	txr->count = min_t(u32, ring->tx_pending, KVX_ETH_MAX_TX_BUF);
-
-	if (netif_running(ndev->netdev)) {
-		ret = kvx_eth_alloc_rx_res(ndev->netdev);
-		if (ret)
-			goto rx_failed;
-		ret = kvx_eth_alloc_tx_res(ndev->netdev);
-		if (ret)
-			goto tx_failed;
-
-		rxr_new = *rxr;  txr_new = *txr;
-		*rxr = rxr_old; *txr = txr_old;
-		kvx_eth_release_tx_res(ndev->netdev);
-		kvx_eth_release_rx_res(ndev->netdev);
-		*rxr = rxr_new; *txr = txr_new;
-
-		kvx_eth_up(ndev->netdev);
-	}
-
-	return 0;
-
-tx_failed:
-	kvx_eth_release_rx_res(ndev->netdev);
-rx_failed:
-	ndev->rx_ring = rxr_old;
-	ndev->tx_ring = txr_old;
-	kvx_eth_up(ndev->netdev);
-	return ret;
 }
 
 static int kvx_eth_get_sset_count(struct net_device *netdev, int sset)
@@ -1111,7 +1066,7 @@ static int kvx_eth_set_rxfh(struct net_device *netdev, const u32 *indir,
 
 	if (indir) {
 		for (i = 0; i < tbl_size; ++i)
-			if (indir[i] >= RSS_NB_RX_RINGS)
+			if (indir[i] >= MAX_NB_RXQ)
 				return -EINVAL;
 
 		kvx_eth_set_lut(netdev, ndev->hw, indir);
@@ -1140,7 +1095,6 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 static const struct ethtool_ops kvx_ethtool_ops = {
 	.get_drvinfo         = kvx_eth_get_drvinfo,
 	.get_ringparam       = kvx_eth_get_ringparam,
-	.set_ringparam       = kvx_eth_set_ringparam,
 	.get_ethtool_stats   = kvx_eth_get_ethtool_stats,
 	.get_strings         = kvx_eth_get_strings,
 	.get_sset_count      = kvx_eth_get_sset_count,
