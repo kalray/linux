@@ -452,7 +452,7 @@ static void fill_ipv6_filter(struct k1c_eth_netdev *ndev,
 	}
 }
 
-static void *fill_eth_filter(struct k1c_eth_netdev *ndev,
+static void fill_eth_filter(struct k1c_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		int ethertype)
 {
@@ -497,7 +497,6 @@ static void *fill_eth_filter(struct k1c_eth_netdev *ndev,
 		filter->etype_cmp_polarity = K1C_ETH_ETYPE_MATCH_EQUAL;
 	}
 
-	return (union filter_desc *)filter;
 }
 
 static int delete_parser_cfg(struct k1c_eth_netdev *ndev, int location)
