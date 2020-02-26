@@ -19,6 +19,7 @@ Required properties:
 - kalray,dma-rx-comp-queue-ids: start index of RX completion queue followed by number
 - kalray,phy-param: phy parameters for Tx equalization, as follow:
   <tx pre-amp, tx post-amp, tx swing, rx polarity, tx polarity>
+- kalray,dma-tx-channel-ids: start index of TX channel followed by number [0, 9]
 - sfp: sfp definition
 - fixed-link: as defined in bindings/net/ethernet-controller.yaml
 
@@ -48,6 +49,7 @@ Example:
 				kalray,dma-rx-cache-id = <0>;
 				kalray,dma-rx-channel-ids = <0 1>;
 				kalray,dma-rx-comp-queue-ids = <0 1>;
+				kalray,dma-tx-channel-ids = <0 4>;
 				kalray,phy-param = <0 0 40 0 0>;
 				phy-mode = "internal";
 				sfp = <&qsfp0>;
