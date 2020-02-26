@@ -17,25 +17,29 @@
 /* kvx_eth_tx_status - Debug TX fifo status */
 void kvx_eth_tx_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	u32 off = TX_FIFO(cfg->tx_f->fifo_id);
-	u32 noc_if = off + TX_NOC_IF_OFFSET +
-		kvx_cluster_id() * TX_NOC_IF_ELEM_SIZE;
+	struct kvx_eth_tx_f *tx_f;
+	u32 off, noc_if;
 
-	DUMP_REG(hw, ETH, off + TX_FIFO_CTRL_OFFSET);
-	DUMP_REG(hw, ETH, off + TX_FIFO_STATUS_OFFSET);
-	DUMP_REG(hw, ETH, off + TX_FIFO_DROP_CNT_OFFSET);
-	DUMP_REG(hw, ETH, off + TX_FIFO_XOFF_CTRL_OFFSET);
+	list_for_each_entry(tx_f, &cfg->tx_fifo_list, node) {
+		off = TX_FIFO(tx_f->fifo_id);
+		noc_if = off + TX_NOC_IF_OFFSET +
+			kvx_cluster_id() * TX_NOC_IF_ELEM_SIZE;
 
-	DUMP_REG(hw, ETH, noc_if + hw->vchan * TX_NOC_IF_VCHAN_OFFSET +
-		 TX_NOC_IF_VCHAN_CTRL);
-	DUMP_REG(hw, ETH, noc_if + hw->vchan * TX_NOC_IF_VCHAN_OFFSET +
-		 TX_NOC_IF_VCHAN_FIFO_MONITORING);
-
-	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_PARITY_ERR_CNT);
-	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_CRC_ERR_CNT);
-	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_PERM_ERR_CNT);
-	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_FIFO_ERR_CNT);
-	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_NOC_PKT_DROP_CNT);
+		dev_dbg(hw->dev, "Tx fifo[%d]\n", tx_f->fifo_id);
+		DUMP_REG(hw, ETH, off + TX_FIFO_CTRL_OFFSET);
+		DUMP_REG(hw, ETH, off + TX_FIFO_STATUS_OFFSET);
+		DUMP_REG(hw, ETH, off + TX_FIFO_DROP_CNT_OFFSET);
+		DUMP_REG(hw, ETH, off + TX_FIFO_XOFF_CTRL_OFFSET);
+		DUMP_REG(hw, ETH, noc_if + hw->vchan * TX_NOC_IF_VCHAN_OFFSET +
+			 TX_NOC_IF_VCHAN_CTRL);
+		DUMP_REG(hw, ETH, noc_if + hw->vchan * TX_NOC_IF_VCHAN_OFFSET +
+			 TX_NOC_IF_VCHAN_FIFO_MONITORING);
+		DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_PARITY_ERR_CNT);
+		DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_CRC_ERR_CNT);
+		DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_PERM_ERR_CNT);
+		DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_FIFO_ERR_CNT);
+		DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_NOC_PKT_DROP_CNT);
+	}
 }
 
 void kvx_eth_tx_init(struct kvx_eth_hw *hw)
@@ -46,6 +50,7 @@ void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 	for (i = 0; i < TX_FIFO_NB; ++i) {
 		f = &hw->tx_f[i];
 		f->hw = hw;
+		INIT_LIST_HEAD(&f->node);
 		f->fifo_id = i;
 	}
 }
@@ -73,23 +78,25 @@ void kvx_eth_tx_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_f *f)
 
 void kvx_eth_tx_fifo_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
+	struct kvx_eth_tx_f *tx_f;
 	u64 src_addr;
 	u32 off;
 	u8 *a;
 
-	kvx_eth_tx_f_cfg(hw, cfg->tx_f);
+	list_for_each_entry(tx_f, &cfg->tx_fifo_list, node) {
+		kvx_eth_tx_f_cfg(hw, tx_f);
 
-	off = TX_LANE + cfg->tx_f->lane_id * TX_LANE_ELEM_SIZE;
-	a = &cfg->mac_f.addr[0];
-	src_addr = (u64)a[5] << 40 | (u64)a[4] << 32 | (u64)a[3] << 24 |
-		(u64)a[2] << 16 | (u64)a[1] << 8 | (u64)a[0];
-	kvx_eth_writeq(hw, src_addr, off + TX_LANE_SA);
+		off = TX_LANE + tx_f->lane_id * TX_LANE_ELEM_SIZE;
+		a = &cfg->mac_f.addr[0];
+		src_addr = (u64)a[5] << 40 | (u64)a[4] << 32 | (u64)a[3] << 24 |
+			(u64)a[2] << 16 | (u64)a[1] << 8 | (u64)a[0];
+		kvx_eth_writeq(hw, src_addr, off + TX_LANE_SA);
+	}
 }
 
-u32 kvx_eth_tx_has_header(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+u32 kvx_eth_tx_has_header(struct kvx_eth_hw *hw, int tx_fifo_id)
 {
-	u32 v = kvx_eth_readl(hw, TX_FIFO(cfg->tx_f->fifo_id) +
-			      TX_FIFO_CTRL_OFFSET);
+	u32 v = kvx_eth_readl(hw, TX_FIFO(tx_fifo_id) + TX_FIFO_CTRL_OFFSET);
 
 	return GETF(v, TX_FIFO_CTRL_HEADER_EN);
 }
