@@ -176,16 +176,16 @@ static inline void set_pud(pud_t *pudp, pud_t pmd)
 
 static inline int pud_none(pud_t pud)
 {
-	return !pud_val(pud);
+	return pud_val(pud) == 0;
 }
 
 static inline int pud_bad(pud_t pud)
 {
-	return !pud_val(pud);
+	return pud_none(pud);
 }
 static inline int pud_present(pud_t pud)
 {
-	return pud_val(pud) != 0UL;
+	return pud_val(pud) != 0;
 }
 
 static inline void pud_clear(pud_t *pud)
@@ -209,22 +209,23 @@ static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 {
 	*pmdp = pmd;
 }
+
 /* Returns 1 if entry is present */
 static inline int pmd_present(pmd_t pmd)
 {
-	return pmd_val(pmd);
+	return pmd_val(pmd) != 0;
 }
 
 /* Returns 1 if the corresponding entry has the value 0 */
 static inline int pmd_none(pmd_t pmd)
 {
-	return (pmd_val(pmd) == 0);
+	return pmd_val(pmd) == 0;
 }
 
 /* Used to check that a page middle directory entry is valid */
 static inline int pmd_bad(pmd_t pmd)
 {
-	return !pmd_present(pmd);
+	return pmd_none(pmd);
 }
 
 /* Clears the entry to prevent process to use the linear address that
