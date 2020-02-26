@@ -27,11 +27,13 @@
 /* Keeping unsused descriptors in HW */
 #define KVX_ETH_MIN_RX_BUF_THRESHOLD  (2)
 /* Total count of buffers in rings*/
-#define KVX_ETH_MAX_RX_BUF            (32)
-#define KVX_ETH_MAX_TX_BUF            (32)
+#define KVX_ETH_RX_BUF_NB             (32)
+#define KVX_ETH_TX_BUF_NB             (32)
+#define KVX_ETH_MAX_RX_BUF            (4096)
+#define KVX_ETH_MAX_TX_BUF            (4096)
 
-#define INDEX_TO_LAYER(l) ((l)+2)
-#define RSS_NB_RX_RINGS               (NB_PE * (NB_CLUSTER - 1))
+#define INDEX_TO_LAYER(l)             ((l)+2)
+#define MAX_NB_RXQ                    (NB_PE * (NB_CLUSTER - 1))
 
 struct kvx_eth_type {
 	int (*phy_init)(struct kvx_eth_hw *hw);
@@ -82,6 +84,7 @@ struct kvx_eth_ring {
 	u16 count;          /* Number of desc in ring */
 	u16 next_to_use;
 	u16 next_to_clean;
+	int qidx;
 };
 
 struct kvx_eth_node_id {
@@ -94,6 +97,7 @@ struct kvx_dma_config {
 	u32 rx_cache_id;
 	struct kvx_eth_node_id rx_chan_id;
 	struct kvx_eth_node_id rx_compq_id;
+	struct kvx_eth_node_id tx_chan_id;
 };
 
 extern const union mac_filter_desc mac_filter_default;
@@ -131,16 +135,16 @@ struct kvx_eth_netdev {
 	struct list_head node;
 	struct kvx_eth_ring rx_ring;
 	u16    rx_buffer_len;
-	struct kvx_eth_ring tx_ring;
+	struct kvx_eth_ring tx_ring[TX_FIFO_NB];
 	struct kvx_eth_hw_stats stats;
 	struct i2c_client *rtm[RTM_NB];
 };
 
-int kvx_eth_alloc_tx_res(struct net_device *netdev);
+int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r);
 int kvx_eth_alloc_rx_res(struct net_device *netdev);
 
-void kvx_eth_release_tx_res(struct net_device *netdev);
-void kvx_eth_release_rx_res(struct net_device *netdev);
+void kvx_eth_release_tx_ring(struct kvx_eth_ring *ring, int keep_dma_chan);
+void kvx_eth_release_rx_res(struct net_device *netdev, int keep_dma_chan);
 
 void kvx_eth_up(struct net_device *netdev);
 void kvx_eth_down(struct net_device *netdev);
