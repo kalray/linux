@@ -289,8 +289,13 @@ static enum k1c_traffic_types flow_type_to_traffic_type(u32 flow_type)
 	case UDP_V6_FLOW:
 		return K1C_TT_UDP6;
 	default:
-		return K1C_TT_PROTOS_NB;
+		return K1C_TT_UNSUPPORTED;
 	}
+}
+
+static inline bool traffic_type_is_supported(enum k1c_traffic_types tt)
+{
+	return tt != K1C_TT_UNSUPPORTED;
 }
 
 /* Fill a port range from a port and a mask
@@ -323,7 +328,7 @@ static int fill_tcp_filter(struct k1c_eth_netdev *ndev,
 	u16 src_mask = ntohs(l4_mask->psrc);
 	u16 dst_mask = ntohs(l4_mask->pdst);
 	int tt = flow_type_to_traffic_type(fs->flow_type);
-	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+	u8 rx_hash_field;
 	int ret;
 
 	memcpy(filter, &tcp_filter_default, sizeof(tcp_filter_default));
@@ -360,10 +365,13 @@ static int fill_tcp_filter(struct k1c_eth_netdev *ndev,
 		}
 	}
 
-	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_SPORT) != 0)
-		filter->src_hash_mask = 0xffff;
-	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_DPORT) != 0)
-		filter->dst_hash_mask = 0xffff;
+	if (traffic_type_is_supported(tt)) {
+		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+		if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_SPORT) != 0)
+			filter->src_hash_mask = 0xffff;
+		if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_DPORT) != 0)
+			filter->dst_hash_mask = 0xffff;
+	}
 
 	return 0;
 }
@@ -379,7 +387,7 @@ static int fill_udp_filter(struct k1c_eth_netdev *ndev,
 	u16 dst_port = ntohs(l4_val->pdst);
 	u16 dst_mask = ntohs(l4_mask->pdst);
 	int tt = flow_type_to_traffic_type(fs->flow_type);
-	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+	u8 rx_hash_field;
 	int ret;
 
 	memcpy(filter, &udp_filter_default, sizeof(udp_filter_default));
@@ -416,10 +424,13 @@ static int fill_udp_filter(struct k1c_eth_netdev *ndev,
 		}
 	}
 
-	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_SPORT) != 0)
-		filter->src_hash_mask = 0xffff;
-	if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_DPORT) != 0)
-		filter->dst_hash_mask = 0xffff;
+	if (traffic_type_is_supported(tt)) {
+		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+		if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_SPORT) != 0)
+			filter->src_hash_mask = 0xffff;
+		if ((rx_hash_field & K1C_HASH_FIELD_SEL_L4_DPORT) != 0)
+			filter->dst_hash_mask = 0xffff;
+	}
 
 	return 0;
 }
@@ -436,7 +447,7 @@ static void fill_ipv4_filter(struct k1c_eth_netdev *ndev,
 	int dst_ip = ntohl(l3_val->ip4dst);
 	int dst_mask = ntohl(l3_mask->ip4dst);
 	int tt = flow_type_to_traffic_type(fs->flow_type);
-	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+	u8 rx_hash_field;
 
 	memcpy(filter, &ipv4_filter_default, sizeof(ipv4_filter_default));
 
@@ -455,10 +466,13 @@ static void fill_ipv4_filter(struct k1c_eth_netdev *ndev,
 		filter->protocol_mask = 0xff;
 	}
 
-	if ((rx_hash_field & K1C_HASH_FIELD_SEL_SRC_IP) != 0)
-		filter->sa_hash_mask = 0xffffffff;
-	if ((rx_hash_field & K1C_HASH_FIELD_SEL_DST_IP) != 0)
-		filter->da_hash_mask = 0xffffffff;
+	if (traffic_type_is_supported(tt)) {
+		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+		if ((rx_hash_field & K1C_HASH_FIELD_SEL_SRC_IP) != 0)
+			filter->sa_hash_mask = 0xffffffff;
+		if ((rx_hash_field & K1C_HASH_FIELD_SEL_DST_IP) != 0)
+			filter->da_hash_mask = 0xffffffff;
+	}
 }
 
 #define K1C_FORMAT_IP6_TO_HW(src, dst) \
@@ -479,7 +493,7 @@ static void fill_ipv6_filter(struct k1c_eth_netdev *ndev,
 	u64 dst_addr[2] = {0};
 	u64 dst_mask[2] = {0};
 	int tt = flow_type_to_traffic_type(fs->flow_type);
-	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+	u8 rx_hash_field;
 
 	K1C_FORMAT_IP6_TO_HW(l3_val->ip6src, src_addr);
 	K1C_FORMAT_IP6_TO_HW(l3_mask->ip6src, src_mask);
@@ -507,13 +521,16 @@ static void fill_ipv6_filter(struct k1c_eth_netdev *ndev,
 		filter->d0.nh_mask = 0xff;
 	}
 
-	if ((rx_hash_field & K1C_HASH_FIELD_SEL_SRC_IP) != 0) {
-		filter->d1.src_lsb_hash_mask = 0xffffffffffffffffULL;
-		filter->d1.src_msb_hash_mask = 0xffffffffffffffffULL;
-	}
-	if ((rx_hash_field & K1C_HASH_FIELD_SEL_DST_IP) != 0) {
-		filter->d2.dst_lsb_hash_mask = 0xffffffffffffffffULL;
-		filter->d2.dst_msb_hash_mask = 0xffffffffffffffffULL;
+	if (traffic_type_is_supported(tt)) {
+		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+		if ((rx_hash_field & K1C_HASH_FIELD_SEL_SRC_IP) != 0) {
+			filter->d1.src_lsb_hash_mask = 0xffffffffffffffffULL;
+			filter->d1.src_msb_hash_mask = 0xffffffffffffffffULL;
+		}
+		if ((rx_hash_field & K1C_HASH_FIELD_SEL_DST_IP) != 0) {
+			filter->d2.dst_lsb_hash_mask = 0xffffffffffffffffULL;
+			filter->d2.dst_msb_hash_mask = 0xffffffffffffffffULL;
+		}
 	}
 }
 
@@ -533,7 +550,7 @@ static void fill_eth_filter(struct k1c_eth_netdev *ndev,
 	int j = (ETH_ALEN - 1) * BITS_PER_BYTE;
 	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
 	int tt = flow_type_to_traffic_type(fs->flow_type);
-	u8 rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+	u8 rx_hash_field;
 
 	/* Mac address can be set in mac_ext, take care of it */
 	if (fs->flow_type & FLOW_MAC_EXT) {
@@ -571,8 +588,11 @@ static void fill_eth_filter(struct k1c_eth_netdev *ndev,
 		filter->vlan_ctrl = K1C_ETH_VLAN_ONE;
 	}
 
-	if ((rx_hash_field & K1C_HASH_FIELD_SEL_VLAN) != 0)
-		filter->tci0_hash_mask = TCI_VLAN_HASH_MASK;
+	if (traffic_type_is_supported(tt)) {
+		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
+		if ((rx_hash_field & K1C_HASH_FIELD_SEL_VLAN) != 0)
+			filter->tci0_hash_mask = TCI_VLAN_HASH_MASK;
+	}
 
 }
 
