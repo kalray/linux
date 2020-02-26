@@ -88,10 +88,6 @@ static inline int ti_rtm_i2c_write(struct i2c_client *client, u8 reg, u8 *buf,
 		size_t len)
 {
 	u8 i2c_buf[TI_RTM_REGINIT_MAX_SIZE + 1];
-
-	if (len > TI_RTM_REGINIT_MAX_SIZE)
-		return -ENOMEM;
-
 	struct i2c_msg write_cmd[] = {
 		{
 			.addr = client->addr,
@@ -100,6 +96,9 @@ static inline int ti_rtm_i2c_write(struct i2c_client *client, u8 reg, u8 *buf,
 			.flags = 0
 		}
 	};
+
+	if (len > TI_RTM_REGINIT_MAX_SIZE)
+		return -ENOMEM;
 
 	/* First u8 of buf is for device register on i2c bus */
 	i2c_buf[0] = reg;
