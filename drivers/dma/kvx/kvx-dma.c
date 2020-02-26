@@ -470,31 +470,39 @@ struct kvx_dma_phy *kvx_dma_get_phy(struct kvx_dma_dev *dev,
 
 	spin_lock(&dev->lock);
 	if (dir == KVX_DMA_DIR_TYPE_RX) {
-		if (c->cfg.rx_tag < KVX_DMA_RX_CHANNEL_NUMBER) {
-			for (i = 0; i < nb_phy; ++i) {
-				p = &dev->phy[dir][i];
-				/* rx_tag is equivalent to Rx fifo id */
-				if (!p->used && p->hw_id == c->cfg.rx_tag) {
-					if (kvx_dma_check_rx_q_enabled(p,
+		if (c->cfg.rx_tag >= KVX_DMA_RX_CHANNEL_NUMBER) {
+			dev_err(d, "rx_tag %d > %d\n", c->cfg.rx_tag,
+				KVX_DMA_RX_CHANNEL_NUMBER);
+			goto out;
+		}
+		for (i = 0; i < nb_phy; ++i) {
+			p = &dev->phy[dir][i];
+			/* rx_tag is equivalent to Rx fifo id */
+			if (!p->used && p->hw_id == c->cfg.rx_tag) {
+				if (kvx_dma_check_rx_q_enabled(p,
 							c->cfg.rx_cache_id)) {
-						dev_err(d, "%s RX channel[%d] already in use\n",
-							__func__, p->hw_id);
-						goto out;
-					}
-					phy = p;
-					break;
+					dev_err(d, "RX channel[%d] already in use\n",
+						p->hw_id);
+					goto out;
 				}
+				phy = p;
+				break;
 			}
 		}
 	} else {
 		u32 s = dev->dma_tx_jobq_ids.start;
-		/* For TX -> use the first available */
+
+		if (c->cfg.rx_tag >= KVX_DMA_TX_JOB_QUEUE_NUMBER) {
+			dev_err(d, "rx_tag %d > %d\n", c->cfg.rx_tag,
+				KVX_DMA_TX_JOB_QUEUE_NUMBER);
+			goto out;
+		}
 		for (i = s; i < s + dev->dma_tx_jobq_ids.nb; ++i) {
 			p = &dev->phy[dir][i];
-			if (!p->used) {
+			if (!p->used && p->hw_id == c->cfg.rx_tag) {
 				if (kvx_dma_check_tx_q_enabled(p)) {
-					dev_warn(d, "%s TX queue[%d] already in use\n",
-						__func__, p->hw_id);
+					dev_warn(d, "TX queue[%d] already in use\n",
+						p->hw_id);
 					continue;
 				}
 				phy = p;
@@ -551,10 +559,12 @@ static int kvx_dma_slave_config(struct dma_chan *chan,
 					 struct kvx_dma_slave_cfg, cfg);
 
 	/* Copy config */
-	if (!test_bit(KVX_DMA_HW_INIT_DONE, &c->state))
+	if (!test_bit(KVX_DMA_HW_INIT_DONE, &c->state)) {
 		c->cfg = *slave_cfg;
-	else
+	} else {
 		dev_err(dev, "%s Attempt to reset configuration\n", __func__);
+		return -EINVAL;
+	}
 
 	return 0;
 }
@@ -664,7 +674,7 @@ static void kvx_dma_free_chan_resources(struct dma_chan *chan)
 static struct kvx_dma_desc *kvx_dma_get_desc(struct kvx_dma_chan *c)
 {
 	struct virt_dma_desc *vd;
- 	struct kvx_dma_desc *desc;
+	struct kvx_dma_desc *desc;
 	unsigned long flags;
 
 	spin_lock_irqsave(&c->vc.lock, flags);
