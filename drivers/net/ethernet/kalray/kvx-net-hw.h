@@ -159,6 +159,7 @@ struct kvx_eth_pfc_f {
 /**
  * struct kvx_eth_tx_f - TX features
  * @kobj: kobject for sysfs
+ * @node: node for tx_fifo_list
  * @hw: back pointer to hw description
  * @fifo_id: TX fifo [0, 9] associated with lane id
  * @lane_id: Identifier of the current lane
@@ -173,6 +174,7 @@ struct kvx_eth_pfc_f {
  */
 struct kvx_eth_tx_f {
 	struct kobject kobj;
+	struct list_head node;
 	struct kvx_eth_hw *hw;
 	int fifo_id;
 	u8 lane_id;
@@ -241,7 +243,7 @@ struct phy_param {
  * @duplex: duplex mode
  * @hw: back pointer to hw description
  * @lb_f: Load balancer features
- * @tx_f: TX features
+ * @tx_fifo_list: List of tx features
  * @pfc: Packet Flow Control
  * @cl_f: Array of 8 classes (per lane)
  * @mac: mac controller
@@ -254,7 +256,7 @@ struct kvx_eth_lane_cfg {
 	unsigned int duplex;
 	struct kvx_eth_hw *hw;
 	struct kvx_eth_lb_f lb_f;
-	struct kvx_eth_tx_f *tx_f;
+	struct list_head tx_fifo_list;
 	struct kvx_eth_pfc_f pfc_f;
 	struct kvx_eth_cl_f cl_f[KVX_ETH_PFC_CLASS_NB];
 	struct kvx_eth_mac_f mac_f;
@@ -478,7 +480,7 @@ void kvx_eth_tx_set_default(struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_tx_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_f *f);
 void kvx_eth_tx_fifo_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_tx_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
-u32  kvx_eth_tx_has_header(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+u32  kvx_eth_tx_has_header(struct kvx_eth_hw *hw, int tx_fifo_id);
 void kvx_eth_tx_init(struct kvx_eth_hw *hw);
 
 /* PARSING */
