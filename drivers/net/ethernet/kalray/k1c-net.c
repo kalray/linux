@@ -26,6 +26,7 @@
 #include <linux/of_platform.h>
 #include <net/checksum.h>
 #include <linux/dma/k1c-dma-api.h>
+#include <linux/ti-retimer.h>
 
 #include "k1c-net.h"
 #include "k1c-net-hw.h"
@@ -900,7 +901,9 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 	struct k1c_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *np_dma;
+	struct device_node *rtm_node;
 	int ret = 0;
+	int rtm;
 
 	np_dma = of_parse_phandle(np, "dmas", 0);
 	if (!np_dma) {
@@ -960,6 +963,21 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 		dev_err(ndev->dev, "Unable to get phy (%i)\n", ret);
 		return ret;
 	}
+
+	for (rtm = 0; rtm < RTM_NB; rtm++) {
+		char *rtm_compat = (rtm == RTM_RX) ?
+			"ti,rtmrx" : "ti,rtmtx";
+		rtm_node = of_parse_phandle(pdev->dev.of_node, rtm_compat, 0);
+		if (rtm_node) {
+			ndev->rtm[rtm] = of_find_i2c_device_by_node(rtm_node);
+			if (!ndev->rtm[rtm]) {
+				dev_warn(&pdev->dev, "Can't find retimer i2c client for %s, deferring\n",
+						rtm_compat);
+				return -ENODEV;
+			}
+		}
+	}
+
 	return 0;
 }
 
@@ -999,6 +1017,53 @@ static void k1c_phylink_mac_link_state(struct phylink_config *cfg,
 	state->link = ndev->cfg.link;
 }
 
+
+static int configure_rtm(struct k1c_eth_netdev *ndev, unsigned int rtm,
+		unsigned int speed)
+{
+	int first_lane = ndev->hw->eth_id * K1C_ETH_LANE_NB;
+	int last_lane = first_lane + K1C_ETH_LANE_NB;
+	int i;
+
+	if (ndev->rtm[rtm]) {
+		netdev_info(ndev->netdev, "Setting retimer%d speed to %d\n",
+				rtm, ndev->cfg.speed);
+
+		switch (speed) {
+		case SPEED_100000:
+			/* Set all lanes */
+			for (i = first_lane; i < last_lane; i++)
+				ti_retimer_set_speed(ndev->rtm[rtm], i,
+						SPEED_25000);
+			break;
+		case SPEED_40000:
+			/* Set all lanes */
+			for (i = first_lane; i < last_lane; i++)
+				ti_retimer_set_speed(ndev->rtm[rtm], i,
+						SPEED_10000);
+			break;
+		case SPEED_50000:
+			/* Set two lanes */
+			ti_retimer_set_speed(ndev->rtm[rtm], first_lane,
+					SPEED_25000);
+			ti_retimer_set_speed(ndev->rtm[rtm], first_lane + 1,
+					SPEED_25000);
+			break;
+		case SPEED_25000:
+		case SPEED_10000:
+			/* Set only one lane */
+			ti_retimer_set_speed(ndev->rtm[rtm], first_lane, speed);
+			break;
+		default:
+			netdev_err(ndev->netdev, "Unsupported speed %d\n",
+					speed);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
 static void k1c_phylink_mac_config(struct phylink_config *cfg,
 				   unsigned int mode,
 				   const struct phylink_link_state *state)
@@ -1006,7 +1071,7 @@ static void k1c_phylink_mac_config(struct phylink_config *cfg,
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
 	bool update_serdes = false;
-	int ret = 0;
+	int i, ret = 0;
 
 	netdev_dbg(netdev, "%s netdev: %p hw: %p\n", __func__,
 		   netdev, ndev->hw);
@@ -1025,6 +1090,15 @@ static void k1c_phylink_mac_config(struct phylink_config *cfg,
 		ret = k1c_eth_phy_serdes_init(ndev->hw, &ndev->cfg);
 		if (ret) {
 			netdev_err(ndev->netdev, "Failed to initialize serdes\n");
+			return;
+		}
+	}
+
+	for (i = 0; i < RTM_NB; i++) {
+		ret = configure_rtm(ndev, i, ndev->cfg.speed);
+		if (ret) {
+			netdev_err(netdev, "Failed to configure retimer %i\n",
+					i);
 			return;
 		}
 	}
@@ -1239,8 +1313,13 @@ err:
 static int k1c_netdev_remove(struct platform_device *pdev)
 {
 	struct k1c_eth_netdev *ndev = platform_get_drvdata(pdev);
+	int rtm;
 
 	k1c_eth_sysfs_remove(ndev);
+	for (rtm = 0; rtm < RTM_NB; rtm++) {
+		if (ndev->rtm[rtm])
+			put_device(&ndev->rtm[rtm]->dev);
+	}
 	k1c_eth_free_netdev(ndev);
 	dmaengine_put();
 

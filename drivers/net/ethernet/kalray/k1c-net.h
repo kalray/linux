@@ -126,6 +126,7 @@ struct k1c_eth_netdev {
 	u16    rx_buffer_len;
 	struct k1c_eth_ring tx_ring;
 	struct k1c_eth_hw_stats stats;
+	struct i2c_client *rtm[RTM_NB];
 };
 
 int k1c_eth_alloc_tx_res(struct net_device *netdev);
