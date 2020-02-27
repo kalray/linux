@@ -40,6 +40,12 @@ enum k1c_eth_io {
 	K1C_ETH1
 };
 
+enum k1c_eth_rtm {
+	RTM_RX = 0,
+	RTM_TX,
+	RTM_NB,
+};
+
 enum k1c_eth_resource {
 	K1C_ETH_RES_PHY = 0,
 	K1C_ETH_RES_PHYMAC,
