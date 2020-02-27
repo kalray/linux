@@ -12,15 +12,36 @@
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
 #include <linux/of_gpio.h>
+#include <linux/ethtool.h>
 
 #define TI_RTM_DRIVER_NAME "ti-retimer"
 #define TI_RTM_I2C_ADDR_BUF_SIZE (4)
 #define TI_RTM_GPIO_SLAVE_MODE (1)
 #define TI_RTM_GPIO_READ_EN (1)
 #define TI_RTM_GPIO_ALL_DONE (1)
-#define TI_RTM_REGINIT_NB_ELEM (4)
+#define TI_RTM_SEQ_ARGS_SIZE (4)
 #define TI_RTM_REGINIT_MAX_SIZE (64)
 #define TI_RTM_DEFAULT_TIMEOUT (500)
+#define TI_RTM_NB_LANE (8)
+#define TI_RTM_DEFAULT_SPEED (SPEED_10000)
+
+/* Format: register address, offset, mask, value */
+static const u32 speed_set_seq[][TI_RTM_SEQ_ARGS_SIZE] = {
+	{0xff, 0x00, 0x01, 0x01}, /* Select channel registers */
+	{0xfc, 0x00, 0xff, 0x00}, /* Select all lanes (0) */
+	{0x2f, 0x00, 0xff, 0x00}, /* Write data rate value (0) */
+};
+#define TI_RTM_SEQ_SIZE (ARRAY_SIZE(speed_set_seq))
+
+/**
+ * struct ti_rtm_reg_init - TI retimer i2c register initialization structure
+ * @seq: sequence to perform
+ * @size: reg_init number of elements
+ */
+struct ti_rtm_reg_init {
+	u32 *seq;
+	int size;
+};
 
 /**
  * struct ti_rtm_dev - TI retimer priv
@@ -33,9 +54,7 @@
  * @all_done_gpio: all_done gpio
  *   if en_smb = 1, this gpio has the same value as read_en_gpio
  *   if en_smb = 0, 0 is E2PROM success, 1 is E2PROM fail
- * @reg_init_size: number of elements in reg_init
- * @reg_init: reg initialization array containing register, offset, mask, and
- *   value times reg_init_size
+ * @reg_init: reg initialization structure
  * @eeprom_np: eeprom node
  */
 struct ti_rtm_dev {
@@ -43,8 +62,7 @@ struct ti_rtm_dev {
 	int en_smb_gpio;
 	int read_en_gpio;
 	int all_done_gpio;
-	int reg_init_size;
-	u32 *reg_init;
+	struct ti_rtm_reg_init reg_init;
 	struct device_node *eeprom_np;
 };
 
@@ -88,6 +106,7 @@ static inline int ti_rtm_i2c_write(struct i2c_client *client, u8 reg, u8 *buf,
 		size_t len)
 {
 	u8 i2c_buf[TI_RTM_REGINIT_MAX_SIZE + 1];
+
 	struct i2c_msg write_cmd[] = {
 		{
 			.addr = client->addr,
@@ -108,23 +127,23 @@ static inline int ti_rtm_i2c_write(struct i2c_client *client, u8 reg, u8 *buf,
 	return i2c_transfer(client->adapter, write_cmd, 1);
 }
 
-static void reg_init(struct ti_rtm_dev *rtm)
+static void write_i2c_regs(struct i2c_client *client, u32 *seq, u64 size)
 {
-	struct device *dev = &rtm->client->dev;
+	struct device *dev = &client->dev;
 	int i, ret;
 
-	for (i = 0; i < rtm->reg_init_size; i += TI_RTM_REGINIT_NB_ELEM) {
-		u8 reg = rtm->reg_init[i];
-		u8 offset = rtm->reg_init[i + 1];
-		u8 mask = rtm->reg_init[i + 2];
-		u8 value = rtm->reg_init[i + 3];
+	for (i = 0; i < size; i += TI_RTM_SEQ_ARGS_SIZE) {
+		u8 reg = seq[i];
+		u8 offset = seq[i + 1];
+		u8 mask = seq[i + 2];
+		u8 value = seq[i + 3];
 		u8 read_buf = 0;
 		u8 write_buf = 0;
 
-		dev_dbg(dev, "Reg-init values: reg 0x%x, offset 0x%x, mask 0x%x, value 0x%x\n",
+		dev_dbg(dev, "i2c regs values: reg 0x%x, offset 0x%x, mask 0x%x, value 0x%x\n",
 				reg, offset, mask, value);
 
-		ret = ti_rtm_i2c_read(rtm->client, reg, &read_buf, 1);
+		ret = ti_rtm_i2c_read(client, reg, &read_buf, 1);
 		if (ret < 0) {
 			dev_warn(dev, "Fail to i2c reg-init read error %d (reg: 0x%x)\n",
 					ret, reg);
@@ -133,7 +152,7 @@ static void reg_init(struct ti_rtm_dev *rtm)
 
 		write_buf = ((read_buf & (~mask)) |
 			((value << offset) & mask));
-		ret = ti_rtm_i2c_write(rtm->client, reg, &write_buf, 1);
+		ret = ti_rtm_i2c_write(client, reg, &write_buf, 1);
 		if (ret < 0) {
 			dev_warn(dev, "Fail to i2c reg-init write access 0x%x error %d (reg: 0x%x)\n",
 				write_buf, ret, reg);
@@ -141,10 +160,60 @@ static void reg_init(struct ti_rtm_dev *rtm)
 	}
 }
 
+static inline int speed_to_rtm_reg_value(int speed)
+{
+	switch (speed) {
+	case SPEED_25000:
+		return 0x50;
+	case SPEED_10000:
+		return 0x00;
+	default:
+		return -EINVAL;
+	}
+}
+
+/**
+ * ti_retimer_set_speed() - Set lane speed for retimer
+ * @client: i2c client
+ * @lane: retimer lane [0:7]
+ * @speed: physical lane speed
+ * Return: 0 on success, < 0 on failure
+ */
+int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
+{
+	struct device *dev = &client->dev;
+	u32 seq[TI_RTM_SEQ_SIZE][TI_RTM_SEQ_ARGS_SIZE];
+	u8 speed_reg_val;
+	int ret;
+	int seq_size = TI_RTM_SEQ_SIZE * TI_RTM_SEQ_ARGS_SIZE;
+
+	if (lane >= TI_RTM_NB_LANE) {
+		dev_err(dev, "Wrong lane number %d (max: %d)\n", lane,
+				TI_RTM_NB_LANE);
+		return -EINVAL;
+	}
+
+	ret = speed_to_rtm_reg_value(speed);
+	if (ret < 0) {
+		dev_err(dev, "Unsupported speed %d\n", speed);
+		return ret;
+	}
+	speed_reg_val = (u8) ret;
+
+	memcpy(seq, speed_set_seq, seq_size * sizeof(seq[0][0]));
+	seq[1][3] = 1 << lane; /* choose lane to modify */
+	seq[2][3] = speed_reg_val; /* apply speed */
+
+	write_i2c_regs(client, (u32 *) seq, seq_size);
+
+	return 0;
+}
+EXPORT_SYMBOL(ti_retimer_set_speed);
+
 static int retimer_cfg(struct ti_rtm_dev *rtm)
 {
 	struct device *dev = &rtm->client->dev;
-	int ret = 0;
+	int i, ret = 0;
 
 	/* Force slave mode */
 	dev_dbg(dev, "Setting en_smb_gpio to 0x%x\n", TI_RTM_GPIO_SLAVE_MODE);
@@ -189,7 +258,19 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 			ret = gpio_get_value(rtm->all_done_gpio);
 		} while (ret != TI_RTM_GPIO_ALL_DONE);
 	}
-	reg_init(rtm);
+
+	write_i2c_regs(rtm->client, rtm->reg_init.seq,
+			rtm->reg_init.size);
+
+	/* Set rtm to default speed */
+	for (i = 0; i < TI_RTM_NB_LANE; i++) {
+		ret = ti_retimer_set_speed(rtm->client, i,
+				TI_RTM_DEFAULT_SPEED);
+		if (ret) {
+			dev_err(dev, "Error while setting retimer default speed\n");
+			return ret;
+		}
+	}
 
 	return 0;
 
@@ -252,21 +333,25 @@ static int parse_dt(struct ti_rtm_dev *rtm)
 	}
 
 	ret = of_property_count_u32_elems(np, "ti,reg-init");
-	if (ret < 0 || (ret % TI_RTM_REGINIT_NB_ELEM) != 0) {
-		dev_err(dev, "Failed to read reg init size\n");
-		return ret;
-	}
-	rtm->reg_init_size = ret;
+	if (ret > 0) {
+		if ((ret % TI_RTM_SEQ_ARGS_SIZE) != 0) {
+			dev_err(dev, "Incorrect reg-init format\n");
+			return ret;
+		}
+		rtm->reg_init.size = ret;
 
-	rtm->reg_init = devm_kzalloc(dev, rtm->reg_init_size *
-			sizeof(*rtm->reg_init), GFP_KERNEL);
-	if (!rtm->reg_init)
-		return -ENOMEM;
-	ret = of_property_read_u32_array(np, "ti,reg-init", rtm->reg_init,
-			rtm->reg_init_size);
-	if (ret) {
-		dev_err(dev, "Failed requesting read reg init\n");
-		return ret;
+		rtm->reg_init.seq = devm_kzalloc(dev, rtm->reg_init.size *
+				sizeof(*rtm->reg_init.seq), GFP_KERNEL);
+		if (!rtm->reg_init.seq)
+			return -ENOMEM;
+		ret = of_property_read_u32_array(np, "ti,reg-init",
+				rtm->reg_init.seq, rtm->reg_init.size);
+		if (ret) {
+			dev_err(dev, "Failed requesting read reg init\n");
+			return ret;
+		}
+	} else {
+		dev_warn(dev, "No reg-init property found\n");
 	}
 
 	return 0;
