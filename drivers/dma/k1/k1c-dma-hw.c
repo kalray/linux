@@ -67,7 +67,6 @@ struct k1c_dma_pkt_desc {
 #define K1C_DMA_TX_MON_VCHAN_OUTSTANDING_READ_CNT_OFFSET      0x20
 #define K1C_DMA_TX_MON_OUTSTANDING_FIFO_LEVEL_OFFSET          0x30
 #define K1C_DMA_TX_MON_QUEUES_OUTSTANDING_FIFO_LEVEL_OFFSET   0x40
-#define K1C_DMA_IT_VECTOR_RESERVED_MASK (0xFFFFFFFF8000F000ULL)
 
 /**
  * Rx job queues
@@ -880,12 +879,6 @@ int k1c_dma_read_status(struct k1c_dma_phy *phy)
 	int ret = 0;
 
 	k1c_dma_status_queues(phy);
-	err = readq(phy->base + K1C_DMA_IT_OFFSET +
-		    K1C_DMA_IT_VECTOR_OFFSET);
-	if (err & (~K1C_DMA_IT_VECTOR_RESERVED_MASK)) {
-		dev_err(phy->dev, "it vector: 0x%llx\n", err);
-		ret = -EINVAL;
-	}
 
 	err = readq(phy->base + K1C_DMA_TX_THREAD_OFFSET +
 		   K1C_DMA_TX_THREAD_ELEM_SIZE * K1C_DMA_THREAD_ID +
