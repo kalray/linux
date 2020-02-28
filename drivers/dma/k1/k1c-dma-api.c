@@ -109,11 +109,23 @@ int k1c_dma_get_rx_completed(struct platform_device *pdev, unsigned int id,
 {
 	struct k1c_dma_dev *d = platform_get_drvdata(pdev);
 	struct k1c_dma_phy *p = get_rx_phy(d, id);
+	int ret = 0;
 
 	if (!p || !p->used)
 		return -EINVAL;
 
-	return k1c_dma_rx_get_comp_pkt(p, pkt);
+	ret = k1c_dma_rx_get_comp_pkt(p, pkt);
+	if (READ_ONCE(d->err_vec)) {
+		u64 comp_count = k1c_dma_get_comp_count(p);
+
+		dev_err(d->dma.dev, "%s phy[%d] completion counter: %lld buf %lx size:%d/%d\n",
+			__func__, p->hw_id, comp_count,
+			(uintptr_t)pkt->base, (u32)pkt->byte, (u32)pkt->size);
+		WRITE_ONCE(d->err_vec, 0);
+		k1c_dma_read_status(p);
+	}
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(k1c_dma_get_rx_completed);
 

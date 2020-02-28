@@ -161,6 +161,8 @@ struct k1c_dma_fws {
  * @desc_cache: Descriptor cache
  * @pending_chan: Awaiting dma channels
  * @dbg: dbg fs
+ * @err_irq: dma-noc error interrupt
+ * @err_vec: Error vector
  * @asn: device specific asn for iommu / hw
  * @vchan: device specific vchan for hw
  * @dma_fws: Information about firmwares pool probed from dt
@@ -183,6 +185,8 @@ struct k1c_dma_dev {
 	spinlock_t lock;
 	struct list_head pending_chan;
 	struct dentry *dbg;
+	int err_irq;
+	u64 err_vec;
 	u32 asn;
 	u32 vchan;
 	struct k1c_dma_fws dma_fws;
