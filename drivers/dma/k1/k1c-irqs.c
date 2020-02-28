@@ -159,3 +159,56 @@ void k1c_dma_free_msi(struct platform_device *pdev)
 {
 	platform_msi_domain_free_irqs(&pdev->dev);
 }
+
+#define CHECK_ERR(dev, reg, b) ({ if (reg & BIT(b)) dev_err(dev, #b"\n"); })
+/**
+ * Deals with DMA errors and clear them
+ * @irq: IRQ number
+ * @data: private data
+ *
+ * Return: IRQ_HANDLED
+ */
+irqreturn_t k1c_dma_err_irq_handler(int irq, void *data)
+{
+	struct k1c_dma_dev *dev = (struct k1c_dma_dev *)data;
+	u64 reg = readq(dev->iobase + K1C_DMA_IT_OFFSET +
+		    K1C_DMA_IT_VECTOR_LAC_OFFSET);
+
+	if (!(reg & K1C_DMA_IT_VECTOR_MASK)) {
+		dev_err(dev->dma.dev, "DMA irq raised with empty irq vector\n");
+		return IRQ_HANDLED;
+	}
+
+	WRITE_ONCE(dev->err_vec, reg);
+	CHECK_ERR(dev->dma.dev, reg, RX_CLOSED_CHAN_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_WRITE_POINTER_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_BUFFER_SIZE_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_BUFFER_ADDR_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_BUFFER_DECC_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_COMP_QUEUE_ADDR_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_COMP_QUEUE_DECC_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_JOB_QUEUE_ADDR_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_JOB_QUEUE_DECC_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_JOB_CACHE_EMPTY_ADDR_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_JOB_CACHE_EMPTY_DECC_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, RX_CHAN_JOB_CACHE_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_BUNDLE_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_PGRM_PERM_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_NOC_PERM_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_COMP_PERM_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_READ_ADDR_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_READ_DECC_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_WRITE_ADDR_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_WRITE_DECC_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_COMP_QUEUE_ADDR_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_COMP_QUEUE_DECC_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_JOB_QUEUE_ADDR_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_JOB_QUEUE_DECC_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_JOB_TO_RX_JOB_PUSH_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_AT_ADD_ERROR);
+	CHECK_ERR(dev->dma.dev, reg, TX_VCHAN_ERROR);
+
+	return IRQ_HANDLED;
+}
+
+
