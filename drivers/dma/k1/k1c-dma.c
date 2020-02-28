@@ -422,14 +422,22 @@ static enum dma_status k1c_dma_tx_status(struct dma_chan *chan,
 		spin_lock_irqsave(&c->vc.lock, flags);
 		vd = vchan_find_desc(&c->vc, cookie);
 		if (vd) { /* Nothing done (still on our pending queue) */
+			u64 err = READ_ONCE(dev->err_vec);
+
 			desc = (struct k1c_dma_desc *)vd;
 			bytes = desc->size;
-			dev_dbg(dev->dma.dev, "%s desc: %lx size:%d\n",
-				 __func__, (uintptr_t)desc,
-				 (u32) desc->size);
-			desc->err = k1c_dma_read_status(desc->phy);
-			if (desc->err)
-				ret = DMA_ERROR;
+			if (err) {
+				u64 count = k1c_dma_get_comp_count(desc->phy);
+
+				dev_err(dev->dma.dev, "%s phy[%d] completion counter: %lld desc %lx size:%d\n",
+					__func__, desc->phy->hw_id, count,
+					(uintptr_t)desc, (u32) desc->size);
+				desc->err = err;
+				WRITE_ONCE(dev->err_vec, 0);
+				k1c_dma_read_status(desc->phy);
+				if (desc->err)
+					ret = DMA_ERROR;
+			}
 		}
 		spin_unlock_irqrestore(&c->vc.lock, flags);
 	}
@@ -1286,7 +1294,7 @@ static int k1c_dma_parse_dt(struct platform_device *pdev,
  */
 static int k1c_dma_probe(struct platform_device *pdev)
 {
-	int i, ret;
+	int i, ret, irq;
 	char name[K1C_STR_LEN];
 	struct dma_device *dma;
 	struct k1c_dma_dev *dev = devm_kzalloc(&pdev->dev,
@@ -1302,6 +1310,11 @@ static int k1c_dma_probe(struct platform_device *pdev)
 	dev->iobase = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(dev->iobase))
 		return PTR_ERR(dev->iobase);
+
+	irq = platform_get_irq_byname(pdev, "dma_error");
+	if (irq < 0)
+		return -ENODEV;
+	dev->err_irq = irq;
 
 	platform_set_drvdata(pdev, dev);
 
@@ -1370,6 +1383,12 @@ static int k1c_dma_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Unable to allocate hw fifo\n");
 		return ret;
+	}
+
+	if (devm_request_irq(&pdev->dev, dev->err_irq, k1c_dma_err_irq_handler,
+			     0, dev_name(&pdev->dev), (void *)dev)) {
+		dev_err(&pdev->dev, "Failed to register dma-noc error irq");
+		return -ENODEV;
 	}
 
 	/* Request irqs in mailbox */
