@@ -103,8 +103,28 @@ static ssize_t f##_store(struct k1c_eth_lane_cfg *cfg, struct k1c_eth_##s *p, \
 } \
 static struct sysfs_##s##_entry f##_attr = __ATTR_RW(f)
 
+#define FIELD_IDX_RW_ENTRY(s, f, min, max) \
+static ssize_t f##_show(struct k1c_eth_##s *p, char *buf) \
+{ \
+	return scnprintf(buf, STR_LEN, "%i\n", p->f); \
+} \
+static ssize_t f##_store(struct k1c_eth_##s *p, const char *buf, size_t count) \
+{ \
+	ssize_t ret; \
+	unsigned int val; \
+	ret = kstrtouint(buf, 0, &val); \
+	if (ret) \
+		return ret; \
+	if (val < min || val > max) \
+		return -EINVAL; \
+	p->f = val; \
+	k1c_eth_##s##_cfg(p->hw, p); \
+	return count; \
+} \
+static struct sysfs_##s##_entry f##_attr = __ATTR_RW(f)
+
+
 DECLARE_SYSFS_ENTRY(lb_f);
-DECLARE_SYSFS_ENTRY(tx_f);
 DECLARE_SYSFS_ENTRY(pfc_f);
 DECLARE_SYSFS_ENTRY(cl_f);
 
@@ -121,25 +141,6 @@ static struct attribute *lb_f_attrs[] = {
 	&store_and_forward_attr.attr,
 	&add_header_attr.attr,
 	&add_footer_attr.attr,
-	NULL,
-};
-
-FIELD_RW_ENTRY(tx_f, header_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, drop_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, nocx_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, nocx_pack_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, pfc_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, pause_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, rr_trigger, 0, 0xF);
-
-static struct attribute *tx_f_attrs[] = {
-	&header_en_attr.attr,
-	&drop_en_attr.attr,
-	&nocx_en_attr.attr,
-	&nocx_pack_en_attr.attr,
-	&pfc_en_attr.attr,
-	&pause_en_attr.attr,
-	&rr_trigger_attr.attr,
 	NULL,
 };
 
@@ -172,9 +173,68 @@ static struct attribute *cl_f_attrs[] = {
 };
 
 STRUCT_SYSFS_ENTRY(lb_f);
-STRUCT_SYSFS_ENTRY(tx_f);
 STRUCT_SYSFS_ENTRY(pfc_f);
 STRUCT_SYSFS_IDX_ENTRY(cl_f);
+
+
+struct sysfs_tx_f_entry {
+	struct attribute attr;
+	ssize_t (*show)(struct k1c_eth_tx_f *p, char *buf);
+	ssize_t (*store)(struct k1c_eth_tx_f *p, const char *buf, size_t s);
+};
+
+FIELD_IDX_RW_ENTRY(tx_f, header_en, 0, 1);
+FIELD_IDX_RW_ENTRY(tx_f, drop_en, 0, 1);
+FIELD_IDX_RW_ENTRY(tx_f, nocx_en, 0, 1);
+FIELD_IDX_RW_ENTRY(tx_f, nocx_pack_en, 0, 1);
+FIELD_IDX_RW_ENTRY(tx_f, pfc_en, 0, 1);
+FIELD_IDX_RW_ENTRY(tx_f, pause_en, 0, 1);
+FIELD_IDX_RW_ENTRY(tx_f, rr_trigger, 0, 0xF);
+
+static struct attribute *tx_f_attrs[] = {
+	&header_en_attr.attr,
+	&drop_en_attr.attr,
+	&nocx_en_attr.attr,
+	&nocx_pack_en_attr.attr,
+	&pfc_en_attr.attr,
+	&pause_en_attr.attr,
+	&rr_trigger_attr.attr,
+	NULL,
+};
+
+static ssize_t tx_f_attr_show(struct kobject *kobj,
+			     struct attribute *attr, char *buf)
+{
+	struct sysfs_tx_f_entry *entry = container_of(attr,
+					 struct sysfs_tx_f_entry, attr);
+	struct k1c_eth_tx_f *p = container_of(kobj, struct k1c_eth_tx_f, kobj);
+
+	if (!entry->show)
+		return -EIO;
+	return entry->show(p, buf);
+}
+
+static ssize_t tx_f_attr_store(struct kobject *kobj,
+			struct attribute *attr, const char *buf, size_t count)
+{
+	struct sysfs_tx_f_entry *entry = container_of(attr,
+					 struct sysfs_tx_f_entry, attr);
+	struct k1c_eth_tx_f *p = container_of(kobj, struct k1c_eth_tx_f, kobj);
+
+	if (!entry->store)
+		return -EIO;
+	return entry->store(p, buf, count);
+}
+
+const struct sysfs_ops tx_f_sysfs_ops = {
+	.show  = tx_f_attr_show,
+	.store = tx_f_attr_store,
+};
+
+struct kobj_type tx_f_ktype = {
+	.sysfs_ops = &tx_f_sysfs_ops,
+	.default_attrs = tx_f_attrs,
+};
 
 /**
  * struct sysfs_type
@@ -191,8 +251,6 @@ struct sysfs_type {
 static const struct sysfs_type t[] = {
 	{.name = "lb", .offset = offsetof(struct k1c_eth_lane_cfg, lb_f.kobj),
 		.type = &lb_f_ktype },
-	{.name = "tx", .offset = offsetof(struct k1c_eth_lane_cfg, tx_f.kobj),
-		.type = &tx_f_ktype },
 	{.name = "pfc", .offset = offsetof(struct k1c_eth_lane_cfg, pfc_f.kobj),
 		.type = &pfc_f_ktype },
 	{.name = "pfc_cl_0",
@@ -245,27 +303,64 @@ static void k1c_eth_kobject_del(struct k1c_eth_lane_cfg *cfg,
 	kobject_put(kobj);
 }
 
+static struct kset *tx_kset;
+
 int k1c_eth_sysfs_init(struct k1c_eth_netdev *ndev)
 {
-	int i, j, ret = 0;
+	struct k1c_eth_hw *hw = ndev->hw;
+	struct k1c_eth_tx_f *f;
+	int i, j, r = 0;
 
 	for (i = 0; i < ARRAY_SIZE(t); ++i) {
-		ret = k1c_eth_kobject_add(ndev->netdev, &ndev->cfg, &t[i]);
-		if (ret)
+		r = k1c_eth_kobject_add(ndev->netdev, &ndev->cfg, &t[i]);
+		if (r)
 			goto err;
 	}
+
+	/* TX */
+	tx_kset = kset_create_and_add("tx", NULL, &ndev->netdev->dev.kobj);
+	if (!tx_kset) {
+		pr_err("TX: sysfs kobject registration failed.\n");
+		goto err;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(hw->tx_f); ++i) {
+		f = &hw->tx_f[i];
+		f->kobj.kset = tx_kset;
+		r = kobject_init_and_add(&f->kobj, &tx_f_ktype, NULL, "%d", i);
+		if (r) {
+			netdev_warn(ndev->netdev, "Sysfs init error (%d)\n", r);
+			kobject_put(&f->kobj);
+			goto tx_err;
+		}
+	}
+
 	return 0;
+
+tx_err:
+	for (j = i - 1; j >= 0; --j) {
+		f = &hw->tx_f[j];
+		kobject_del(&f->kobj);
+		kobject_put(&f->kobj);
+	}
 
 err:
 	for (j = i - 1; j >= 0; --j)
 		k1c_eth_kobject_del(&ndev->cfg, &t[j]);
-	return ret;
+	return r;
 }
 
 void k1c_eth_sysfs_remove(struct k1c_eth_netdev *ndev)
 {
+	struct k1c_eth_tx_f *f;
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(t); ++i)
 		k1c_eth_kobject_del(&ndev->cfg, &t[i]);
+
+	for (i = 0; i < ARRAY_SIZE(ndev->hw->tx_f); ++i) {
+		f = &ndev->hw->tx_f[i];
+		kobject_del(&f->kobj);
+		kobject_put(&f->kobj);
+	}
 }
