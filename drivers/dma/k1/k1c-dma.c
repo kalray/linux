@@ -564,7 +564,7 @@ static int k1c_dma_slave_config(struct dma_chan *chan,
  * @dev: Current device
  * @flags: Allocation additionnal flags
  *
- * Return: O - OK
+ * Return: new descriptor if alloc went OK, else NULL
  */
 static struct k1c_dma_desc *k1c_dma_alloc_desc(struct k1c_dma_dev *dev,
 					       gfp_t flags)
@@ -610,8 +610,7 @@ static int k1c_dma_alloc_chan_resources(struct dma_chan *chan)
 	if (ret < 0)
 		goto err_kmemcache;
 
-	/* Allocate less than dma_requests desc (allocated later if needed) */
-	for (i = 0 ; i < K1C_DMA_PREALLOC_DESC_NB; ++i) {
+	for (i = 0 ; i < dev->dma_requests; ++i) {
 		desc = k1c_dma_alloc_desc(dev, GFP_KERNEL);
 		if (!desc)
 			goto err_mem;
@@ -657,24 +656,27 @@ static void k1c_dma_free_chan_resources(struct dma_chan *chan)
 /**
  * k1c_dma_get_desc() - Gets or allocates new transfer descriptor
  * @c: Current channel
+ * Prevents reallocation of new descriptor as k1c_dma_get_desc may be called in
+ * interrupt context
  *
  * Return: new descriptor pointer or NULL
  */
 static struct k1c_dma_desc *k1c_dma_get_desc(struct k1c_dma_chan *c)
 {
 	struct virt_dma_desc *vd;
-	struct k1c_dma_desc *desc;
+ 	struct k1c_dma_desc *desc;
 	unsigned long flags;
 
 	spin_lock_irqsave(&c->vc.lock, flags);
 	vd = list_first_entry_or_null(&c->desc_pool,
 				      struct virt_dma_desc, node);
-	if (vd) {
-		list_del_init(&vd->node);
-		desc = (struct k1c_dma_desc *)vd;
-	} else {
-		desc = k1c_dma_alloc_desc(c->dev, GFP_KERNEL);
+	if (!vd) {
+		spin_unlock_irqrestore(&c->vc.lock, flags);
+		return NULL;
 	}
+
+	list_del_init(&vd->node);
+	desc = (struct k1c_dma_desc *)vd;
 	spin_unlock_irqrestore(&c->vc.lock, flags);
 	desc->last_job_id = 0;
 	desc->err = 0;
