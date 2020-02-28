@@ -330,21 +330,29 @@ static void enable_parser_dispatch_entry(struct k1c_eth_hw *hw,
 	k1c_eth_writel(hw, mask, RX_LB_PARSER_RR_TARGET(parser_id, row));
 }
 
-static void k1c_eth_dispatch_table_cfg(struct k1c_eth_hw *hw,
-				struct k1c_eth_lane_cfg *cfg,
-			       int dispatch_table_idx, int cluster, u32 rx_tag)
+void k1c_eth_dt_f_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
-	u64 val = (u64)noc_route_eth2c(hw->eth_id, cluster) <<
-		RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE_SHIFT;
+	int i;
 
-	val |= ((u64)rx_tag << RX_DISPATCH_TABLE_ENTRY_RX_CHAN_SHIFT) |
-		((u64)hw->vchan << RX_DISPATCH_TABLE_ENTRY_NOC_VCHAN_SHIFT) |
+	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; ++i) {
+		hw->dt_f[i].hw = hw;
+		hw->dt_f[i].id = i;
+	}
+}
+
+void k1c_eth_dt_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_dt_f *dt)
+{
+	u64 val = (u64)noc_route_eth2c(hw->eth_id, dt->cluster_id) <<
+		RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE_SHIFT;
+	u64 trigger_en = (dt->split_trigger ? 1 : 0);
+
+	val |= ((u64)dt->rx_channel << RX_DISPATCH_TABLE_ENTRY_RX_CHAN_SHIFT) |
+		((u64)dt->vchan << RX_DISPATCH_TABLE_ENTRY_NOC_VCHAN_SHIFT) |
 		((u64)hw->asn << RX_DISPATCH_TABLE_ENTRY_ASN_SHIFT) |
-		(0UL << RX_DISPATCH_TABLE_ENTRY_SPLIT_EN_SHIFT) |
-		(0UL << RX_DISPATCH_TABLE_ENTRY_SPLIT_TRIGGER_SHIFT);
-	k1c_eth_writeq(hw, val, RX_DISPATCH_TABLE_ENTRY(dispatch_table_idx));
-	dev_dbg(hw->dev, "table_entry[%d]: 0x%llx asn: %d\n",
-		dispatch_table_idx, val, hw->asn);
+		((u64)trigger_en << RX_DISPATCH_TABLE_ENTRY_SPLIT_EN_SHIFT) |
+		((u64)dt->split_trigger <<
+		 RX_DISPATCH_TABLE_ENTRY_SPLIT_TRIGGER_SHIFT);
+	k1c_eth_writeq(hw, val, RX_DISPATCH_TABLE_ENTRY(dt->id));
 }
 
 void k1c_eth_fill_dispatch_table(struct k1c_eth_hw *hw,
@@ -352,6 +360,7 @@ void k1c_eth_fill_dispatch_table(struct k1c_eth_hw *hw,
 				 u32 rx_tag)
 {
 	int i, cid, idx = 0;
+	struct k1c_eth_dt_f *dt;
 
 	/* Add dispatch entries for other clusters (parser policy) */
 	for (cid = 0; cid < NB_CLUSTER; ++cid) {
@@ -363,12 +372,27 @@ void k1c_eth_fill_dispatch_table(struct k1c_eth_hw *hw,
 		 * Even rx_tags will be used for headers, and odd rx_tags are
 		 * reserved for payload
 		 */
-		for (i = 0; i < NB_PE; ++i, ++idx)
-			k1c_eth_dispatch_table_cfg(hw, cfg, idx, cid, 2 * i);
+		for (i = 0; i < NB_PE; ++i, ++idx) {
+			dt = &hw->dt_f[idx];
+			dt->cluster_id = cid;
+			/* Default: book rx_tag and rx_tag + 1 if split_en */
+			dt->rx_channel = 2 * i;
+			dt->split_trigger = 0;
+			dt->vchan = hw->vchan;
+			k1c_eth_dt_f_cfg(hw, dt);
+		}
+		/* K1C_ETH_RX_TAG_NB entries per cluster */
+		idx += K1C_ETH_RX_TAG_NB - NB_PE;
 	}
 
-	/* Default policy for current cluster */
-	k1c_eth_dispatch_table_cfg(hw, cfg, idx, k1c_cluster_id(), rx_tag);
+	/* Default policy for our cluster */
+	dt = &hw->dt_f[idx];
+	dt->cluster_id = k1c_cluster_id();
+	dt->rx_channel = rx_tag;
+	dt->split_trigger = 0;
+	dt->vchan = hw->vchan;
+	k1c_eth_dt_f_cfg(hw, dt);
+
 	enable_default_dispatch_entry(hw, cfg, idx);
 
 	/* As of now, matching packets will use the same dispatch entry */

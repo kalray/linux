@@ -143,6 +143,21 @@ static struct attribute *cl_f_attrs[] = {
 };
 SYSFS_TYPES(cl_f)
 
+DECLARE_SYSFS_ENTRY(dt_f);
+FIELD_RW_ENTRY(dt_f, cluster_id, 0, NB_CLUSTER - 1);
+FIELD_RW_ENTRY(dt_f, rx_channel, 0, K1C_ETH_RX_TAG_NB - 1);
+FIELD_RW_ENTRY(dt_f, split_trigger, 0, 0x7F);
+FIELD_RW_ENTRY(dt_f, vchan, 0, 1);
+
+static struct attribute *dt_f_attrs[] = {
+	&cluster_id_attr.attr,
+	&rx_channel_attr.attr,
+	&split_trigger_attr.attr,
+	&vchan_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(dt_f)
+
 /**
  * struct sysfs_type
  * @name: sysfs entry name
@@ -187,6 +202,7 @@ static void k1c_eth_kobject_del(struct k1c_eth_lane_cfg *cfg,
 }
 
 static struct kset *tx_kset;
+static struct kset *dt_kset;
 static struct kset *pfc_cl_kset;
 
 #define k1c_declare_kset(s, name) \
@@ -237,6 +253,7 @@ void k1c_kset_##s##_remove(struct k1c_eth_netdev *ndev, struct kset *k, \
 
 k1c_declare_kset(tx_f, "tx")
 k1c_declare_kset(cl_f, "pfc_cl")
+k1c_declare_kset(dt_f, "dispatch_table")
 
 int k1c_eth_sysfs_init(struct k1c_eth_netdev *ndev)
 {
@@ -258,6 +275,11 @@ int k1c_eth_sysfs_init(struct k1c_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
+	ret = k1c_kset_dt_f_create(ndev, dt_kset, &ndev->hw->dt_f[0],
+				   RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
+	if (ret)
+		goto err;
+
 	return ret;
 
 err:
@@ -270,9 +292,11 @@ void k1c_eth_sysfs_remove(struct k1c_eth_netdev *ndev)
 {
 	int i;
 
-	k1c_kset_tx_f_remove(ndev, tx_kset, &ndev->hw->tx_f[0], TX_FIFO_NB);
+	k1c_kset_dt_f_remove(ndev, dt_kset, &ndev->hw->dt_f[0],
+			     RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 	k1c_kset_cl_f_remove(ndev, pfc_cl_kset, &ndev->cfg.cl_f[0],
 			     K1C_ETH_PFC_CLASS_NB);
+	k1c_kset_tx_f_remove(ndev, tx_kset, &ndev->hw->tx_f[0], TX_FIFO_NB);
 	for (i = 0; i < ARRAY_SIZE(t); ++i)
 		k1c_eth_kobject_del(&ndev->cfg, &t[i]);
 }
