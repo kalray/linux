@@ -112,6 +112,8 @@ static int k1c_eth_init_netdev(struct k1c_eth_netdev *ndev)
 	ndev->cfg.duplex = DUPLEX_UNKNOWN;
 	ndev->hw->fec_en = 0;
 	ndev->cfg.mac_f.loopback_mode = NO_LOOPBACK;
+	k1c_eth_lb_f_init(ndev->hw, &ndev->cfg);
+	k1c_eth_pfc_f_init(ndev->hw, &ndev->cfg);
 	ndev->cfg.tx_f->lane_id = ndev->cfg.id;
 
 	return 0;
@@ -1189,7 +1191,7 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 	k1c_mac_set_addr(&dev->hw, &ndev->cfg);
 	k1c_eth_lb_set_default(&dev->hw, &ndev->cfg);
 	k1c_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
-	k1c_eth_lb_f_cfg(&dev->hw, &ndev->cfg);
+	k1c_eth_lb_cfg(&dev->hw, &ndev->cfg);
 	k1c_eth_fill_dispatch_table(&dev->hw, &ndev->cfg,
 				    ndev->dma_cfg.rx_chan_id.start);
 	k1c_eth_tx_fifo_cfg(&dev->hw, &ndev->cfg);
