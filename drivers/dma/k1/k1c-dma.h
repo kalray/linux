@@ -23,8 +23,8 @@
 #define K1C_DMA_QUEUE_RUNNING     (0x1)
 #define K1C_DMA_QUEUE_SWITCH_OFF  (0x2)
 
-#define K1C_DMA_PREALLOC_DESC_NB  (16)
 #define K1C_DMA_MAX_REQUESTS      (127)
+/* Max descriptors per sg list */
 #define K1C_DMA_MAX_TXD           (8)
 
 /**
@@ -151,7 +151,7 @@ struct k1c_dma_fws {
  * @iobase: Register mapping
  * @dma: dmaengine device
  * @dma_channels: Number of requested dma channels
- * @dma_requests: Max requests per dma channel
+ * @dma_requests: Max requests per dma channel (i.e. hw fifo max number of desc)
  * @task: Tasklet handling
  * @chan: Array of channels for device
  * @desc_cache: Cache of descriptors
