@@ -20,6 +20,37 @@
 #define K1C_DMA_THREAD_ID (1ULL)
 
 #define K1C_DMA_ASN_GLOBAL (31)
+#define K1C_DMA_IT_VECTOR_MASK (0x7FFF0FFFULL)
+
+enum dma_error_bit {
+	RX_CLOSED_CHAN_ERROR  = 0,
+	RX_WRITE_POINTER_ERROR,
+	RX_BUFFER_SIZE_ERROR,
+	RX_BUFFER_ADDR_ERROR,
+	RX_BUFFER_DECC_ERROR,
+	RX_COMP_QUEUE_ADDR_ERROR,
+	RX_COMP_QUEUE_DECC_ERROR,
+	RX_JOB_QUEUE_ADDR_ERROR,
+	RX_JOB_QUEUE_DECC_ERROR,
+	RX_JOB_CACHE_EMPTY_ADDR_ERROR,
+	RX_JOB_CACHE_EMPTY_DECC_ERROR,
+	RX_CHAN_JOB_CACHE_ERROR,
+	TX_BUNDLE_ERROR       = 16,
+	TX_PGRM_PERM_ERROR,
+	TX_NOC_PERM_ERROR,
+	TX_COMP_PERM_ERROR,
+	TX_READ_ADDR_ERROR,
+	TX_READ_DECC_ERROR,
+	TX_WRITE_ADDR_ERROR,
+	TX_WRITE_DECC_ERROR,
+	TX_COMP_QUEUE_ADDR_ERROR,
+	TX_COMP_QUEUE_DECC_ERROR,
+	TX_JOB_QUEUE_ADDR_ERROR,
+	TX_JOB_QUEUE_DECC_ERROR,
+	TX_JOB_TO_RX_JOB_PUSH_ERROR,
+	TX_AT_ADD_ERROR,
+	TX_VCHAN_ERROR,
+};
 
 /**
  * struct k1c_dma_tx_job - Tx job description
@@ -162,6 +193,7 @@ struct k1c_dma_tx_job_desc {
 int is_asn_global(u32 asn);
 int k1c_dma_request_irq(struct k1c_dma_phy *phy);
 void k1c_dma_free_irq(struct k1c_dma_phy *phy);
+irqreturn_t k1c_dma_err_irq_handler(int irq, void *data);
 
 /* RX queues */
 int k1c_dma_pkt_rx_queue_push_desc(struct k1c_dma_phy *phy, u64 pkt_paddr,
