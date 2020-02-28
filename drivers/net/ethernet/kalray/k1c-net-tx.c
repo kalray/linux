@@ -9,7 +9,7 @@
 #include <linux/device.h>
 #include <linux/io.h>
 
-#include "k1c-net-hw.h"
+#include "k1c-net.h"
 #include "k1c-net-regs.h"
 
 #define TX_FIFO(f) (TX_OFFSET + TX_FIFO_OFFSET + (f) * TX_FIFO_ELEM_SIZE)
@@ -17,7 +17,7 @@
 /* k1c_eth_tx_status - Debug TX fifo status */
 void k1c_eth_tx_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
-	u32 off = TX_FIFO(cfg->tx_fifo);
+	u32 off = TX_FIFO(cfg->tx_f->fifo_id);
 	u32 noc_if = off + TX_NOC_IF_OFFSET +
 		k1c_cluster_id() * TX_NOC_IF_ELEM_SIZE;
 
@@ -38,21 +38,22 @@ void k1c_eth_tx_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 	DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_NOC_PKT_DROP_CNT);
 }
 
-void k1c_eth_tx_set_default(struct k1c_eth_lane_cfg *cfg)
+void k1c_eth_tx_init(struct k1c_eth_hw *hw)
 {
-	struct k1c_eth_tx_f *f = &cfg->tx_f;
+	struct k1c_eth_tx_f *f;
+	int i;
 
-	memset(f, 0, sizeof(*f));
-	f->lane_id = cfg->id;
+	for (i = 0; i < TX_FIFO_NB; ++i) {
+		f = &hw->tx_f[i];
+		f->hw = hw;
+		f->fifo_id = i;
+	}
 }
 
-void k1c_eth_tx_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+void k1c_eth_tx_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_tx_f *f)
 {
-	struct k1c_eth_tx_f *f = &cfg->tx_f;
-	u32 off = TX_FIFO(cfg->tx_fifo);
-	u64 src_addr;
+	u32 off = TX_FIFO(f->fifo_id);
 	u32 val = 0;
-	u8 *a;
 
 	val = ((u32)f->pause_en << TX_FIFO_LANE_CTRL_PAUSE_EN_SHIFT) |
 		((u32)f->pfc_en << TX_FIFO_LANE_CTRL_PFC_EN_SHIFT) |
@@ -68,11 +69,17 @@ void k1c_eth_tx_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 		((u32)f->global << TX_FIFO_CTRL_GLOBAL_SHIFT) |
 		((u32)hw->asn << TX_FIFO_CTRL_ASN_SHIFT);
 	k1c_eth_writel(hw, val, off + TX_FIFO_CTRL_OFFSET);
-	dev_dbg(hw->dev, "Lane[%d] TX_FIFO_CTRL_OFFSET: 0x%x asn: %d\n",
-		 cfg->id, k1c_eth_readl(hw, off + TX_FIFO_CTRL_OFFSET),
-		 hw->asn);
+}
 
-	off = TX_LANE + f->lane_id * TX_LANE_ELEM_SIZE;
+void k1c_eth_tx_fifo_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	u64 src_addr;
+	u32 off;
+	u8 *a;
+
+	k1c_eth_tx_f_cfg(hw, cfg->tx_f);
+
+	off = TX_LANE + cfg->tx_f->lane_id * TX_LANE_ELEM_SIZE;
 	a = &cfg->mac_f.addr[0];
 	src_addr = (u64)a[5] << 40 | (u64)a[4] << 32 | (u64)a[3] << 24 |
 		(u64)a[2] << 16 | (u64)a[1] << 8 | (u64)a[0];
@@ -81,7 +88,8 @@ void k1c_eth_tx_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 
 u32 k1c_eth_tx_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
-	u32 v = k1c_eth_readl(hw, TX_FIFO(cfg->tx_fifo) + TX_FIFO_CTRL_OFFSET);
+	u32 v = k1c_eth_readl(hw, TX_FIFO(cfg->tx_f->fifo_id) +
+			      TX_FIFO_CTRL_OFFSET);
 
 	return GETF(v, TX_FIFO_CTRL_HEADER_EN);
 }
