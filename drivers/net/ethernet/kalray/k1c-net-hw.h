@@ -20,6 +20,7 @@
 #define NB_CLUSTER                 5
 #define K1C_ETH_LANE_NB            4
 #define K1C_ETH_PFC_CLASS_NB       8
+#define K1C_ETH_RX_TAG_NB          64
 
 #define K1C_ETH_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
 
@@ -172,6 +173,26 @@ struct k1c_eth_tx_f {
 };
 
 /**
+ * struct k1c_eth_dt_f - Dispatch table features
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @cluster_id: dispatch cluster identifier
+ * @rx_channel: dma_noc rx channel identifier
+ * @split_trigger: threashold for split feature (disabled if 0)
+ * @vchan: hw virtual channel used
+ * @id: dispatch table index
+ */
+struct k1c_eth_dt_f {
+	struct kobject kobj;
+	struct k1c_eth_hw *hw;
+	u8 cluster_id;
+	u8 rx_channel;
+	u32 split_trigger;
+	u8 vchan;
+	int id;
+};
+
+/**
  * struct k1c_eth_mac_f - MAC controller features
  * @addr: MAC address
  * @loopback_mode: mac loopback mode
@@ -285,6 +306,7 @@ struct k1c_eth_hw {
 	struct k1c_eth_res res[K1C_ETH_NUM_RES];
 	struct k1c_eth_parsing parsing;
 	struct k1c_eth_tx_f tx_f[TX_FIFO_NB];
+	struct k1c_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
 	u32 eth_id;
 	struct pll_cfg pll_cfg;
 	u32 asn;
@@ -427,6 +449,8 @@ void k1c_eth_lb_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lb_f *lb);
 void k1c_eth_fill_dispatch_table(struct k1c_eth_hw *hw,
 				 struct k1c_eth_lane_cfg *cfg, u32 rx_tag);
+void k1c_eth_dt_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_dt_f *dt);
+void k1c_eth_dt_f_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 
 /* PFC */
 void k1c_eth_pfc_f_set_default(struct k1c_eth_hw *hw,
