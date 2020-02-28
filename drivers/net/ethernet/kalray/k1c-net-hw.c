@@ -112,7 +112,6 @@ void k1c_eth_pfc_f_set_default(struct k1c_eth_hw *hw,
 	int cl_offset, off = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
 		cfg->id * RX_PFC_LANE_ELEM_SIZE;
 
-	memset(&cfg->pfc_f, 0, sizeof(cfg->pfc_f));
 	cfg->pfc_f.global_drop_level = k1c_eth_readl(hw, off +
 				RX_PFC_LANE_GLOBAL_DROP_LEVEL_OFFSET);
 
@@ -123,59 +122,75 @@ void k1c_eth_pfc_f_set_default(struct k1c_eth_hw *hw,
 		cl_offset = off + RX_PFC_LANE_CLASS_OFFSET +
 			i * RX_PFC_LANE_CLASS_ELEM_SIZE;
 
-		memset(&cfg->cl_f[i], 0, sizeof(cfg->cl_f[i]));
 		cfg->cl_f[i].release_level = k1c_eth_readl(hw, cl_offset +
-					RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
+			RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
 		cfg->cl_f[i].drop_level = k1c_eth_readl(hw, cl_offset +
-					RX_PFC_LANE_CLASS_DROP_LEVEL_OFFSET);
+			RX_PFC_LANE_CLASS_DROP_LEVEL_OFFSET);
 		cfg->cl_f[i].alert_level = k1c_eth_readl(hw, cl_offset +
 					RX_PFC_LANE_CLASS_ALERT_LEVEL_OFFSET);
 	}
 }
 
-void k1c_eth_cl_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+void k1c_eth_pfc_f_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
-	int offset = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
-		cfg->id * RX_PFC_LANE_ELEM_SIZE;
-	struct k1c_eth_cl_f *cl;
-	int cl_offset = 0;
-	u32 v = 0;
-	int i = 0;
+	int i;
+
+	cfg->pfc_f.hw = hw;
 
 	for (i = 0; i < K1C_ETH_PFC_CLASS_NB; ++i) {
-		cl = &cfg->cl_f[i];
-		cl_offset = offset + RX_PFC_LANE_CLASS_OFFSET +
-			i * RX_PFC_LANE_CLASS_ELEM_SIZE;
-
-		v = cl->release_level << RX_PFC_LANE_CLASS_RELEASE_LEVEL_SHIFT;
-		k1c_eth_writel(hw, v, cl_offset +
-			       RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
-
-		v = cl->drop_level << RX_PFC_LANE_CLASS_DROP_LEVEL_SHIFT;
-		k1c_eth_writel(hw, v, cl_offset +
-			       RX_PFC_LANE_CLASS_DROP_LEVEL_OFFSET);
-
-		v = cl->alert_level << RX_PFC_LANE_CLASS_ALERT_LEVEL_SHIFT;
-		k1c_eth_writel(hw, v, cl_offset +
-			       RX_PFC_LANE_CLASS_ALERT_LEVEL_OFFSET);
-
-		v = k1c_eth_readl(hw, offset + RX_PFC_LANE_CTRL_OFFSET);
-		if (cl->pfc_ena)
-			set_bit(RX_PFC_LANE_CTRL_EN_SHIFT + i, (void *)&v);
-		else
-			clear_bit(RX_PFC_LANE_CTRL_EN_SHIFT + i, (void *)&v);
-		k1c_eth_writel(hw, v, offset + RX_PFC_LANE_CTRL_OFFSET);
+		cfg->cl_f[i].hw = hw;
+		cfg->cl_f[i].id = i;
+		cfg->cl_f[i].lane_id = cfg->id;
 	}
 }
 
-void k1c_eth_pfc_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+void k1c_eth_cl_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_cl_f *cl)
 {
-	int off = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
-		cfg->id * RX_PFC_LANE_ELEM_SIZE;
-	struct k1c_eth_pfc_f *pfc = &cfg->pfc_f;
-	unsigned long *p;
-	u32 v;
+	int offset = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
+		cl->lane_id * RX_PFC_LANE_ELEM_SIZE;
+	int cl_offset = offset + RX_PFC_LANE_CLASS_OFFSET +
+		cl->id * RX_PFC_LANE_CLASS_ELEM_SIZE;
+	u32 v = 0;
 
+	v = cl->release_level << RX_PFC_LANE_CLASS_RELEASE_LEVEL_SHIFT;
+	k1c_eth_writel(hw, v, cl_offset +
+		       RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
+
+	v = cl->drop_level << RX_PFC_LANE_CLASS_DROP_LEVEL_SHIFT;
+	k1c_eth_writel(hw, v, cl_offset +
+		       RX_PFC_LANE_CLASS_DROP_LEVEL_OFFSET);
+
+	v = cl->alert_level << RX_PFC_LANE_CLASS_ALERT_LEVEL_SHIFT;
+	k1c_eth_writel(hw, v, cl_offset +
+		       RX_PFC_LANE_CLASS_ALERT_LEVEL_OFFSET);
+
+	v = k1c_eth_readl(hw, offset + RX_PFC_LANE_CTRL_OFFSET);
+	if (cl->pfc_ena)
+		set_bit(RX_PFC_LANE_CTRL_EN_SHIFT + cl->id, (void *)&v);
+	else
+		clear_bit(RX_PFC_LANE_CTRL_EN_SHIFT + cl->id, (void *)&v);
+	k1c_eth_writel(hw, v, offset + RX_PFC_LANE_CTRL_OFFSET);
+}
+
+static void k1c_eth_pfc_class_cfg(struct k1c_eth_hw *hw,
+				  struct k1c_eth_lane_cfg *cfg)
+{
+	int i = 0;
+
+	for (i = 0; i < K1C_ETH_PFC_CLASS_NB; ++i)
+		k1c_eth_cl_f_cfg(hw, &cfg->cl_f[i]);
+}
+
+void k1c_eth_pfc_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_pfc_f *pfc)
+{
+	struct k1c_eth_lane_cfg *cfg = container_of(pfc,
+					    struct k1c_eth_lane_cfg, pfc_f);
+	int lane_id = cfg->id;
+	unsigned long *p;
+	u32 v, off;
+
+	off = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
+		lane_id * RX_PFC_LANE_ELEM_SIZE;
 	v = pfc->global_release_level << RX_PFC_LANE_GLOBAL_RELEASE_LEVEL_SHIFT;
 	k1c_eth_writel(hw, v, off + RX_PFC_LANE_GLOBAL_RELEASE_LEVEL_OFFSET);
 
@@ -205,6 +220,17 @@ void k1c_eth_pfc_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 	k1c_eth_writel(hw, v, off + RX_PFC_LANE_CTRL_OFFSET);
 }
 
+void k1c_eth_pfc_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	k1c_eth_pfc_f_cfg(hw, &cfg->pfc_f);
+	k1c_eth_pfc_class_cfg(hw, cfg);
+}
+
+void k1c_eth_lb_f_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	cfg->lb_f.hw = hw;
+}
+
 void k1c_eth_lb_set_default(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
 	int i, l = cfg->id;
@@ -222,14 +248,14 @@ void k1c_eth_lb_set_default(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 		k1c_eth_writeq(hw, 0, RX_DISPATCH_TABLE_ENTRY(i));
 }
 
-void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lb_f *lb)
 {
-	struct k1c_eth_lb_f *lb = &cfg->lb_f;
-	int lane = cfg->id;
-	u32 val;
-
-	val = lb->default_dispatch_policy <<
+	u32 val = lb->default_dispatch_policy <<
 		RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_SHIFT;
+	struct k1c_eth_lane_cfg *cfg = container_of(lb,
+					    struct k1c_eth_lane_cfg, lb_f);
+	int lane = cfg->id;
+
 	updatel_bits(hw, ETH, RX_LB_DEFAULT_RULE_LANE_CTRL(lane),
 		    RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_MASK, val);
 
@@ -244,9 +270,14 @@ void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 		(lb->add_header << RX_LB_CTRL_ADD_HEADER_SHIFT) |
 		(lb->add_footer << RX_LB_CTRL_ADD_FOOTER_SHIFT);
 	k1c_eth_writel(hw, val, RX_LB_CTRL(lane));
+}
 
-	k1c_eth_pfc_f_cfg(hw, cfg);
-	k1c_eth_cl_f_cfg(hw, cfg);
+void k1c_eth_lb_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	struct k1c_eth_lb_f *lb = &cfg->lb_f;
+
+	k1c_eth_lb_f_cfg(hw, lb);
+	k1c_eth_pfc_cfg(hw, cfg);
 }
 
 /**
