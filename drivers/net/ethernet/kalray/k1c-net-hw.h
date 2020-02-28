@@ -22,7 +22,7 @@
 #define K1C_ETH_PFC_CLASS_NB       8
 #define K1C_ETH_RX_TAG_NB          64
 
-#define K1C_ETH_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
+#define PFC_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
 
 #define DUMP_REG(hw, bl, off) { \
 	u32 v = readl(hw->res[K1C_ETH_RES_##bl].base + off); \
@@ -57,6 +57,12 @@ enum k1c_eth_loopback_mode {
 	PHY_RX2TX_LOOPBACK,
 	/* MAC data loopback (host loopback) */
 	MAC_RX2TX_LOOPBACK,
+};
+
+enum k1c_eth_pfc_mode {
+	MAC_PFC_NONE = 0,
+	MAC_PFC,
+	MAC_PAUSE,
 };
 
 struct k1c_eth_res {
@@ -116,10 +122,10 @@ struct k1c_eth_lb_f {
 struct k1c_eth_cl_f {
 	struct kobject kobj;
 	struct k1c_eth_hw *hw;
-	int release_level;
-	int drop_level;
-	int alert_level;
-	int pfc_ena;
+	unsigned int release_level;
+	unsigned int drop_level;
+	unsigned int alert_level;
+	unsigned int pfc_ena;
 	int lane_id;
 	int id;
 };
@@ -200,6 +206,7 @@ struct k1c_eth_dt_f {
 struct k1c_eth_mac_f {
 	u8 addr[ETH_ALEN];
 	enum k1c_eth_loopback_mode loopback_mode;
+	enum k1c_eth_pfc_mode pfc_mode;
 };
 
 /**
@@ -433,6 +440,7 @@ int k1c_eth_phy_serdes_init(struct k1c_eth_hw *h, struct k1c_eth_lane_cfg *cfg);
 /* MAC */
 void k1c_mac_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu);
 void k1c_mac_set_addr(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *lane_cfg);
+void k1c_mac_pfc_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 int k1c_eth_phy_init(struct k1c_eth_hw *hw);
 int k1c_eth_mac_reset(struct k1c_eth_hw *hw);
 int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *lane_cfg);
