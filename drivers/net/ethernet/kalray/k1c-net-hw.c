@@ -150,6 +150,9 @@ void k1c_eth_cl_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_cl_f *cl)
 		cl->lane_id * RX_PFC_LANE_ELEM_SIZE;
 	int cl_offset = offset + RX_PFC_LANE_CLASS_OFFSET +
 		cl->id * RX_PFC_LANE_CLASS_ELEM_SIZE;
+	char *poff = (char *)(&((struct k1c_eth_lane_cfg *)0)->cl_f[cl->id]);
+	struct k1c_eth_lane_cfg *cfg = (struct k1c_eth_lane_cfg *)
+		((char *)cl - poff);
 	u32 v = 0;
 
 	v = cl->release_level << RX_PFC_LANE_CLASS_RELEASE_LEVEL_SHIFT;
@@ -170,6 +173,7 @@ void k1c_eth_cl_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_cl_f *cl)
 	else
 		clear_bit(RX_PFC_LANE_CTRL_EN_SHIFT + cl->id, (void *)&v);
 	k1c_eth_writel(hw, v, offset + RX_PFC_LANE_CTRL_OFFSET);
+	k1c_mac_pfc_cfg(hw, cfg);
 }
 
 static void k1c_eth_pfc_class_cfg(struct k1c_eth_hw *hw,
@@ -202,22 +206,27 @@ void k1c_eth_pfc_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_pfc_f *pfc)
 
 	v = k1c_eth_readl(hw, off + RX_PFC_LANE_CTRL_OFFSET);
 	p = (unsigned long *)&v;
-	if (pfc->global_pfc_en)
-		if (test_bit(RX_PFC_LANE_CTRL_GLOBAL_PAUSE_EN_SHIFT, p))
-			dev_err(hw->dev, "Can't enable global pfc with global pause set\n");
-		else
-			set_bit(RX_PFC_LANE_CTRL_GLOBAL_PFC_EN_SHIFT, p);
-	else
+	if (pfc->global_pfc_en) {
+		if (test_bit(RX_PFC_LANE_CTRL_GLOBAL_PAUSE_EN_SHIFT, p)) {
+			dev_warn(hw->dev, "Disabling global pause\n");
+			pfc->global_pause_en = 0;
+		}
+		set_bit(RX_PFC_LANE_CTRL_GLOBAL_PFC_EN_SHIFT, p);
+	} else {
 		clear_bit(RX_PFC_LANE_CTRL_GLOBAL_PFC_EN_SHIFT, p);
+	}
 
-	if (pfc->global_pause_en)
-		if (test_bit(RX_PFC_LANE_CTRL_GLOBAL_PFC_EN_SHIFT, p))
-			dev_err(hw->dev, "Can't enable global pause with global pfc set\n");
-		else
-			set_bit(RX_PFC_LANE_CTRL_GLOBAL_PAUSE_EN_SHIFT, p);
-	else
+	if (pfc->global_pause_en) {
+		if (test_bit(RX_PFC_LANE_CTRL_GLOBAL_PFC_EN_SHIFT, p)) {
+			dev_warn(hw->dev, "Disabling global pfc\n");
+			pfc->global_pfc_en = 0;
+		}
+		set_bit(RX_PFC_LANE_CTRL_GLOBAL_PAUSE_EN_SHIFT, p);
+	} else {
 		clear_bit(RX_PFC_LANE_CTRL_GLOBAL_PAUSE_EN_SHIFT, p);
+	}
 	k1c_eth_writel(hw, v, off + RX_PFC_LANE_CTRL_OFFSET);
+	k1c_mac_pfc_cfg(hw, cfg);
 }
 
 void k1c_eth_pfc_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
