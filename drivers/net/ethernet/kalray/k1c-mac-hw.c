@@ -100,6 +100,13 @@ static int k1c_eth_emac_init(struct k1c_eth_hw *hw,
 		BIT(EMAC_CMD_CFG_CNTL_FRAME_EN_SHIFT) |
 		BIT(EMAC_CMD_CFG_SW_RESET_SHIFT);
 
+	if (cfg->mac_f.pfc_mode == MAC_PAUSE) {
+		val |= BIT(EMAC_CMD_CFG_PAUSE_PFC_COMP_SHIFT) |
+			BIT(EMAC_CMD_CFG_PAUSE_FWD_SHIFT);
+	} else if (cfg->mac_f.pfc_mode == MAC_PFC) {
+		val |= BIT(EMAC_CMD_CFG_PFC_MODE_SHIFT);
+	}
+
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	k1c_mac_writel(hw, val, off + EMAC_CMD_CFG_OFFSET);
 
@@ -141,6 +148,13 @@ static int k1c_eth_pmac_init(struct k1c_eth_hw *hw,
 		BIT(PMAC_CMD_CFG_SW_RESET_SHIFT)  |
 		BIT(PMAC_CMD_CFG_CNTL_FRAME_EN_SHIFT);
 
+	if (cfg->mac_f.pfc_mode == MAC_PAUSE) {
+		val |= BIT(PMAC_CMD_CFG_PAUSE_FWD_SHIFT) |
+			BIT(PMAC_CMD_CFG_PAUSE_IGNORE_SHIFT);
+	} else if (cfg->mac_f.pfc_mode == MAC_PFC) {
+		val |= BIT(PMAC_CMD_CFG_PFC_MODE_SHIFT);
+	}
+
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	k1c_mac_writel(hw, val, off + PMAC_CMD_CFG_OFFSET);
 	/* Disable MAC auto Xon/Xoff gen and store and forward mode */
@@ -164,6 +178,30 @@ static int k1c_eth_pmac_init(struct k1c_eth_hw *hw,
 	k1c_mac_writel(hw, hw->max_frame_size, off + PMAC_FRM_LEN_OFFSET);
 
 	return 0;
+}
+
+void k1c_mac_pfc_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	int i = 0;
+
+	if (k1c_mac_readl(hw, MAC_RESET_OFFSET))
+		return;
+
+	if (cfg->pfc_f.global_pfc_en)
+		cfg->mac_f.pfc_mode = MAC_PFC;
+	else if (cfg->pfc_f.global_pause_en)
+		cfg->mac_f.pfc_mode = MAC_PAUSE;
+	else
+		cfg->mac_f.pfc_mode = MAC_PFC_NONE;
+
+	for (i = 0; i < K1C_ETH_PFC_CLASS_NB; i++)
+		if (cfg->cl_f[i].pfc_ena) {
+			cfg->mac_f.pfc_mode = MAC_PFC;
+			break;
+		}
+
+	k1c_eth_emac_init(hw, cfg);
+	k1c_eth_pmac_init(hw, cfg);
 }
 
 #define RESET_TIMEOUT_MS 50

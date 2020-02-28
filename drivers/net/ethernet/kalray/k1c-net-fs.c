@@ -91,9 +91,9 @@ static struct attribute *lb_f_attrs[] = {
 SYSFS_TYPES(lb_f)
 
 DECLARE_SYSFS_ENTRY(pfc_f);
-FIELD_RW_ENTRY(pfc_f, global_release_level, 0, K1C_ETH_MAX_LEVEL);
-FIELD_RW_ENTRY(pfc_f, global_drop_level, 0, K1C_ETH_MAX_LEVEL);
-FIELD_RW_ENTRY(pfc_f, global_alert_level, 0, K1C_ETH_MAX_LEVEL);
+FIELD_RW_ENTRY(pfc_f, global_release_level, 0, PFC_MAX_LEVEL);
+FIELD_RW_ENTRY(pfc_f, global_drop_level, 0, PFC_MAX_LEVEL);
+FIELD_RW_ENTRY(pfc_f, global_alert_level, 0, PFC_MAX_LEVEL);
 FIELD_RW_ENTRY(pfc_f, global_pfc_en, 0, 1);
 FIELD_RW_ENTRY(pfc_f, global_pause_en, 0, 1);
 
@@ -129,9 +129,9 @@ static struct attribute *tx_f_attrs[] = {
 SYSFS_TYPES(tx_f)
 
 DECLARE_SYSFS_ENTRY(cl_f);
-FIELD_RW_ENTRY(cl_f, release_level, 0, K1C_ETH_MAX_LEVEL);
-FIELD_RW_ENTRY(cl_f, drop_level, 0, K1C_ETH_MAX_LEVEL);
-FIELD_RW_ENTRY(cl_f, alert_level, 0, K1C_ETH_MAX_LEVEL);
+FIELD_RW_ENTRY(cl_f, release_level, 0, PFC_MAX_LEVEL);
+FIELD_RW_ENTRY(cl_f, drop_level, 0, PFC_MAX_LEVEL);
+FIELD_RW_ENTRY(cl_f, alert_level, 0, PFC_MAX_LEVEL);
 FIELD_RW_ENTRY(cl_f, pfc_ena, 0, 1);
 
 static struct attribute *cl_f_attrs[] = {
