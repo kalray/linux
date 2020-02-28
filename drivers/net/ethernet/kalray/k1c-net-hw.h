@@ -136,6 +136,8 @@ struct k1c_eth_pfc_f {
 /**
  * struct k1c_eth_tx_f - TX features
  * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @fifo_id: TX fifo [0, 9] associated with lane id
  * @lane_id: Identifier of the current lane
  * @header_en: Add metadata TX
  * @drop_en: Allow dropping pkt if tx fifo full
@@ -148,6 +150,8 @@ struct k1c_eth_pfc_f {
  */
 struct k1c_eth_tx_f {
 	struct kobject kobj;
+	struct k1c_eth_hw *hw;
+	int fifo_id;
 	u8 lane_id;
 	u8 header_en;
 	u8 drop_en;
@@ -172,8 +176,7 @@ struct k1c_eth_mac_f {
 /**
  * struct k1c_eth_lane_cfg - Lane configuration
  * @id: lane_id [0, 3]
- * @tx_fifo: TX fifo [0, 9] associated with lane id
- * @link: phy link id
+ * @link: phy link state
  * @speed: phy node speed
  * @duplex: duplex mode
  * @hw: back pointer to hw description
@@ -185,13 +188,12 @@ struct k1c_eth_mac_f {
  */
 struct k1c_eth_lane_cfg {
 	int id;
-	int tx_fifo;
 	int link;
 	unsigned int speed;
 	unsigned int duplex;
 	struct k1c_eth_hw *hw;
 	struct k1c_eth_lb_f lb_f;
-	struct k1c_eth_tx_f tx_f;
+	struct k1c_eth_tx_f *tx_f;
 	struct k1c_eth_pfc_f pfc_f;
 	struct k1c_eth_cl_f cl_f[K1C_ETH_PFC_CLASS_NB];
 	struct k1c_eth_mac_f mac_f;
@@ -259,7 +261,12 @@ struct pll_cfg {
 /**
  * struct k1c_eth_hw - HW adapter
  * @dev: device
+<<<<<<< HEAD
  * @res: HW resource tuple {phy, mac, eth}
+=======
+ * @res: HW resource tuple {phy, phymac, mac, eth}
+ * @tx_f: tx features for all tx fifos
+>>>>>>> 12094dfe4b1e... k1c: eth: tx fifo sysfs
  * @asn: device ASN
  * @vchan: dma-noc vchan (MUST be different of the one used by l2-cache)
  * @max_frame_size: current mtu for mac
@@ -269,6 +276,7 @@ struct k1c_eth_hw {
 	struct device *dev;
 	struct k1c_eth_res res[K1C_ETH_NUM_RES];
 	struct k1c_eth_parsing parsing;
+	struct k1c_eth_tx_f tx_f[TX_FIFO_NB];
 	u32 eth_id;
 	struct pll_cfg pll_cfg;
 	u32 asn;
@@ -417,9 +425,11 @@ void k1c_eth_cl_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 
 /* TX */
 void k1c_eth_tx_set_default(struct k1c_eth_lane_cfg *cfg);
-void k1c_eth_tx_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_tx_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_tx_f *f);
+void k1c_eth_tx_fifo_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_tx_status(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 u32  k1c_eth_tx_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_tx_init(struct k1c_eth_hw *hw);
 
 /* PARSING */
 int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
