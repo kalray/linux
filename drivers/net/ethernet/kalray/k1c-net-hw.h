@@ -84,6 +84,7 @@ enum parser_dispatch_policy {
 /**
  * struct k1c_eth_lb_f - Load balancer features
  * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
  * @default_dispatch_policy: Load balancer policy
  * @store_and_forward: Is store and forward enabled
  * @keep_all_crc_error_pkt: Keep all received eth pkts including erroneous ones
@@ -92,6 +93,7 @@ enum parser_dispatch_policy {
  */
 struct k1c_eth_lb_f {
 	struct kobject kobj;
+	struct k1c_eth_hw *hw;
 	enum default_dispatch_policy default_dispatch_policy;
 	u8 store_and_forward;
 	u8 keep_all_crc_error_pkt;
@@ -101,31 +103,37 @@ struct k1c_eth_lb_f {
 
 /**
  * struct k1c_eth_cl_f - Hardware PFC classes
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
  * @alert_release_level: Max bytes before sending XON for this class
  * @drop_level: Max bytes before dropping packets for this class
  * @alert_level: Max bytes before sending XOFF request for this class
  * @pfc_ena: is PFC enabled for this class
+ * @lane_id: lane identifier
  * @id: PFC class identifier
- * @kobj: kobject for sysfs
- * @cfg: pointer to the parent cfg structure
  */
 struct k1c_eth_cl_f {
 	struct kobject kobj;
+	struct k1c_eth_hw *hw;
 	int release_level;
 	int drop_level;
 	int alert_level;
 	int pfc_ena;
+	int lane_id;
+	int id;
 };
 
 /**
  * struct k1c_eth_pfc_f - Hardware PFC controller
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
  * @global_alert_release_level: Max bytes before sending XON for every class
  * @global_drop_level: Max bytes before dropping packets for every class
  * @global_alert_level: Max bytes before sending XOFF for every class
- * @kobj: kobject for sysfs
  */
 struct k1c_eth_pfc_f {
 	struct kobject kobj;
+	struct k1c_eth_hw *hw;
 	int global_release_level;
 	int global_drop_level;
 	int global_alert_level;
@@ -183,7 +191,7 @@ struct k1c_eth_mac_f {
  * @lb_f: Load balancer features
  * @tx_f: TX features
  * @pfc: Packet Flow Control
- * @classes: Array of 8 classes
+ * @cl_f: Array of 8 classes (per lane)
  * @mac: mac controller
  */
 struct k1c_eth_lane_cfg {
@@ -413,15 +421,20 @@ void k1c_eth_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu);
 u32 k1c_eth_lb_has_header(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 u32 k1c_eth_lb_has_footer(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_lb_set_default(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *c);
+void k1c_eth_lb_f_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
 void k1c_eth_lb_dump_status(struct k1c_eth_hw *hw, int lane_id);
-void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_lb_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_lb_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lb_f *lb);
 void k1c_eth_fill_dispatch_table(struct k1c_eth_hw *hw,
-				 struct k1c_eth_lane_cfg *cfg,
-				 u32 rx_tag);
+				 struct k1c_eth_lane_cfg *cfg, u32 rx_tag);
+
+/* PFC */
 void k1c_eth_pfc_f_set_default(struct k1c_eth_hw *hw,
 			       struct k1c_eth_lane_cfg *cfg);
-void k1c_eth_pfc_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
-void k1c_eth_cl_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_pfc_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_pfc_f *pfc);
+void k1c_eth_pfc_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_pfc_f_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_eth_cl_f_cfg(struct k1c_eth_hw *hw, struct k1c_eth_cl_f *cl);
 
 /* TX */
 void k1c_eth_tx_set_default(struct k1c_eth_lane_cfg *cfg);
