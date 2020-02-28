@@ -150,3 +150,16 @@ const union tcp_filter_desc tcp_filter_default = {
 	.flags_hash_mask       = 0x000,
 	.skip_length           = 2,
 };
+
+const union roce_filter_desc roce_filter_default = {
+	.word                  = {0},
+	.ptype                 = PTYPE_ROCE,
+	.add_metadata_index    = 1,
+	.roce_version          = 0, /* 0 for v1, 1 for v2 */
+	.check_icrc            = 1, /* Always on */
+	.qpair_cmp_polarity    = 0,
+	.qpair                 = 0x000000,
+	.qpair_mask            = 0x000000,
+	.qpair_hash_mask       = 0xffffff, /* Always on */
+	.skip_length           = 2,
+};

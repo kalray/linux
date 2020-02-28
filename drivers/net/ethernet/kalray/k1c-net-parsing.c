@@ -234,20 +234,6 @@ static int parser_add_filter(struct k1c_eth_hw *hw, unsigned int parser_id,
 	return ret;
 }
 
-static union filter_desc *get_default_rule(struct k1c_eth_hw *hw,
-		enum k1c_eth_layer layer)
-{
-	switch (layer) {
-	case K1C_NET_LAYER_2:
-		return (union filter_desc *) &mac_filter_default;
-	case K1C_NET_LAYER_3:
-		return (union filter_desc *) &ipv4_filter_default;
-	default:
-		dev_err(hw->dev, "Default rules make no sense for layer superior than 3\n");
-		return NULL;
-	}
-}
-
 /** parser_disable() - Disable parser parser_id
  * Context: can not be called in interrupt context (readq_poll_timeout)
  *
@@ -291,11 +277,6 @@ int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
 
 	for (rule = 0; rule < rules_len; ++rule) {
 		filter_desc = rules[rule];
-		if (filter_desc == NULL) {
-			filter_desc = get_default_rule(hw, rule);
-			if (filter_desc == NULL)
-				return -EINVAL;
-		}
 		word_index = parser_add_filter(hw, parser_id,
 				word_index, filter_desc);
 	}

@@ -12,6 +12,7 @@
 
 #include "k1c-net.h"
 #include "k1c-net-hw.h"
+#include "k1c-ethtool.h"
 #include "k1c-net-regs.h"
 
 #define STAT(n, m)   { n, sizeof_field(struct k1c_eth_hw_stats, m), \
@@ -534,6 +535,61 @@ static void fill_ipv6_filter(struct k1c_eth_netdev *ndev,
 	}
 }
 
+static bool is_roce_filter(struct k1c_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs,
+		enum k1c_roce_version *version)
+{
+	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
+	struct ethtool_tcpip4_spec *l4_val  = &fs->h_u.udp_ip4_spec;
+	struct ethtool_tcpip4_spec *l4_mask = &fs->m_u.udp_ip4_spec;
+	u16 dst_port = ntohs(l4_val->pdst);
+	u16 dst_mask = ntohs(l4_mask->pdst);
+	u16 etype = ntohs(fs->h_u.ether_spec.h_proto);
+	bool no_mask_provided = dst_mask == 0xffff;
+
+	switch (proto) {
+	case ETHER_FLOW:
+		if (version != NULL)
+			*version = ROCE_V1;
+		return etype == ROCE_V1_ETYPE;
+	case UDP_V4_FLOW:
+	case UDP_V6_FLOW:
+		if (version != NULL)
+			*version = ROCE_V2;
+		return dst_port == ROCE_V2_PORT && no_mask_provided;
+	default:
+		return false;
+	}
+}
+
+/* Fill a ROcE filter using the userdef ethtool field */
+static void fill_roce_filter(struct k1c_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
+		enum k1c_roce_version roce_version)
+{
+	union roce_filter_desc *filter = (union roce_filter_desc *) flt;
+	u32 qpair = be64_to_cpu(*((__be64 *)fs->h_ext.data));
+	u32 qpair_mask = be64_to_cpu(*((__be64 *)fs->m_ext.data));
+	enum k1c_roce_version version;
+
+	if (!is_roce_filter(ndev, fs, &version))
+		return;
+	if (version != roce_version)
+		return;
+
+	netdev_dbg(ndev->netdev, "Adding a RoCE rule (qpair: 0x%x, mask: 0x%x)\n",
+			qpair, qpair_mask);
+
+	memcpy(filter, &roce_filter_default, sizeof(roce_filter_default));
+
+	filter->roce_version = roce_version;
+	if (qpair_mask != 0) {
+		filter->qpair = qpair;
+		filter->qpair_mask = qpair_mask;
+	}
+
+}
+
 /* This functions support only one VLAN level */
 static void fill_eth_filter(struct k1c_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
@@ -676,6 +732,13 @@ static int get_layer(struct k1c_eth_netdev *ndev,
 		netdev_err(ndev->netdev, "Unsupported protocol (expect TCP, UDP, IP4, IP6, ETH)\n");
 		return -EINVAL;
 	}
+
+	/* RoCE is not a proper layer in ethtool terms, but k1c need a parser
+	 * filter for RoCE itself.
+	 */
+	if (is_roce_filter(ndev, fs, NULL))
+		layer++;
+
 	return layer;
 }
 
@@ -697,6 +760,7 @@ static int k1c_eth_fill_parser(struct k1c_eth_netdev *ndev,
 		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IP);
 		break;
 	case UDP_V4_FLOW:
+		fill_roce_filter(ndev, fs, flt[K1C_NET_LAYER_5], ROCE_V2);
 		if (fill_udp_filter(ndev, fs, flt[K1C_NET_LAYER_4]))
 			return -EINVAL;
 		fill_ipv4_filter(ndev, fs, flt[K1C_NET_LAYER_3], IPPROTO_UDP);
@@ -710,6 +774,7 @@ static int k1c_eth_fill_parser(struct k1c_eth_netdev *ndev,
 		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], ETH_P_IPV6);
 		break;
 	case UDP_V6_FLOW:
+		fill_roce_filter(ndev, fs, flt[K1C_NET_LAYER_5], ROCE_V2);
 		if (fill_udp_filter(ndev, fs, flt[K1C_NET_LAYER_4]))
 			return -EINVAL;
 		fill_ipv6_filter(ndev, fs, flt[K1C_NET_LAYER_3], IPPROTO_UDP);
@@ -726,6 +791,7 @@ static int k1c_eth_fill_parser(struct k1c_eth_netdev *ndev,
 		break;
 	/* mac layer */
 	case ETHER_FLOW:
+		fill_roce_filter(ndev, fs, flt[K1C_NET_LAYER_3], ROCE_V1);
 		fill_eth_filter(ndev, fs, flt[K1C_NET_LAYER_2], 0);
 		break;
 	default:
