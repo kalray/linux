@@ -94,6 +94,7 @@ extern const union ipv4_filter_desc ipv4_filter_default;
 extern const struct ipv6_filter_desc ipv6_filter_default;
 extern const union tcp_filter_desc tcp_filter_default;
 extern const union udp_filter_desc udp_filter_default;
+extern const union roce_filter_desc roce_filter_default;
 
 /**
  * struct k1c_eth_netdev - K1C net device
