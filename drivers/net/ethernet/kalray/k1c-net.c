@@ -112,6 +112,7 @@ static int k1c_eth_init_netdev(struct k1c_eth_netdev *ndev)
 	ndev->cfg.duplex = DUPLEX_UNKNOWN;
 	ndev->hw->fec_en = 0;
 	ndev->cfg.mac_f.loopback_mode = NO_LOOPBACK;
+	ndev->cfg.tx_f->lane_id = ndev->cfg.id;
 
 	return 0;
 }
@@ -340,6 +341,7 @@ static struct sk_buff *k1c_eth_tx_add_hdr(struct k1c_eth_netdev *ndev,
 	int pkt_size = skb->len;
 	enum tx_ip_mode ip_mode = NO_IP_MODE;
 	enum tx_crc_mode crc_mode = NO_CRC_MODE;
+	struct k1c_eth_lane_cfg *cfg = &ndev->cfg;
 
 	memset(&h, 0, hdr_len);
 	if (skb_headroom(skb) < hdr_len) {
@@ -355,11 +357,11 @@ static struct sk_buff *k1c_eth_tx_add_hdr(struct k1c_eth_netdev *ndev,
 
 	netdev_dbg(ndev->netdev, "%s skb->len: %d pkt_size: %d skb->data: 0x%lx\n",
 		   __func__, skb->len, pkt_size, (uintptr_t)skb->data);
-	k1c_eth_tx_status(ndev->hw, &ndev->cfg);
+	k1c_eth_tx_status(ndev->hw, cfg);
 
 	h._.pkt_size = skb->len - sizeof(h);
-	h._.lane = ndev->cfg.id;
-	h._.nocx_en = ndev->cfg.tx_f.nocx_en;
+	h._.lane = cfg->id;
+	h._.nocx_en = cfg->tx_f->nocx_en;
 
 	if (eth_h->h_proto == ETH_P_IP)
 		ip_mode = IP_V4_MODE;
@@ -1099,7 +1101,7 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	eth_hw_addr_random(netdev);
 	memcpy(ndev->cfg.mac_f.addr, netdev->dev_addr, ETH_ALEN);
 	/* As of now keep tx_fifo = lane_id -> needs to be updated */
-	ndev->cfg.tx_fifo = ndev->cfg.id;
+	ndev->cfg.tx_f = &ndev->hw->tx_f[ndev->cfg.id];
 
 	/* Allocate RX/TX rings */
 	ret = k1c_eth_alloc_rx_res(netdev);
@@ -1185,13 +1187,12 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 		goto err;
 
 	k1c_mac_set_addr(&dev->hw, &ndev->cfg);
-	k1c_eth_tx_set_default(&ndev->cfg);
 	k1c_eth_lb_set_default(&dev->hw, &ndev->cfg);
 	k1c_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
 	k1c_eth_lb_f_cfg(&dev->hw, &ndev->cfg);
 	k1c_eth_fill_dispatch_table(&dev->hw, &ndev->cfg,
 				    ndev->dma_cfg.rx_chan_id.start);
-	k1c_eth_tx_f_cfg(&dev->hw, &ndev->cfg);
+	k1c_eth_tx_fifo_cfg(&dev->hw, &ndev->cfg);
 
 	ret = k1c_eth_sysfs_init(ndev);
 	if (ret)
@@ -1297,6 +1298,7 @@ static int k1c_eth_probe(struct platform_device *pdev)
 		goto err;
 	}
 
+	k1c_eth_tx_init(&dev->hw);
 	dev_info(&pdev->dev, "K1C network driver\n");
 	return devm_of_platform_populate(&pdev->dev);
 
