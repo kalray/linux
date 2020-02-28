@@ -112,6 +112,7 @@ static int k1c_eth_init_netdev(struct k1c_eth_netdev *ndev)
 	ndev->cfg.duplex = DUPLEX_UNKNOWN;
 	ndev->hw->fec_en = 0;
 	ndev->cfg.mac_f.loopback_mode = NO_LOOPBACK;
+	k1c_eth_dt_f_init(ndev->hw, &ndev->cfg);
 	k1c_eth_lb_f_init(ndev->hw, &ndev->cfg);
 	k1c_eth_pfc_f_init(ndev->hw, &ndev->cfg);
 	ndev->cfg.tx_f->lane_id = ndev->cfg.id;
