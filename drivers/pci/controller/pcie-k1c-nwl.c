@@ -242,6 +242,46 @@ struct nwl_pcie {
 	raw_spinlock_t leg_mask_lock;
 };
 
+/**
+ * [Nfurcation][controller]-indexed table specifying the number of lanes
+ * attributed to each controller for a given nfurcation
+ */
+static const uint8_t nfurc_ctrl_lanes[][NB_CORE_CTRL] = {
+	{16, 0, 0, 0, 0, 0, 0, 0},
+	{ 8, 0, 0, 0, 8, 0, 0, 0},
+	{ 8, 0, 0, 0, 4, 0, 4, 0},
+	{ 8, 0, 0, 0, 4, 0, 2, 2},
+	{ 8, 0, 0, 0, 2, 2, 4, 0},
+	{ 8, 0, 0, 0, 2, 2, 2, 2},
+	{ 4, 0, 4, 0, 8, 0, 0, 0},
+	{ 4, 0, 2, 2, 8, 0, 0, 0},
+	{ 2, 2, 4, 0, 8, 0, 0, 0},
+	{ 2, 2, 2, 2, 8, 0, 0, 0},
+	{ 4, 0, 4, 0, 4, 0, 4, 0},
+	{ 4, 0, 4, 0, 2, 2, 4, 0},
+	{ 4, 0, 4, 0, 4, 0, 2, 2},
+	{ 4, 0, 4, 0, 2, 2, 2, 2},
+	{ 4, 0, 2, 2, 4, 0, 4, 0},
+	{ 4, 0, 2, 2, 2, 2, 4, 0},
+	{ 4, 0, 2, 2, 4, 0, 2, 2},
+	{ 4, 0, 2, 2, 2, 2, 2, 2},
+	{ 2, 2, 4, 0, 4, 0, 4, 0},
+	{ 2, 2, 4, 0, 2, 2, 4, 0},
+	{ 2, 2, 4, 0, 4, 0, 2, 2},
+	{ 2, 2, 4, 0, 2, 2, 2, 2},
+	{ 2, 2, 2, 2, 4, 0, 4, 0},
+	{ 2, 2, 2, 2, 4, 0, 2, 2},
+	{ 2, 2, 2, 2, 2, 2, 4, 0},
+	{ 2, 2, 2, 2, 2, 2, 2, 2},
+	/* Below are the MPPA-160 specific configs */
+	{ 8, 0, 0, 0, 8, 0, 0, 0},
+	{ 4, 0, 0, 0, 8, 0, 4, 0},
+	{ 4, 0, 0, 0, 8, 0, 2, 2},
+	{ 2, 0, 0, 0, 8, 2, 4, 0},
+	{ 2, 0, 0, 0, 8, 2, 2, 2},
+};
+
+
 static void handle_aer_irq(struct nwl_pcie *pcie);
 static void nwl_pcie_aer_init(struct nwl_pcie *pcie, struct pci_bus *bus);
 
@@ -914,6 +954,9 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 	struct device *dev = pcie->dev;
 	void __iomem *bar_decoder;
 	struct resource *res;
+	u32 nfurc;
+	u32 max_nb_lane;
+	u32 nb_lane;
 	int ret;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "bridge_reg");
@@ -967,10 +1010,34 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 		bar_decoder_init(bar_decoder);
 	}
 
+	/* use nfurcation to deduce the max number of lane */
+	nfurc = k1c_phycore_readl(pcie->phycore_regmap,
+				  K1_PCIE_PHY_CORE_NFURC_OFFSET);
+	if (nfurc > ARRAY_SIZE(nfurc_ctrl_lanes)) {
+		dev_err(dev, "Unkown n-furcation %d\n", nfurc);
+		return -EINVAL;
+	}
+	dev_info(dev, "Active nfurcation is : %u\n", nfurc);
+	max_nb_lane = nfurc_ctrl_lanes[nfurc][pcie->ctrl_num];
+
+	if (max_nb_lane == 0) {
+		dev_err(dev, "The PCIe RC %d cannot be used with nfurcation %d\n",
+			pcie->ctrl_num, nfurc);
+		return -EINVAL;
+	}
+
 	ret = of_property_read_u32(pdev->dev.of_node, "kalray,nb-lane",
-				   &pcie->nb_lane);
+				   &nb_lane);
 	if (ret != 0)
-		return ret;
+		nb_lane = max_nb_lane;
+
+	if (nb_lane > max_nb_lane) {
+		dev_err(dev, "At most %d lane can be used on  PCIe RC %d with nfurcation %d\n",
+			max_nb_lane, pcie->ctrl_num, nfurc);
+		return -EINVAL;
+	}
+
+	pcie->nb_lane = nb_lane;
 	dev_info(dev, "nb_lane : %u\n", pcie->nb_lane);
 
 	/* Get intx IRQ number */
@@ -1016,7 +1083,6 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 		dev_err(dev, "Parsing DT failed\n");
 		return err;
 	}
-
 
 	err = pcie_asn_init(pcie);
 	if (err) {
