@@ -163,7 +163,8 @@
 #define E_ECAM_SIZE_SHIFT		16
 #define ECAM_BUS_LOC_SHIFT		20
 #define ECAM_DEV_LOC_SHIFT		12
-#define NWL_ECAM_VALUE_DEFAULT		12
+#define NWL_ECAM_VALUE_MAX		16
+#define NWL_ECAM_VALUE			16
 
 #define CFG_DMA_REG_BAR			GENMASK(2, 0)
 
@@ -822,8 +823,9 @@ static int nwl_pcie_bridge_init(struct nwl_pcie *pcie)
 			  E_ECAM_CONTROL);
 
 	/* Get bus range */
+	BUILD_BUG_ON(NWL_ECAM_VALUE > NWL_ECAM_VALUE_MAX);
 	ecam_val = nwl_bridge_readl(pcie, E_ECAM_CONTROL);
-	pcie->last_busno = (ecam_val & E_ECAM_SIZE_LOC) >> E_ECAM_SIZE_SHIFT;
+	pcie->last_busno = (BUS_MAX >> (NWL_ECAM_VALUE_MAX - NWL_ECAM_VALUE));
 	/* Write primary, secondary and subordinate bus numbers */
 	ecam_val = first_busno;
 	ecam_val |= (first_busno + 1) << 8;
@@ -1076,7 +1078,7 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 
 	pcie->dev = dev;
 	dev_set_drvdata(dev, pcie);
-	pcie->ecam_value = NWL_ECAM_VALUE_DEFAULT;
+	pcie->ecam_value = NWL_ECAM_VALUE;
 
 	err = nwl_pcie_parse_dt(pcie, pdev);
 	if (err) {
