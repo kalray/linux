@@ -359,7 +359,7 @@ static int fill_tcp_filter(struct k1c_eth_netdev *ndev,
 			return ret;
 		}
 		filter->dst_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
-		if (filter->src_min_port != filter->src_max_port) {
+		if (filter->dst_min_port != filter->dst_max_port) {
 			netdev_info(ndev->netdev, "TCP destination port range [%d-%d]\n",
 					filter->dst_min_port,
 					filter->dst_max_port);
@@ -418,7 +418,7 @@ static int fill_udp_filter(struct k1c_eth_netdev *ndev,
 			return ret;
 		}
 		filter->dst_ctrl = K1C_ETH_ADDR_MATCH_EQUAL;
-		if (filter->src_min_port != filter->src_max_port) {
+		if (filter->dst_min_port != filter->dst_max_port) {
 			netdev_info(ndev->netdev, "UDP destination port range [%d-%d]\n",
 				filter->dst_min_port,
 				filter->dst_max_port);
