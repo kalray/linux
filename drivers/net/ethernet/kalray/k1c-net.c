@@ -720,6 +720,24 @@ static void k1c_eth_netdev_get_stats64(struct net_device *netdev,
 	stats->rx_frame_errors = ndev->stats.rx.alignmenterrors;
 }
 
+/* Allow userspace to determine which ethernet controller
+ * is behind this netdev, independently of the netdev name
+ */
+static int
+k1c_eth_get_phys_port_name(struct net_device *dev,
+						   char *name, size_t len)
+{
+	struct k1c_eth_netdev *ndev = netdev_priv(dev);
+	int n;
+
+	n = snprintf(name, len, "eth%d", ndev->hw->eth_id);
+
+	if (n >= len)
+		return -EINVAL;
+
+	return 0;
+}
+
 static const struct net_device_ops k1c_eth_netdev_ops = {
 	.ndo_open               = k1c_eth_netdev_open,
 	.ndo_stop               = k1c_eth_netdev_close,
@@ -728,6 +746,7 @@ static const struct net_device_ops k1c_eth_netdev_ops = {
 	.ndo_validate_addr      = eth_validate_addr,
 	.ndo_set_mac_address    = k1c_eth_set_mac_addr,
 	.ndo_change_mtu         = k1c_eth_change_mtu,
+	.ndo_get_phys_port_name = k1c_eth_get_phys_port_name,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller    = k1c_eth_netdev_poll_controller,
 #endif
