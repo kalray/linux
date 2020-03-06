@@ -402,6 +402,7 @@ static int k1c_handle_boot_params(struct rproc *rproc,
 {
 	struct k1c_rproc *k1c_rproc = rproc->priv;
 	struct device *dev = &rproc->dev;
+	const char *fw;
 	void *addr;
 	int ret;
 
@@ -417,7 +418,10 @@ static int k1c_handle_boot_params(struct rproc *rproc,
 	}
 
 	rsc->spawn_type = KALRAY_SPAWN_TYPE_RPROC_LINUX;
-	strscpy(rsc->exec_name, rproc->firmware, EXEC_NAME_LEN);
+
+	/* Use only the basename of the firmware */
+	fw = kbasename(rproc->firmware);
+	strscpy(rsc->exec_name, fw, EXEC_NAME_LEN);
 
 	avail -= sizeof(*rsc);
 	/* Args are located right after the params resource */
