@@ -23,4 +23,6 @@ extern void iounmap(volatile void __iomem *addr);
 
 #include <asm-generic/io.h>
 
+extern int devmem_is_allowed(unsigned long pfn);
+
 #endif	/* _ASM_K1C_IO_H */
