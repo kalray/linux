@@ -1466,10 +1466,8 @@ static int k1c_iommu_add_device(struct device *dev)
  */
 static void k1c_iommu_remove_device(struct device *dev)
 {
-	iommu_group_put(dev->iommu_group);
-	dev->iommu_group = NULL;
-
-	dev->dma_ops = NULL;
+	iommu_group_remove_device(dev);
+	iommu_fwspec_free(dev);
 
 	dev_dbg(dev, "device has been removed from IOMMU\n");
 }
@@ -1559,6 +1557,7 @@ static struct iommu_group *k1c_iommu_device_group(struct device *dev)
 
 	list_for_each_entry(group, &iommu_dev->groups, list)
 		if (group->asn == fwspec->ids[0]) {
+			iommu_group_ref_get(group->group);
 			mutex_unlock(&iommu_dev->lock);
 			return group->group;
 		}
