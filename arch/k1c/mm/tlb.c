@@ -270,7 +270,7 @@ void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
 	unsigned long flags;
 	unsigned long pages = (end - start) >> PAGE_SHIFT;
 
-	if (pages > MMU_JTLB_WAYS * MMU_JTLB_SETS) {
+	if (pages > MMU_JTLB_ENTRIES) {
 		local_flush_tlb_all();
 	} else {
 		start &= PAGE_MASK;

@@ -24,6 +24,8 @@
 #define MMU_JTLB_WAYS_SHIFT 2
 #define MMU_JTLB_WAYS (1 << MMU_JTLB_WAYS_SHIFT)
 
+#define MMU_JTLB_ENTRIES	(MMU_JTLB_SETS << MMU_JTLB_WAYS_SHIFT)
+
 /* Set is determined using the 6 lsb of virtual page */
 #define MMU_JTLB_SET_MASK (MMU_JTLB_SETS - 1)
 #define MMU_JTLB_WAY_MASK (MMU_JTLB_WAYS - 1)
