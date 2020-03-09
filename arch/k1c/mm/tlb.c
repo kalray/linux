@@ -26,6 +26,9 @@
 /* Threshold of page count above which we will regenerate a new ASN */
 #define ASN_FLUSH_PAGE_THRESHOLD	(MMU_JTLB_ENTRIES)
 
+/* Threshold of page count above which we will flush the whole JTLB */
+#define FLUSH_ALL_PAGE_THRESHOLD	(MMU_JTLB_ENTRIES)
+
 DEFINE_PER_CPU(unsigned long, k1c_asn_cache) = MM_CTXT_FIRST_CYCLE;
 
 #ifdef CONFIG_K1C_DEBUG_TLB_ACCESS
@@ -279,20 +282,21 @@ void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
 	unsigned long flags;
 	unsigned long pages = (end - start) >> PAGE_SHIFT;
 
-	if (pages > MMU_JTLB_ENTRIES) {
+	if (pages > FLUSH_ALL_PAGE_THRESHOLD) {
 		local_flush_tlb_all();
-	} else {
-		start &= PAGE_MASK;
-
-		local_irq_save(flags);
-
-		while (start < end) {
-			clear_jtlb_entry(start, TLB_G_GLOBAL, KERNEL_DUMMY_ASN);
-			start += PAGE_SIZE;
-		}
-
-		local_irq_restore(flags);
+		return;
 	}
+
+	start &= PAGE_MASK;
+
+	local_irq_save(flags);
+
+	while (start < end) {
+		clear_jtlb_entry(start, TLB_G_GLOBAL, KERNEL_DUMMY_ASN);
+		start += PAGE_SIZE;
+	}
+
+	local_irq_restore(flags);
 }
 
 void update_mmu_cache_pmd(struct vm_area_struct *vma, unsigned long addr,
