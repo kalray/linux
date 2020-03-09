@@ -21,6 +21,7 @@
 #include <linux/of_irq.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-iommu.h>
+#include <linux/dma-direct.h>
 #include <linux/iommu.h>
 #include <linux/pci.h>
 
@@ -363,12 +364,13 @@ static int k1c_pcimsi_config_msi_memory(struct k1c_msi_ctrl *ctrl, int nb_itgen)
 	 */
 	size = ITGEN_WINDOW_SIZE * nb_itgen;
 	order = get_order(size);
+	dma_set_mask(ctrl->dev, DMA_BIT_MASK(32));
 	ptr = alloc_pages(__GFP_ZERO | __GFP_DMA32, order);
 	if (!ptr)
 		return -ENOMEM;
 
 	ctrl->msi.msi_pages = ptr;
-	msi_aperture = page_to_phys(ptr);
+	msi_aperture = phys_to_dma(ctrl->dev, page_to_phys(ptr));
 	ctrl->msi.msi_region = msi_aperture;
 	for (i = 0; i < nb_itgen; i++) {
 		snooper_base = ctrl->reg_base[i];
