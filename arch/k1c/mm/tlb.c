@@ -23,6 +23,9 @@
  */
 #define KERNEL_DUMMY_ASN	42
 
+/* Threshold of page count above which we will regenerate a new ASN */
+#define ASN_FLUSH_PAGE_THRESHOLD	(MMU_JTLB_ENTRIES)
+
 DEFINE_PER_CPU(unsigned long, k1c_asn_cache) = MM_CTXT_FIRST_CYCLE;
 
 #ifdef CONFIG_K1C_DEBUG_TLB_ACCESS
@@ -242,6 +245,12 @@ void local_flush_tlb_range(struct vm_area_struct *vma,
 	const unsigned int cpu = smp_processor_id();
 	unsigned long flags;
 	unsigned int current_asn;
+	unsigned long pages = (end - start) >> PAGE_SHIFT;
+
+	if (pages > ASN_FLUSH_PAGE_THRESHOLD) {
+		local_flush_tlb_mm(vma->vm_mm);
+		return;
+	}
 
 	start &= PAGE_MASK;
 
