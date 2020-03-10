@@ -17,7 +17,6 @@ generic-y += extable.h
 generic-y += exec.h
 generic-y += export.h
 generic-y += futex.h
-generic-y += hardirq.h
 generic-y += irq.h
 generic-y += irq_regs.h
 generic-y += kdebug.h
