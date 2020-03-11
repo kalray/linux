@@ -13,7 +13,7 @@
 #include <asm/ucontext.h>
 #include <asm/cacheflush.h>
 
-#define STACK_ALIGN_MASK	0x1F
+#define STACK_ALIGN_MASK	0x3F
 
 struct rt_sigframe {
 	struct siginfo info;
