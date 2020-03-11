@@ -18,7 +18,7 @@
 /*
  * Size of the kernel stack for each process.
  */
-#define THREAD_SIZE_ORDER       1
+#define THREAD_SIZE_ORDER       2
 #define THREAD_SIZE             (PAGE_SIZE << THREAD_SIZE_ORDER)
 
 /*
