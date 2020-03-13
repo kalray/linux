@@ -177,7 +177,7 @@
 /* Reading the link status */
 #define PHYCORE_LTSSM_DISABLE_OFFSET	0x20
 
-#define PCIE_GEN_4			0x3
+#define PCIE_GEN_4			0x4
 #define AUTO_LINK_SPEEDUP_NEGOTIATE     0x80000000
 
 #define ERR_INJECT_RATE_MAX		7
@@ -211,6 +211,7 @@
  * @bridge: Pointer to host bridge structure
  * @ctrl_num: index of controller from 0 up to 7
  * @nb_lane: number of pcie lane
+ * @pcie_link_gen: 1->GEN1 ... 4->GEN4
  * @irq_intx: legacy irq handler interrupt number
  * @irq_misc: misc irq handler interrupt number
  * @irq_aer: AER framework interrupt
@@ -234,6 +235,7 @@ struct nwl_pcie {
 	u32 ctrl_num;
 	u32 nb_lane;
 	int irq_intx;
+	int pcie_link_gen;
 	int irq_misc;
 	int irq_aer;
 	u32 ecam_value;
@@ -669,6 +671,7 @@ static inline u32 ctrl_ltssm_disable_offset(int num_rc)
 static int nwl_pcie_core_init(struct nwl_pcie *pcie)
 {
 	u32 val;
+	int pcie_link_gen;
 
 	/* PCIe lane config */
 	csr_pcie_lane_cfg(pcie);
@@ -681,8 +684,9 @@ static int nwl_pcie_core_init(struct nwl_pcie *pcie)
 	 * Allow Root complex to automatically negociate
 	 * link speed up, up to GEN4
 	 */
-	nwl_core_writel(pcie, PCIE_GEN_4, CSR_FTL_INITIAL);
-	nwl_core_writel(pcie, AUTO_LINK_SPEEDUP_NEGOTIATE|PCIE_GEN_4,
+	pcie_link_gen = pcie->pcie_link_gen - 1;
+	nwl_core_writel(pcie, pcie_link_gen, CSR_FTL_INITIAL);
+	nwl_core_writel(pcie, AUTO_LINK_SPEEDUP_NEGOTIATE|pcie_link_gen,
 			CSR_TLB_LTSSM_DS_INITIAL_AUTO);
 
 	/* Set root port mode for ltssm */
@@ -1041,6 +1045,10 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 
 	pcie->nb_lane = nb_lane;
 	dev_info(dev, "nb_lane : %u\n", pcie->nb_lane);
+
+	pcie->pcie_link_gen = of_pci_get_max_link_speed(pdev->dev.of_node);
+	if (pcie->pcie_link_gen <= 0)
+		pcie->pcie_link_gen = PCIE_GEN_4;
 
 	/* Get intx IRQ number */
 	pcie->irq_intx = platform_get_irq_byname(pdev, "intx");
