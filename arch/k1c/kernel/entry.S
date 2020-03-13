@@ -241,10 +241,10 @@ asn_error_panic_str_label:
 	;;
 	so PT_Q0[$r6] = $r0r1r2r3
 	copyd $r61 = $r13
+	get $r5 = $le
 	;;
 	sq PT_R16R17[$r6] = $r16r17
 	make $r10 = 0x0
-	get $r5 = $le
 	copyd $r62 = $r14
 	;;
 	so PT_Q32[$r6] = $r32r33r34r35
@@ -1202,10 +1202,10 @@ EXCEPTION_ENTRY(k1c_syscall_handler):
 	sbfd $r50 = $r32, __NR_syscalls
 	/* Compute syscall func addr (ie sys_call_table[$r32])*/
 	ld.xs $r38 = $r32[$r42]
-	/* True if trace syscall enable */
-	andd $r37 = $r39, _TIF_SYSCALL_WORK
 	get $r42 = $sps
 	;;
+	/* True if trace syscall enable */
+	andd $r37 = $r39, _TIF_SYSCALL_WORK
 	/* Restore kernel stack pointer */
 	ld $sp = TASK_THREAD_KERNEL_SP[$r36]
 	/* If the syscall number is invalid, set invalid handler */
@@ -1236,11 +1236,11 @@ EXCEPTION_ENTRY(k1c_syscall_handler):
 #endif
 	so PT_CS_SPC_SPS_ES[$r36] = $r40r41r42r43
 	get $r61 = $le
+	make $r43 = 0x0
 	;;
 	/* Reenable hardware loops, IT, exceptions and disable DAUS */
 	make $r44 = PS_HLE_EN_IT_EN_ET_CLEAR_DAUS_DIS
 	get $r62 = $ls
-	make $r43 = 0x0
 	/* Save regs r4 -> r7 in pt_regs for restart & trace if needed */
 	so PT_Q4[$r36] = $r4r5r6r7
 	;;
