@@ -16,7 +16,7 @@
 #include <asm/fixmap.h>
 
 #define BOOT_ENTRY		0x0
-#define DTB_DEFAULT_SIZE	(24 * 1024)
+#define DTB_DEFAULT_SIZE	(64 * 1024)
 #define RM_FIRMWARE_SIZE	(64 * 1024)
 #define RM_FIRMWARE_ADDRESS	(64 * 1024)
 
