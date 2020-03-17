@@ -853,7 +853,7 @@ err:
 static int add_parser_filter(struct k1c_eth_netdev *ndev,
 				 struct ethtool_rxnfc *cmd)
 {
-	int err;
+	int err, prio;
 	int action = cmd->fs.ring_cookie;
 	unsigned int parser_index = cmd->fs.location;
 	enum parser_dispatch_policy dispatch_policy = PARSER_HASH_LUT;
@@ -877,9 +877,16 @@ static int add_parser_filter(struct k1c_eth_netdev *ndev,
 	if (action == ETHTOOL_RXNTUPLE_ACTION_DROP)
 		dispatch_policy = PARSER_DROP;
 
+	/* Use the layer as priority to avoid parser collision for lower
+	 * importance filters
+	 */
+	prio = get_layer(ndev, &cmd->fs);
+	if (prio > K1C_ETH_PARSERS_MAX_PRIO)
+		return -EINVAL;
+
 	/* Write flow to hardware */
 	if (parser_config(ndev->hw, &ndev->cfg, parser_index,
-			dispatch_policy) != 0) {
+			dispatch_policy, prio) != 0) {
 		delete_parser_cfg(ndev, parser_index);
 		return -EBUSY;
 	}
