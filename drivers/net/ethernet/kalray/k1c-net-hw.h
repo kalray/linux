@@ -22,6 +22,7 @@
 #define K1C_ETH_LANE_NB            4
 #define K1C_ETH_PFC_CLASS_NB       8
 #define K1C_ETH_RX_TAG_NB          64
+#define K1C_ETH_PARSERS_MAX_PRIO   7
 
 #define PFC_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
 
@@ -456,7 +457,7 @@ void k1c_eth_tx_init(struct k1c_eth_hw *hw);
 
 /* PARSING */
 int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
-		  int parser_id, enum parser_dispatch_policy policy);
+		  int parser_id, enum parser_dispatch_policy policy, int prio);
 void parser_disp(struct k1c_eth_hw *hw, unsigned int parser_id);
 int parser_disable(struct k1c_eth_hw *hw, int parser_id);
 
