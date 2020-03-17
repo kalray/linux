@@ -264,7 +264,7 @@ int parser_disable(struct k1c_eth_hw *hw, int parser_id)
  * Return: 0 on success, negative on failure
  */
 int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
-		  int parser_id, enum parser_dispatch_policy policy)
+		  int parser_id, enum parser_dispatch_policy policy, int prio)
 {
 	union filter_desc **rules = hw->parsing.parsers[parser_id].filters;
 	int rules_len =  hw->parsing.parsers[parser_id].nb_layers;
@@ -287,7 +287,7 @@ int parser_config(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg,
 	}
 
 	word_index = parser_commit_filter(hw, cfg, parser_id, word_index,
-					  policy, PARSER_DEFAULT_PRIORITY);
+					  policy, prio);
 	if (word_index < 0) {
 		dev_err(hw->dev, "Failed to commit filters to parser[%d]\n",
 			parser_id);
