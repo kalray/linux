@@ -662,7 +662,6 @@ static int delete_parser_cfg(struct k1c_eth_netdev *ndev, int location)
 
 	parser = &ndev->hw->parsing.parsers[location];
 
-	/* If we have not found any matching rule, we exit */
 	if (!parser->enabled)
 		return -EINVAL;
 
@@ -692,10 +691,8 @@ static int alloc_filters(struct k1c_eth_netdev *ndev, union filter_desc **flt,
 
 	for (layer = 0; layer < layer_nb; layer++) {
 		flt[layer] = kzalloc(sizeof(*flt[0]), GFP_KERNEL);
-		if (flt[layer] == NULL) {
-			netdev_warn(ndev->netdev, "Can't allocate memory for filter");
+		if (flt[layer] == NULL)
 			goto err;
-		}
 	}
 
 	return 0;
@@ -819,12 +816,6 @@ static int k1c_eth_parse_ethtool_rule(struct k1c_eth_netdev *ndev,
 		return ret;
 	layer = ret;
 
-	ret = delete_parser_cfg(ndev, parser_index);
-	if (ret == 0) {
-		netdev_warn(ndev->netdev, "Overriding parser %d filters",
-				parser_index);
-	}
-
 	ret = alloc_filters(ndev, flt, layer + 1);
 	if (ret != 0)
 		return ret;
@@ -832,14 +823,11 @@ static int k1c_eth_parse_ethtool_rule(struct k1c_eth_netdev *ndev,
 	ret = k1c_eth_fill_parser(ndev, fs, parser_index);
 	if (ret != 0)
 		return ret;
-	hw->parsing.active_filters_nb++;
 
 	/* Copy ethtool rule for retrieving it when needed */
 	rule = kmemdup(fs, sizeof(*rule), GFP_KERNEL);
-	if (!rule) {
-		netdev_warn(ndev->netdev, "Can't allocate memory for ethtool rule");
+	if (!rule)
 		goto err;
-	}
 	hw->parsing.parsers[parser_index].rule_spec = (void *) rule;
 
 	return 0;
@@ -851,25 +839,16 @@ err:
 }
 
 static int add_parser_filter(struct k1c_eth_netdev *ndev,
-				 struct ethtool_rxnfc *cmd)
+				 struct ethtool_rx_flow_spec *fs)
 {
 	int err, prio;
-	int action = cmd->fs.ring_cookie;
-	unsigned int parser_index = cmd->fs.location;
+	int action = fs->ring_cookie;
+	unsigned int parser_index = fs->location;
 	enum parser_dispatch_policy dispatch_policy = PARSER_HASH_LUT;
 
-	if (parser_index < 0 || parser_index >= K1C_ETH_PARSER_NB) {
-		netdev_err(ndev->netdev, "Invalid parser identifier in location parameter (max: %d)\n",
-				K1C_ETH_PARSER_NB);
-		return -EINVAL;
-	}
-	if (action < ETHTOOL_RXNTUPLE_ACTION_DROP || action > 0) {
-		netdev_warn(ndev->netdev, "Unsupported action, please use default or -1 for drop policy\n");
-		return -EINVAL;
-	}
 
 	/* Parse flow */
-	err = k1c_eth_parse_ethtool_rule(ndev, &cmd->fs, parser_index);
+	err = k1c_eth_parse_ethtool_rule(ndev, fs, parser_index);
 	if (err != 0)
 		return err;
 
@@ -880,7 +859,7 @@ static int add_parser_filter(struct k1c_eth_netdev *ndev,
 	/* Use the layer as priority to avoid parser collision for lower
 	 * importance filters
 	 */
-	prio = get_layer(ndev, &cmd->fs);
+	prio = get_layer(ndev, fs);
 	if (prio > K1C_ETH_PARSERS_MAX_PRIO)
 		return -EINVAL;
 
@@ -890,6 +869,38 @@ static int add_parser_filter(struct k1c_eth_netdev *ndev,
 		delete_parser_cfg(ndev, parser_index);
 		return -EBUSY;
 	}
+
+	return 0;
+}
+
+static int add_parser_cfg(struct k1c_eth_netdev *ndev,
+				 struct ethtool_rx_flow_spec *fs)
+{
+	int ret;
+	int action = fs->ring_cookie;
+	unsigned int parser_index = fs->location;
+
+	if (parser_index >= K1C_ETH_PARSER_NB) {
+		netdev_err(ndev->netdev, "Invalid parser identifier in location parameter (max: %d)\n",
+				K1C_ETH_PARSER_NB);
+		return -EINVAL;
+	}
+	if (action < ETHTOOL_RXNTUPLE_ACTION_DROP || action > 0) {
+		netdev_warn(ndev->netdev, "Unsupported action, please use default or -1 for drop policy\n");
+		return -EINVAL;
+	}
+
+	ret = delete_parser_cfg(ndev, parser_index);
+	if (ret == 0) {
+		netdev_warn(ndev->netdev, "Overriding parser %d filters",
+				parser_index);
+	}
+
+	ret = add_parser_filter(ndev, fs);
+	if (ret)
+		return ret;
+
+	ndev->hw->parsing.active_filters_nb++;
 
 	return 0;
 }
@@ -912,7 +923,7 @@ static int update_parsers(struct k1c_eth_netdev *ndev,
 			continue;
 
 		/* Update the parser with the same rule to use RSS */
-		ret = k1c_eth_fill_parser(ndev, rule, i);
+		ret = add_parser_filter(ndev, rule);
 		if (ret != 0)
 			return ret;
 	}
@@ -997,7 +1008,7 @@ static int k1c_eth_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd)
 
 	switch (cmd->cmd) {
 	case ETHTOOL_SRXCLSRLINS:
-		ret = add_parser_filter(ndev, cmd);
+		ret = add_parser_cfg(ndev, &cmd->fs);
 		break;
 	case ETHTOOL_SRXCLSRLDEL:
 		ret = delete_parser_cfg(ndev, cmd->fs.location);
