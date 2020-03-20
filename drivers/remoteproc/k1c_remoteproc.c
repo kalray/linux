@@ -36,20 +36,20 @@ enum {
 };
 
 /**
- * Memory types
- * @K1C_MEM_TCM: Tightly Coupled Memory
- * @K1C_MEM_DSU: Debug System Unit Memory
- * @K1C_MEM_MAX: just keep this one at the end
+ * Internal Memory types
+ * @K1C_INTERNAL_MEM_TCM: Tightly Coupled Memory
+ * @K1C_INTERNAL_MEM_DSU: Debug System Unit Memory
+ * @K1C_INTERNAL_MEM_COUNT: just keep this one at the end
  */
 enum {
-	K1C_MEM_TCM,
-	K1C_MEM_DSU,
-	K1C_MEM_MAX,
+	K1C_INTERNAL_MEM_TCM,
+	K1C_INTERNAL_MEM_DSU,
+	K1C_INTERNAL_MEM_COUNT,
 };
 
-static const char *mem_names[K1C_MEM_MAX] = {
-	[K1C_MEM_TCM]	= "tcm",
-	[K1C_MEM_DSU]	= "dsu",
+static const char *mem_names[K1C_INTERNAL_MEM_COUNT] = {
+	[K1C_INTERNAL_MEM_TCM]	= "tcm",
+	[K1C_INTERNAL_MEM_DSU]	= "dsu",
 };
 
 enum fw_kalray_resource_type {
@@ -173,6 +173,7 @@ struct k1c_mbox_data {
  * @ftu_regmap: regmap struct to the ftu controller
  * @mbox: Per direction mailbox data
  * @mem: List of memories
+ * @mem_count: Count of memories in mem
  * @params_args: Args for the remote processor
  * @params_env: Env for remote processor.
  */
@@ -182,7 +183,8 @@ struct k1c_rproc {
 	struct rproc *rproc;
 	struct regmap *ftu_regmap;
 	struct k1c_mbox_data mbox[K1C_MBOX_MAX];
-	struct k1c_rproc_mem mem[K1C_MEM_MAX];
+	struct k1c_rproc_mem *mem;
+	int mem_count;
 	char *params_args;
 	char *params_env;
 };
@@ -339,7 +341,7 @@ static void *k1c_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 	if (len <= 0)
 		return NULL;
 
-	for (i = 0; i < ARRAY_SIZE(mem_names); i++) {
+	for (i = 0; i < k1c_rproc->mem_count; i++) {
 		bus_addr = k1c_rproc->mem[i].bus_addr;
 		dev_addr = k1c_rproc->mem[i].dev_addr;
 		size = k1c_rproc->mem[i].size;
@@ -598,7 +600,7 @@ static int k1c_rproc_get_internal_memories(struct platform_device *pdev,
 	struct k1c_rproc_mem *mem;
 	struct device *dev = &pdev->dev;
 
-	for (i = 0; i < ARRAY_SIZE(mem_names); i++) {
+	for (i = 0; i < K1C_INTERNAL_MEM_COUNT; i++) {
 		mem = &k1c_rproc->mem[i];
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						mem_names[i]);
@@ -615,8 +617,54 @@ static int k1c_rproc_get_internal_memories(struct platform_device *pdev,
 		mem->dev_addr = res->start & K1C_RPROC_CLUSTER_LOCAL_ADDR_MASK;
 		mem->size = resource_size(res);
 
-		dev_dbg(dev, "Adding memory %s, ba = 0x%llx, da = 0x%llx, va = 0x%pK, len = 0x%zx\n",
+		dev_dbg(dev, "Adding internal memory %s, ba = 0x%llx, da = 0x%llx, va = 0x%pK, len = 0x%zx\n",
 			mem_names[i], mem->bus_addr,
+			mem->dev_addr, mem->cpu_addr, mem->size);
+	}
+
+	return 0;
+}
+
+static int k1c_rproc_get_memory_regions(struct platform_device *pdev,
+					struct k1c_rproc *rproc)
+{
+	int err;
+	struct reserved_mem *rmem;
+	struct k1c_rproc_mem *mem;
+	struct of_phandle_iterator it;
+	struct device *dev = &pdev->dev;
+	struct device_node *np = dev->of_node;
+	int mem_idx = K1C_INTERNAL_MEM_COUNT;
+
+	/* Register associated reserved memory regions */
+	err = of_phandle_iterator_init(&it, np, "memory-region", NULL, 0);
+	if (err)
+		return err;
+
+	while (of_phandle_iterator_next(&it) == 0) {
+		rmem = of_reserved_mem_lookup(it.node);
+		if (!rmem) {
+			dev_err(dev, "unable to acquire memory-region\n");
+			return -EINVAL;
+		}
+
+		mem = &rproc->mem[mem_idx];
+		mem->cpu_addr = devm_ioremap_nocache(&pdev->dev, rmem->base,
+						     rmem->size);
+		if (IS_ERR(mem->cpu_addr)) {
+			dev_err(dev, "devm_ioremap_resource failed\n");
+			err = PTR_ERR(mem->cpu_addr);
+			return err;
+		}
+
+		/* dev and phys are the same for memory regions */
+		mem->dev_addr = rmem->base;
+		mem->bus_addr = rmem->base;
+		mem->size = rmem->size;
+		mem_idx++;
+
+		dev_dbg(dev, "Adding memory region %s, ba = 0x%llx, da = 0x%llx, va = 0x%pK, len = 0x%zx\n",
+			it.node->name, mem->bus_addr,
 			mem->dev_addr, mem->cpu_addr, mem->size);
 	}
 
@@ -787,14 +835,22 @@ static const struct attribute_group *k1c_remoteproc_groups[] = {
 
 static int k1c_rproc_probe(struct platform_device *pdev)
 {
-	int ret = 0;
 	struct rproc *rproc;
+	int ret = 0, mem_count = 0, ext_mem_count;
 	struct k1c_rproc *k1c_rproc;
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
 
+	/* Compute the count of memory region we will have */
+	ext_mem_count = of_count_phandle_with_args(np, "memory-region", NULL);
+	if (ext_mem_count > 0)
+		mem_count = ext_mem_count;
+
+	mem_count += K1C_INTERNAL_MEM_COUNT;
+
 	rproc = rproc_alloc(dev, np->name, &k1c_rproc_ops, NULL,
-			    sizeof(*k1c_rproc));
+			    sizeof(*k1c_rproc) +
+			    mem_count * sizeof(struct k1c_rproc_mem));
 	if (!rproc)
 		return -ENOMEM;
 
@@ -805,28 +861,19 @@ static int k1c_rproc_probe(struct platform_device *pdev)
 	k1c_rproc = rproc->priv;
 	k1c_rproc->rproc = rproc;
 	k1c_rproc->dev = dev;
+	k1c_rproc->mem_count = mem_count;
+	k1c_rproc->mem = (struct k1c_rproc_mem *)(k1c_rproc + 1);
 
 	rproc->auto_boot = of_property_read_bool(np, "kalray,auto-boot");
 
 	platform_set_drvdata(pdev, k1c_rproc);
-
-	/*
-	 * Reserve any memory-region specified in the device tree for our DMA
-	 * allocations. This function assigns respective DMA-mapping operations
-	 * based on reserved memory region specified by 'memory-region' property
-	 * to the rproc device
-	 * This is optional and thus non-fatal
-	 */
-	ret = of_reserved_mem_device_init(dev);
-	if (ret && ret != -ENODEV)
-		goto free_rproc;
 
 	ret = k1c_rproc_init_mbox(k1c_rproc, K1C_MBOX_RX, "rx",
 				  k1c_rproc_mbox_rx_callback);
 	if (ret) {
 		dev_err(dev, "failed to setup rx mailbox, status = %d\n",
 			ret);
-		goto release_mem;
+		goto free_rproc;
 	}
 
 	ret = k1c_rproc_init_mbox(k1c_rproc, K1C_MBOX_TX, "tx", NULL);
@@ -839,6 +886,12 @@ static int k1c_rproc_probe(struct platform_device *pdev)
 	ret = k1c_rproc_get_internal_memories(pdev, k1c_rproc);
 	if (ret)
 		goto free_k1c_mbox_tx;
+
+	if (ext_mem_count > 0) {
+		ret = k1c_rproc_get_memory_regions(pdev, k1c_rproc);
+		if (ret)
+			goto free_k1c_mbox_tx;
+	}
 
 	ret = k1c_rproc_of_get_dev_syscon(pdev, k1c_rproc);
 	if (ret)
@@ -867,8 +920,6 @@ free_k1c_mbox_tx:
 	mbox_free_channel(k1c_rproc->mbox[K1C_MBOX_TX].chan);
 free_k1c_mbox_rx:
 	mbox_free_channel(k1c_rproc->mbox[K1C_MBOX_RX].chan);
-release_mem:
-	of_reserved_mem_device_release(dev);
 free_rproc:
 	rproc_free(rproc);
 
