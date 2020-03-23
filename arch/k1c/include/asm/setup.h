@@ -16,6 +16,8 @@
 
 #ifndef __ASSEMBLY__
 
+void early_fixmap_init(void);
+
 void setup_device_tree(void);
 
 void setup_arch_memory(void);

@@ -204,15 +204,15 @@ static void * __init alloc_page_table(void)
 	return pgt;
 }
 
-static pte_t *fixmap_pte_p;
+static pmd_t fixmap_pmd[PTRS_PER_PMD] __page_aligned_bss __maybe_unused;
+static pte_t fixmap_pte[PTRS_PER_PTE] __page_aligned_bss __maybe_unused;
 
-static void __init fixedrange_init(void)
+void __init early_fixmap_init(void)
 {
 	unsigned long vaddr;
 	pgd_t *pgd;
 	pud_t *pud;
 	pmd_t *pmd;
-	pmd_t *fixmap_pmd_p;
 
 	/*
 	 * Fixed mappings:
@@ -220,14 +220,10 @@ static void __init fixedrange_init(void)
 	vaddr = __fix_to_virt(__end_of_fixed_addresses - 1);
 	pgd = pgd_offset_raw(swapper_pg_dir, vaddr);
 	pud = pud_offset(pgd, vaddr);
-	/* Allocate the PMD page */
-	fixmap_pmd_p = alloc_page_table();
-	set_pud(pud, __pud(__pa(fixmap_pmd_p)));
+	set_pud(pud, __pud(__pa_symbol(fixmap_pmd)));
 
 	pmd = pmd_offset(pud, vaddr);
-	/* Allocate the PTE page */
-	fixmap_pte_p = alloc_page_table();
-	set_pmd(pmd, __pmd(__pa(fixmap_pte_p)));
+	set_pmd(pmd, __pmd(__pa_symbol(fixmap_pte)));
 }
 
 #ifdef CONFIG_STRICT_KERNEL_RWX
@@ -472,7 +468,7 @@ void __init setup_arch_memory(void)
 {
 	setup_bootmem();
 	zone_sizes_init();
-	fixedrange_init();
+	early_fixmap_init();
 }
 
 void __init mem_init(void)
@@ -519,7 +515,7 @@ void __set_fixmap(enum fixed_addresses idx,
 
 	BUG_ON(idx >= __end_of_fixed_addresses);
 
-	pte = &fixmap_pte_p[pte_index(addr)];
+	pte = &fixmap_pte[pte_index(addr)];
 
 	if (pgprot_val(flags)) {
 		set_pte(pte, pfn_pte(phys_to_pfn(phys), flags));
