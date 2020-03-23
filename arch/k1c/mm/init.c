@@ -468,7 +468,6 @@ void __init setup_arch_memory(void)
 {
 	setup_bootmem();
 	zone_sizes_init();
-	early_fixmap_init();
 }
 
 void __init mem_init(void)
