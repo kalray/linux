@@ -440,7 +440,7 @@ void mark_rodata_ro(void)
 			     PAGE_KERNEL_RO);
 }
 
-void __init setup_kernel_paging(void)
+void __init paging_init(void)
 {
 	map_kernel();
 	map_memory();
