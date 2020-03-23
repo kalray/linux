@@ -57,7 +57,7 @@
 
 #define MAX_DMA32_PFN	PHYS_PFN(DDR_64BIT_START + DDR_32BIT_ALIAS_SIZE)
 
-pgd_t swapper_pg_dir[PTRS_PER_PGD];
+pgd_t swapper_pg_dir[PTRS_PER_PGD] __page_aligned_bss;
 
 /*
  * empty_zero_page is a special page that is used for zero-initialized data and
@@ -78,16 +78,6 @@ static void __init zone_sizes_init(void)
 	zones_size[ZONE_NORMAL] = max_low_pfn;
 
 	free_area_init_nodes(zones_size);
-}
-
-void __init paging_init(void)
-{
-	int i;
-
-	for (i = 0; i < PTRS_PER_PGD; i++)
-		swapper_pg_dir[i] = __pgd(0);
-
-	zone_sizes_init();
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
@@ -481,7 +471,7 @@ static void remap_kernel_segment(pgd_t *pgdp, void *va_start, void *va_end,
 void __init setup_arch_memory(void)
 {
 	setup_bootmem();
-	paging_init();
+	zone_sizes_init();
 	fixedrange_init();
 }
 
