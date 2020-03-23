@@ -98,7 +98,9 @@ void __init setup_arch(char **cmdline_p)
 	*cmdline_p = boot_command_line;
 
 	setup_processor();
-	setup_arch_memory();
+
+	/* Jump labels needs fixmap to be setup for text modifications */
+	early_fixmap_init();
 
 	/* Parameters might set static keys */
 	jump_label_init();
@@ -108,6 +110,8 @@ void __init setup_arch(char **cmdline_p)
 	 * memory allocation (fixed_range_init).
 	 */
 	parse_early_param();
+
+	setup_arch_memory();
 
 	paging_init();
 
