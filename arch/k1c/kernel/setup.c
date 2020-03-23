@@ -109,7 +109,7 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	parse_early_param();
 
-	setup_kernel_paging();
+	paging_init();
 
 	setup_device_tree();
 
