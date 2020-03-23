@@ -248,10 +248,10 @@ extern void k1c_mmu_early_setup(void);
 
 #if defined(CONFIG_STRICT_KERNEL_RWX)
 void init_kernel_rwx(void);
-void setup_kernel_paging(void);
+void paging_init(void);
 #else
 
-static inline void setup_kernel_paging(void) {}
+static inline void paging_init(void) {}
 #endif
 
 void k1c_mmu_ltlb_remove_entry(unsigned long vaddr);
