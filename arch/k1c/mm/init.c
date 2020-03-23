@@ -81,42 +81,29 @@ static void __init zone_sizes_init(void)
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
-static int __init early_initrd(char *p)
-{
-	unsigned long start, size;
-	char *endp;
-
-	start = memparse(p, &endp);
-	if (*endp == ',') {
-		size = memparse(endp + 1, NULL);
-
-		initrd_start = (unsigned long)__va(start);
-		initrd_end = (unsigned long)__va(start + size);
-	}
-	return 0;
-}
-early_param("initrd", early_initrd);
-
 static void __init setup_initrd(void)
 {
-	if (initrd_start >= initrd_end) {
-		pr_info("%s: initrd not found or empty", __func__);
+	u64 base = phys_initrd_start;
+	u64 end = phys_initrd_start + phys_initrd_size;
+
+	if (phys_initrd_size == 0) {
+		pr_info("initrd not found or empty");
 		return;
 	}
 
-	if (__pa(initrd_end) > PFN_PHYS(max_low_pfn)) {
-		pr_err("%s: initrd extends beyond end of memory, disabling it",
-		       __func__);
-		initrd_start = initrd_end = 0;
+	if (base < memblock_start_of_DRAM() || end > memblock_end_of_DRAM()) {
+		pr_err("initrd not in accessible memory, disabling it");
+		phys_initrd_size = 0;
+		return;
 	}
 
-	if (initrd_start) {
-		pr_info("%15s: initrd  : 0x%lx - 0x%lx\n", __func__,
-			(unsigned long)initrd_start,
-			(unsigned long)initrd_end);
-		memblock_reserve(__pa(initrd_start), initrd_end - initrd_start);
-		initrd_below_start_ok = 1;
-	}
+	pr_info("initrd: 0x%llx - 0x%llx\n", base, end);
+
+	memblock_reserve(phys_initrd_start, phys_initrd_size);
+
+	/* the generic initrd code expects virtual addresses */
+	initrd_start = (unsigned long) __va(base);
+	initrd_end = initrd_start + phys_initrd_size;
 }
 #endif
 
@@ -484,13 +471,6 @@ void __init mem_init(void)
 	if (!empty_zero_page)
 		panic("Failed to allocate the empty_zero_page");
 }
-
-#ifdef CONFIG_BLK_DEV_INITRD
-void __init free_initrd_mem(unsigned long start, unsigned long end)
-{
-	free_reserved_area((void *)start, (void *)end, -1, "initrd");
-}
-#endif
 
 void free_initmem(void)
 {
