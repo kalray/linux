@@ -69,10 +69,10 @@ void k1c_init_core_irq(void)
 	uint64_t value = IT_LEVEL(IT0, 0x2) | IT_LEVEL(IT2, 0x3) |
 			IT_LEVEL(IT4, 0x1) | IT_LEVEL(IT24, 0x1);
 
-	k1c_sfr_set_mask(K1C_SFR_ILL, mask, value);
+	k1c_sfr_set_mask(ILL, mask, value);
 
 	/* Set core level to 0 */
-	k1c_sfr_set_mask(K1C_SFR_PS, K1C_SFR_PS_IL_MASK, 0);
+	k1c_sfr_set_field(PS, IL, 0);
 }
 
 void __init init_IRQ(void)

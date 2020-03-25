@@ -25,7 +25,7 @@ static inline void dame_irq_check(struct pt_regs *regs)
 	__builtin_k1_barrier();
 
 	/* Check if we triggered a DAME */
-	ilr = k1c_sfr_get(K1C_SFR_ILR);
+	ilr = k1c_sfr_get(ILR);
 	if (ilr & K1C_SFR_ILR_IT16_MASK)
 		panic("DAME error encountered while in kernel !!!!\n");
 #endif
