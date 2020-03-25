@@ -958,12 +958,6 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 		return -EINVAL;
 	}
 
-	ret = phylink_of_phy_connect(ndev->phylink, np, 0);
-	if (ret) {
-		dev_err(ndev->dev, "Unable to get phy (%i)\n", ret);
-		return ret;
-	}
-
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
 		char *rtm_compat = (rtm == RTM_RX) ?
 			"ti,rtmrx" : "ti,rtmtx";
@@ -977,6 +971,12 @@ int k1c_eth_parse_dt(struct platform_device *pdev, struct k1c_eth_netdev *ndev)
 			}
 		}
 	}
+
+	/* Default tx eq. parameter tuning */
+	ndev->cfg.phy_param.swing = 40;
+	if (of_property_read_u32_array(np, "kalray,phy-param",
+				   (u32 *)&ndev->cfg.phy_param, 5) != 0)
+		dev_info(ndev->dev, "No kalray,phy-param set\n");
 
 	return 0;
 }
@@ -1187,6 +1187,10 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 		return NULL;
 	}
 
+	ret = k1c_eth_parse_dt(pdev, ndev);
+	if (ret)
+		return NULL;
+
 	phylink = phylink_create(&ndev->phylink_cfg, pdev->dev.fwnode,
 				       phy_mode, &k1c_phylink_ops);
 	if (IS_ERR(phylink)) {
@@ -1196,9 +1200,9 @@ k1c_eth_create_netdev(struct platform_device *pdev, struct k1c_eth_dev *dev)
 	}
 	ndev->phylink = phylink;
 
-	ret = k1c_eth_parse_dt(pdev, ndev);
+	ret = phylink_of_phy_connect(ndev->phylink, pdev->dev.of_node, 0);
 	if (ret) {
-		netdev_err(netdev, "Failed to parse device tree (%i)\n", ret);
+		netdev_err(netdev, "Unable to get phy (%i)\n", ret);
 		goto phylink_err;
 	}
 
