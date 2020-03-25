@@ -65,16 +65,17 @@ static inline u64 k1c_sfr_iget(unsigned char sfr)
 # define k1c_sfr_set_mask(__sfr, __mask, __value) \
 	do { \
 		BUG_ON(((__value) & (__mask)) != (__value)); \
-		__k1c_sfr_set_mask(__sfr, __mask, __value); \
+		__k1c_sfr_set_mask(K1C_SFR_ ## __sfr, __mask, __value); \
 	} while (0)
 
 #else
-# define k1c_sfr_set_mask __k1c_sfr_set_mask
+# define k1c_sfr_set_mask(__sfr, __mask, __value) \
+	__k1c_sfr_set_mask(K1C_SFR_ ## __sfr, __mask, __value)
 #endif
 
 #define k1c_sfr_set_field(sfr, field, value) \
-	k1c_sfr_set_mask(sfr, sfr ## _ ## field ## _MASK, \
-			 ((uint64_t) (value) << sfr ## _ ## field ## _SHIFT))
+	k1c_sfr_set_mask(sfr, K1C_SFR_ ## sfr ## _ ## field ## _MASK, \
+		((uint64_t) (value) << K1C_SFR_ ## sfr ## _ ## field ## _SHIFT))
 
 static inline void
 k1c_sfr_clear_bit(unsigned char sfr, unsigned char bit)
@@ -85,8 +86,8 @@ k1c_sfr_clear_bit(unsigned char sfr, unsigned char bit)
 		wfxm(sfr, (uint64_t) 1 << (bit - 32));
 }
 
-#define k1c_sfr_set(_sfr, _val)	__builtin_k1_set(_sfr, _val)
-#define k1c_sfr_get(_sfr)	__builtin_k1_get(_sfr)
+#define k1c_sfr_set(_sfr, _val)	__builtin_k1_set(K1C_SFR_ ## _sfr, _val)
+#define k1c_sfr_get(_sfr)	__builtin_k1_get(K1C_SFR_ ## _sfr)
 
 #define k1c_sfr_field_val(_val, _sfr, _field) \
 			  (((_val) & K1C_SFR_ ## _sfr ## _ ## _field ## _MASK) \
