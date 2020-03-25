@@ -29,7 +29,7 @@ static int mmu_stats_show(struct seq_file *m, void *v)
 	struct mmu_stats *stats;
 	struct mmu_refill_stats *ref_stat;
 
-	total_cycles = k1c_sfr_get(K1C_SFR_PM0);
+	total_cycles = get_cycles();
 	for_each_present_cpu(cpu) {
 		stats = &per_cpu(mmu_stats, cpu);
 		total_refill = 0;
