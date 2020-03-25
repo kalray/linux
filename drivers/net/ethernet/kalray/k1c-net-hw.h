@@ -218,6 +218,22 @@ struct k1c_eth_mac_f {
 };
 
 /**
+ * Phy parameters for TX equalization
+ * @pre: pre-amplitude
+ * @post: post-amplitude
+ * @swing: DC swing
+ * @rx_polarity: Rx lane polarity
+ * @tx_polarity: Tx lane polarity
+ */
+struct phy_param {
+	u32 pre;
+	u32 post;
+	u32 swing;
+	u32 rx_polarity;
+	u32 tx_polarity;
+};
+
+/**
  * struct k1c_eth_lane_cfg - Lane configuration
  * @id: lane_id [0, 3]
  * @link: phy link state
@@ -229,6 +245,7 @@ struct k1c_eth_mac_f {
  * @pfc: Packet Flow Control
  * @cl_f: Array of 8 classes (per lane)
  * @mac: mac controller
+ * @phy_param: phy parameters (currently used for tx equalization)
  */
 struct k1c_eth_lane_cfg {
 	int id;
@@ -241,6 +258,7 @@ struct k1c_eth_lane_cfg {
 	struct k1c_eth_pfc_f pfc_f;
 	struct k1c_eth_cl_f cl_f[K1C_ETH_PFC_CLASS_NB];
 	struct k1c_eth_mac_f mac_f;
+	struct phy_param phy_param;
 };
 
 struct k1c_eth_parser {
@@ -282,12 +300,8 @@ struct pll_cfg {
 /**
  * struct k1c_eth_hw - HW adapter
  * @dev: device
-<<<<<<< HEAD
- * @res: HW resource tuple {phy, mac, eth}
-=======
  * @res: HW resource tuple {phy, phymac, mac, eth}
  * @tx_f: tx features for all tx fifos
->>>>>>> 12094dfe4b1e... k1c: eth: tx fifo sysfs
  * @asn: device ASN
  * @vchan: dma-noc vchan (MUST be different of the one used by l2-cache)
  * @max_frame_size: current mtu for mac
@@ -421,6 +435,9 @@ void k1c_eth_dump_rx_hdr(struct k1c_eth_hw *hw, struct rx_metadata *hdr);
 
 /* PHY */
 int k1c_eth_phy_serdes_init(struct k1c_eth_hw *h, struct k1c_eth_lane_cfg *cfg);
+void force_phy_loopback(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg);
+void k1c_phy_param_tuning(struct k1c_eth_hw *hw, int lane_id,
+			  struct phy_param *param);
 
 /* MAC */
 void k1c_mac_hw_change_mtu(struct k1c_eth_hw *hw, int lane, int mtu);

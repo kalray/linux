@@ -49,7 +49,7 @@ const struct sysfs_ops s##_sysfs_ops = { \
 struct kobj_type s##_ktype = { \
 	.sysfs_ops = &s##_sysfs_ops, \
 	.default_attrs = s##_attrs, \
-}; \
+}
 
 #define FIELD_RW_ENTRY(s, f, min, max) \
 static ssize_t f##_show(struct k1c_eth_##s *p, char *buf) \
@@ -88,7 +88,7 @@ static struct attribute *lb_f_attrs[] = {
 	&add_footer_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(lb_f)
+SYSFS_TYPES(lb_f);
 
 DECLARE_SYSFS_ENTRY(pfc_f);
 FIELD_RW_ENTRY(pfc_f, global_release_level, 0, PFC_MAX_LEVEL);
@@ -105,7 +105,7 @@ static struct attribute *pfc_f_attrs[] = {
 	&global_pause_en_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(pfc_f)
+SYSFS_TYPES(pfc_f);
 
 DECLARE_SYSFS_ENTRY(tx_f);
 FIELD_RW_ENTRY(tx_f, header_en, 0, 1);
@@ -126,7 +126,7 @@ static struct attribute *tx_f_attrs[] = {
 	&rr_trigger_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(tx_f)
+SYSFS_TYPES(tx_f);
 
 DECLARE_SYSFS_ENTRY(cl_f);
 FIELD_RW_ENTRY(cl_f, release_level, 0, PFC_MAX_LEVEL);
@@ -141,7 +141,7 @@ static struct attribute *cl_f_attrs[] = {
 	&pfc_ena_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(cl_f)
+SYSFS_TYPES(cl_f);
 
 DECLARE_SYSFS_ENTRY(dt_f);
 FIELD_RW_ENTRY(dt_f, cluster_id, 0, NB_CLUSTER - 1);
@@ -156,7 +156,7 @@ static struct attribute *dt_f_attrs[] = {
 	&vchan_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(dt_f)
+SYSFS_TYPES(dt_f);
 
 /**
  * struct sysfs_type
