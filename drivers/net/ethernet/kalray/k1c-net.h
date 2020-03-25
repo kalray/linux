@@ -33,6 +33,12 @@
 #define INDEX_TO_LAYER(l) ((l)+2)
 #define RSS_NB_RX_RINGS               (NB_PE * (NB_CLUSTER - 1))
 
+struct k1c_eth_type {
+	int (*phy_init)(struct k1c_eth_hw *hw);
+	int (*phy_cfg)(struct k1c_eth_hw *hw,
+			       struct k1c_eth_lane_cfg *cfg);
+};
+
 /**
  * struct k1c_eth_dev - K1C ETH hardware device
  * @pdev: associated platform device
@@ -43,6 +49,7 @@ struct k1c_eth_dev {
 	struct platform_device *pdev;
 	struct list_head list;
 	struct k1c_eth_hw hw;
+	struct k1c_eth_type *type;
 };
 
 /* TX ring descriptor */
