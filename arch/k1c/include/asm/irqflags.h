@@ -15,7 +15,7 @@
 
 static inline notrace unsigned long arch_local_save_flags(void)
 {
-	return k1c_sfr_get(K1C_SFR_PS) & (1 << K1C_SFR_PS_IE_SHIFT);
+	return k1c_sfr_get(PS) & (1 << K1C_SFR_PS_IE_SHIFT);
 }
 
 static inline notrace unsigned long arch_local_irq_save(void)
@@ -53,7 +53,7 @@ static inline notrace bool arch_irqs_disabled_flags(unsigned long flags)
 
 static inline notrace bool arch_irqs_disabled(void)
 {
-	return arch_irqs_disabled_flags(k1c_sfr_get(K1C_SFR_PS));
+	return arch_irqs_disabled_flags(k1c_sfr_get(PS));
 }
 
 
