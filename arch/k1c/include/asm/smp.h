@@ -30,7 +30,7 @@ void smp_init_cpus(void);
 irqreturn_t ipi_call_interrupt(int irq, void *dev_id);
 
 #define raw_smp_processor_id() ((int) \
-	((k1c_sfr_get(K1C_SFR_PCR) & K1C_SFR_PCR_PID_MASK) \
+	((k1c_sfr_get(PCR) & K1C_SFR_PCR_PID_MASK) \
 					>> K1C_SFR_PCR_PID_SHIFT))
 
 #define flush_cache_vmap(start, end)		do { } while (0)
