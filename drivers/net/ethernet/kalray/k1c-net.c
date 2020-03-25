@@ -1070,6 +1070,8 @@ static void k1c_phylink_mac_config(struct phylink_config *cfg,
 {
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct k1c_eth_netdev *ndev = netdev_priv(netdev);
+	struct k1c_eth_dev *dev = container_of(ndev->hw,
+					       struct k1c_eth_dev, hw);
 	bool update_serdes = false;
 	int i, ret = 0;
 
@@ -1102,10 +1104,18 @@ static void k1c_phylink_mac_config(struct phylink_config *cfg,
 			return;
 		}
 	}
+	/* Setup PHY + serdes */
+	if (dev->type->phy_cfg) {
+		ret = dev->type->phy_cfg(ndev->hw, &ndev->cfg);
+		if (ret)
+			netdev_err(netdev, "Failed to configure PHY/MAC\n");
+	}
 
-	ret = k1c_eth_mac_cfg(ndev->hw, &ndev->cfg);
-	if (ret)
-		netdev_err(netdev, "Failed to configure MAC\n");
+	if (!ret) {
+		ret = k1c_eth_mac_cfg(ndev->hw, &ndev->cfg);
+		if (ret)
+			netdev_err(netdev, "Failed to configure MAC\n");
+	}
 }
 
 static void k1c_phylink_mac_an_restart(struct phylink_config *cfg)
@@ -1263,11 +1273,10 @@ static int k1c_netdev_probe(struct platform_device *pdev)
 {
 	struct device_node *np_dev = of_get_parent(pdev->dev.of_node);
 	struct platform_device *ppdev = of_find_device_by_node(np_dev);
+	struct k1c_eth_dev *dev = platform_get_drvdata(ppdev);
 	struct k1c_eth_netdev *ndev = NULL;
-	struct k1c_eth_dev *dev;
 	int ret = 0;
 
-	dev = platform_get_drvdata(ppdev);
 	/* Config DMA */
 	dmaengine_get();
 	ndev = k1c_eth_create_netdev(pdev, dev);
@@ -1346,6 +1355,16 @@ module_platform_driver(k1c_netdev_driver);
 static const char *k1c_eth_res_names[K1C_ETH_NUM_RES] = {
 	"phy", "phymac", "mac", "eth" };
 
+static struct k1c_eth_type k1c_haps_data = {
+	.phy_init = k1c_eth_haps_phy_init,
+	.phy_cfg = k1c_eth_haps_phy_cfg,
+};
+
+static struct k1c_eth_type k1c_eth_data = {
+	.phy_init = k1c_eth_phy_init,
+	.phy_cfg = k1c_eth_phy_cfg,
+};
+
 /* k1c_eth_probe() - Probe generic device
  * @pdev: Platform device
  *
@@ -1363,7 +1382,11 @@ static int k1c_eth_probe(struct platform_device *pdev)
 		return -ENODEV;
 	platform_set_drvdata(pdev, dev);
 	dev->pdev = pdev;
+	dev->type = &k1c_eth_data;
 	INIT_LIST_HEAD(&dev->list);
+
+	if (of_machine_is_compatible("kalray,haps"))
+		dev->type = &k1c_haps_data;
 
 	for (i = 0; i < K1C_ETH_NUM_RES; ++i) {
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
@@ -1393,10 +1416,13 @@ static int k1c_eth_probe(struct platform_device *pdev)
 	}
 	dev->hw.dev = &pdev->dev;
 
-	ret = k1c_eth_phy_init(&dev->hw);
-	if (ret) {
-		dev_err(&pdev->dev, "Mac/Phy init failed (ret: %d)\n", ret);
-		goto err;
+	if (dev->type->phy_init) {
+		ret = dev->type->phy_init(&dev->hw);
+		if (ret) {
+			dev_err(&pdev->dev, "Mac/Phy init failed (ret: %d)\n",
+				ret);
+			goto err;
+		}
 	}
 
 	k1c_eth_tx_init(&dev->hw);
@@ -1421,7 +1447,7 @@ static int k1c_eth_remove(struct platform_device *pdev)
 
 static const struct of_device_id k1c_eth_match[] = {
 	{ .compatible = "kalray,k1c-eth" },
-	{ }
+	{ },
 };
 MODULE_DEVICE_TABLE(of, k1c_eth_match);
 
