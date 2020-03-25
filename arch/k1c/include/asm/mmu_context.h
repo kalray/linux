@@ -90,7 +90,7 @@ static inline void activate_context(struct mm_struct *mm, unsigned int cpu)
 
 	get_mmu_context(mm, cpu);
 
-	k1c_sfr_set_field(K1C_SFR_MMC, ASN, mm_asn(mm, cpu) & MM_CTXT_ASN_MASK);
+	k1c_sfr_set_field(MMC, ASN, mm_asn(mm, cpu) & MM_CTXT_ASN_MASK);
 
 	local_irq_restore(flags);
 }

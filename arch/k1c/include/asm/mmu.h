@@ -71,13 +71,13 @@ struct k1c_tlb_format {
 /* Bit [0:39] of the TLB format corresponds to TLB Entry low */
 /* Bit [40:80] of the TLB format corresponds to the TLB Entry high */
 #define k1c_mmu_set_tlb_entry(tlbf) do { \
-	k1c_sfr_set(K1C_SFR_TEL, (uint64_t) tlbf.tel_val); \
-	k1c_sfr_set(K1C_SFR_TEH, (uint64_t) tlbf.teh_val); \
+	k1c_sfr_set(TEL, (uint64_t) tlbf.tel_val); \
+	k1c_sfr_set(TEH, (uint64_t) tlbf.teh_val); \
 } while (0)
 
 #define k1c_mmu_get_tlb_entry(tlbf) do { \
-	tlbf.tel_val = k1c_sfr_get(K1C_SFR_TEL); \
-	tlbf.teh_val = k1c_sfr_get(K1C_SFR_TEH); \
+	tlbf.tel_val = k1c_sfr_get(TEL); \
+	tlbf.teh_val = k1c_sfr_get(TEH); \
 } while (0)
 
 /* Use k1c_mmc_ to read a field from MMC value passed as parameter */
@@ -151,8 +151,8 @@ static inline void k1c_mmu_probetlb(void)
 }
 
 #define k1c_mmu_add_entry(buffer, way, entry) do { \
-	k1c_sfr_set_field(K1C_SFR_MMC, SB, buffer); \
-	k1c_sfr_set_field(K1C_SFR_MMC, SW, way); \
+	k1c_sfr_set_field(MMC, SB, buffer); \
+	k1c_sfr_set_field(MMC, SW, way); \
 	k1c_mmu_set_tlb_entry(entry); \
 	k1c_mmu_writetlb();           \
 } while (0)
