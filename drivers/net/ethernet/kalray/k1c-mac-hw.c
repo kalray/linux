@@ -230,15 +230,19 @@ int k1c_eth_phy_init(struct k1c_eth_hw *hw)
 	set_bit(PLL_A, &hw->pll_cfg.avail);
 	set_bit(PLL_B, &hw->pll_cfg.avail);
 
-	if (of_device_is_compatible(hw->dev->of_node, "kalray,haps-eth")) {
-		/* FPGA only */
-		dev_dbg(hw->dev, "HAPS Phy force sigdet\n");
-		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
-			    PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK,
-			    PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK);
-	}
-
 	return 0;
+}
+
+int k1c_eth_haps_phy_init(struct k1c_eth_hw *hw)
+{
+	int ret = k1c_eth_phy_init(hw);
+
+	dev_info(hw->dev, "HAPS Phy force sigdet\n");
+	updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
+		     PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK,
+		     PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK);
+
+	return ret;
 }
 
 /**
@@ -277,9 +281,6 @@ int k1c_eth_phy_serdes_init(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 
 	if (hw->pll_cfg.serdes_mask)
 		serdes_id = fls(hw->pll_cfg.serdes_mask);
-
-	if (of_device_is_compatible(hw->dev->of_node, "kalray,haps-eth"))
-		return 0;
 
 	switch (cfg->speed) {
 	case SPEED_10:
@@ -505,12 +506,25 @@ static int k1c_eth_phy_serdes_cfg(struct k1c_eth_hw *hw,
 	return 0;
 }
 
-static int k1c_eth_phy_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+int k1c_eth_haps_phy_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
-	int ret = 0;
+	k1c_eth_phy_reset(hw, 1);
 
-	if (!of_device_is_compatible(hw->dev->of_node, "kalray,haps-eth"))
-		ret = k1c_eth_phy_serdes_cfg(hw, cfg);
+	if (cfg->mac_f.loopback_mode == PHY_PMA_LOOPBACK) {
+		u32 val = (u32)0xF << PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT;
+
+		/* Must be set in pstate P0 */
+		dev_info(hw->dev, "Mac/Phy TX2RX loopback!!!\n");
+		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
+			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, val);
+	}
+
+	return 0;
+}
+
+int k1c_eth_phy_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
+{
+	k1c_eth_phy_serdes_cfg(hw, cfg);
 
 	return 0;
 }
@@ -891,11 +905,6 @@ int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
 	int i, ret = 0;
 	u32 off, val, mask;
-
-	/* Setup PHY + serdes */
-	ret = k1c_eth_phy_cfg(hw, cfg);
-	if (ret)
-		return ret;
 
 	ret = k1c_eth_mac_reset(hw);
 	if (ret)
