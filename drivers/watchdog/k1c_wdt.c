@@ -75,7 +75,7 @@ static void k1c_cpu_wdt_feed(void)
 {
 	/* Read barrier for watchdog timeout value */
 	smp_rmb();
-	k1c_sfr_set(K1C_SFR_WDV, wdt_timeout_value);
+	k1c_sfr_set(WDV, wdt_timeout_value);
 }
 
 static irqreturn_t k1c_wdt_irq_handler(int irq, void *dev_id)
@@ -104,7 +104,7 @@ static void k1c_cpu_wdt_start_counting(void)
 	 * Set a low value for the watchdog in order to reset shortly after
 	 * interrupt.
 	 */
-	k1c_sfr_set(K1C_SFR_WDR, WDT_BARK_DELAY_SEC * clk_rate);
+	k1c_sfr_set(WDR, WDT_BARK_DELAY_SEC * clk_rate);
 	/* Clear WUS to avoid being reset on first interrupt */
 	k1c_sfr_clear_bit(K1C_SFR_TCR, K1C_SFR_TCR_WUS_SHIFT);
 	k1c_cpu_wdt_feed();
@@ -159,7 +159,7 @@ static int k1c_wdt_stop(struct watchdog_device *wdt_dev)
 
 static unsigned int k1c_wdt_gettimeleft(struct watchdog_device *wdt_dev)
 {
-	u64 res, wdv_value = k1c_sfr_get(K1C_SFR_WDV);
+	u64 res, wdv_value = k1c_sfr_get(WDV);
 
 	res = do_div(wdv_value, clk_rate);
 
@@ -175,7 +175,7 @@ static int k1c_wdt_cpu_online(unsigned int cpu)
 	enable_percpu_irq(k1c_wdt_irq, IRQ_TYPE_NONE);
 
 	/* Enable Interrupts and underflow inform logic */
-	k1c_sfr_set_mask(K1C_SFR_TCR, mask, val);
+	k1c_sfr_set_mask(TCR, mask, val);
 
 	k1c_cpu_wdt_start_counting();
 
@@ -188,7 +188,7 @@ static int k1c_wdt_cpu_offline(unsigned int cpu)
 	u64 mask = K1C_SFR_TCR_WCE_MASK | K1C_SFR_TCR_WUI_MASK |
 		   K1C_SFR_TCR_WIE_MASK;
 
-	k1c_sfr_set_mask(K1C_SFR_TCR, mask, 0);
+	k1c_sfr_set_mask(TCR, mask, 0);
 
 	disable_percpu_irq(k1c_wdt_irq);
 

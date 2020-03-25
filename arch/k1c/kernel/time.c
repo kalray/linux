@@ -31,8 +31,8 @@ static unsigned int k1c_timer_irq;
 
 static void k1c_timer_set_value(unsigned long value, unsigned long reload_value)
 {
-	k1c_sfr_set(K1C_SFR_T0R, reload_value);
-	k1c_sfr_set(K1C_SFR_T0V, value);
+	k1c_sfr_set(T0R, reload_value);
+	k1c_sfr_set(T0V, value);
 	/* Enable timer */
 	k1c_sfr_set_bit(K1C_SFR_TCR, K1C_SFR_TCR_T0CE_SHIFT);
 }

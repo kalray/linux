@@ -39,26 +39,28 @@ static DEFINE_PER_CPU(struct perf_event *, hwp_on_reg[K1C_HW_WATCHPOINT_COUNT]);
 #define gen_set_hw_sfr(__name, __sfr) \
 static inline void set_hw_ ## __name(int idx, u64 addr) \
 { \
-	k1c_sfr_set(idx ? K1C_SFR_ ## __sfr ## 1 : \
-		    K1C_SFR_ ## __sfr ## 0, addr); \
+	if (idx == 0) \
+		k1c_sfr_set(__sfr ## 0, addr); \
+	else \
+		k1c_sfr_set(__sfr ## 1, addr); \
 }
 
 #define gen_set_hw_sfr_field(__name, __sfr, __field) \
 static inline void set_hw_ ## __name(int idx, u32 value) \
 { \
 	if (idx == 0) \
-		k1c_sfr_set_field(K1C_SFR_ ## __sfr, __field ## 0, value); \
+		k1c_sfr_set_field(__sfr, __field ## 0, value); \
 	else \
-		k1c_sfr_set_field(K1C_SFR_ ## __sfr, __field ## 1, value); \
+		k1c_sfr_set_field(__sfr, __field ## 1, value); \
 }
 
 #define gen_get_hw_sfr_field(__name, __sfr, __field) \
 static inline u32 get_hw_ ## __name(int idx) \
 { \
 	if (idx == 0) \
-		return k1c_sfr_field_val(k1c_sfr_get(K1C_SFR_ ## __sfr), \
+		return k1c_sfr_field_val(k1c_sfr_get(__sfr), \
 					 __sfr, __field ## 0); \
-	return k1c_sfr_field_val(k1c_sfr_get(K1C_SFR_ ## __sfr), __sfr, \
+	return k1c_sfr_field_val(k1c_sfr_get(__sfr), __sfr, \
 				 __field ## 1); \
 }
 
@@ -257,7 +259,7 @@ int ptrace_request_hw_breakpoint(int idx)
 	if (idx < 0 || idx >= K1C_HW_BREAKPOINT_COUNT)
 		return -EINVAL;
 
-	linux_pl = k1c_sfr_field_val(k1c_sfr_get(K1C_SFR_PS), PS, PL);
+	linux_pl = k1c_sfr_field_val(k1c_sfr_get(PS), PS, PL);
 
 	/* Remap the indexes: request first the last hw breakpoint */
 	idx = hw_breakpoint_remap(idx);
@@ -273,7 +275,7 @@ int ptrace_request_hw_breakpoint(int idx)
 
 static int reserve_one_hw_watchpoint(int idx)
 {
-	int linux_pl = k1c_sfr_field_val(k1c_sfr_get(K1C_SFR_PS), PS, PL);
+	int linux_pl = k1c_sfr_field_val(k1c_sfr_get(PS), PS, PL);
 	int pl = get_hw_wp_owner(idx);
 
 	if (pl < linux_pl) {
