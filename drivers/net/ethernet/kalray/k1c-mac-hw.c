@@ -26,7 +26,7 @@
 		if (time_after(jiffies, t)) { \
 			dev_err(hw->dev, #reg" TIMEOUT (0x%x exp 0x%x)\n", \
 				(u32)(v & (mask)), (u32)exp); break; } \
-		v = read(hw, reg) & (mask); \
+	v = read(hw, reg) & (mask); \
 	} while (exp != (v & (mask))); \
 	(exp == (v & (mask))) ? 0 : -ETIMEDOUT; \
 })
@@ -478,7 +478,7 @@ static int k1c_eth_phy_serdes_cfg(struct k1c_eth_hw *hw,
 		DUMP_REG(hw, PHYMAC, off + PHY_LANE_TX_SERDES_CFG_OFFSET);
 	}
 
-	if (cfg->mac_f.loopback_mode == PHY_PMA_LOOPBACK) {
+	if (cfg->mac_f.loopback_mode == MAC_SERDES_LOOPBACK) {
 		/* Must be set in pstate P0 */
 		dev_info(hw->dev, "Mac/Phy TX2RX loopback!!!\n");
 		val = (u32)0xF << PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT;
@@ -510,21 +510,14 @@ int k1c_eth_haps_phy_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
 	k1c_eth_phy_reset(hw, 1);
 
-	if (cfg->mac_f.loopback_mode == PHY_PMA_LOOPBACK) {
-		u32 val = (u32)0xF << PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT;
-
-		/* Must be set in pstate P0 */
-		dev_info(hw->dev, "Mac/Phy TX2RX loopback!!!\n");
-		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
-			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, val);
-	}
-
 	return 0;
 }
 
 int k1c_eth_phy_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 {
 	k1c_eth_phy_serdes_cfg(hw, cfg);
+
+	k1c_phy_param_tuning(hw, cfg->id, &cfg->phy_param);
 
 	return 0;
 }
@@ -897,7 +890,6 @@ static int k1c_eth_wait_link_up(struct k1c_eth_hw *hw,
 }
 
 #define SIGDET_TIMEOUT_MS 1000
-#define RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN 0x180A0
 /**
  * k1c_eth_mac_cfg() - MAC configuration
  */
@@ -969,15 +961,8 @@ int k1c_eth_mac_cfg(struct k1c_eth_hw *hw, struct k1c_eth_lane_cfg *cfg)
 	if (ret)
 		return ret;
 
-	if (cfg->mac_f.loopback_mode == PHY_PMA_LOOPBACK) {
-		/* RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN */
-		off = RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN;
-		val = readw(hw->res[K1C_ETH_RES_PHY].base + off);
-		val |= 0xE;
-		/* Write twice (recommended by SNPS) */
-		writew(val, hw->res[K1C_ETH_RES_PHY].base + off);
-		writew(val, hw->res[K1C_ETH_RES_PHY].base + off);
-	}
+	if (cfg->mac_f.loopback_mode == PHY_PMA_LOOPBACK)
+		force_phy_loopback(hw, cfg);
 
 	mask = (u32)(hw->pll_cfg.serdes_mask <<
 		     PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT);
