@@ -55,7 +55,7 @@ static void __init setup_user_privilege(void)
 			(1 << K1C_SFR_PSOW_ICE_SHIFT) |
 			(1 << K1C_SFR_PSOW_USE_SHIFT);
 
-	k1c_sfr_set_mask(K1C_SFR_PSOW, mask, value);
+	k1c_sfr_set_mask(PSOW, mask, value);
 
 }
 
@@ -66,7 +66,7 @@ static void __init setup_user_privilege(void)
 void __init setup_processor(void)
 {
 	/* Clear performance monitor 0 */
-	k1c_sfr_set_mask(K1C_SFR_PMC, K1C_SFR_PMC_PM0C_WFXL_MASK, 0);
+	k1c_sfr_set_field(PMC, PM0C, 0);
 
 #ifdef CONFIG_ENABLE_TCA
 	/* Enable TCA (COE = Coprocessor Enable) */
