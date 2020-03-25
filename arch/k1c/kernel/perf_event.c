@@ -172,7 +172,7 @@ static void k1c_set_pmc_ie(unsigned int pm_num, enum k1c_pmc_ie ievalue)
 	u64 clr_mask = K1C_SFR_PMC_PM1IE_MASK << pm_num;
 	u64 set_mask = shifted_value << pm_num;
 
-	k1c_sfr_set_mask(K1C_SFR_PMC, clr_mask, set_mask);
+	k1c_sfr_set_mask(PMC, clr_mask, set_mask);
 }
 
 static void k1c_set_pmc(unsigned int pm_num, enum k1c_pm_event_code pmc_value)
@@ -181,7 +181,7 @@ static void k1c_set_pmc(unsigned int pm_num, enum k1c_pm_event_code pmc_value)
 	u64 clr_mask = K1C_SFR_PMC_PM0C_MASK << pm_shift;
 	u64 set_mask = pmc_value << pm_shift;
 
-	k1c_sfr_set_mask(K1C_SFR_PMC, clr_mask, set_mask);
+	k1c_sfr_set_mask(PMC, clr_mask, set_mask);
 }
 
 static void give_pm_to_user(unsigned int pm)
@@ -190,7 +190,7 @@ static void give_pm_to_user(unsigned int pm)
 				+ K1C_SFR_MOW_PM0_WIDTH * (pm + 1));
 	int pl_clr_mask = 3 << (K1C_SFR_MOW_PM0_SHIFT
 				+ K1C_SFR_MOW_PM0_WIDTH * (pm + 1));
-	k1c_sfr_set_mask(K1C_SFR_MOW, pl_clr_mask, pl_value);
+	k1c_sfr_set_mask(MOW, pl_clr_mask, pl_value);
 }
 
 static void get_pm_back_to_kernel(unsigned int pm)
@@ -198,20 +198,20 @@ static void get_pm_back_to_kernel(unsigned int pm)
 	int pl_value = 0;
 	int pl_clr_mask = 3 << (K1C_SFR_MOW_PM0_SHIFT
 				+ K1C_SFR_MOW_PM0_WIDTH * (pm + 1));
-	k1c_sfr_set_mask(K1C_SFR_MOW, pl_clr_mask, pl_value);
+	k1c_sfr_set_mask(MOW, pl_clr_mask, pl_value);
 }
 
 static void k1c_set_pm(enum k1c_pm_idx pm, u64 value)
 {
 	switch (pm) {
 	case K1C_PM_1:
-		k1c_sfr_set(K1C_SFR_PM1, value);
+		k1c_sfr_set(PM1, value);
 		break;
 	case K1C_PM_2:
-		k1c_sfr_set(K1C_SFR_PM2, value);
+		k1c_sfr_set(PM2, value);
 		break;
 	case K1C_PM_3:
-		k1c_sfr_set(K1C_SFR_PM3, value);
+		k1c_sfr_set(PM3, value);
 		break;
 	default:
 		WARN_ONCE(1, "This PM (%u) does not exist!\n", pm);
@@ -437,7 +437,7 @@ static void k1c_pm_clear_sav(void)
 	u64 clr_mask = K1C_SFR_PMC_SAV_MASK;
 	u64 set_mask = 0;
 
-	k1c_sfr_set_mask(K1C_SFR_PMC, clr_mask, set_mask);
+	k1c_sfr_set_mask(PMC, clr_mask, set_mask);
 }
 
 static void k1c_pm_reload(struct perf_event *event)
@@ -452,7 +452,7 @@ static void k1c_pm_reload(struct perf_event *event)
 
 static bool k1c_pm_is_sav_set(void)
 {
-	return k1c_sfr_get(K1C_SFR_PMC) & K1C_SFR_PMC_SAV_MASK;
+	return k1c_sfr_get(PMC) & K1C_SFR_PMC_SAV_MASK;
 }
 
 static int handle_pm_overflow(u8 pm_id, struct perf_event *event, u64 pmc,
@@ -501,7 +501,7 @@ irqreturn_t pm_irq_handler(int irq, void *dev_id)
 	irqreturn_t ret = IRQ_NONE;
 
 	regs = get_irq_regs();
-	pmc = k1c_sfr_get(K1C_SFR_PMC);
+	pmc = k1c_sfr_get(PMC);
 
 	for (pm_id = K1C_PM_1; pm_id <= K1C_PM_3; pm_id++) {
 		struct perf_event *event = cpuc->events[pm_id];

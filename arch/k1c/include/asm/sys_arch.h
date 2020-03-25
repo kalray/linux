@@ -15,7 +15,7 @@
 #define EXCEPTION_ALIGNMENT	0x100
 
 #define k1c_cluster_id() ((int) \
-	((k1c_sfr_get(K1C_SFR_PCR) & K1C_SFR_PCR_CID_MASK) \
+	((k1c_sfr_get(PCR) & K1C_SFR_PCR_CID_MASK) \
 					>> K1C_SFR_PCR_CID_SHIFT))
 
 #define K1C_SFR_START(__sfr_reg) \
