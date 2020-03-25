@@ -47,7 +47,7 @@ void k1c_update_tlb_access(int type)
 	idx = K1C_TLB_ACCESS_GET_IDX(*idx_ptr);
 
 	k1c_mmu_get_tlb_entry(tab[idx].entry);
-	tab[idx].mmc_val = k1c_sfr_get(K1C_SFR_MMC);
+	tab[idx].mmc_val = k1c_sfr_get(MMC);
 	tab[idx].type = type;
 
 	(*idx_ptr)++;
@@ -84,9 +84,9 @@ static int clear_tlb_entry(unsigned long addr,
 	asn &= MM_CTXT_ASN_MASK;
 
 	/* Before probing we need to save the current ASN */
-	mmc_val = k1c_sfr_get(K1C_SFR_MMC);
+	mmc_val = k1c_sfr_get(MMC);
 	saved_asn = k1c_sfr_field_val(mmc_val, MMC, ASN);
-	k1c_sfr_set_field(K1C_SFR_MMC, ASN, asn);
+	k1c_sfr_set_field(MMC, ASN, asn);
 
 	/* Probe is based on PN and ASN. So ES can be anything */
 	entry = tlb_mk_entry(0, (void *)addr, 0, global, 0, 0, 0,
@@ -95,7 +95,7 @@ static int clear_tlb_entry(unsigned long addr,
 
 	k1c_mmu_probetlb();
 
-	mmc_val = k1c_sfr_get(K1C_SFR_MMC);
+	mmc_val = k1c_sfr_get(MMC);
 
 	if (k1c_mmc_error(mmc_val)) {
 		if (k1c_mmc_parity(mmc_val)) {
@@ -131,12 +131,12 @@ static int clear_tlb_entry(unsigned long addr,
 	 * values so we just need to set the entry status to invalid to clear
 	 * the entry.
 	 */
-	k1c_sfr_set_field(K1C_SFR_TEL, ES, TLB_ES_INVALID);
+	k1c_sfr_set_field(TEL, ES, TLB_ES_INVALID);
 
 	k1c_mmu_writetlb();
 
 	/* Need to read MMC SFR again */
-	mmc_val = k1c_sfr_get(K1C_SFR_MMC);
+	mmc_val = k1c_sfr_get(MMC);
 	if (k1c_mmc_error(mmc_val))
 		panic("%s: Failed to clear entry (addr 0x%lx, asn %u)",
 		      __func__, addr, asn);
@@ -145,7 +145,7 @@ static int clear_tlb_entry(unsigned long addr,
 			__func__, addr, asn);
 
 restore_asn:
-	k1c_sfr_set_field(K1C_SFR_MMC, ASN, saved_asn);
+	k1c_sfr_set_field(MMC, ASN, saved_asn);
 
 	return ret;
 }
@@ -217,8 +217,8 @@ void local_flush_tlb_all(void)
 	local_irq_save(flags);
 
 	/* Select JTLB and prepare TEL (constant) */
-	k1c_sfr_set(K1C_SFR_TEL, (uint64_t) tlbe.tel_val);
-	k1c_sfr_set_field(K1C_SFR_MMC, SB, MMC_SB_JTLB);
+	k1c_sfr_set(TEL, (uint64_t) tlbe.tel_val);
+	k1c_sfr_set_field(MMC, SB, MMC_SB_JTLB);
 
 	for (set = 0; set < MMU_JTLB_SETS; set++) {
 		tlbe.teh.pn = set;
@@ -228,11 +228,11 @@ void local_flush_tlb_all(void)
 			 * With 4K pages the set is the value of the 6 lower
 			 * signigicant bits of the page number.
 			 */
-			k1c_sfr_set(K1C_SFR_TEH, (uint64_t) tlbe.teh_val);
-			k1c_sfr_set_field(K1C_SFR_MMC, SW, way);
+			k1c_sfr_set(TEH, (uint64_t) tlbe.teh_val);
+			k1c_sfr_set_field(MMC, SW, way);
 			k1c_mmu_writetlb();
 
-			if (k1c_mmc_error(k1c_sfr_get(K1C_SFR_MMC)))
+			if (k1c_mmc_error(k1c_sfr_get(MMC)))
 				panic("Failed to initialize JTLB[s:%02d w:%d]",
 				      set, way);
 		}
@@ -342,7 +342,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	 * must match the mmc.asn and be non zero
 	 */
 	if (address < PAGE_OFFSET) {
-		unsigned int mmc_asn = k1c_mmc_asn(k1c_sfr_get(K1C_SFR_MMC));
+		unsigned int mmc_asn = k1c_mmc_asn(k1c_sfr_get(MMC));
 
 		if (asn == MM_CTXT_NO_ASN)
 			panic("%s: ASN [%lu] is not properly set for address 0x%lx on CPU %d\n",
