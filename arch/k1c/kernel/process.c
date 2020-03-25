@@ -88,7 +88,7 @@ void start_thread(struct pt_regs *regs,
 			K1C_SFR_PS_SMR_MASK;
 	regs->spc = pc;
 	regs->sp = sp;
-	regs->sps = k1c_sfr_get(K1C_SFR_PS);
+	regs->sps = k1c_sfr_get(PS);
 
 	regs->sps &= ~clear_bit;
 
