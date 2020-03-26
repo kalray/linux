@@ -960,7 +960,7 @@ int kvx_eth_parse_dt(struct platform_device *pdev, struct kvx_eth_netdev *ndev)
 
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
 		char *rtm_compat = (rtm == RTM_RX) ?
-			"ti,rtmrx" : "ti,rtmtx";
+			"kalray,rtmrx" : "kalray,rtmtx";
 		rtm_node = of_parse_phandle(pdev->dev.of_node, rtm_compat, 0);
 		if (rtm_node) {
 			ndev->rtm[rtm] = of_find_i2c_device_by_node(rtm_node);
