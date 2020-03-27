@@ -33,6 +33,11 @@
 #include "kvx-net-regs.h"
 #include "kvx-net-hdr.h"
 
+static const char *rtm_prop_name[RTM_NB] = {
+	[RTM_RX] = "kalray,rtmrx",
+	[RTM_TX] = "kalray,rtmtx",
+};
+
 static void kvx_eth_alloc_rx_buffers(struct kvx_eth_netdev *ndev, int count);
 
 /* kvx_eth_desc_unused() - Gets the number of remaining unused buffers in ring
@@ -959,16 +964,12 @@ int kvx_eth_parse_dt(struct platform_device *pdev, struct kvx_eth_netdev *ndev)
 	}
 
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
-		char *rtm_compat = (rtm == RTM_RX) ?
-			"kalray,rtmrx" : "kalray,rtmtx";
-		rtm_node = of_parse_phandle(pdev->dev.of_node, rtm_compat, 0);
+		rtm_node = of_parse_phandle(pdev->dev.of_node,
+				rtm_prop_name[rtm], 0);
 		if (rtm_node) {
 			ndev->rtm[rtm] = of_find_i2c_device_by_node(rtm_node);
-			if (!ndev->rtm[rtm]) {
-				dev_warn(&pdev->dev, "Can't find retimer i2c client for %s, deferring\n",
-						rtm_compat);
-				return -ENODEV;
-			}
+			if (!ndev->rtm[rtm])
+				return -EPROBE_DEFER;
 		}
 	}
 
