@@ -20,13 +20,16 @@
 #define wfxm(_sfr, _val)	__builtin_k1_wfxm(_sfr, _val)
 
 static inline void
-k1c_sfr_set_bit(unsigned char sfr, unsigned char bit)
+__k1c_sfr_set_bit(unsigned char sfr, unsigned char bit)
 {
 	if (bit < 32)
 		wfxl(sfr, (uint64_t) (1 << bit) << 32);
 	else
 		wfxm(sfr, (uint64_t) 1 << bit);
 }
+
+#define k1c_sfr_set_bit(__sfr, __bit) \
+	__k1c_sfr_set_bit(K1C_SFR_ ## __sfr, __bit)
 
 static inline uint64_t make_sfr_val(uint64_t mask, uint64_t value)
 {
@@ -78,13 +81,16 @@ static inline u64 k1c_sfr_iget(unsigned char sfr)
 		((uint64_t) (value) << K1C_SFR_ ## sfr ## _ ## field ## _SHIFT))
 
 static inline void
-k1c_sfr_clear_bit(unsigned char sfr, unsigned char bit)
+__k1c_sfr_clear_bit(unsigned char sfr, unsigned char bit)
 {
 	if (bit < 32)
 		wfxl(sfr, (uint64_t) 1 << bit);
 	else
 		wfxm(sfr, (uint64_t) 1 << (bit - 32));
 }
+
+#define k1c_sfr_clear_bit(__sfr, __bit) \
+	__k1c_sfr_clear_bit(K1C_SFR_ ## __sfr, __bit)
 
 #define k1c_sfr_set(_sfr, _val)	__builtin_k1_set(K1C_SFR_ ## _sfr, _val)
 #define k1c_sfr_get(_sfr)	__builtin_k1_get(K1C_SFR_ ## _sfr)
