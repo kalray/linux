@@ -107,7 +107,7 @@ static int clear_tlb_entry(unsigned long addr,
 			 */
 			WARN(1, "%s: parity error during lookup (addr 0x%lx, asn %u). JTLB will be flushed\n",
 			     __func__, addr, asn);
-			k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_PAR_SHIFT);
+			k1c_sfr_set_field(MMC, PAR, 0);
 			local_flush_tlb_all();
 		}
 
@@ -115,7 +115,7 @@ static int clear_tlb_entry(unsigned long addr,
 		 * else there is no matching entry so just clean the error and
 		 * restore the ASN before returning.
 		 */
-		k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_E_SHIFT);
+		k1c_sfr_set_field(MMC, E, 0);
 		ret = -ENOENT;
 		goto restore_asn;
 	}

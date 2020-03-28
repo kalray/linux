@@ -92,7 +92,7 @@ static irqreturn_t k1c_wdt_irq_handler(int irq, void *dev_id)
 		 * alive. Clear WUS and Reload the watchdog timer.
 		 */
 		k1c_cpu_wdt_feed();
-		k1c_sfr_clear_bit(K1C_SFR_TCR, K1C_SFR_TCR_WUS_SHIFT);
+		k1c_sfr_set_field(TCR, WUS, 0);
 	}
 
 	return IRQ_HANDLED;
@@ -106,11 +106,11 @@ static void k1c_cpu_wdt_start_counting(void)
 	 */
 	k1c_sfr_set(WDR, WDT_BARK_DELAY_SEC * clk_rate);
 	/* Clear WUS to avoid being reset on first interrupt */
-	k1c_sfr_clear_bit(K1C_SFR_TCR, K1C_SFR_TCR_WUS_SHIFT);
+	k1c_sfr_set_field(TCR, WUS, 0);
 	k1c_cpu_wdt_feed();
 
 	/* Start the watchdog */
-	k1c_sfr_set_bit(K1C_SFR_TCR, K1C_SFR_TCR_WCE_SHIFT);
+	k1c_sfr_set_field(TCR, WCE, 1);
 }
 
 static void k1c_cpu_wdt_ping(void *data)
