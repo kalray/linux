@@ -70,9 +70,9 @@ void __init setup_processor(void)
 
 #ifdef CONFIG_ENABLE_TCA
 	/* Enable TCA (COE = Coprocessor Enable) */
-	k1c_sfr_set_bit(K1C_SFR_PCR, K1C_SFR_PCR_COE_SHIFT);
+	k1c_sfr_set_field(PCR, COE, 1);
 #else
-	k1c_sfr_clear_bit(K1C_SFR_PCR, K1C_SFR_PCR_COE_SHIFT);
+	k1c_sfr_set_field(PCR, COE, 0);
 #endif
 
 	/*
@@ -85,8 +85,8 @@ void __init setup_processor(void)
 	 * in order to silently discard data if fetched.
 	 * This allows to do an effective prefetch.
 	 */
-	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_SNE_SHIFT);
-	k1c_sfr_clear_bit(K1C_SFR_MMC, K1C_SFR_MMC_SPE_SHIFT);
+	k1c_sfr_set_field(MMC, SNE, 0);
+	k1c_sfr_set_field(MMC, SPE, 0);
 
 	k1c_init_core_irq();
 
