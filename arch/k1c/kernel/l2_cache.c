@@ -340,7 +340,7 @@ static int __init l2_cache_init_hw(void)
 	local_irq_restore(flags);
 
 	/* Enable L2$ */
-	k1c_sfr_set_bit(K1C_SFR_PS, K1C_SFR_PS_L2E_SHIFT);
+	k1c_sfr_set_field(PS, L2E, 1);
 
 	return 0;
 }

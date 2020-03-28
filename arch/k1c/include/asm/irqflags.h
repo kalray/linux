@@ -22,7 +22,7 @@ static inline notrace unsigned long arch_local_irq_save(void)
 {
 	unsigned long flags = arch_local_save_flags();
 
-	k1c_sfr_clear_bit(K1C_SFR_PS, K1C_SFR_PS_IE_SHIFT);
+	k1c_sfr_set_field(PS, IE, 0);
 
 	return flags;
 }
@@ -31,19 +31,19 @@ static inline notrace void arch_local_irq_restore(unsigned long flags)
 {
 	/* If flags are set, interrupt are enabled), set the IE bit */
 	if (flags)
-		k1c_sfr_set_bit(K1C_SFR_PS, K1C_SFR_PS_IE_SHIFT);
+		k1c_sfr_set_field(PS, IE, 1);
 	else
-		k1c_sfr_clear_bit(K1C_SFR_PS, K1C_SFR_PS_IE_SHIFT);
+		k1c_sfr_set_field(PS, IE, 0);
 }
 
 static inline notrace void arch_local_irq_enable(void)
 {
-	k1c_sfr_set_bit(K1C_SFR_PS, K1C_SFR_PS_IE_SHIFT);
+	k1c_sfr_set_field(PS, IE, 1);
 }
 
 static inline notrace void arch_local_irq_disable(void)
 {
-	k1c_sfr_clear_bit(K1C_SFR_PS, K1C_SFR_PS_IE_SHIFT);
+	k1c_sfr_set_field(PS, IE, 0);
 }
 
 static inline notrace bool arch_irqs_disabled_flags(unsigned long flags)
