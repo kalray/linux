@@ -21,12 +21,12 @@
 
 static void k1c_irq_mask(struct irq_data *data)
 {
-	k1c_sfr_clear_bit(K1C_SFR_ILE, data->hwirq);
+	k1c_sfr_clear_bit(ILE, data->hwirq);
 }
 
 static void k1c_irq_unmask(struct irq_data *data)
 {
-	k1c_sfr_set_bit(K1C_SFR_ILE, data->hwirq);
+	k1c_sfr_set_bit(ILE, data->hwirq);
 }
 
 static struct irq_chip k1c_irq_chip = {
