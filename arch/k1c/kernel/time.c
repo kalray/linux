@@ -34,7 +34,7 @@ static void k1c_timer_set_value(unsigned long value, unsigned long reload_value)
 	k1c_sfr_set(T0R, reload_value);
 	k1c_sfr_set(T0V, value);
 	/* Enable timer */
-	k1c_sfr_set_bit(K1C_SFR_TCR, K1C_SFR_TCR_T0CE_SHIFT);
+	k1c_sfr_set_field(TCR, T0CE, 1);
 }
 
 static int k1c_clkevent_set_next_event(unsigned long cycles,
@@ -72,7 +72,7 @@ static int k1c_clkevent_set_state_oneshot(struct clock_event_device *dev)
 
 static int k1c_clkevent_set_state_shutdown(struct clock_event_device *dev)
 {
-	k1c_sfr_clear_bit(K1C_SFR_TCR, K1C_SFR_TCR_T0CE_SHIFT);
+	k1c_sfr_set_field(TCR, T0CE, 0);
 
 	return 0;
 }
@@ -94,7 +94,7 @@ irqreturn_t k1c_timer_irq_handler(int irq, void *dev_id)
 
 	/* Disable timer if in oneshot mode before reloading */
 	if (likely(clockevent_state_oneshot(evt)))
-		k1c_sfr_clear_bit(K1C_SFR_TCR, K1C_SFR_TCR_T0CE_SHIFT);
+		k1c_sfr_set_field(TCR, T0CE, 0);
 
 	evt->event_handler(evt);
 
@@ -112,7 +112,7 @@ static int k1c_timer_starting_cpu(unsigned int cpu)
 						K1C_TIMER_MAX_DELTA);
 
 	/* Enable timer interrupt */
-	k1c_sfr_set_bit(K1C_SFR_TCR, K1C_SFR_TCR_T0IE_SHIFT);
+	k1c_sfr_set_field(TCR, T0IE, 1);
 
 	enable_percpu_irq(k1c_timer_irq, IRQ_TYPE_NONE);
 

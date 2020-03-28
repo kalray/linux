@@ -152,7 +152,7 @@ extern void ret_from_fork(void);
 static inline void wait_for_interrupt(void)
 {
 	__builtin_k1_await();
-	k1c_sfr_clear_bit(K1C_SFR_WS, K1C_SFR_WS_WU0_SHIFT);
+	k1c_sfr_set_field(WS, WU0, 0);
 }
 
 #endif	/* _ASM_K1C_PROCESSOR_H */
