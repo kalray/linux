@@ -14,15 +14,15 @@ config NET_VENDOR_KALRAY
 	  your specific card in the following questions.
 
 if NET_VENDOR_KALRAY
-config NET_K1C_SOC
+config NET_KVX_SOC
 	tristate "Kalray ethernet support"
-	depends on K1C_DMA_NOC
+	depends on KVX_DMA_NOC
 	depends on I2C
 	select PHYLINK
 	select NET_TI_RTM
 	select SFP
 	help
-	  This driver supports the K1C Ethernet hardware using dma_noc driver
+	  This driver supports the KVX Ethernet hardware using dma_noc driver
 	  as dependency.
 	  Allows configuring load balancing (flow control, parsing) and
 	  TX flow.
