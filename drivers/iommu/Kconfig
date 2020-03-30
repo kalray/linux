@@ -506,13 +506,13 @@ config SPRD_IOMMU
 
 	  Say Y here if you want to use the multimedia devices listed above.
 
-config K1C_IOMMU
-	bool "K1C IOMMU support"
-	depends on K1C
+config KVX_IOMMU
+	bool "KVX IOMMU support"
+	depends on KVX
 	select IOMMU_API
 	help
 	  Say Y here if you want to compile device drivers
-	  for IO Memory Management Units for K1c into the
+	  for IO Memory Management Units for KVX into the
 	  kernel. These devices allow to remap DMA requests
 	  and/or remap interrupts from other devices on the
 	  system.

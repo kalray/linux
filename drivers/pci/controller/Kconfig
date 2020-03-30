@@ -36,20 +36,20 @@ config PCIE_XILINX_NWL
 	 or End Point. The current option selection will only
 	 support root port enabling.
 
-config PCIE_K1C_NWL
-	bool "NWL PCIe Core for K1c"
-	depends on K1C
-	select K1C_PCI_MSI if PCI_MSI
+config PCIE_KVX_NWL
+	bool "NWL PCIe Core for KVX"
+	depends on KVX
+	select KVX_PCI_MSI if PCI_MSI
 	select MFD_SYSCON
 	help
-	 Say 'Y' here if you want kernel support for k1c
+	 Say 'Y' here if you want kernel support for kvx
 	 NWL PCIe controller. The controller can act as Root Port
 	 or End Point. The current option selection will only
 	 support root port enabling.
 
-config PCIE_K1C_ERR_INJECT_SYSFS
-	tristate "NWL PCIe core for K1c error injection via SYSFS"
-	depends on PCIE_K1C_NWL
+config PCIE_KVX_ERR_INJECT_SYSFS
+	tristate "NWL PCIe core for KVX error injection via SYSFS"
+	depends on PCIE_KVX_NWL
 	help
 	  This will mount in sysfs directory additionnal files which
 	  allows to inject errors directly on the PCIe link.
