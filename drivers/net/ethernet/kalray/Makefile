@@ -2,4 +2,4 @@
 # Makefile for the Kalray device drivers.
 #
 
-obj-$(CONFIG_NET_K1C_SOC) += k1c-net.o k1c-net-hw.o k1c-net-tx.o k1c-mac-hw.o k1c-phy-hw.o k1c-net-parsing.o k1c-ethtool.o k1c-net-fs.o k1c-net-def-filters.o
+obj-$(CONFIG_NET_KVX_SOC) += kvx-net.o kvx-net-hw.o kvx-net-tx.o kvx-mac-hw.o kvx-phy-hw.o kvx-net-parsing.o kvx-ethtool.o kvx-net-fs.o kvx-net-def-filters.o
