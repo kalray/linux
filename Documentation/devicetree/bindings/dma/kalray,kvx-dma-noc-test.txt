@@ -1,0 +1,15 @@
+* Kalray DMA NOC controller tests
+
+Required properties:
+- compatible: Should be "kalray,kvx-dma-noc-test"
+- dmas: dma_noc used
+- dma-names: dma name
+
+Example:
+
+/* DMA NOC*/
+test_dmaengine@0 {
+	compatible = "kalray,kvx-dma-noc-test";
+	dmas = <&dma_noc 1>;
+	dma-names = "kvx-dma-noc";
+};

@@ -108,7 +108,7 @@ my (@stack, $re, $dre, $sub, $x, $xs, $funcre, $min_stack);
 	} elsif ($arch eq 'sparc' || $arch eq 'sparc64') {
 		# f0019d10:       9d e3 bf 90     save  %sp, -112, %sp
 		$re = qr/.*save.*%sp, -(([0-9]{2}|[3-9])[0-9]{2}), %sp/o;
-	} elsif ($arch eq 'k1c') {
+	} elsif ($arch eq 'kvx') {
 	        # ffffff8000f5a394:  0c ee 30 61  addd $r12 = $r12, -72 (0xffffffb8);;
 		$re = qr/.*addd.*\$r12, -(([0-9]{2}|[3-9])[0-9]{2})/o;
 	} else {

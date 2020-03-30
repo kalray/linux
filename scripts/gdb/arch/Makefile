@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0
-subdir-y := k1c
+subdir-y := kvx
 
 always-y := gdb-scripts
 
