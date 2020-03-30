@@ -1,0 +1,495 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/**
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ *
+ * Copyright (C) 2019 Kalray Inc.
+ */
+
+#ifndef KVX_NET_HW_H
+#define KVX_NET_HW_H
+
+#include <asm/sys_arch.h>
+#include <linux/netdevice.h>
+#include <linux/types.h>
+
+#include "kvx-net-hdr.h"
+#include "kvx-ethtool.h"
+
+#define NB_PE                      16
+#define NB_CLUSTER                 5
+#define KVX_ETH_LANE_NB            4
+#define KVX_ETH_PFC_CLASS_NB       8
+#define KVX_ETH_RX_TAG_NB          64
+#define KVX_ETH_PARSERS_MAX_PRIO   7
+
+#define PFC_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
+
+#define DUMP_REG(hw, bl, off) { \
+	u32 v = readl(hw->res[KVX_ETH_RES_##bl].base + off); \
+	pr_debug("%s @ 0x%x - 0x%x\n", #off, (u32)off, v); }
+#define GETF(reg, field) (((reg) & field ## _MASK) >> (field ## _SHIFT))
+
+#define updatel_bits(hw, bl, off, mask, v) { \
+	u32 regval = readl(hw->res[KVX_ETH_RES_##bl].base + off) & ~(mask); \
+	writel(((v) | (regval)), hw->res[KVX_ETH_RES_##bl].base + off); }
+
+enum kvx_eth_io {
+	KVX_ETH0 = 0,
+	KVX_ETH1
+};
+
+enum kvx_eth_rtm {
+	RTM_RX = 0,
+	RTM_TX,
+	RTM_NB,
+};
+
+enum kvx_eth_resource {
+	KVX_ETH_RES_PHY = 0,
+	KVX_ETH_RES_PHYMAC,
+	KVX_ETH_RES_MAC,
+	KVX_ETH_RES_ETH,
+	KVX_ETH_NUM_RES
+};
+
+enum kvx_eth_loopback_mode {
+	NO_LOOPBACK = 0,
+	/* Bypass PHY (Mac serdes Tx drives Mac serdes Rx) */
+	MAC_SERDES_LOOPBACK,
+	/* Phy serdes Tx drives Phy serdes Rx */
+	PHY_PMA_LOOPBACK,
+	/* HOST LOOPBACK */
+	/* Phy data loopback (host loopback) */
+	PHY_RX2TX_LOOPBACK,
+	/* MAC data loopback (host loopback) */
+	MAC_RX2TX_LOOPBACK,
+};
+
+enum kvx_eth_pfc_mode {
+	MAC_PFC_NONE = 0,
+	MAC_PFC,
+	MAC_PAUSE,
+};
+
+struct kvx_eth_res {
+	const char *name;
+	void __iomem *base;
+};
+
+enum default_dispatch_policy {
+	DEFAULT_DROP = 0x0,
+	DEFAULT_ROUND_ROBIN = 0x1,
+	DEFAULT_FORWARD = 0x2,
+	DEFAULT_NOCX = 0x3,
+	DEFAULT_DISPATCH_POLICY_NB,
+};
+
+enum parser_dispatch_policy {
+	PARSER_DISABLED = 0x0,
+	PARSER_DROP = 0x1,
+	PARSER_HASH_LUT = 0x2,
+	PARSER_ROUND_ROBIN = 0x3,
+	PARSER_FORWARD = 0x4,
+	PARSER_NOCX = 0x5,
+	PARSER_POLICY_NB,
+};
+
+/**
+ * struct kvx_eth_lb_f - Load balancer features
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @default_dispatch_policy: Load balancer policy
+ * @store_and_forward: Is store and forward enabled
+ * @keep_all_crc_error_pkt: Keep all received eth pkts including erroneous ones
+ * @add_header: Add metadata to packet header
+ * @add_footer: Add metadata to packet footer
+ */
+struct kvx_eth_lb_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	enum default_dispatch_policy default_dispatch_policy;
+	u8 store_and_forward;
+	u8 keep_all_crc_error_pkt;
+	u8 add_header;
+	u8 add_footer;
+};
+
+/**
+ * struct kvx_eth_cl_f - Hardware PFC classes
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @alert_release_level: Max bytes before sending XON for this class
+ * @drop_level: Max bytes before dropping packets for this class
+ * @alert_level: Max bytes before sending XOFF request for this class
+ * @pfc_ena: is PFC enabled for this class
+ * @lane_id: lane identifier
+ * @id: PFC class identifier
+ */
+struct kvx_eth_cl_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	unsigned int release_level;
+	unsigned int drop_level;
+	unsigned int alert_level;
+	unsigned int pfc_ena;
+	int lane_id;
+	int id;
+};
+
+/**
+ * struct kvx_eth_pfc_f - Hardware PFC controller
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @global_alert_release_level: Max bytes before sending XON for every class
+ * @global_drop_level: Max bytes before dropping packets for every class
+ * @global_alert_level: Max bytes before sending XOFF for every class
+ */
+struct kvx_eth_pfc_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	int global_release_level;
+	int global_drop_level;
+	int global_alert_level;
+	u8 global_pfc_en;
+	u8 global_pause_en;
+};
+
+/**
+ * struct kvx_eth_tx_f - TX features
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @fifo_id: TX fifo [0, 9] associated with lane id
+ * @lane_id: Identifier of the current lane
+ * @header_en: Add metadata TX
+ * @drop_en: Allow dropping pkt if tx fifo full
+ * @nocx_en: Enable NoC extension
+ * @nocx_pack_en: Enables NoCX bandwidth optimization (only if nocx_en)
+ * @pfc_en: Enable global PFC
+ * @pause_en: Enable global pause
+ * @rr_trigger: Max number of consecutive ethernet pkts that tx fifo can send
+ *              when winning round-robin arbitration (0 means 16 pkts).
+ */
+struct kvx_eth_tx_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	int fifo_id;
+	u8 lane_id;
+	u8 header_en;
+	u8 drop_en;
+	u8 nocx_en;
+	u8 nocx_pack_en;
+	u8 global;
+	u8 pfc_en;
+	u8 pause_en;
+	u16 rr_trigger;
+};
+
+/**
+ * struct kvx_eth_dt_f - Dispatch table features
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @cluster_id: dispatch cluster identifier
+ * @rx_channel: dma_noc rx channel identifier
+ * @split_trigger: threashold for split feature (disabled if 0)
+ * @vchan: hw virtual channel used
+ * @id: dispatch table index
+ */
+struct kvx_eth_dt_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	u8 cluster_id;
+	u8 rx_channel;
+	u32 split_trigger;
+	u8 vchan;
+	int id;
+};
+
+/**
+ * struct kvx_eth_mac_f - MAC controller features
+ * @addr: MAC address
+ * @loopback_mode: mac loopback mode
+ */
+struct kvx_eth_mac_f {
+	u8 addr[ETH_ALEN];
+	enum kvx_eth_loopback_mode loopback_mode;
+	enum kvx_eth_pfc_mode pfc_mode;
+};
+
+/**
+ * Phy parameters for TX equalization
+ * @pre: pre-amplitude
+ * @post: post-amplitude
+ * @swing: DC swing
+ * @rx_polarity: Rx lane polarity
+ * @tx_polarity: Tx lane polarity
+ */
+struct phy_param {
+	u32 pre;
+	u32 post;
+	u32 swing;
+	u32 rx_polarity;
+	u32 tx_polarity;
+};
+
+/**
+ * struct kvx_eth_lane_cfg - Lane configuration
+ * @id: lane_id [0, 3]
+ * @link: phy link state
+ * @speed: phy node speed
+ * @duplex: duplex mode
+ * @hw: back pointer to hw description
+ * @lb_f: Load balancer features
+ * @tx_f: TX features
+ * @pfc: Packet Flow Control
+ * @cl_f: Array of 8 classes (per lane)
+ * @mac: mac controller
+ * @phy_param: phy parameters (currently used for tx equalization)
+ */
+struct kvx_eth_lane_cfg {
+	int id;
+	int link;
+	unsigned int speed;
+	unsigned int duplex;
+	struct kvx_eth_hw *hw;
+	struct kvx_eth_lb_f lb_f;
+	struct kvx_eth_tx_f *tx_f;
+	struct kvx_eth_pfc_f pfc_f;
+	struct kvx_eth_cl_f cl_f[KVX_ETH_PFC_CLASS_NB];
+	struct kvx_eth_mac_f mac_f;
+	struct phy_param phy_param;
+};
+
+struct kvx_eth_parser {
+	union filter_desc *filters[KVX_NET_LAYER_NB];
+	void *rule_spec; /* Opaque type */
+	unsigned int enabled;
+	enum kvx_eth_layer nb_layers;
+};
+
+struct kvx_eth_parsing {
+	struct kvx_eth_parser parsers[KVX_ETH_PARSER_NB];
+	int active_filters_nb;
+	u8 rx_hash_fields[KVX_TT_PROTOS_NB];
+};
+
+enum pll_id {
+	PLL_A = 0,
+	PLL_B,
+	PLL_COUNT,
+};
+
+/**
+ * struct pll_cfg - Persistent pll and serdes configuration
+ *    PLLA-> used for 1G and/or 10G
+ *    PLLB -> 25G only
+ *
+ * @serdes_mask: 4 serdes
+ * @serdes_pll_master: pll configuration per serdes
+ * @pll: availability (2 PLLs)
+ * @rate_plla: PLLA rate
+ */
+struct pll_cfg {
+	unsigned long serdes_mask;
+	unsigned long serdes_pll_master;
+	unsigned long avail;
+	unsigned int rate_plla;
+};
+
+/**
+ * struct kvx_eth_hw - HW adapter
+ * @dev: device
+ * @res: HW resource tuple {phy, phymac, mac, eth}
+ * @tx_f: tx features for all tx fifos
+ * @asn: device ASN
+ * @vchan: dma-noc vchan (MUST be different of the one used by l2-cache)
+ * @max_frame_size: current mtu for mac
+ * @fec_en: Forward Error Correction enabled
+ */
+struct kvx_eth_hw {
+	struct device *dev;
+	struct kvx_eth_res res[KVX_ETH_NUM_RES];
+	struct kvx_eth_parsing parsing;
+	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
+	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
+	u32 eth_id;
+	struct pll_cfg pll_cfg;
+	u32 asn;
+	u32 vchan;
+	u32 max_frame_size;
+	u16 fec_en;
+};
+
+struct kvx_eth_hw_rx_stats {
+	u64 etherstatsoctets;
+	u64 octetsreceivedok;
+	u64 alignmenterrors;
+	u64 pausemacctrlframesreceived;
+	u64 frametoolongerrors;
+	u64 inrangelengtherrors;
+	u64 framesreceivedok;
+	u64 framechecksequenceerrors;
+	u64 vlanreceivedok;
+	u64 ifinerrors;
+	u64 ifinucastpkts;
+	u64 ifinmulticastpkts;
+	u64 ifinbroadcastpkts;
+	u64 etherstatsdropevents;
+	u64 etherstatspkts;
+	u64 etherstatsundersizepkts;
+	u64 etherstatspkts64octets;
+	u64 etherstatspkts65to127octets;
+	u64 etherstatspkts128to255octets;
+	u64 etherstatspkts256to511octets;
+	u64 etherstatspkts512to1023octets;
+	u64 etherstatspkts1024to1518octets;
+	u64 etherstatspkts1519tomaxoctets;
+	u64 etherstatsoversizepkts;
+	u64 etherstatsjabbers;
+	u64 etherstatsfragments;
+	u64 cbfcpauseframesreceived[KVX_ETH_PFC_CLASS_NB];
+	u64 maccontrolframesreceived;
+} __packed;
+
+struct kvx_eth_hw_tx_stats {
+	u64 etherstatsoctets;
+	u64 octetstransmittedok;
+	u64 pausemacctrlframestransmitted;
+	u64 framestransmittedok;
+	u64 vlantransmittedok;
+	u64 ifouterrors;
+	u64 ifoutucastpkts;
+	u64 ifoutmulticastpkts;
+	u64 ifoutbroadcastpkts;
+	u64 etherstatspkts64octets;
+	u64 etherstatspkts65to127octets;
+	u64 etherstatspkts128to255octets;
+	u64 etherstatspkts256to511octets;
+	u64 etherstatspkts512to1023octets;
+	u64 etherstatspkts1024to1518octets;
+	u64 etherstatspkts1519tomaxoctets;
+	u64 cbfcpauseframestransmitted[KVX_ETH_PFC_CLASS_NB];
+	u64 maccontrolframestransmitted;
+} __packed;
+
+struct kvx_eth_hw_stats {
+	struct kvx_eth_hw_rx_stats rx;
+	struct kvx_eth_hw_tx_stats tx;
+} __packed;
+
+struct kvx_eth_rx_dispatch_table_entry {
+	u64 noc_route;
+	u64 rx_chan;
+	u64 noc_vchan;
+	u64 asn;
+};
+
+enum kvx_eth_addr_match_values {
+	KVX_ETH_ADDR_MATCH_EQUAL = 0,
+	KVX_ETH_ADDR_MATCH_BETWEEN = 1,
+	KVX_ETH_ADDR_DONT_CARE = 2,
+};
+
+enum kvx_eth_etype_match_values {
+	KVX_ETH_ETYPE_DONT_CARE = 0,
+	KVX_ETH_ETYPE_MATCH_EQUAL = 1,
+	KVX_ETH_ETYPE_MATCH_DIFFER = 2,
+};
+
+enum kvx_eth_vlan_match_values {
+	KVX_ETH_VLAN_NO = 0,
+	KVX_ETH_VLAN_ONE = 1,
+	KVX_ETH_VLAN_DUAL = 2,
+	KVX_ETH_VLAN_DONT_CARE = 3,
+};
+
+/* In TCI field only 12 LSBs are for VLAN */
+#define TCI_VLAN_HASH_MASK (0xfff)
+
+/* Helpers */
+static inline void kvx_eth_writeq(struct kvx_eth_hw *hw, u64 val, const u64 off)
+{
+	writeq(val, hw->res[KVX_ETH_RES_ETH].base + off);
+}
+
+static inline u64 kvx_eth_readq(struct kvx_eth_hw *hw, const u64 off)
+{
+	return readq(hw->res[KVX_ETH_RES_ETH].base + off);
+}
+
+static inline void kvx_eth_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
+{
+	writel(val, hw->res[KVX_ETH_RES_ETH].base + off);
+}
+
+static inline u32 kvx_eth_readl(struct kvx_eth_hw *hw, const u64 off)
+{
+	return readl(hw->res[KVX_ETH_RES_ETH].base + off);
+}
+
+
+u32 noc_route_c2eth(enum kvx_eth_io eth_id, int cluster_id);
+u32 noc_route_eth2c(enum kvx_eth_io eth_id, int cluster_id);
+void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
+
+/* PHY */
+int kvx_eth_phy_serdes_init(struct kvx_eth_hw *h, struct kvx_eth_lane_cfg *cfg);
+void force_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_phy_param_tuning(struct kvx_eth_hw *hw, int lane_id,
+			  struct phy_param *param);
+
+/* MAC */
+void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
+void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
+void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_phy_init(struct kvx_eth_hw *hw);
+int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw);
+int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_mac_reset(struct kvx_eth_hw *hw);
+int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
+int kvx_eth_mac_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+
+/* LB */
+void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
+u32 kvx_eth_lb_has_header(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+u32 kvx_eth_lb_has_footer(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
+void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id);
+void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
+void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
+				 struct kvx_eth_lane_cfg *cfg, u32 rx_tag);
+void kvx_eth_dt_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_f *dt);
+void kvx_eth_dt_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+
+/* PFC */
+void kvx_eth_pfc_f_set_default(struct kvx_eth_hw *hw,
+			       struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_pfc_f *pfc);
+void kvx_eth_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_pfc_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_cl_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_cl_f *cl);
+
+/* TX */
+void kvx_eth_tx_set_default(struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_tx_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_f *f);
+void kvx_eth_tx_fifo_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_tx_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+u32  kvx_eth_tx_has_header(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_tx_init(struct kvx_eth_hw *hw);
+
+/* PARSING */
+int parser_config(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
+		  int parser_id, enum parser_dispatch_policy policy, int prio);
+void parser_disp(struct kvx_eth_hw *hw, unsigned int parser_id);
+int parser_disable(struct kvx_eth_hw *hw, int parser_id);
+
+/* STATS */
+void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
+			    struct kvx_eth_hw_stats *stats);
+
+
+#endif // KVX_NET_HW_H
