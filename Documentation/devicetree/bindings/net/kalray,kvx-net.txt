@@ -1,0 +1,60 @@
+* Kalray net controller
+
+Required properties:
+- compatible: Should be "kalray,kvx-eth"
+- reg: {phy, phymac, mac, eth} registers and length
+- reg-names: {phy, phymac, mac, eth} names
+
+Optional properties:
+- cell-index: ethernet hw index, used for packet routing
+
+* Kalray netdev
+
+Required properties:
+- compatible: Should be "kalray,kvx-net";
+- dmas: tx dma-noc channels
+- dma-names: as defined in bindings/dma/dma.txt
+- kalray,dma-rx-cache-id: dma pool of RX buffers [0, 3]
+- kalray,dma-rx-channel-ids: start index of RX channel followed by number
+- kalray,dma-rx-comp-queue-ids: start index of RX completion queue followed by number
+- kalray,phy-param: phy parameters for Tx equalization, as follow:
+  <tx pre-amp, tx post-amp, tx swing, rx polarity, tx polarity>
+- sfp: sfp definition
+- fixed-link: as defined in bindings/net/ethernet-controller.yaml
+
+Example:
+
+	qsfp0:qsfp0@0 {
+		compatible = "sff,qsfp";
+		i2c-bus = <&i2c0>;
+		mod-def0-gpios = <&gpio1_banka 26 GPIO_ACTIVE_LOW>;
+		tx-disable-gpios = <&gpio1_banka 28 GPIO_ACTIVE_HIGH>;
+	};
+
+	eth0: ethernet@10050000 {
+		eth0: ethernet@10050000 {
+			compatible = "kalray,kvx-eth";
+			reg = <0x0 0x10000000 0x0 0x3FFFF>,
+			    <0x0 0x10040000 0x0 0xB4>,
+			    <0x0 0x10050000 0x0 0x8ED0>,
+			    <0x0 0x10090000 0x0 0x16400>;
+			reg-names = "phy", "phymac", "mac", "eth";
+			cell-index = <0>;
+
+			port0: ethernet-port@0 {
+				compatible = "kalray,kvx-net";
+				dmas = <&dma_noc 1>;
+				dma-names = "tx";
+				kalray,dma-rx-cache-id = <0>;
+				kalray,dma-rx-channel-ids = <0 1>;
+				kalray,dma-rx-comp-queue-ids = <0 1>;
+				kalray,phy-param = <0 0 40 0 0>;
+				phy-mode = "internal";
+				sfp = <&qsfp0>;
+				fixed-link {
+					speed = <40000>;
+					full-duplex;
+				};
+			};
+		};
+	};
