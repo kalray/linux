@@ -83,7 +83,7 @@ obj-$(CONFIG_XGENE_DMA) += xgene-dma.o
 obj-$(CONFIG_ST_FDMA) += st_fdma.o
 obj-$(CONFIG_FSL_DPAA2_QDMA) += fsl-dpaa2-qdma/
 obj-$(CONFIG_INTEL_LDMA) += lgm/
-obj-$(CONFIG_K1C_DMA_NOC) += k1/
+obj-$(CONFIG_KVX_DMA_NOC) += kvx/
 
 obj-y += mediatek/
 obj-y += qcom/
