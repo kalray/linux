@@ -755,9 +755,17 @@ config XILINX_ZYNQMP_DPDMA
 	  driver provides the dmaengine required by the DisplayPort subsystem
 	  display driver.
 
-config K1C_DMA_NOC
-	tristate "K1C DMA Engine for NOC"
-	depends on (OF || 64BIT || K1C)
+config ZX_DMA
+	tristate "ZTE ZX DMA support"
+	depends on ARCH_ZX || COMPILE_TEST
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	help
+	  Support the DMA engine for ZTE ZX family platform devices.
+
+config KVX_DMA_NOC
+	tristate "KVX DMA Engine for NOC"
+	depends on (OF || 64BIT || KVX)
 	select DMA_ENGINE
 	select DMA_VIRTUAL_CHANNELS
 	select GENERIC_ALLOCATOR

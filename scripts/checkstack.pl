@@ -112,7 +112,7 @@ my (@stack, $re, $dre, $sub, $x, $xs, $funcre, $min_stack);
 	} elsif ($arch =~ /^riscv(64)?$/) {
 		#ffffffff8036e868:	c2010113          	addi	sp,sp,-992
 		$re = qr/.*addi.*sp,sp,-(([0-9]{2}|[3-9])[0-9]{2})/o;
-	} elsif ($arch eq 'k1c') {
+	} elsif ($arch eq 'kvx') {
 	        # ffffff8000f5a394:  0c ee 30 61  addd $r12 = $r12, -72 (0xffffffb8);;
 		$re = qr/.*addd.*\$r12, -(([0-9]{2}|[3-9])[0-9]{2})/o;
 	} else {
