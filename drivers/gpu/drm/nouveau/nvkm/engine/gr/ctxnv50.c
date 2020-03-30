@@ -1177,7 +1177,7 @@ static void nv50_gr_construct_gene_unk24xx(struct nvkm_grctx *ctx);
 static void nv50_gr_construct_gene_vfetch(struct nvkm_grctx *ctx);
 static void nv50_gr_construct_gene_eng2d(struct nvkm_grctx *ctx);
 static void nv50_gr_construct_gene_csched(struct nvkm_grctx *ctx);
-static void nv50_gr_construct_gene_unk1cxx(struct nvkm_grctx *ctx);
+static void nv50_gr_construct_gene_unkvxxx(struct nvkm_grctx *ctx);
 static void nv50_gr_construct_gene_strmout(struct nvkm_grctx *ctx);
 static void nv50_gr_construct_gene_unk34xx(struct nvkm_grctx *ctx);
 static void nv50_gr_construct_gene_ropm1(struct nvkm_grctx *ctx);
@@ -1221,7 +1221,7 @@ nv50_gr_construct_xfer1(struct nvkm_grctx *ctx)
 		/* Strand 2 */
 		ctx->ctxvals_pos = offset + 0x2;
 		nv50_gr_construct_gene_ccache(ctx);
-		nv50_gr_construct_gene_unk1cxx(ctx);
+		nv50_gr_construct_gene_unkvxxx(ctx);
 		nv50_gr_construct_gene_strmout(ctx);
 		nv50_gr_construct_gene_unk14xx(ctx);
 		nv50_gr_construct_gene_unk10xx(ctx);
@@ -1254,7 +1254,7 @@ nv50_gr_construct_xfer1(struct nvkm_grctx *ctx)
 		nv50_gr_construct_gene_m2mf(ctx);
 		nv50_gr_construct_gene_unk34xx(ctx);
 		nv50_gr_construct_gene_csched(ctx);
-		nv50_gr_construct_gene_unk1cxx(ctx);
+		nv50_gr_construct_gene_unkvxxx(ctx);
 		nv50_gr_construct_gene_strmout(ctx);
 		if ((ctx->ctxvals_pos-offset)/8 > size)
 			size = (ctx->ctxvals_pos-offset)/8;
@@ -2232,7 +2232,7 @@ nv50_gr_construct_gene_csched(struct nvkm_grctx *ctx)
 }
 
 static void
-nv50_gr_construct_gene_unk1cxx(struct nvkm_grctx *ctx)
+nv50_gr_construct_gene_unkvxxx(struct nvkm_grctx *ctx)
 {
 	struct nvkm_device *device = ctx->device;
 	xf_emit(ctx, 2, 0);		/* 00007fff WINDOW_OFFSET_XY */
@@ -2319,7 +2319,7 @@ nv50_gr_construct_gene_unk1cxx(struct nvkm_grctx *ctx)
 		xf_emit(ctx, 1, 3);	/* 00000003 tesla UNK1100 */
 		xf_emit(ctx, 1, 0);	/* 3ff */
 	}
-	/* XXX: the following block could belong either to unk1cxx, or
+	/* XXX: the following block could belong either to unkvxxx, or
 	 * to STRMOUT. Rather hard to tell. */
 	if (device->chipset < 0xa0)
 		xf_emit(ctx, 0x25, 0);

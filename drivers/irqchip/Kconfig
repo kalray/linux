@@ -335,36 +335,36 @@ config MIPS_GIC
 	select IRQ_DOMAIN_HIERARCHY
 	select MIPS_CM
 
-config K1C_CORE_INTC
+config KVX_CORE_INTC
 	bool
-	depends on K1C
+	depends on KVX
 	select IRQ_DOMAIN
 
-config K1C_APIC_GIC
+config KVX_APIC_GIC
 	bool
-	depends on K1C
+	depends on KVX
 	select IRQ_DOMAIN
 	select IRQ_DOMAIN_HIERARCHY
 
-config K1C_APIC_MAILBOX
+config KVX_APIC_MAILBOX
 	bool
-	depends on K1C
+	depends on KVX
 	select GENERIC_IRQ_IPI
 	select GENERIC_MSI_IRQ_DOMAIN
 	select IRQ_DOMAIN
 	select IRQ_DOMAIN_HIERARCHY
 
-config K1C_ITGEN
+config KVX_ITGEN
 	bool
-	depends on K1C
+	depends on KVX
 	select GENERIC_IRQ_IPI
 	select GENERIC_MSI_IRQ_DOMAIN
 	select IRQ_DOMAIN
 	select IRQ_DOMAIN_HIERARCHY
 
-config K1C_PCI_MSI
+config KVX_PCI_MSI
 	bool
-	depends on K1C
+	depends on KVX
 	depends on HAVE_PCI
 	depends on PCI_MSI
 	select IRQ_DOMAIN
