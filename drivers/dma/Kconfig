@@ -710,9 +710,9 @@ config ZX_DMA
 	help
 	  Support the DMA engine for ZTE ZX family platform devices.
 
-config K1C_DMA_NOC
-	tristate "K1C DMA Engine for NOC"
-	depends on (OF || 64BIT || K1C)
+config KVX_DMA_NOC
+	tristate "KVX DMA Engine for NOC"
+	depends on (OF || 64BIT || KVX)
 	select DMA_ENGINE
 	select DMA_VIRTUAL_CHANNELS
 	select GENERIC_ALLOCATOR

@@ -170,7 +170,7 @@ number. If CPU is omitted, the CPU of the current context is used."""
 
     def invoke(self, cpu=-1):
 
-        if utils.is_target_arch("k1:k1c"):
+        if utils.is_target_arch("k1:kvx"):
             if cpu != -1:
                 raise gdb.GdbError("Only current cpu is supported for lx_current")
             var_ptr = gdb.parse_and_eval("(struct task_struct *) $sr")

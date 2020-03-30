@@ -1,0 +1,71 @@
+Kalray MSI/MSI-X controller DT description
+
+
+
+Required properties :
+- compatible: Should contain "kalray,kvx-pcimsi"
+- reg : an array containing the MSI/MSI-X controller registers location.
+        (up to 8 controller are supported)
+- composite-parent : array of pointers to itgen responsible for interrupt generation
+		towards the core. The number of elements shall be the same as the
+		number of reg entries.
+- msi-controller : indicate that the device is a msi controller.
+
+
+
+Example :
+
+itgen_pcie0: itgen_pcie@0x1128310000 {
+	...
+};
+
+itgen_pcie1: itgen_pcie@0x1128310000 {
+	...
+};
+
+itgen_pcie2: itgen_pcie@0x1128310000 {
+	...
+};
+
+itgen_pcie3: itgen_pcie@0x1128310000 {
+	...
+};
+
+itgen_pcie4: itgen_pcie@0x1128310000 {
+	...
+};
+
+itgen_pcie5: itgen_pcie@0x1128310000 {
+	...
+};
+
+itgen_pcie6: itgen_pcie@0x1128310000 {
+	...
+};
+
+itgen_pcie7: itgen_pcie@0x1128310000 {
+	...
+};
+
+pcimsi_ctrl: pcimsi@0 {
+	compatible = "kalray,kvx-pcimsi";
+	reg = <0x51 0x28312000 0x0 0x1000>,
+		  <0x51 0x28316000 0x0 0x1000>,
+		  <0x51 0x2831A000 0x0 0x1000>,
+		  <0x51 0x2831E000 0x0 0x1000>,
+		  <0x51 0x28322000 0x0 0x1000>,
+		  <0x51 0x28326000 0x0 0x1000>,
+		  <0x51 0x2832A000 0x0 0x1000>,
+		  <0x51 0x2832E000 0x0 0x1000>;
+	composite-parents =
+		<&itgen_pcie0>,
+		<&itgen_pcie1>,
+		<&itgen_pcie2>,
+		<&itgen_pcie3>,
+		<&itgen_pcie4>,
+		<&itgen_pcie5>,
+		<&itgen_pcie6>,
+		<&itgen_pcie7>;
+	msi-controller;
+};
+
