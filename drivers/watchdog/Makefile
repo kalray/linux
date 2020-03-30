@@ -144,8 +144,8 @@ obj-$(CONFIG_NIC7018_WDT) += nic7018_wdt.o
 obj-$(CONFIG_MLX_WDT) += mlx_wdt.o
 obj-$(CONFIG_KEEMBAY_WATCHDOG) += keembay_wdt.o
 
-# K1C Architecture
-obj-$(CONFIG_K1C_WATCHDOG) += k1c_wdt.o
+# KVX Architecture
+obj-$(CONFIG_KVX_WATCHDOG) += kvx_wdt.o
 
 # M68K Architecture
 obj-$(CONFIG_M54xx_WATCHDOG) += m54xx_wdt.o
