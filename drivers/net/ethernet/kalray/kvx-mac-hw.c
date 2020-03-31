@@ -508,7 +508,7 @@ static int kvx_eth_phy_serdes_cfg(struct kvx_eth_hw *hw,
 
 int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	kvx_eth_phy_reset(hw, 1);
+	kvx_eth_phy_serdes_cfg(hw, cfg);
 
 	return 0;
 }
