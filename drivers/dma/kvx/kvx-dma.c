@@ -1318,8 +1318,6 @@ static int kvx_dma_probe(struct platform_device *pdev)
 		return -ENODEV;
 	dev->err_irq = irq;
 
-	platform_set_drvdata(pdev, dev);
-
 	ret = kvx_dma_parse_dt(pdev, dev);
 	if (ret)
 		return ret;
@@ -1348,6 +1346,7 @@ static int kvx_dma_probe(struct platform_device *pdev)
 		}
 	}
 	dev_cnt++;
+	platform_set_drvdata(pdev, dev);
 
 	/* DMA struct fields */
 	dma = &dev->dma;
@@ -1374,7 +1373,7 @@ static int kvx_dma_probe(struct platform_device *pdev)
 	ret = dma_set_mask_and_coherent(dev->dma.dev, DMA_BIT_MASK(64));
 	if (ret) {
 		dev_err(dev->dma.dev, "DMA set mask failed\n");
-		return ret;
+		goto err;
 	}
 
 	snprintf(name, KVX_STR_LEN, KVX_DMA_DRIVER_NAME"_%d", dev_cnt);
@@ -1384,20 +1383,21 @@ static int kvx_dma_probe(struct platform_device *pdev)
 	ret = kvx_dma_allocate_phy(dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Unable to allocate hw fifo\n");
-		return ret;
+		goto err;
 	}
 
 	if (devm_request_irq(&pdev->dev, dev->err_irq, kvx_dma_err_irq_handler,
 			     0, dev_name(&pdev->dev), (void *)dev)) {
 		dev_err(&pdev->dev, "Failed to register dma-noc error irq");
-		return -ENODEV;
+		ret = -ENODEV;
+		goto err;
 	}
 
 	/* Request irqs in mailbox */
 	ret = kvx_dma_request_msi(pdev);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to request MSI\n");
-		return ret;
+		goto err;
 	}
 
 	dev->chan = devm_kcalloc(&pdev->dev, dev->dma_channels,
@@ -1405,8 +1405,8 @@ static int kvx_dma_probe(struct platform_device *pdev)
 						GFP_KERNEL);
 	if (!dev->chan) {
 		dev_err(&pdev->dev, "Failed to alloc virtual channels\n");
-		kvx_dma_free_msi(pdev);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto err_msi;
 	}
 
 	/* Parse all hw channels */
@@ -1450,9 +1450,11 @@ err_sysfs:
 	dma_async_device_unregister(dma);
 err_nodev:
 	debugfs_remove_recursive(dev->dbg);
-	kvx_dma_free_msi(pdev);
 	kmem_cache_destroy(dev->desc_cache);
 	of_reserved_mem_device_release(&pdev->dev);
+err_msi:
+	kvx_dma_free_msi(pdev);
+err:
 	platform_set_drvdata(pdev, NULL);
 	return -ENODEV;
 }
