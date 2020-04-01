@@ -237,19 +237,25 @@ void kvx_eth_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	cfg->lb_f.hw = hw;
+	int i = 0;
+
+	for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
+		hw->lb_f[i].id = i;
+		hw->lb_f[i].hw = hw;
+	}
 }
 
 void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	int i, l = cfg->id;
+	struct kvx_eth_lb_f *lb_f = &hw->lb_f[l];
 
-	cfg->lb_f.default_dispatch_policy = DEFAULT_ROUND_ROBIN;
-	cfg->lb_f.store_and_forward = 1;
+	lb_f->default_dispatch_policy = DEFAULT_ROUND_ROBIN;
+	lb_f->store_and_forward = 1;
 	/* 0: Drop, 1: keep all pkt with crc error */
-	cfg->lb_f.keep_all_crc_error_pkt = 1;
-	cfg->lb_f.add_header = 0;
-	cfg->lb_f.add_footer = 1;
+	lb_f->keep_all_crc_error_pkt = 1;
+	lb_f->add_header = 0;
+	lb_f->add_footer = 0;
 
 	for (i = 0; i < RX_LB_DEFAULT_RULE_LANE_RR_TARGET_ARRAY_SIZE; ++i)
 		kvx_eth_writel(hw, 0, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(l, i));
@@ -259,11 +265,9 @@ void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 {
-	u32 val = lb->default_dispatch_policy <<
+	u32 reg, val = lb->default_dispatch_policy <<
 		RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_SHIFT;
-	struct kvx_eth_lane_cfg *cfg = container_of(lb,
-					    struct kvx_eth_lane_cfg, lb_f);
-	int lane = cfg->id;
+	int lane = lb->id;
 
 	updatel_bits(hw, ETH, RX_LB_DEFAULT_RULE_LANE_CTRL(lane),
 		    RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_MASK, val);
@@ -279,14 +283,23 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 		(lb->add_header << RX_LB_CTRL_ADD_HEADER_SHIFT) |
 		(lb->add_footer << RX_LB_CTRL_ADD_FOOTER_SHIFT);
 	kvx_eth_writel(hw, val, RX_LB_CTRL(lane));
-}
 
-void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
-{
-	struct kvx_eth_lb_f *lb = &cfg->lb_f;
-
-	kvx_eth_lb_f_cfg(hw, lb);
-	kvx_eth_pfc_cfg(hw, cfg);
+	reg = RX_LB_DROP_CNT_OFFSET + RX_LB_DROP_CNT_LANE_OFFSET +
+		lane * RX_LB_DROP_CNT_LANE_ELEM_SIZE;
+	lb->drop_mtu_cnt = kvx_eth_readl(hw,
+				 reg + RX_LB_DROP_CNT_LANE_MTU_OFFSET);
+	lb->drop_fcs_cnt = kvx_eth_readl(hw,
+				 reg + RX_LB_DROP_CNT_LANE_FCS_OFFSET);
+	lb->drop_crc_cnt = kvx_eth_readl(hw,
+				 reg + RX_LB_DROP_CNT_LANE_FIFO_CRC_OFFSET);
+	lb->drop_rule_cnt = kvx_eth_readl(hw,
+				 reg + RX_LB_DROP_CNT_LANE_RULE_OFFSET);
+	lb->drop_fifo_overflow_cnt = kvx_eth_readl(hw,
+				 reg + RX_LB_DROP_CNT_LANE_FIFO_OFFSET);
+	lb->drop_total_cnt = kvx_eth_readl(hw,
+				 reg + RX_LB_DROP_CNT_LANE_TOTAL_OFFSET);
+	lb->default_hit_cnt = kvx_eth_readl(hw,
+				 RX_LB_DEFAULT_RULE_LANE_CTRL(lane) + 4);
 }
 
 /**
