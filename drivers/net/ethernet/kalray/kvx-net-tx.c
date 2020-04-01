@@ -74,6 +74,11 @@ void kvx_eth_tx_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_f *f)
 		((u32)f->global << TX_FIFO_CTRL_GLOBAL_SHIFT) |
 		((u32)hw->asn << TX_FIFO_CTRL_ASN_SHIFT);
 	kvx_eth_writel(hw, val, off + TX_FIFO_CTRL_OFFSET);
+
+	f->drop_cnt = kvx_eth_readl(hw, off + TX_FIFO_DROP_CNT_OFFSET);
+	val = kvx_eth_readl(hw, off + TX_FIFO_STATUS_OFFSET);
+	f->fifo_level = GETF(val, TX_FIFO_LEVEL);
+	f->xoff = GETF(val, TX_FIFO_XOFF);
 }
 
 void kvx_eth_tx_fifo_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
