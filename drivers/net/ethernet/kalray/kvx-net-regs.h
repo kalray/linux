@@ -50,6 +50,10 @@
 #define TX_FIFO_CTRL_ASN_SHIFT                     0x7
 #define TX_FIFO_CTRL_ASN_MASK                      0xFF80UL
 #define TX_FIFO_XOFF_CTRL_OFFSET                   0x14
+#define TX_FIFO_LEVEL_SHIFT                        0x0
+#define TX_FIFO_LEVEL_MASK                         0xFFFFUL
+#define TX_FIFO_XOFF_SHIFT                         0x10
+#define TX_FIFO_XOFF_MASK                          0x10000UL
 #define TX_FIFO_STATUS_OFFSET                      0x18
 #define TX_FIFO_DROP_CNT_OFFSET                    0x1C
 
@@ -160,6 +164,7 @@
 #define PARSER_CTRL_HIT_CNT                        0xC
 #define PARSER_CTRL_RR_TARGET                      0x14
 #define PARSER_CTRL_RR_TARGET_ELEM_SIZE            0x4
+#define PARSER_CTRL_RR_TARGET_ARRAY_SIZE           0xA
 
 /* RX_LB_PARSER_RAM */
 #define PARSER_RAM_OFFSET                          0x0
