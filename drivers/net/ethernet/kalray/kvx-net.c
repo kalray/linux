@@ -1419,10 +1419,11 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	kvx_mac_set_addr(&dev->hw, &ndev->cfg);
 	kvx_eth_lb_set_default(&dev->hw, &ndev->cfg);
 	kvx_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
-	kvx_eth_lb_cfg(&dev->hw, &ndev->cfg);
+	kvx_eth_lb_set_default(&dev->hw, &ndev->cfg);
 	kvx_eth_fill_dispatch_table(&dev->hw, &ndev->cfg,
 				    ndev->dma_cfg.rx_chan_id.start);
 	kvx_eth_tx_fifo_cfg(&dev->hw, &ndev->cfg);
+	kvx_eth_lb_f_cfg(&dev->hw, &ndev->hw->lb_f[ndev->cfg.id]);
 
 	ret = kvx_eth_sysfs_init(ndev);
 	if (ret)
