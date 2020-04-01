@@ -214,6 +214,8 @@ struct kvx_eth_dt_f {
  * @loopback_mode: mac loopback mode
  */
 struct kvx_eth_mac_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
 	u8 addr[ETH_ALEN];
 	enum kvx_eth_loopback_mode loopback_mode;
 	enum kvx_eth_pfc_mode pfc_mode;
@@ -437,7 +439,8 @@ void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
 
 /* PHY */
 int kvx_eth_phy_serdes_init(struct kvx_eth_hw *h, struct kvx_eth_lane_cfg *cfg);
-void force_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
+		      bool enable);
 void kvx_phy_param_tuning(struct kvx_eth_hw *hw, int lane_id,
 			  struct phy_param *param);
 
@@ -451,6 +454,8 @@ int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_mac_reset(struct kvx_eth_hw *hw);
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
+void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
 int kvx_eth_mac_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 
 /* LB */
