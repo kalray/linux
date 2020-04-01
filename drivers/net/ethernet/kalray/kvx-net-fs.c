@@ -71,6 +71,23 @@ static ssize_t f##_store(struct kvx_eth_##s *p, const char *buf, size_t count) \
 } \
 static struct sysfs_##s##_entry f##_attr = __ATTR_RW(f)
 
+#define FIELD_R_ENTRY(s, f, min, max) \
+static ssize_t f##_show(struct kvx_eth_##s *p, char *buf) \
+{ \
+	return scnprintf(buf, STR_LEN, "%i\n", p->f); \
+} \
+static struct sysfs_##s##_entry f##_attr = __ATTR_RO(f)
+
+DECLARE_SYSFS_ENTRY(mac_f);
+FIELD_RW_ENTRY(mac_f, loopback_mode, 0, MAC_RX2TX_LOOPBACK);
+FIELD_R_ENTRY(mac_f, pfc_mode, 0, MAC_PAUSE);
+
+static struct attribute *mac_f_attrs[] = {
+	&loopback_mode_attr.attr,
+	&pfc_mode_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(mac_f);
 
 DECLARE_SYSFS_ENTRY(lb_f);
 FIELD_RW_ENTRY(lb_f, default_dispatch_policy,
@@ -171,6 +188,8 @@ struct sysfs_type {
 };
 
 static const struct sysfs_type t[] = {
+	{.name = "mac", .offset = offsetof(struct kvx_eth_lane_cfg, mac_f.kobj),
+		.type = &mac_f_ktype },
 	{.name = "lb", .offset = offsetof(struct kvx_eth_lane_cfg, lb_f.kobj),
 		.type = &lb_f_ktype },
 	{.name = "pfc", .offset = offsetof(struct kvx_eth_lane_cfg, pfc_f.kobj),
