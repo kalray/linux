@@ -961,8 +961,6 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	if (ret)
 		return ret;
 
-	if (cfg->mac_f.loopback_mode == PHY_PMA_LOOPBACK)
-		force_phy_loopback(hw, cfg);
 
 	mask = (u32)(hw->pll_cfg.serdes_mask <<
 		     PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT);
@@ -986,6 +984,33 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	kvx_eth_wait_link_up(hw, cfg);
 
 	return 0;
+}
+
+void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	cfg->mac_f.hw = hw;
+	cfg->mac_f.loopback_mode = NO_LOOPBACK;
+}
+
+void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
+{
+	struct kvx_eth_lane_cfg *cfg = container_of(mac_f,
+					    struct kvx_eth_lane_cfg, mac_f);
+
+	if (mac_f->loopback_mode == MAC_SERDES_LOOPBACK) {
+		/* Must be set in pstate P0 */
+		dev_info(hw->dev, "Mac/Phy TX2RX loopback!!!\n");
+
+		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
+			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK,
+			     (u32)0xF << PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT);
+	} else if (mac_f->loopback_mode == PHY_PMA_LOOPBACK) {
+		kvx_phy_loopback(hw, cfg, true);
+	} else {
+		kvx_phy_loopback(hw, cfg, false);
+		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
+			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, 0);
+	}
 }
 
 void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
