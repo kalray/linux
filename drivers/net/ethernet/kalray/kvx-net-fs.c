@@ -96,6 +96,13 @@ FIELD_RW_ENTRY(lb_f, keep_all_crc_error_pkt, 0, 1);
 FIELD_RW_ENTRY(lb_f, store_and_forward, 0, 1);
 FIELD_RW_ENTRY(lb_f, add_header, 0, 1);
 FIELD_RW_ENTRY(lb_f, add_footer, 0, 1);
+FIELD_RW_ENTRY(lb_f, drop_mtu_cnt, 0, 1);
+FIELD_RW_ENTRY(lb_f, drop_fcs_cnt, 0, 1);
+FIELD_RW_ENTRY(lb_f, drop_crc_cnt, 0, 1);
+FIELD_RW_ENTRY(lb_f, drop_rule_cnt, 0, 1);
+FIELD_RW_ENTRY(lb_f, drop_fifo_overflow_cnt, 0, 1);
+FIELD_RW_ENTRY(lb_f, drop_total_cnt, 0, 1);
+FIELD_RW_ENTRY(lb_f, default_hit_cnt, 0, 1);
 
 static struct attribute *lb_f_attrs[] = {
 	&default_dispatch_policy_attr.attr,
@@ -103,6 +110,13 @@ static struct attribute *lb_f_attrs[] = {
 	&store_and_forward_attr.attr,
 	&add_header_attr.attr,
 	&add_footer_attr.attr,
+	&drop_mtu_cnt_attr.attr,
+	&drop_fcs_cnt_attr.attr,
+	&drop_crc_cnt_attr.attr,
+	&drop_rule_cnt_attr.attr,
+	&drop_fifo_overflow_cnt_attr.attr,
+	&drop_total_cnt_attr.attr,
+	&default_hit_cnt_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(lb_f);
@@ -190,8 +204,6 @@ struct sysfs_type {
 static const struct sysfs_type t[] = {
 	{.name = "mac", .offset = offsetof(struct kvx_eth_lane_cfg, mac_f.kobj),
 		.type = &mac_f_ktype },
-	{.name = "lb", .offset = offsetof(struct kvx_eth_lane_cfg, lb_f.kobj),
-		.type = &lb_f_ktype },
 	{.name = "pfc", .offset = offsetof(struct kvx_eth_lane_cfg, pfc_f.kobj),
 		.type = &pfc_f_ktype },
 };
@@ -220,6 +232,7 @@ static void kvx_eth_kobject_del(struct kvx_eth_lane_cfg *cfg,
 	kobject_put(kobj);
 }
 
+static struct kset *lb_kset;
 static struct kset *tx_kset;
 static struct kset *dt_kset;
 static struct kset *pfc_cl_kset;
@@ -270,6 +283,7 @@ void kvx_kset_##s##_remove(struct kvx_eth_netdev *ndev, struct kset *k, \
 	kset_unregister(k); \
 }
 
+kvx_declare_kset(lb_f, "lb")
 kvx_declare_kset(tx_f, "tx")
 kvx_declare_kset(cl_f, "pfc_cl")
 kvx_declare_kset(dt_f, "dispatch_table")
@@ -283,6 +297,11 @@ int kvx_eth_sysfs_init(struct kvx_eth_netdev *ndev)
 		if (ret)
 			goto err;
 	}
+
+	ret = kvx_kset_lb_f_create(ndev, lb_kset, &ndev->hw->lb_f[0],
+				   KVX_ETH_LANE_NB);
+	if (ret)
+		goto err;
 
 	ret = kvx_kset_tx_f_create(ndev, tx_kset, &ndev->hw->tx_f[0],
 				   TX_FIFO_NB);
@@ -316,6 +335,8 @@ void kvx_eth_sysfs_remove(struct kvx_eth_netdev *ndev)
 	kvx_kset_cl_f_remove(ndev, pfc_cl_kset, &ndev->cfg.cl_f[0],
 			     KVX_ETH_PFC_CLASS_NB);
 	kvx_kset_tx_f_remove(ndev, tx_kset, &ndev->hw->tx_f[0], TX_FIFO_NB);
+	kvx_kset_lb_f_remove(ndev, lb_kset, &ndev->hw->lb_f[0],
+			     KVX_ETH_LANE_NB);
 	for (i = 0; i < ARRAY_SIZE(t); ++i)
 		kvx_eth_kobject_del(&ndev->cfg, &t[i]);
 }
