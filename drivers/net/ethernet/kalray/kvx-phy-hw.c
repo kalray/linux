@@ -33,15 +33,26 @@
 #define POST_OVRD_EN_MASK            0x2000UL
 
 #define RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN 0x180A0
+#define LANE_TX2RX_SER_LB_EN_OVRD_EN_SHIFT  3
+#define LANE_TX2RX_SER_LB_EN_OVRD_VAL_SHIFT 2
+#define LANE_RX2TX_PAR_LB_EN_OVRD_EN_SHIFT  1
 
-void force_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+
+void kvx_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
+		      bool enable)
 {
 	u32 off, val;
+	u32 mask = BIT(LANE_TX2RX_SER_LB_EN_OVRD_EN_SHIFT) |
+		BIT(LANE_TX2RX_SER_LB_EN_OVRD_VAL_SHIFT) |
+		BIT(LANE_RX2TX_PAR_LB_EN_OVRD_EN_SHIFT);
 
 	/* RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN */
 	off = RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN;
 	val = readw(hw->res[KVX_ETH_RES_PHY].base + off);
-	val |= 0xE;
+	if (enable)
+		val |= mask;
+	else
+		val &= ~mask;
 	writew(val, hw->res[KVX_ETH_RES_PHY].base + off);
 }
 
