@@ -893,6 +893,31 @@ void kvx_eth_release_tx_res(struct net_device *netdev)
 	ring->tx_buf = NULL;
 }
 
+/* kvx_eth_check_dma() - Check dma noc driver and device correclty loaded
+ *
+ * @pdev: netdev platform device pointer
+ * @np_dma: dma device node pointer
+ * Return: dma platform device on success, NULL on failure
+ */
+static struct platform_device *kvx_eth_check_dma(struct platform_device *pdev,
+						 struct device_node **np_dma)
+{
+	struct platform_device *dma_pdev;
+
+	*np_dma = of_parse_phandle(pdev->dev.of_node, "dmas", 0);
+	if (!(*np_dma)) {
+		dev_err(&pdev->dev, "Failed to get dma\n");
+		return NULL;
+	}
+	dma_pdev = of_find_device_by_node(*np_dma);
+	if (!dma_pdev || !platform_get_drvdata(dma_pdev)) {
+		dev_err(&pdev->dev, "Failed to get dma_noc platform_device\n");
+		return NULL;
+	}
+
+	return dma_pdev;
+}
+
 /* kvx_eth_parse_dt() - Parse device tree inputs
  *
  * Sets dma properties accordingly (dma_mem and iommu nodes)
@@ -910,16 +935,9 @@ int kvx_eth_parse_dt(struct platform_device *pdev, struct kvx_eth_netdev *ndev)
 	int ret = 0;
 	int rtm;
 
-	np_dma = of_parse_phandle(np, "dmas", 0);
-	if (!np_dma) {
-		dev_err(&pdev->dev, "Failed to get dma\n");
-		return -EINVAL;
-	}
-	dma_cfg->pdev = of_find_device_by_node(np_dma);
-	if (!dma_cfg->pdev) {
-		dev_err(&pdev->dev, "Failed to dma_noc platform_device\n");
-		return -EINVAL;
-	}
+	dma_cfg->pdev = kvx_eth_check_dma(pdev, &np_dma);
+	if (!dma_cfg->pdev)
+		return -ENODEV;
 
 	ret = of_dma_configure(&pdev->dev, np_dma, true);
 	if (ret) {
@@ -1276,11 +1294,17 @@ static int kvx_eth_free_netdev(struct kvx_eth_netdev *ndev)
  */
 static int kvx_netdev_probe(struct platform_device *pdev)
 {
-	struct device_node *np_dev = of_get_parent(pdev->dev.of_node);
+	struct device_node *np_dma, *np_dev = of_get_parent(pdev->dev.of_node);
 	struct platform_device *ppdev = of_find_device_by_node(np_dev);
 	struct kvx_eth_dev *dev = platform_get_drvdata(ppdev);
 	struct kvx_eth_netdev *ndev = NULL;
+	struct platform_device *dma_pdev;
 	int ret = 0;
+
+	/* Check dma noc probed and available */
+	dma_pdev = kvx_eth_check_dma(pdev, &np_dma);
+	if (!dma_pdev)
+		return -ENODEV;
 
 	/* Config DMA */
 	dmaengine_get();
