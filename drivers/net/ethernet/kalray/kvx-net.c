@@ -121,7 +121,7 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 	ndev->cfg.speed = SPEED_UNKNOWN;
 	ndev->cfg.duplex = DUPLEX_UNKNOWN;
 	ndev->hw->fec_en = 0;
-	ndev->cfg.mac_f.loopback_mode = NO_LOOPBACK;
+	kvx_eth_mac_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_dt_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_lb_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_pfc_f_init(ndev->hw, &ndev->cfg);
