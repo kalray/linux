@@ -179,6 +179,9 @@ struct kvx_eth_pfc_f {
  * @pause_en: Enable global pause
  * @rr_trigger: Max number of consecutive ethernet pkts that tx fifo can send
  *              when winning round-robin arbitration (0 means 16 pkts).
+ * @xoff: xoff status (RO)
+ * @fifo_level: Fifo current level (RO)
+ * @drop_cnt: Number of packet drop (RO)
  */
 struct kvx_eth_tx_f {
 	struct kobject kobj;
@@ -194,6 +197,9 @@ struct kvx_eth_tx_f {
 	u8 pfc_en;
 	u8 pause_en;
 	u16 rr_trigger;
+	u16 xoff;
+	u32 fifo_level;
+	u32 drop_cnt;
 };
 
 /**

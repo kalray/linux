@@ -146,6 +146,10 @@ FIELD_RW_ENTRY(tx_f, nocx_pack_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, pfc_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, pause_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, rr_trigger, 0, 0xF);
+FIELD_RW_ENTRY(tx_f, lane_id, 0, KVX_ETH_LANE_NB - 1);
+FIELD_R_ENTRY(tx_f, drop_cnt, 0, 1);
+FIELD_R_ENTRY(tx_f, fifo_level, 0, 1);
+FIELD_R_ENTRY(tx_f, xoff, 0, 1);
 
 static struct attribute *tx_f_attrs[] = {
 	&header_en_attr.attr,
@@ -155,6 +159,10 @@ static struct attribute *tx_f_attrs[] = {
 	&pfc_en_attr.attr,
 	&pause_en_attr.attr,
 	&rr_trigger_attr.attr,
+	&lane_id_attr.attr,
+	&drop_cnt_attr.attr,
+	&fifo_level_attr.attr,
+	&xoff_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(tx_f);
