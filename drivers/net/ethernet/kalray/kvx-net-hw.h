@@ -114,6 +114,14 @@ struct kvx_eth_lb_f {
 	u8 keep_all_crc_error_pkt;
 	u8 add_header;
 	u8 add_footer;
+	u32 drop_mtu_cnt;
+	u32 drop_fcs_cnt;
+	u32 drop_crc_cnt;
+	u32 drop_rule_cnt;
+	u32 drop_fifo_overflow_cnt;
+	u32 drop_total_cnt;
+	u32 default_hit_cnt;
+	int id;
 };
 
 /**
@@ -257,7 +265,6 @@ struct kvx_eth_lane_cfg {
 	unsigned int speed;
 	unsigned int duplex;
 	struct kvx_eth_hw *hw;
-	struct kvx_eth_lb_f lb_f;
 	struct list_head tx_fifo_list;
 	struct kvx_eth_pfc_f pfc_f;
 	struct kvx_eth_cl_f cl_f[KVX_ETH_PFC_CLASS_NB];
@@ -315,6 +322,7 @@ struct kvx_eth_hw {
 	struct device *dev;
 	struct kvx_eth_res res[KVX_ETH_NUM_RES];
 	struct kvx_eth_parsing parsing;
+	struct kvx_eth_lb_f lb_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
 	u32 eth_id;
@@ -465,7 +473,7 @@ u32 kvx_eth_lb_has_footer(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id);
-void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg, u32 rx_tag);
