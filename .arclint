@@ -7,7 +7,7 @@
     "linux_coccinelle": {
       "type": "script-and-regex",
       "include": "(\\.(c)$)",
-      "script-and-regex.script": "sh -c 'make coccicheck COCCI_EXCLUDE=\"add_namespace.cocci\" MODE=report M=\"$0\"'",
+      "script-and-regex.script": "sh -c 'make coccicheck COCCI_EXCLUDE=\"boolconv\\|boolinit\" MODE=report M=\"$0\"'",
       "script-and-regex.regex": "/^(.*):(?P<line>[0-9]*):([0-9]*)-([0-9]*): (?P<severity>[A-Z]*): (?P<message>.*)$/m"
     }
   }
