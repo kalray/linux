@@ -33,6 +33,9 @@ void kvx_pwr_ctrl_cpu_poweron(unsigned int cpu)
 	/* Wake up processor ! */
 	writeq(1ULL << cpu,
 	       kvx_pwr_controller.regs + PWR_CTRL_WUP_SET_OFFSET);
+	/* Then clear wakeup to allow processor to sleep */
+	writeq(1ULL << cpu,
+	       kvx_pwr_controller.regs + PWR_CTRL_WUP_CLEAR_OFFSET);
 }
 
 static struct device_node * __init get_pwr_ctrl_node(void)
