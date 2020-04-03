@@ -13,6 +13,7 @@
 #include <asm/types.h>
 #include <asm/segment.h>
 #include <asm/ptrace.h>
+#include <asm/sfr_defs.h>
 
 #define ARCH_HAS_PREFETCH
 #define ARCH_HAS_PREFETCHW
@@ -153,6 +154,18 @@ static inline void wait_for_interrupt(void)
 {
 	__builtin_kvx_await();
 	kvx_sfr_set_field(WS, WU0, 0);
+}
+
+static inline void local_cpu_stop(void)
+{
+	/* Clear Wake-Up 2 to allow stop instruction to work */
+	kvx_sfr_set_field(WS, WU2, 0);
+	__asm__ __volatile__ (
+		"1: stop\n"
+		";;\n"
+		"goto 1b\n"
+		";;\n"
+	);
 }
 
 #endif	/* _ASM_KVX_PROCESSOR_H */
