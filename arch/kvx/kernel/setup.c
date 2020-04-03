@@ -66,7 +66,7 @@ static void __init setup_user_privilege(void)
 void __init setup_processor(void)
 {
 	/* Clear performance monitor 0 */
-	kvx_sfr_set_mask(PMC, KVX_SFR_PMC_PM0C_WFXL_MASK, 0);
+	kvx_sfr_set_field(PMC, PM0C, 0);
 
 #ifdef CONFIG_ENABLE_TCA
 	/* Enable TCA (COE = Coprocessor Enable) */
