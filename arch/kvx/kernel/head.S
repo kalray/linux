@@ -329,6 +329,9 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	/* Wake up PE0 */
 	sd PWR_CTRL_WUP_SET_OFFSET[$r26] = $r27
 	;;
+	/* And clear wakeup to allow PE0 to sleep */
+	sd PWR_CTRL_WUP_CLEAR_OFFSET[$r26] = $r27
+	;;
 	/* Load device tree for RM firmware  */
 	make $r21 = __PA(__dtb_start)
 	/* Check if magic is in $r0, if so, device tree to use is in $r2 */
