@@ -69,8 +69,7 @@ void arch_irq_work_raise(void)
 
 static void ipi_stop(void *unused)
 {
-	while (1)
-		arch_cpu_idle();
+	local_cpu_stop();
 }
 
 void smp_send_stop(void)
