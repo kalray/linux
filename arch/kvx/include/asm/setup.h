@@ -9,10 +9,12 @@
 #ifndef _ASM_KVX_SETUP_H
 #define _ASM_KVX_SETUP_H
 
+#include <linux/const.h>
+
 #include <asm-generic/setup.h>
 
 /* Magic is found in r0 when some parameters are given to kernel */
-#define KVX_PARAM_MAGIC		0x494C314B
+#define LINUX_BOOT_PARAM_MAGIC	ULL(0x31564752414E494C)
 
 #ifndef __ASSEMBLY__
 

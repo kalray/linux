@@ -125,19 +125,14 @@ void __init setup_arch(char **cmdline_p)
 }
 
 asmlinkage __visible void __init arch_low_level_start(unsigned long r0,
-				void *cmdline_ptr, void *dtb_ptr)
+						      void *dtb_ptr)
 {
-	void *dt = NULL;
+	void *dt = __dtb_start;
 
 	kvx_mmu_early_setup();
 
-	if (r0 == KVX_PARAM_MAGIC) {
-		strncpy(boot_command_line, __va(cmdline_ptr),
-			COMMAND_LINE_SIZE);
+	if (r0 == LINUX_BOOT_PARAM_MAGIC)
 		dt = __va(dtb_ptr);
-	} else {
-		dt = __dtb_start;
-	}
 
 	if (!early_init_dt_scan(dt))
 		panic("Missing device tree\n");
