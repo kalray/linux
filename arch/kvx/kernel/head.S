@@ -133,8 +133,8 @@
 .endm
 
 /* Boot args */
-#define BOOT_ARGS_COUNT	4
-.align 32
+#define BOOT_ARGS_COUNT	2
+.align 16
 .section .boot.data, "aw", @progbits
 rm_boot_args:
 .skip BOOT_ARGS_COUNT * 8
@@ -142,9 +142,8 @@ rm_boot_args:
 /*
  * This is our entry point. When entering from bootloader,
  * the following registers are set:
- * $r0 is a magic "K1LI" 0x494C314B
- * $r1 is a pointer to the command line (or 0 if no command line)
- * $r2 Device tree pointer
+ * $r0 is a magic (LINUX_BOOT_PARAM_MAGIC)
+ * $r1 device tree pointer
  *
  * WARNING WARNING WARNING
  * ! DO NOT CLOBBER THEM !
@@ -211,7 +210,8 @@ gdb_mmu_enabled:
 	;;
 clear_bss:
 	/* Copy bootloader arguments before cloberring them */
-	copyo $r20r21r22r23 = $r0r1r2r3
+	copyd $r20 = $r0
+	copyd $r21 = $r1
 	;;
 	/* Clear BSS */
 	make $r0 = __bss_start
@@ -223,7 +223,8 @@ clear_bss:
 	make $r41 = init_task
 	;;
 	set $sr = $r41
-	copyo $r0r1r2r3 = $r20r21r22r23
+	copyd $r0 = $r20
+	copyd $r1 = $r21
 	;;
 	addd $sp = $r40, THREAD_SIZE
 	/* Clear frame pointer */
@@ -254,7 +255,7 @@ ENTRY(pe_start_wrapper)
 	make $r27 = PWR_CTRL_ADDR
 	make $r28 = kvx_start
 	;;
-	lo $r0r1r2r3 = 0[$r0]
+	lq $r0r1 = 0[$r0]
 	;;
 	/* Set reset PC back to original value for SMP start */
 	sd KVX_PWR_CTRL_RESET_PC_OFFSET[$r27] = $r28
@@ -308,7 +309,10 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	make $r28 = rm_boot_args
 	;;
 	/* Store parameters for PE0 */
-	so 0[$r28] = $r0r1r2r3
+	sq 0[$r28] = $r0r1
+	/* Copy parameters before calling asm_memzero */
+	copyd $r20 = $r0
+	copyd $r21 = $r1
 	make $r29 = pe_start_wrapper
 	;;
 	/* Set PE reset PC to arguments wrapper */
@@ -332,12 +336,16 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	/* And clear wakeup to allow PE0 to sleep */
 	sd PWR_CTRL_WUP_CLEAR_OFFSET[$r26] = $r27
 	;;
+	/* Restore parameters */
+	copyd $r0 = $r20
+	copyd $r1 = $r21
+	;;
 	/* Load device tree for RM firmware  */
 	make $r21 = __PA(__dtb_start)
-	/* Check if magic is in $r0, if so, device tree to use is in $r2 */
-	compd.eq $r20 = $r0, KVX_PARAM_MAGIC
+	/* Check if magic is in $r0, if so, device tree to use is in $r1 */
+	compd.eq $r20 = $r0, LINUX_BOOT_PARAM_MAGIC
 	;;
-	cmoved.dnez $r20? $r21 = $r2
+	cmoved.dnez $r20? $r21 = $r1
 	;;
 	/* Second argument is regs size */
 	make $r1 = __rm_firmware_regs_end
