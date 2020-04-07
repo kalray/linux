@@ -3294,6 +3294,13 @@ static void virtnet_tx_timeout(struct net_device *dev, unsigned int txqueue)
 		   jiffies_to_usecs(jiffies - READ_ONCE(txq->trans_start)));
 }
 
+static u16 virtio_select_queue(struct net_device *dev,
+			      struct sk_buff *skb,
+			      struct net_device *sb_dev)
+{
+	return skb_get_queue_mapping(skb);
+}
+
 static const struct net_device_ops virtnet_netdev = {
 	.ndo_open            = virtnet_open,
 	.ndo_stop   	     = virtnet_close,
@@ -3310,6 +3317,7 @@ static const struct net_device_ops virtnet_netdev = {
 	.ndo_get_phys_port_name	= virtnet_get_phys_port_name,
 	.ndo_set_features	= virtnet_set_features,
 	.ndo_tx_timeout		= virtnet_tx_timeout,
+	.ndo_select_queue	= virtio_select_queue
 };
 
 static void virtnet_config_changed_work(struct work_struct *work)
