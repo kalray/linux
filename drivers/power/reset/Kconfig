@@ -117,6 +117,15 @@ config POWER_RESET_LINKSTATION
 
 	  Say Y here if you have a Buffalo LinkStation LS421D/E.
 
+config POWER_RESET_KVX_SCALL_POWEROFF
+	bool "Kalray kvx syscall poweroff driver"
+	depends on KVX
+	help
+	  This driver provides power support for KVX via magic syscall.
+
+	  Say Y here if you want to be able to poweroff the system using
+	  magic syscalls.
+
 config POWER_RESET_MSM
 	bool "Qualcomm MSM power-off driver"
 	depends on ARCH_QCOM
