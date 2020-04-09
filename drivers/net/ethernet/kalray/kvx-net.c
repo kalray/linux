@@ -572,11 +572,12 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 {
 	struct net_device *netdev = rxr->netdev;
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_qdesc *qdesc = &rxr->pool.qdesc[qdesc_idx];
 	enum dma_data_direction dma_dir;
 	void *data, *data_end, *va = NULL;
 	struct page *page = NULL;
-	struct kvx_qdesc *qdesc = &rxr->pool.qdesc[qdesc_idx];
 	size_t data_len;
+	int ret = 0;
 
 	page = qdesc->va;
 	if (KVX_SKB_SIZE(len) > PAGE_SIZE) {
@@ -592,10 +593,28 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 	data = va + KVX_RX_HEADROOM;
 	data_end = data + data_len;
 
-	rxr->skb = build_skb(va, KVX_SKB_SIZE(len));
-	if (unlikely(!rxr->skb)) {
-		rxr->stats.skb_alloc_err++;
-		return -ENOBUFS;
+	if (unlikely(!eop)) {
+		if (unlikely(!rxr->skb)) {
+			rxr->stats.skb_rx_frag_missed++;
+			ret = -EINVAL;
+			goto recycle_page;
+		}
+		skb_add_rx_frag(rxr->skb, skb_shinfo(rxr->skb)->nr_frags, page,
+				KVX_RX_HEADROOM, data_len,
+				KVX_SKB_SIZE(data_len));
+	} else {
+		rxr->skb = build_skb(va, KVX_SKB_SIZE(data_len));
+		if (unlikely(!rxr->skb)) {
+			rxr->stats.skb_alloc_err++;
+			ret = -ENOMEM;
+			goto recycle_page;
+		}
+		skb_reserve(rxr->skb, data - va);
+		skb_put(rxr->skb, data_end - data);
+
+		kvx_eth_rx_hdr(ndev, rxr->skb);
+		rxr->skb->dev = rxr->napi.dev;
+		rxr->skb->protocol = eth_type_trans(rxr->skb, netdev);
 	}
 
 	/* Release descriptor */
@@ -603,13 +622,11 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 	qdesc->va = NULL;
 	qdesc->dma_addr = 0;
 
-	skb_reserve(rxr->skb, data - va);
-	skb_put(rxr->skb, data_end - data);
-
-	kvx_eth_rx_hdr(ndev, rxr->skb);
-	rxr->skb->protocol = eth_type_trans(rxr->skb, netdev);
-
 	return 0;
+
+recycle_page:
+	page_pool_recycle_direct(rxr->pool.pagepool, page);
+	return ret;
 }
 
 /* kvx_eth_clean_rx_irq() - Clears received RX buffers
@@ -681,7 +698,6 @@ static int kvx_eth_netdev_poll(struct napi_struct *napi, int budget)
 		if (!napi_complete_done(napi, work_done))
 			napi_reschedule(napi);
 	}
-
 	return work_done;
 }
 
