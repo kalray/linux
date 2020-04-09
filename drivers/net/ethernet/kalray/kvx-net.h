@@ -21,16 +21,16 @@
 #define KVX_NET_DRIVER_NAME     "kvx_eth"
 #define KVX_NET_DRIVER_VERSION  "1.0"
 
-/* Min nb of rx buffers to refill in HW */
-#define KVX_ETH_MIN_RX_WRITE          (8)
 #define KVX_ETH_PKT_ALIGN             (8)
 /* Keeping unsused descriptors in HW */
 #define KVX_ETH_MIN_RX_BUF_THRESHOLD  (2)
 /* Total count of buffers in rings*/
-#define KVX_ETH_RX_BUF_NB             (32)
-#define KVX_ETH_TX_BUF_NB             (32)
+#define KVX_ETH_RX_BUF_NB             (256)
+#define KVX_ETH_TX_BUF_NB             (256)
 #define KVX_ETH_MAX_RX_BUF            (4096)
 #define KVX_ETH_MAX_TX_BUF            (4096)
+/* Min nb of rx buffers to refill in HW */
+#define KVX_ETH_MIN_RX_WRITE          ((2 * KVX_ETH_RX_BUF_NB) / 3)
 
 #define INDEX_TO_LAYER(l)             ((l)+2)
 #define MAX_NB_RXQ                    (NB_PE * (NB_CLUSTER - 1))
@@ -54,7 +54,11 @@ struct kvx_eth_dev {
 	struct kvx_eth_type *type;
 };
 
-/* TX ring descriptor */
+struct ring_stats {
+	int skb_alloc_err;
+};
+
+/* TX buffer descriptor */
 struct kvx_eth_netdev_tx {
 	struct kvx_eth_netdev *ndev;
 	struct sk_buff *skb;
@@ -65,23 +69,17 @@ struct kvx_eth_netdev_tx {
 	struct kvx_callback_param cb_p;
 };
 
-/* RX ring descriptor */
-struct kvx_eth_netdev_rx {
-	struct kvx_eth_netdev *ndev;
-	struct sk_buff *skb;
-	struct scatterlist sg[1];
-	size_t len;             /* Actual rx size in bytes (written by dev) */
-};
-
 struct kvx_eth_ring {
 	struct net_device *netdev;
 	struct dma_chan *chan;
 	struct kvx_dma_slave_cfg config;
 	union {
-		struct kvx_eth_netdev_rx *rx_buf;
+		struct kvx_buf_pool pool;
 		struct kvx_eth_netdev_tx *tx_buf;
 	};
 	struct napi_struct napi;
+	struct ring_stats stats;
+	struct sk_buff *skb;
 	u16 count;          /* Number of desc in ring */
 	u16 next_to_use;
 	u16 next_to_clean;
@@ -140,8 +138,8 @@ struct kvx_eth_netdev {
 	struct i2c_client *rtm[RTM_NB];
 };
 
-int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r);
-int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r);
+int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *nd, struct kvx_eth_ring *r);
+int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *nd, struct kvx_eth_ring *r);
 
 void kvx_eth_release_tx_ring(struct kvx_eth_ring *ring, int keep_dma_chan);
 void kvx_eth_release_rx_ring(struct kvx_eth_ring *ring, int keep_dma_chan);
