@@ -81,6 +81,7 @@ struct kvx_eth_ring {
 		struct kvx_eth_netdev_rx *rx_buf;
 		struct kvx_eth_netdev_tx *tx_buf;
 	};
+	struct napi_struct napi;
 	u16 count;          /* Number of desc in ring */
 	u16 next_to_use;
 	u16 next_to_clean;
@@ -131,9 +132,8 @@ struct kvx_eth_netdev {
 	struct phylink_config phylink_cfg;
 	struct kvx_eth_lane_cfg cfg;
 	struct kvx_dma_config dma_cfg;
-	struct napi_struct napi;
 	struct list_head node;
-	struct kvx_eth_ring rx_ring;
+	struct kvx_eth_ring rx_ring[NB_PE];
 	u16    rx_buffer_len;
 	struct kvx_eth_ring tx_ring[TX_FIFO_NB];
 	struct kvx_eth_hw_stats stats;
@@ -141,10 +141,10 @@ struct kvx_eth_netdev {
 };
 
 int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r);
-int kvx_eth_alloc_rx_res(struct net_device *netdev);
+int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r);
 
 void kvx_eth_release_tx_ring(struct kvx_eth_ring *ring, int keep_dma_chan);
-void kvx_eth_release_rx_res(struct net_device *netdev, int keep_dma_chan);
+void kvx_eth_release_rx_ring(struct kvx_eth_ring *ring, int keep_dma_chan);
 
 void kvx_eth_up(struct net_device *netdev);
 void kvx_eth_down(struct net_device *netdev);
