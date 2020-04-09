@@ -13,6 +13,7 @@
 #include <asm/sys_arch.h>
 #include <linux/netdevice.h>
 #include <linux/types.h>
+#include <net/page_pool.h>
 
 #include "kvx-net-hdr.h"
 #include "kvx-ethtool.h"
@@ -23,6 +24,7 @@
 #define KVX_ETH_PFC_CLASS_NB       8
 #define KVX_ETH_RX_TAG_NB          64
 #define KVX_ETH_PARSERS_MAX_PRIO   7
+#define RX_CACHE_NB                4
 
 #define PFC_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
 
@@ -312,6 +314,27 @@ struct pll_cfg {
 	unsigned long serdes_pll_master;
 	unsigned long avail;
 	unsigned int rate_plla;
+};
+
+/**
+ * struct kvx_qdesc - queue descriptor
+ * @dma_addr: mapped dma address sent to dma engine
+ * @va: corresponding page virtual address
+ */
+struct kvx_qdesc {
+	dma_addr_t dma_addr;
+	void *va;
+};
+
+/**
+ * struct kvx_buf_pool - used for queue descriptors
+ *
+ * @pagepool: pagepool pointer for 1 queue
+ * @qdesc: descriptors array (kvx_qdesc)
+ */
+struct kvx_buf_pool {
+	struct page_pool *pagepool;
+	struct kvx_qdesc *qdesc;
 };
 
 /**
