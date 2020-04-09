@@ -56,6 +56,7 @@ struct kvx_eth_dev {
 
 struct ring_stats {
 	int skb_alloc_err;
+	int skb_rx_frag_missed;
 };
 
 /* TX buffer descriptor */
@@ -78,8 +79,8 @@ struct kvx_eth_ring {
 		struct kvx_eth_netdev_tx *tx_buf;
 	};
 	struct napi_struct napi;
-	struct ring_stats stats;
 	struct sk_buff *skb;
+	struct ring_stats stats;
 	u16 count;          /* Number of desc in ring */
 	u16 next_to_use;
 	u16 next_to_clean;
