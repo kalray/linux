@@ -18,6 +18,7 @@ config NET_KVX_SOC
 	tristate "Kalray ethernet support"
 	depends on KVX_DMA_NOC
 	depends on I2C
+	select PAGE_POOL
 	select PHYLINK
 	select NET_TI_RTM
 	select SFP
