@@ -766,22 +766,22 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 
 		switch (flags) {
 		case 0:
-			dev_err(iommu_hw->dev,
+			dev_err_ratelimited(iommu_hw->dev,
 				"%s: no error was detected, error log is meaningless\n",
 				kvx_iommu_irq_names[i]);
 			break;
 		case 1:
-			dev_err(iommu_hw->dev,
+			dev_err_ratelimited(iommu_hw->dev,
 				"%s: one error was detected\n",
 				kvx_iommu_irq_names[i]);
 			break;
 		case 3:
-			dev_err(iommu_hw->dev,
+			dev_err_ratelimited(iommu_hw->dev,
 				"%s: several errors were detected, the first erroneous access is described below\n",
 				kvx_iommu_irq_names[i]);
 			break;
 		default:
-			dev_err(iommu_hw->dev,
+			dev_err_ratelimited(iommu_hw->dev,
 				"%s: %d is an illegal flags value, this should never occurs\n",
 				kvx_iommu_irq_names[i], flags);
 			break;
@@ -792,12 +792,12 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 			ret = report_iommu_fault(&kvx_domain->domain,
 						 iommu_hw->dev, addr, flags);
 			if (ret && ret != -ENOSYS)
-				dev_err(iommu_hw->dev, "report_iommu_fault() failed with error %d\n",
+				dev_err_ratelimited(iommu_hw->dev, "report_iommu_fault() failed with error %d\n",
 					ret);
 		}
 
 		if (!kvx_domain || ret == -ENOSYS)
-			dev_err(iommu_hw->dev,
+			dev_err_ratelimited(iommu_hw->dev,
 				"%s: error detected on a %s operation at 0x%lx on IOMMU %s (0x%lx) [ASN=%d]\n",
 				kvx_iommu_irq_names[i],
 				rwb ? "read" : "write",
@@ -812,7 +812,7 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 		return IRQ_HANDLED;
 	}
 
-	dev_err(iommu_hw->dev,
+	dev_err_ratelimited(iommu_hw->dev,
 		"IRQ %d is not registered for IOMMUS %s\n",
 		irq, iommu_hw->name);
 
