@@ -169,35 +169,6 @@ int dump_fpu(struct pt_regs *regs, elf_fpregset_t *fpu)
 	return 0;
 }
 
-void scall_machine_exit(unsigned char value)
-{
-	register int status asm("r0") = value;
-
-	asm volatile ("scall " SCALL_NUM_EXIT "\n\t;;"
-		      : /* out */
-		      : "r"(status));
-
-	unreachable();
-}
-
-void machine_halt(void)
-{
-	scall_machine_exit(0);
-}
-
-void machine_power_off(void)
-{
-	machine_halt();
-}
-
-void machine_restart(char *cmd)
-{
-	machine_halt();
-}
-
-void (*pm_power_off)(void) = machine_power_off;
-EXPORT_SYMBOL(pm_power_off);
-
 static bool find_wchan(unsigned long pc, void *arg)
 {
 	unsigned long *p = arg;
