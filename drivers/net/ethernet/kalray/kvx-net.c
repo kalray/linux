@@ -38,6 +38,14 @@ static const char *rtm_prop_name[RTM_NB] = {
 	[RTM_TX] = "kalray,rtmtx",
 };
 
+#define KVX_RX_HEADROOM  (NET_IP_ALIGN + NET_SKB_PAD)
+#define KVX_SKB_PAD	(SKB_DATA_ALIGN(sizeof(struct skb_shared_info) + \
+					KVX_RX_HEADROOM))
+#define KVX_SKB_SIZE(len)	(SKB_DATA_ALIGN(len) + KVX_SKB_PAD)
+#define KVX_MAX_RX_BUF_SIZE	(PAGE_SIZE - KVX_SKB_PAD)
+
+#define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
+
 static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *ring, int count);
 
 /* kvx_eth_desc_unused() - Gets the number of remaining unused buffers in ring
@@ -63,13 +71,13 @@ static struct netdev_queue *get_txq(const struct kvx_eth_ring *ring)
 void kvx_eth_up(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_ring *rxr;
+	struct kvx_eth_ring *r;
 	int i;
 
 	for (i = 0; i < ndev->dma_cfg.rx_chan_id.nb; i++) {
-		rxr = &ndev->rx_ring[i];
-		kvx_eth_alloc_rx_buffers(rxr, kvx_eth_desc_unused(rxr));
-		napi_enable(&rxr->napi);
+		r = &ndev->rx_ring[i];
+		kvx_eth_alloc_rx_buffers(r, kvx_eth_desc_unused(r));
+		napi_enable(&r->napi);
 	}
 
 	netif_tx_start_all_queues(netdev);
@@ -93,11 +101,11 @@ void kvx_eth_down(struct net_device *netdev)
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	int i;
 
+	netif_tx_stop_all_queues(netdev);
 	for (i = 0; i < ndev->dma_cfg.rx_chan_id.nb; i++)
 		napi_disable(&ndev->rx_ring[i].napi);
 
 	phylink_stop(ndev->phylink);
-	netif_tx_stop_all_queues(netdev);
 }
 
 /* kvx_eth_netdev_close() - Close ops
@@ -161,7 +169,7 @@ static void kvx_eth_unmap_skb(struct device *dev,
 	}
 }
 
-/* kvx_eth_unmap_skb() - Map skb (build sg with corresponding IOVA)
+/* kvx_eth_map_skb() - Map skb (build sg with corresponding IOVA)
  * @dev: Current device (with dma settings)
  * @tx: Tx ring descriptor
  *
@@ -213,7 +221,8 @@ out_err:
 }
 
 /* kvx_eth_clean_tx_irq() - Clears completed tx skb
- * @ndev: Current kvx_eth_netdev
+ * @txr: Current TX ring
+ * @desc_len: actual buffer len (from DMA engine)
  *
  * Return: 0 on success
  */
@@ -222,33 +231,37 @@ static int kvx_eth_clean_tx_irq(struct kvx_eth_ring *txr, size_t desc_len)
 	struct net_device *netdev = txr->netdev;
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	u32 tx_r = txr->next_to_clean;
-	struct kvx_eth_netdev_tx *tx;
+	struct kvx_eth_netdev_tx *tx = &txr->tx_buf[tx_r];
 	int bytes_completed = 0;
 	int pkt_completed = 0;
+	int ret = 0;
 
 	tx = &txr->tx_buf[tx_r];
-
 	tx->len = desc_len;
-	if (tx->skb)
-		netdev_dbg(ndev->netdev, "%s Sent skb: 0x%llx len: %d/%d qidx: %d\n",
-			   __func__, (u64)tx->skb, (int)tx->len, tx->skb->len,
-			   txr->qidx);
+	if (unlikely(!tx->skb)) {
+		ret = -EINVAL;
+		netdev_err(netdev, "No skb in descriptor\n");
+		goto exit;
+	}
+	netdev_dbg(netdev, "Sent skb: 0x%llx len: %d/%d qidx: %d\n",
+		   (u64)tx->skb, (int)tx->len, tx->skb->len, txr->qidx);
 
 	/* consume_skb */
 	kvx_eth_unmap_skb(ndev->dev, tx);
-	if (tx->skb) {
-		bytes_completed += tx->len;
-		++pkt_completed;
-		dev_consume_skb_irq(tx->skb);
-		tx->skb = NULL;
-	}
+	bytes_completed += tx->len;
+	++pkt_completed;
+	dev_consume_skb_irq(tx->skb);
+	tx->skb = NULL;
 
+exit:
+	netdev_tx_completed_queue(get_txq(txr), pkt_completed, bytes_completed);
 	++tx_r;
 	if (tx_r == txr->count)
 		tx_r = 0;
+	txr->next_to_clean = tx_r;
+	tx = &txr->tx_buf[tx_r];
 
 	txr->next_to_clean = tx_r;
-	netdev_tx_completed_queue(get_txq(txr), pkt_completed, bytes_completed);
 
 	if (netif_carrier_ok(netdev) &&
 	    __netif_subqueue_stopped(netdev, txr->qidx))
@@ -256,7 +269,7 @@ static int kvx_eth_clean_tx_irq(struct kvx_eth_ring *txr, size_t desc_len)
 		    (kvx_eth_desc_unused(txr) > (MAX_SKB_FRAGS + 1)))
 			netif_wake_subqueue(netdev, txr->qidx);
 
-	return 0;
+	return ret;
 }
 
 /* kvx_eth_netdev_dma_callback_tx() - tx completion callback
@@ -462,13 +475,13 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 	tx->cb_p.cb_param = txr;
 	txd->callback_param = &tx->cb_p;
 
-	skb_orphan(skb);
-
 	/* submit and issue descriptor */
 	tx->cookie = dmaengine_submit(txd);
 	dma_async_issue_pending(txr->chan);
 
 	netdev_tx_sent_queue(get_txq(txr), skb->len);
+
+	skb_orphan(skb);
 
 	tx_w++;
 	txr->next_to_use = (tx_w < txr->count) ? tx_w : 0;
@@ -484,8 +497,8 @@ busy:
 	return NETDEV_TX_BUSY;
 }
 
-/* kvx_eth_alloc_rx_buffers() - Allocation rx buffers
- * @ndev: Current kvx_eth_netdev
+/* kvx_eth_alloc_rx_buffers() - Allocation rx descriptors
+ * @rxr: RX ring
  * @count: number of buffers to allocate
  */
 static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
@@ -493,60 +506,110 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
 	struct net_device *netdev = rxr->netdev;
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
-	struct device *dev = ndev->dev;
-	u32 rx_w = rxr->next_to_use;
 	u32 unused_desc = kvx_eth_desc_unused(rxr);
-	struct kvx_eth_netdev_rx *rx = &rxr->rx_buf[rx_w];
-	struct sk_buff *skb;
-	size_t dma_len = 0;
+	u32 rx_w = rxr->next_to_use;
+	struct kvx_qdesc *qdesc;
+	struct page *p;
 	int ret = 0;
 
 	while (--unused_desc > KVX_ETH_MIN_RX_BUF_THRESHOLD && count--) {
-		skb = rx->skb;
-		if (skb) { /* Reuse existing skb */
-			skb_trim(skb, 0);
-		} else {
-			skb = netdev_alloc_skb_ip_align(netdev,
-							ndev->rx_buffer_len);
-			if (unlikely(!skb)) /* retry next time */
+		qdesc = &rxr->pool.qdesc[rx_w];
+
+		if (!qdesc->dma_addr) {
+			p = page_pool_alloc_pages(rxr->pool.pagepool,
+						  GFP_ATOMIC | __GFP_NOWARN);
+			if (!p) {
+				pr_err("page alloc failed\n");
 				break;
-
-			rx->skb = skb;
-			netdev_dbg(netdev, "Alloc rx skb[%d]: 0x%llx\n",
-				   rx_w, (u64)skb);
+			}
+			qdesc->va = p;
+			qdesc->dma_addr = page_pool_get_dma_addr(p) +
+				KVX_RX_HEADROOM;
 		}
-
-		rx->len = 0;
-		sg_set_buf(rx->sg, rx->skb->data, ndev->rx_buffer_len);
-		dma_len = dma_map_sg(dev, &rx->sg[0], 1, DMA_FROM_DEVICE);
-		netdev_dbg(netdev, "map rx skb[%d]: 0x%llx rx->sg[0]: 0x%llx\n",
-			    rx_w, (u64)skb, sg_dma_address(&rx->sg[0]));
-		ret = dma_mapping_error(dev, sg_dma_address(&rx->sg[0]));
-		if (dma_len == 0 || ret) {
-			netdev_err(netdev, "Failed to map dma rx[%d]: %d\n",
-				   rx_w, ret);
-			break;
-		}
-
 		ret = kvx_dma_enqueue_rx_buffer(dma_cfg->pdev,
-					  dma_cfg->rx_chan_id.start,
-					  sg_dma_address(&rx->sg[0]),
-					  ndev->rx_buffer_len);
+					  dma_cfg->rx_chan_id.start + rxr->qidx,
+					  qdesc->dma_addr, KVX_MAX_RX_BUF_SIZE);
 		if (ret) {
 			netdev_err(netdev, "Failed to enqueue buffer in rx chan[%d]: %d\n",
-				   dma_cfg->rx_chan_id.start, ret);
-			dma_unmap_sg(dev, &rx->sg[0], 1, DMA_FROM_DEVICE);
+				   dma_cfg->rx_chan_id.start + rxr->qidx, ret);
 			break;
 		}
 
 		++rx_w;
 		if (rx_w == rxr->count)
 			rx_w = 0;
-		rx = &rxr->rx_buf[rx_w];
+	}
+	rxr->next_to_use = rx_w;
+}
+
+static int kvx_eth_rx_hdr(struct kvx_eth_netdev *ndev, struct sk_buff *skb)
+{
+	struct rx_metadata *hdr = NULL;
+	size_t hdr_size = sizeof(*hdr);
+
+	if (kvx_eth_lb_has_header(ndev->hw, &ndev->cfg)) {
+		netdev_dbg(ndev->netdev, "%s header rx (skb->len: %d data_len: %d)\n",
+			   __func__, skb->len, skb->data_len);
+		hdr = (struct rx_metadata *)skb->data;
+		kvx_eth_dump_rx_hdr(ndev->hw, hdr);
+		skb_pull(skb, hdr_size);
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
+	}
+	if (kvx_eth_lb_has_footer(ndev->hw, &ndev->cfg)) {
+		netdev_dbg(ndev->netdev, "%s footer rx (skb->len: %d data_len: %d)\n",
+			   __func__, skb->len, skb->data_len);
+		hdr = (struct rx_metadata *)(skb_tail_pointer(skb) -
+					     hdr_size);
+		kvx_eth_dump_rx_hdr(ndev->hw, hdr);
+		skb_trim(skb, skb->len - hdr_size);
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
+	}
+	return 0;
+}
+
+static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
+			    dma_addr_t buf, size_t len, u64 eop)
+{
+	struct net_device *netdev = rxr->netdev;
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	enum dma_data_direction dma_dir;
+	void *data, *data_end, *va = NULL;
+	struct page *page = NULL;
+	struct kvx_qdesc *qdesc = &rxr->pool.qdesc[qdesc_idx];
+	size_t data_len;
+
+	page = qdesc->va;
+	if (KVX_SKB_SIZE(len) > PAGE_SIZE) {
+		netdev_err(netdev, "Rx buffer exceeds PAGE_SIZE\n");
+		return -ENOBUFS;
+	}
+	dma_dir = page_pool_get_dma_dir(rxr->pool.pagepool);
+	dma_sync_single_for_cpu(ndev->dev, buf, len, dma_dir);
+	data_len = len - ETH_FCS_LEN;
+	va = page_address(page);
+	/* Prefetch header */
+	prefetch(va);
+	data = va + KVX_RX_HEADROOM;
+	data_end = data + data_len;
+
+	rxr->skb = build_skb(va, KVX_SKB_SIZE(len));
+	if (unlikely(!rxr->skb)) {
+		rxr->stats.skb_alloc_err++;
+		return -ENOBUFS;
 	}
 
-	if (likely(rxr->next_to_use != rx_w))
-		rxr->next_to_use = rx_w;
+	/* Release descriptor */
+	page_pool_release_page(rxr->pool.pagepool, page);
+	qdesc->va = NULL;
+	qdesc->dma_addr = 0;
+
+	skb_reserve(rxr->skb, data - va);
+	skb_put(rxr->skb, data_end - data);
+
+	kvx_eth_rx_hdr(ndev, rxr->skb);
+	rxr->skb->protocol = eth_type_trans(rxr->skb, netdev);
+
+	return 0;
 }
 
 /* kvx_eth_clean_rx_irq() - Clears received RX buffers
@@ -560,8 +623,7 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
  *
  * Return: 0 on success
  */
-static int kvx_eth_clean_rx_irq(struct napi_struct *napi,
-				int *work_done, int work_left)
+static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 {
 	struct kvx_eth_ring *rxr = container_of(napi, struct kvx_eth_ring,
 						napi);
@@ -569,74 +631,40 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 	int chan_id = dma_cfg->rx_chan_id.start + rxr->qidx;
-	struct device *dev = ndev->dev;
 	struct kvx_dma_pkt_full_desc pkt;
 	u32 rx_r = rxr->next_to_clean;
-	struct kvx_eth_netdev_rx *rx;
-	struct rx_metadata *hdr = NULL;
-	size_t hdr_size = sizeof(*hdr);
-	struct sk_buff *skb;
+	int work_done = 0;
 	int rx_count = 0;
-
-	*work_done = 0;
+	int ret = 0;
 
 	while (!kvx_dma_get_rx_completed(dma_cfg->pdev, chan_id, &pkt)) {
-		rx = &rxr->rx_buf[rx_r];
-		if (pkt.base != sg_dma_address(&rx->sg[0])) {
-			netdev_err(netdev, "%s rx: %d pkt.base 0x%llx != rx->sg[0] 0x%llx pkt.byte: %lld skb data: 0x%llx\n",
-			   __func__, rx_r, pkt.base, sg_dma_address(&rx->sg[0]),
-			   pkt.byte, (u64)rx->skb->data);
-			break;
+		work_done++;
+		rx_count++;
+
+		ret = kvx_eth_rx_frame(rxr, rx_r, (dma_addr_t)pkt.base,
+				       (size_t)pkt.byte, pkt.notif);
+		/* Still some RX segments pending */
+		if (likely(!ret && pkt.notif)) {
+			napi_gro_receive(napi, rxr->skb);
+			rxr->skb = NULL;
 		}
 
-		rx->len = pkt.byte;
-		(*work_done)++;
-		skb = rx->skb;
-		rx->skb = NULL;
-
-		prefetch(skb->data - NET_IP_ALIGN);
-		dma_unmap_sg(dev, rx->sg, 1, DMA_FROM_DEVICE);
-		++rx_count;
-		skb->ip_summed = CHECKSUM_NONE;
-		skb_put(skb, rx->len);
-		if (kvx_eth_lb_has_header(ndev->hw, &ndev->cfg)) {
-			netdev_dbg(netdev, "%s header rx (skb->len: %d data_len: %d)\n",
-				   __func__, skb->len, skb->data_len);
-			hdr = (struct rx_metadata *)skb->data;
-			skb_pull(skb, hdr_size);
-			skb->ip_summed = CHECKSUM_UNNECESSARY;
-		}
-		if (kvx_eth_lb_has_footer(ndev->hw, &ndev->cfg)) {
-			netdev_dbg(netdev, "%s footer rx (skb->len: %d data_len: %d)\n",
-				   __func__, skb->len, skb->data_len);
-			hdr = (struct rx_metadata *)(skb_tail_pointer(skb) -
-						     hdr_size);
-			kvx_eth_dump_rx_hdr(ndev->hw, hdr);
-			skb_trim(skb, skb->len - hdr_size);
-			skb->ip_summed = CHECKSUM_UNNECESSARY;
-		}
-
-		skb->protocol = eth_type_trans(skb, netdev);
-		netdev_dbg(netdev, "%s rx_r: %d skb: 0x%llx protocol: 0x%x len: %d/%d data_len:%d\n",
-			    __func__, rx_r, (u64)skb, skb->protocol,
-			    (int)rx->len, skb->len, skb->data_len);
-		napi_gro_receive(napi, skb);
-		if (unlikely(rx_count >= KVX_ETH_MIN_RX_WRITE)) {
+		if (unlikely(rx_count > KVX_ETH_MIN_RX_WRITE)) {
 			kvx_eth_alloc_rx_buffers(rxr, rx_count);
 			rx_count = 0;
 		}
 		++rx_r;
 		rx_r = (rx_r < rxr->count) ? rx_r : 0;
 
-		if (*work_done >= work_left)
+		if (work_done >= work_left)
 			break;
 	}
 	rxr->next_to_clean = rx_r;
 	rx_count = kvx_eth_desc_unused(rxr);
-	if (rx_count)
+	if (rx_count > KVX_ETH_MIN_RX_WRITE)
 		kvx_eth_alloc_rx_buffers(rxr, rx_count);
 
-	return 0;
+	return work_done;
 }
 
 /* kvx_eth_netdev_poll() - NAPI polling callback
@@ -647,12 +675,12 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi,
  */
 static int kvx_eth_netdev_poll(struct napi_struct *napi, int budget)
 {
-	int work_done = 0;
+	int work_done = kvx_eth_clean_rx_irq(napi, budget);
 
-	kvx_eth_clean_rx_irq(napi, &work_done, budget);
-
-	if (work_done < budget)
-		napi_complete_done(napi, work_done);
+	if (work_done < budget) {
+		if (!napi_complete_done(napi, work_done))
+			napi_reschedule(napi);
+	}
 
 	return work_done;
 }
@@ -777,36 +805,78 @@ static void kvx_eth_dma_irq_rx(void *data)
 	napi_schedule(&ring->napi);
 }
 
+static struct page_pool *kvx_eth_create_rx_pool(struct kvx_eth_netdev *ndev,
+						size_t size)
+{
+	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
+	struct page_pool *pool = NULL;
+	struct page_pool_params pp_params = {
+		.order = 0,
+		.flags = PP_FLAG_DMA_MAP | PP_FLAG_DMA_SYNC_DEV,
+		.pool_size = dma_cfg->rx_chan_id.nb * size,
+		.nid = NUMA_NO_NODE,
+		.dma_dir = DMA_BIDIRECTIONAL,
+		.offset = KVX_RX_HEADROOM,
+		.max_len = KVX_MAX_RX_BUF_SIZE,
+                /* Device must be the same for dma_sync_single_for_cpu */
+		.dev = ndev->dev,
+	};
+
+	pool = page_pool_create(&pp_params);
+	if (IS_ERR(pool))
+		dev_err(ndev->dev, "cannot create rx page pool\n");
+
+	return pool;
+}
+
+static int kvx_eth_alloc_rx_pool(struct kvx_eth_netdev *ndev,
+			       struct kvx_eth_ring *r, int cache_id)
+{
+	struct kvx_buf_pool *rx_pool = &r->pool;
+
+	rx_pool->qdesc = kcalloc(r->count, sizeof(*rx_pool->qdesc), GFP_KERNEL);
+	if (!rx_pool->qdesc)
+		return -ENOMEM;
+	rx_pool->pagepool = kvx_eth_create_rx_pool(ndev, r->count);
+	if (IS_ERR(rx_pool->pagepool)) {
+		kfree(rx_pool->qdesc);
+		netdev_err(ndev->netdev, "Unable to allocate page pool\n");
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+static void kvx_eth_release_rx_pool(struct kvx_eth_ring *r)
+{
+	page_pool_destroy(r->pool.pagepool);
+	kfree(r->pool.qdesc);
+}
+
 int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 {
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
-	int i, ret = 0;
+	int ret = 0;
+
+	r->count = KVX_ETH_RX_BUF_NB;
+	r->next_to_use = 0;
+	r->next_to_clean = 0;
+	ret = kvx_eth_alloc_rx_pool(ndev, r, dma_cfg->rx_cache_id);
+	if (ret) {
+		netdev_err(ndev->netdev, "Failed to get RX pool\n");
+		goto exit;
+	}
 
 	netif_napi_add(ndev->netdev, &r->napi,
 		       kvx_eth_netdev_poll, NAPI_POLL_WEIGHT);
 	r->netdev = ndev->netdev;
-	r->next_to_use = 0;
-	r->next_to_clean = 0;
-	if (r->count == 0)
-		r->count = KVX_ETH_RX_BUF_NB;
-	r->rx_buf = kcalloc(r->count, sizeof(*r->rx_buf),
-			       GFP_KERNEL);
-	if (!r->rx_buf) {
-		ret = -ENOMEM;
-		goto exit;
-	}
-
-	for (i = 0; i < r->count; ++i) {
-		sg_init_table(r->rx_buf[i].sg, 1);
-		r->rx_buf[i].ndev = ndev;
-	}
 
 	/* Reserve channel only once */
 	if (r->config.trans_type != KVX_DMA_TYPE_MEM2ETH) {
 		memset(&r->config, 0, sizeof(r->config));
+		/* All RX queues share the same rx_cache */
 		ret = kvx_dma_reserve_rx_chan(dma_cfg->pdev,
 					dma_cfg->rx_chan_id.start + r->qidx,
-					// TODO
 					dma_cfg->rx_cache_id,
 					kvx_eth_dma_irq_rx, r);
 		if (ret)
@@ -816,8 +886,8 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	return 0;
 
 chan_failed:
-	kfree(r->rx_buf);
-	r->rx_buf = NULL;
+	netif_napi_del(&r->napi);
+	kvx_eth_release_rx_pool(r);
 exit:
 	return ret;
 }
@@ -835,8 +905,7 @@ void kvx_eth_release_rx_ring(struct kvx_eth_ring *r, int keep_dma_chan)
 	if (!keep_dma_chan)
 		kvx_dma_release_rx_chan(dma_cfg->pdev, r->qidx +
 					dma_cfg->rx_chan_id.start);
-	kfree(r->rx_buf);
-	r->rx_buf = NULL;
+	kvx_eth_release_rx_pool(r);
 }
 
 /* kvx_eth_alloc_rx_res() - Allocate RX resources
@@ -874,8 +943,7 @@ void kvx_eth_release_rx_res(struct net_device *netdev, int keep_dma_chan)
 		kvx_eth_release_rx_ring(&ndev->rx_ring[qidx], keep_dma_chan);
 }
 
-int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev,
-			      struct kvx_eth_ring *r)
+int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 {
 	int i, ret = 0;
 
@@ -917,6 +985,7 @@ int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev,
 		if (ret)
 			goto config_failed;
 	}
+
 	return 0;
 
 config_failed:
@@ -979,8 +1048,6 @@ alloc_failed:
 
 	return ret;
 }
-
-
 
 static void kvx_eth_release_tx_res(struct net_device *netdev, int keep_dma_chan)
 {
@@ -1090,7 +1157,10 @@ int kvx_eth_parse_dt(struct platform_device *pdev, struct kvx_eth_netdev *ndev)
 		dev_err(ndev->dev, "Unable to get dma-rx-cache-id\n");
 		return -EINVAL;
 	}
-
+	if (dma_cfg->rx_cache_id >= RX_CACHE_NB) {
+		dev_err(ndev->dev, "dma-rx-cache-id >= %d\n", RX_CACHE_NB);
+		return -EINVAL;
+	}
 	ret = kvx_eth_get_queue_nb(pdev, &dma_cfg->tx_chan_id,
 				   &dma_cfg->rx_chan_id);
 	if (ret)

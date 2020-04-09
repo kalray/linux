@@ -421,11 +421,6 @@ int kvx_dma_rx_get_comp_pkt(struct kvx_dma_phy *phy,
 	if (ticket >= rx_comp_count)
 		return -EINVAL;
 
-	if (unlikely(ticket >= rx_comp_count + fifo_size)) {
-		dev_dbg(phy->dev, "RX comp hw_queue[%d] full\n", phy->hw_id);
-		return -EINVAL;
-	}
-
 	ticket = kvx_dma_q_readq(phy,
 				 KVX_DMA_RX_CHAN_COMP_Q_LOAD_INCR_RP_OFFSET);
 
