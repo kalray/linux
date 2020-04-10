@@ -3919,10 +3919,7 @@ static int virtnet_probe(struct virtio_device *vdev)
 		dev->needed_headroom = vi->hdr_len;
 
 	/* Enable multiqueue by default */
-	if (num_online_cpus() >= max_queue_pairs)
-		vi->curr_queue_pairs = max_queue_pairs;
-	else
-		vi->curr_queue_pairs = num_online_cpus();
+	vi->curr_queue_pairs = max_queue_pairs;
 	vi->max_queue_pairs = max_queue_pairs;
 
 	/* Allocate/initialize the rx/tx queues, and invoke find_vqs */
