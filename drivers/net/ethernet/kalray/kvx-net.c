@@ -1413,6 +1413,7 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	memset(ndev, 0, sizeof(*ndev));
 	netdev->netdev_ops = &kvx_eth_netdev_ops;
 	netdev->mtu = ETH_DATA_LEN;
+	netdev->max_mtu = KVX_ETH_MAX_MTU;
 	ndev->dev = &pdev->dev;
 	ndev->netdev = netdev;
 	ndev->hw = &dev->hw;
