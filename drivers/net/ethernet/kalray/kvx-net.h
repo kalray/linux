@@ -31,6 +31,7 @@
 #define KVX_ETH_MAX_TX_BUF            (4096)
 /* Min nb of rx buffers to refill in HW */
 #define KVX_ETH_MIN_RX_WRITE          ((2 * KVX_ETH_RX_BUF_NB) / 3)
+#define KVX_ETH_MAX_MTU               (9216)
 
 #define INDEX_TO_LAYER(l)             ((l)+2)
 #define MAX_NB_RXQ                    (NB_PE * (NB_CLUSTER - 1))
