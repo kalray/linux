@@ -371,7 +371,6 @@ static struct sk_buff *kvx_eth_tx_add_hdr(struct kvx_eth_netdev *ndev,
 
 	netdev_dbg(ndev->netdev, "%s skb->len: %d pkt_size: %d skb->data: 0x%lx\n",
 		   __func__, skb->len, pkt_size, (uintptr_t)skb->data);
-	kvx_eth_tx_status(ndev->hw, cfg);
 
 	h._.pkt_size = skb->len - sizeof(h);
 	h._.lane = cfg->id;
