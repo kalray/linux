@@ -498,7 +498,6 @@ void kvx_eth_cl_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_cl_f *cl);
 void kvx_eth_tx_set_default(struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_tx_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_f *f);
 void kvx_eth_tx_fifo_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
-void kvx_eth_tx_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 u32  kvx_eth_tx_has_header(struct kvx_eth_hw *hw, int tx_fifo_id);
 void kvx_eth_tx_init(struct kvx_eth_hw *hw);
 
