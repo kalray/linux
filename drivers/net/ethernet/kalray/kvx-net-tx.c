@@ -14,34 +14,6 @@
 
 #define TX_FIFO(f) (TX_OFFSET + TX_FIFO_OFFSET + (f) * TX_FIFO_ELEM_SIZE)
 
-/* kvx_eth_tx_status - Debug TX fifo status */
-void kvx_eth_tx_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
-{
-	struct kvx_eth_tx_f *tx_f;
-	u32 off, noc_if;
-
-	list_for_each_entry(tx_f, &cfg->tx_fifo_list, node) {
-		off = TX_FIFO(tx_f->fifo_id);
-		noc_if = off + TX_NOC_IF_OFFSET +
-			kvx_cluster_id() * TX_NOC_IF_ELEM_SIZE;
-
-		dev_dbg(hw->dev, "Tx fifo[%d]\n", tx_f->fifo_id);
-		DUMP_REG(hw, ETH, off + TX_FIFO_CTRL_OFFSET);
-		DUMP_REG(hw, ETH, off + TX_FIFO_STATUS_OFFSET);
-		DUMP_REG(hw, ETH, off + TX_FIFO_DROP_CNT_OFFSET);
-		DUMP_REG(hw, ETH, off + TX_FIFO_XOFF_CTRL_OFFSET);
-		DUMP_REG(hw, ETH, noc_if + hw->vchan * TX_NOC_IF_VCHAN_OFFSET +
-			 TX_NOC_IF_VCHAN_CTRL);
-		DUMP_REG(hw, ETH, noc_if + hw->vchan * TX_NOC_IF_VCHAN_OFFSET +
-			 TX_NOC_IF_VCHAN_FIFO_MONITORING);
-		DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_PARITY_ERR_CNT);
-		DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_CRC_ERR_CNT);
-		DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_PERM_ERR_CNT);
-		DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_FIFO_ERR_CNT);
-		DUMP_REG(hw, ETH, noc_if + TX_NOC_IF_NOC_PKT_DROP_CNT);
-	}
-}
-
 void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_tx_f *f;
