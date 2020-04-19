@@ -139,7 +139,7 @@ static inline u32 rx_max(struct dw_spi *dws)
 static void dw_writer(struct dw_spi *dws)
 {
 	u32 max;
-	u16 txw = 0;
+	u32 txw = 0;
 
 	spin_lock(&dws->buf_lock);
 	max = tx_max(dws);
@@ -148,8 +148,10 @@ static void dw_writer(struct dw_spi *dws)
 		if (dws->tx_end - dws->len) {
 			if (dws->n_bytes == 1)
 				txw = *(u8 *)(dws->tx);
+			else if (dws->n_bytes == 2)
+                                txw = *(u16 *)(dws->tx);
 			else
-				txw = *(u16 *)(dws->tx);
+				txw = *(u32 *)(dws->tx);
 		}
 		dw_write_io_reg(dws, DW_SPI_DR, txw);
 		dws->tx += dws->n_bytes;
@@ -160,7 +162,7 @@ static void dw_writer(struct dw_spi *dws)
 static void dw_reader(struct dw_spi *dws)
 {
 	u32 max;
-	u16 rxw;
+	u32 rxw;
 
 	spin_lock(&dws->buf_lock);
 	max = rx_max(dws);
@@ -170,8 +172,10 @@ static void dw_reader(struct dw_spi *dws)
 		if (dws->rx_end - dws->len) {
 			if (dws->n_bytes == 1)
 				*(u8 *)(dws->rx) = rxw;
-			else
+			else if (dws->n_bytes == 2)
 				*(u16 *)(dws->rx) = rxw;
+			else
+				*(u32 *)(dws->rx) = rxw;
 		}
 		dws->rx += dws->n_bytes;
 	}
@@ -468,6 +472,9 @@ int dw_spi_add_host(struct device *dev, struct dw_spi *dws)
 	master->dev.fwnode = dev->fwnode;
 	master->flags = SPI_MASTER_GPIO_SS;
 	master->auto_runtime_pm = true;
+
+	if (dws->bpw_mask)
+		master->bits_per_word_mask = dws->bpw_mask;
 
 	if (dws->set_cs)
 		master->set_cs = dws->set_cs;

@@ -128,6 +128,7 @@ struct dw_spi {
 	void (*set_cs)(struct spi_device *spi, bool enable);
 	u32 (*update_cr0)(struct spi_controller *master, struct spi_device *spi,
 			  struct spi_transfer *transfer);
+	u32			bpw_mask;
 
 	/* Current message transfer state info */
 	size_t			len;
