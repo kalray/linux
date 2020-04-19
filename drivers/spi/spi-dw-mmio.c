@@ -167,11 +167,9 @@ static int dw_spi_dwc_ssi_init(struct platform_device *pdev,
 	return 0;
 }
 
-static u32 dw_spi_update_cr0_keembay(struct spi_controller *master,
-				     struct spi_device *spi,
-				     struct spi_transfer *transfer)
+static u32 dw_spi_update_cr0_keembay(struct spi_device *spi, u8 bpw)
 {
-	u32 cr0 = dw_spi_update_cr0_v1_01a(master, spi, transfer);
+	u32 cr0 = dw_spi_update_cr0_v1_01a(spi, bpw);
 
 	return cr0 | KEEMBAY_CTRLR0_SSIC_IS_MST;
 }
