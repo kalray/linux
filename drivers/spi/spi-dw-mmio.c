@@ -183,6 +183,32 @@ static int dw_spi_keembay_init(struct platform_device *pdev,
 	return 0;
 }
 
+
+static int dw_ahb_ssi_init(struct platform_device *pdev,
+			      struct dw_spi_mmio *dwsmmio)
+{
+	struct dw_spi *dws = &dwsmmio->dws;
+
+	/* Register hook to configure CTRLR0 */
+	dwsmmio->dws.update_cr0 = dw_spi_update_cr0_v1_01a;
+
+	/* On AHB-SSI, the registers are always 32 bits wide */
+	if (dws->reg_io_width != 0 && dws->reg_io_width != 4) {
+		dev_err(&pdev->dev, "Invalid reg-io-width property\n");
+		return -EINVAL;
+	}
+
+	dws->bpw_mask = SPI_BPW_RANGE_MASK(4, 32);
+
+	/* Detect supported slave number */
+	spi_enable_chip(dws, 0);
+	dw_writel(dws, DW_SPI_SER, 0xffff);
+	spi_enable_chip(dws, 1);
+	dws->num_cs = hweight32(dw_readl(dws, DW_SPI_SER));
+
+	return 0;
+}
+
 static int dw_spi_mmio_probe(struct platform_device *pdev)
 {
 	int (*init_func)(struct platform_device *pdev,
@@ -288,6 +314,7 @@ static int dw_spi_mmio_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id dw_spi_mmio_of_match[] = {
+	{ .compatible = "snps,dw-ahb-ssi", .data = dw_ahb_ssi_init},
 	{ .compatible = "snps,dw-apb-ssi", .data = dw_spi_dw_apb_init},
 	{ .compatible = "mscc,ocelot-spi", .data = dw_spi_mscc_ocelot_init},
 	{ .compatible = "mscc,jaguar2-spi", .data = dw_spi_mscc_jaguar2_init},
