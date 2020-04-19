@@ -47,7 +47,7 @@
 
 #define SPI_MODE_OFFSET			6
 #define SPI_SCPH_OFFSET			6
-#define SPI_SCOL_OFFSET			7
+#define SPI_SCPOL_OFFSET		7
 
 #define SPI_TMOD_OFFSET			8
 #define SPI_TMOD_MASK			(0x3 << SPI_TMOD_OFFSET)
