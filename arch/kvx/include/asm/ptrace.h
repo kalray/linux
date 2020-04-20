@@ -189,7 +189,7 @@ void do_syscall_trace_exit(struct pt_regs *regs);
 
 static inline unsigned long get_current_sp(void)
 {
-	const register unsigned long current_sp __asm__ ("$r12");
+	register const unsigned long current_sp __asm__ ("$r12");
 
 	return current_sp;
 }
