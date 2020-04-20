@@ -22,6 +22,8 @@
 #define KVX_HW_BREAKPOINT_COUNT		2
 #define KVX_HW_WATCHPOINT_COUNT		1
 
+#define REG_SIZE	sizeof(u64)
+
 /**
  * When updating pt_regs structure, you need to update this size.
  * This is the expected size of the pt_regs struct.
@@ -33,8 +35,7 @@
  * (build time check done in asm-offsets.c)
  */
 #define PT_REGS_STRUCT_EXPECTED_SIZE \
-			((GPR_COUNT + SFR_COUNT + VIRT_COUNT) \
-			* sizeof(uint64_t))
+			((GPR_COUNT + SFR_COUNT + VIRT_COUNT) * REG_SIZE)
 
 /**
  * Saved register structure. Note that we should save only the necessary
