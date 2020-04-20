@@ -129,7 +129,7 @@ int is_valid_bugaddr(unsigned long pc)
 	return 1;
 }
 
-static int bug_break_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
+static int bug_break_handler(struct break_hook *brk_hook, struct pt_regs *regs)
 {
 	enum bug_trap_type type;
 
@@ -140,7 +140,7 @@ static int bug_break_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	case BUG_TRAP_TYPE_WARN:
 		break;
 	case BUG_TRAP_TYPE_BUG:
-		die(regs, ea, "Kernel BUG");
+		die(regs, regs->spc, "Kernel BUG");
 		break;
 	}
 
@@ -180,7 +180,7 @@ static void register_trap_handler(unsigned int trap_nb, trap_handler_func fn)
 
 static void do_vsfr_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 {
-	if (break_hook_handler(es, ea, regs) == BREAK_HOOK_HANDLED)
+	if (break_hook_handler(es, regs) == BREAK_HOOK_HANDLED)
 		return;
 
 	panic_or_kill(es, ea, regs, SIGILL, ILL_PRVREG);
