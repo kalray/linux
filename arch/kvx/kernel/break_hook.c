@@ -61,7 +61,7 @@ void break_hook_register(struct break_hook *brk_hook)
 {
 	struct list_head *list;
 
-	if (brk_hook->mode == BREAK_MODE_USER)
+	if (brk_hook->mode == MODE_USER)
 		list = &user_break_hook;
 	else
 		list = &kernel_break_hook;
