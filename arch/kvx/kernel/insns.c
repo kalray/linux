@@ -48,7 +48,7 @@ static void insn_patch_unmap(void)
 	clear_fixmap(FIX_TEXT_PATCH);
 }
 
-static int write_insns(u32 *insns, u8 insns_len, u32 *insn_addr)
+int kvx_insns_write_nostop(u32 *insns, u8 insns_len, u32 *insn_addr)
 {
 	unsigned long current_insn_addr = (unsigned long) insn_addr;
 	unsigned long len_remain = insns_len;
@@ -89,7 +89,8 @@ static int patch_insns_percpu(void *data)
 	int ret;
 
 	if (atomic_inc_return(&ip->cpu_count) == 1) {
-		ret = write_insns(ip->insns, ip->insns_len, ip->addr);
+		ret = kvx_insns_write_nostop(ip->insns, ip->insns_len,
+					     ip->addr);
 		/* Additionnal up to release other processors */
 		atomic_inc(&ip->cpu_count);
 
