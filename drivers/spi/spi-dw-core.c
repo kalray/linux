@@ -24,6 +24,7 @@
 struct chip_data {
 	u8 tmode;		/* TR/TO/RO/EEPROM */
 	u8 type;		/* SPI/SSP/MicroWire */
+	u8 spi_frf;             /* DUAL/QUAD/OCTAL */
 
 	u16 clk_div;		/* baud rate divider */
 	u32 speed_hz;		/* baud rate */
@@ -303,6 +304,9 @@ u32 dw_spi_update_cr0_v1_01a(struct spi_device *spi, u8 bpw)
 	/* CTRLR0[13] Shift Register Loop */
 	cr0 |= ((spi->mode & SPI_LOOP) ? 1 : 0) << DWC_SSI_CTRLR0_SRL_OFFSET;
 
+	/* CTRLR0[23:22] SPI Frame Format */
+	cr0 |= chip->spi_frf << DWC_SSI_CTRLR0_SPI_FRF_OFFSET;
+
 	return cr0;
 }
 EXPORT_SYMBOL_GPL(dw_spi_update_cr0_v1_01a);
@@ -399,6 +403,7 @@ static int dw_spi_setup(struct spi_device *spi)
 	}
 
 	chip->tmode = SPI_TMOD_TR;
+	chip->spi_frf = SPI_SPI_FRF_STANDARD;
 
 	return 0;
 }
@@ -409,6 +414,45 @@ static void dw_spi_cleanup(struct spi_device *spi)
 
 	kfree(chip);
 	spi_set_ctldata(spi, NULL);
+}
+
+static void dw_spi_mem_enhanced_read_rx_fifo(struct dw_spi *dws)
+{
+	const struct spi_mem_op *op = dws->mem_op;
+	unsigned int max_data = dw_readl(dws, DW_SPI_RXFLR);
+	unsigned int remaining;
+	u8 *buf = op->data.buf.in;
+
+	while (max_data--) {
+		buf[dws->cur_data_off] = dw_read_io_reg(dws, DW_SPI_DR);
+		dws->cur_data_off++;
+	}
+
+	if (dws->cur_data_off == dws->cur_xfer_size)
+		return;
+
+	/*
+	 * Transfer is not over, we want to trigger an interrupt for the
+	 * remaining bytes to come
+	 */
+	remaining = dws->cur_xfer_size - dws->cur_data_off;
+	if (remaining < dws->fifo_len)
+		dw_writel(dws, DW_SPI_RXFTLR, (remaining - 1));
+}
+
+static void dw_spi_mem_enhanced_write_tx_fifo(struct dw_spi *dws)
+{
+	const struct spi_mem_op *op = dws->mem_op;
+	unsigned int max_data = dws->fifo_len - dw_readl(dws, DW_SPI_TXFLR);
+	const u8 *buf = op->data.buf.out;
+
+	while (max_data--) {
+		if (dws->cur_data_off == dws->cur_xfer_size)
+			break;
+
+		dw_write_io_reg(dws, DW_SPI_DR, buf[dws->cur_data_off]);
+		dws->cur_data_off++;
+	}
 }
 
 static void dw_spi_mem_std_read_rx_fifo(struct dw_spi *dws)
@@ -440,11 +484,27 @@ static void spi_mem_finish_transfer(struct dw_spi *dws)
 
 static void dw_spi_mem_handle_irq(struct dw_spi *dws)
 {
-	/* We were expecting data, read the rx fifo */
-	if (dws->mem_op->data.dir == SPI_MEM_DATA_IN)
-		dw_spi_mem_std_read_rx_fifo(dws);
+	if (!dws->enhanced_xfer) {
+		/* We were expecting data, read the rx fifo */
+		if (dws->mem_op->data.dir == SPI_MEM_DATA_IN)
+			dw_spi_mem_std_read_rx_fifo(dws);
 
-	spi_mem_finish_transfer(dws);
+		spi_mem_finish_transfer(dws);
+	} else {
+		spin_lock(&dws->buf_lock);
+		if (dws->mem_op->data.dir == SPI_MEM_DATA_IN)
+			dw_spi_mem_enhanced_read_rx_fifo(dws);
+
+		if (dws->cur_data_off == dws->cur_xfer_size) {
+			spi_mem_finish_transfer(dws);
+			spin_unlock(&dws->buf_lock);
+			return;
+		}
+		if (dws->mem_op->data.dir == SPI_MEM_DATA_OUT)
+			dw_spi_mem_enhanced_write_tx_fifo(dws);
+
+		spin_unlock(&dws->buf_lock);
+	}
 }
 
 static irqreturn_t dw_spi_mem_irq(struct dw_spi *dws)
@@ -571,6 +631,113 @@ static void dw_spi_mem_exec_std(struct spi_device *spi,
 	dw_spi_mem_start_std_op(dws, op);
 }
 
+static void dw_spi_mem_setup_enhanced_xfer(struct dw_spi *dws,
+				      struct spi_device *spi,
+				      const struct spi_mem_op *op)
+{
+	struct chip_data *chip = spi_get_ctldata(spi);
+	u32 spi_ctrl0 = 0;
+	u32 wait_cycles = 0;
+	u8 addr_l = 0;
+
+	dw_spi_mem_reset_xfer(dws, op);
+	dws->enhanced_xfer = 1;
+
+	if (op->data.dir == SPI_MEM_DATA_IN)
+		chip->tmode = SPI_TMOD_RO;
+	else
+		chip->tmode = SPI_TMOD_TO;
+
+	if (op->data.buswidth == 8)
+		chip->spi_frf = SPI_SPI_FRF_OCTAL;
+	else if (op->data.buswidth == 4)
+		chip->spi_frf = SPI_SPI_FRF_QUAD;
+	else if (op->data.buswidth == 2)
+		chip->spi_frf = SPI_SPI_FRF_DUAL;
+
+	if (op->addr.nbytes == 1)
+		addr_l = SPI_CTRL0_ADDR_L8;
+	else if (op->addr.nbytes == 2)
+		addr_l = SPI_CTRL0_ADDR_L16;
+	else if (op->addr.nbytes == 3)
+		addr_l = SPI_CTRL0_ADDR_L24;
+	else if (op->addr.nbytes == 4)
+		addr_l = SPI_CTRL0_ADDR_L32;
+
+	if (op->dummy.nbytes && op->dummy.buswidth)
+		wait_cycles = (op->dummy.nbytes * 8) / op->dummy.buswidth;
+
+	spi_ctrl0 = (addr_l << SPI_CTRL0_ADDR_L_OFFSET) |
+		    (1 << SPI_CTRL0_CLK_STRETCH_OFFSET) |
+		    (wait_cycles << SPI_CTRL0_WAIT_CYCLES_OFFSET) |
+		    (SPI_SPI_CTRL0_INST_L8 << SPI_CTRL0_INST_L_OFFSET);
+
+	spi_enable_chip(dws, 0);
+	dw_spi_setup_xfer(dws, spi, spi->max_speed_hz, 8);
+	dw_writel(dws, DW_SPI_SPI_CTRL0, spi_ctrl0);
+	spi_enable_chip(dws, 1);
+}
+
+static void dw_spi_mem_start_enhanced_op(struct dw_spi *dws,
+					const struct spi_mem_op *op)
+{
+	unsigned int thres;
+	unsigned long flags;
+
+	dws->cur_xfer_size = op->data.nbytes;
+	spi_enable_chip(dws, 0);
+	spi_mask_intr(dws, 0xff);
+
+	dw_writel(dws, DW_SPI_CTRLR1, op->data.nbytes - 1);
+	if (op->data.dir == SPI_MEM_DATA_IN) {
+		thres = min(dws->fifo_len, op->data.nbytes);
+		if (thres < 1)
+			thres = 1;
+		dw_writel(dws, DW_SPI_RXFTLR, thres - 1);
+		dw_writel(dws, DW_SPI_TXFTLR, 0);
+
+		spi_umask_intr(dws, SPI_INT_RXFI);
+	} else {
+		/*
+		 * Since we send a command + opcode, we need to set the start
+		 * threshold to at least 2
+		 */
+		thres = 2;
+		dw_writel(dws, DW_SPI_TXFTLR, thres << SPI_TXFTL_FTHR);
+
+		spi_umask_intr(dws, SPI_INT_TXEI);
+	}
+
+	spi_enable_chip(dws, 1);
+
+	spin_lock_irqsave(&dws->buf_lock, flags);
+	dw_write_io_reg(dws, DW_SPI_DR, op->cmd.opcode);
+	dw_write_io_reg(dws, DW_SPI_DR, op->addr.val);
+
+	if (op->data.dir == SPI_MEM_DATA_OUT)
+		dw_spi_mem_enhanced_write_tx_fifo(dws);
+
+	spin_unlock_irqrestore(&dws->buf_lock, flags);
+}
+
+static void dw_spi_mem_exec_enhanced(struct spi_device *spi,
+				    const struct spi_mem_op *op)
+{
+	struct dw_spi *dws = spi_controller_get_devdata(spi->master);
+
+	dw_spi_mem_setup_enhanced_xfer(dws, spi, op);
+	dw_spi_mem_start_enhanced_op(dws, op);
+}
+
+static bool dw_spi_mem_is_enhanced(const struct spi_mem_op *op)
+{
+	/*
+	 * From a controller POV, an enhanced transfer is using more then 1 wire
+	 * of data
+	 */
+	return op->data.buswidth > 1;
+}
+
 static int dw_spi_mem_exec_op(struct spi_mem *mem, const struct spi_mem_op *op)
 {
 	struct dw_spi *dws = spi_controller_get_devdata(mem->spi->master);
@@ -580,9 +747,12 @@ static int dw_spi_mem_exec_op(struct spi_mem *mem, const struct spi_mem_op *op)
 	/* Select the slave, it will only be asserted when clock starts */
 	dw_spi_set_cs(mem->spi, true);
 
-	dw_spi_mem_exec_std(mem->spi, op);
+	if (dw_spi_mem_is_enhanced(op))
+		dw_spi_mem_exec_enhanced(mem->spi, op);
+	else
+		dw_spi_mem_exec_std(mem->spi, op);
 
-	timeout = wait_for_completion_timeout(&dws->comp, 10 * HZ);
+	timeout = wait_for_completion_timeout(&dws->comp, HZ);
 	if (!timeout) {
 		dev_err(&dws->master->dev, "completion timeout");
 		goto err_io;
@@ -622,16 +792,37 @@ err_io:
 static bool dw_spi_mem_supports_op(struct spi_mem *mem,
 				   const struct spi_mem_op *op)
 {
+	const int max_wait_cyle = SPI_CTRL0_WAIT_CYCLES_MASK;
+
+	if (op->addr.nbytes > 4)
+		return false;
+
+	/* We only support 1-1-X commands */
+	if (op->addr.buswidth > 1 || op->addr.buswidth > 1)
+		return false;
+
+	/* Check maximum number of wait cycles */
+	if (op->dummy.nbytes &&
+	    (op->dummy.nbytes * 8 / op->dummy.buswidth > max_wait_cyle))
+		return false;
+
 	return spi_mem_default_supports_op(mem, op);
 }
 
 int dw_spi_mem_adjust_op_size(struct spi_mem *mem, struct spi_mem_op *op)
 {
 	struct dw_spi *dws = spi_controller_get_devdata(mem->spi->master);
-	unsigned int max_size = dws->fifo_len - 1 - op->addr.nbytes -
-				op->dummy.nbytes;
+	unsigned int max_size;
 
-	op->data.nbytes = min(op->data.nbytes, max_size);
+	if (dw_spi_mem_is_enhanced(op)) {
+		/* Reduce to maximum NDF in enhanced_xfer mode */
+		op->data.nbytes = min_t(unsigned int, op->data.nbytes,
+					SPI_CTRL1_NDF_MASK);
+	} else {
+		max_size = dws->fifo_len - 1 - op->addr.nbytes -
+			   op->dummy.nbytes;
+		op->data.nbytes = min(op->data.nbytes, max_size);
+	}
 
 	return 0;
 }
@@ -715,6 +906,12 @@ int dw_spi_add_host(struct device *dev, struct dw_spi *dws)
 	if (dws->needs_spi_mem) {
 		master->mem_ops = &dw_spi_mem_ops;
 		init_completion(&dws->comp);
+	}
+
+	if (dws->support_enhanced) {
+		master->mode_bits |= SPI_RX_DUAL | SPI_TX_DUAL |
+				     SPI_RX_QUAD | SPI_TX_QUAD |
+				     SPI_RX_OCTAL | SPI_TX_OCTAL;
 	}
 
 	if (dws->bpw_mask)

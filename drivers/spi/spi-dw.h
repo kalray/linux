@@ -36,6 +36,7 @@
 #define DW_SPI_VERSION			0x5c
 #define DW_SPI_DR			0x60
 #define DW_SPI_CS_OVERRIDE		0xf4
+#define DW_SPI_SPI_CTRL0		0xf4
 
 /* Bit fields in CTRLR0 */
 #define SPI_DFS_OFFSET			0
@@ -62,6 +63,7 @@
 #define SPI_CFS_OFFSET			12
 
 /* Bit fields in CTRLR0 based on DWC_ssi_databook.pdf v1.01a */
+#define DWC_SSI_CTRLR0_SPI_FRF_OFFSET	22
 #define DWC_SSI_CTRLR0_SRL_OFFSET	13
 #define DWC_SSI_CTRLR0_TMOD_OFFSET	10
 #define DWC_SSI_CTRLR0_TMOD_MASK	GENMASK(11, 10)
@@ -69,6 +71,14 @@
 #define DWC_SSI_CTRLR0_SCPH_OFFSET	8
 #define DWC_SSI_CTRLR0_FRF_OFFSET	6
 #define DWC_SSI_CTRLR0_DFS_OFFSET	0
+
+#define SPI_SPI_FRF_STANDARD		0
+#define SPI_SPI_FRF_DUAL		1
+#define SPI_SPI_FRF_QUAD		2
+#define SPI_SPI_FRF_OCTAL		3
+
+/* Bit fields in CTRLR1 */
+#define SPI_CTRL1_NDF_MASK		0xffff
 
 /* Bit fields in SR, 7 bits */
 #define SR_MASK				0x7f		/* cover 7 bits */
@@ -92,8 +102,26 @@
 #define SPI_DMA_RDMAE			(1 << 0)
 #define SPI_DMA_TDMAE			(1 << 1)
 
-/* TX RX interrupt level threshold, max can be 256 */
-#define SPI_INT_THRESHOLD		32
+/* Bit fields in TXFTLR */
+#define SPI_TXFTL_TFT_OFFSET		0
+#define SPI_TXFTL_FTHR			16
+
+#define SPI_CTRL0_ADDR_L_OFFSET		2
+#define SPI_CTRL0_ADDR_L8		0x2
+#define SPI_CTRL0_ADDR_L16		0x4
+#define SPI_CTRL0_ADDR_L24		0x6
+#define SPI_CTRL0_ADDR_L32		0x8
+#define SPI_CTRL0_ADDR_L40		0xa
+#define SPI_CTRL0_ADDR_L48		0xc
+#define SPI_CTRL0_ADDR_L56		0xe
+
+#define SPI_CTRL0_INST_L_OFFSET		8
+#define SPI_SPI_CTRL0_INST_L8		0x2
+
+#define SPI_CTRL0_WAIT_CYCLES_OFFSET	11
+#define SPI_CTRL0_WAIT_CYCLES_MASK	0x1f
+
+#define SPI_CTRL0_CLK_STRETCH_OFFSET	30
 
 enum dw_ssi_type {
 	SSI_MOTO_SPI = 0,
@@ -124,6 +152,7 @@ struct dw_spi {
 
 	int			cs_override;
 	bool			needs_spi_mem;
+	bool			support_enhanced;
 	u32			reg_io_width;	/* DR I/O width in bytes */
 	u16			bus_num;
 	u16			num_cs;		/* supported slave numbers */
@@ -159,6 +188,7 @@ struct dw_spi {
 	int			comp_status;
 	unsigned int		cur_data_off;
 	unsigned int		cur_xfer_size;
+	bool			enhanced_xfer;
 
 	/* Bus interface info */
 	void			*priv;
