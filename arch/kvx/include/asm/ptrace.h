@@ -164,6 +164,16 @@ struct pt_regs {
 #define DEBUG_CAUSE_STEPI	2
 #define DEBUG_CAUSE_DSU_BREAK	3
 
+static inline void enable_single_step(struct pt_regs *regs)
+{
+	regs->sps |= KVX_SFR_PS_SME_MASK;
+}
+
+static inline void disable_single_step(struct pt_regs *regs)
+{
+	regs->sps &= ~KVX_SFR_PS_SME_MASK;
+}
+
 static inline bool in_syscall(struct pt_regs const *regs)
 {
 	return es_ec(regs) == ES_SYSCALL;
