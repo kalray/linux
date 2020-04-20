@@ -33,16 +33,6 @@ enum break_ret {
 };
 
 /**
- * enum break_hook_mode - Break hook types
- * @BREAK_MODE_KERNEL: Hook is triggered when in kernel mode
- * @BREAK_MODE_USER: Hook is triggered when in user mode
- */
-enum break_hook_mode {
-	BREAK_MODE_KERNEL = 0,
-	BREAK_MODE_USER = 1,
-};
-
-/**
  * Break insn value for a specific immediate
  * NOTE: We use a set instruction on $vsfr0
  */
