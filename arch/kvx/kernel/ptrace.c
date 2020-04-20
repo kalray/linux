@@ -447,7 +447,7 @@ void debug_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 static struct break_hook bkpt_break_hook = {
 	.id = BREAK_CAUSE_BKPT,
 	.handler = kvx_bkpt_handler,
-	.mode = BREAK_MODE_USER,
+	.mode = MODE_USER,
 };
 
 static int __init arch_init_breakpoint(void)
