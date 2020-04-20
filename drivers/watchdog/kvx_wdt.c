@@ -64,6 +64,11 @@ MODULE_PARM_DESC(nowayout,
 	"Watchdog cannot be stopped once started (default="
 				__MODULE_STRING(WATCHDOG_NOWAYOUT) ")");
 
+static int wdt_in_kernel = 1;
+module_param(wdt_in_kernel, int, 0444);
+MODULE_PARM_DESC(wdt_in_kernel,
+	"Automatically start the watchdog for kernel (default=1)");
+
 static enum cpuhp_state kvx_wdt_cpu_hp_state;
 static unsigned long wdt_timeout_value;
 static unsigned int kvx_wdt_irq;
@@ -98,18 +103,28 @@ static irqreturn_t kvx_wdt_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void kvx_cpu_wdt_start_counting(void)
+static void kvx_cpu_wdt_stop(void *data)
 {
+	kvx_sfr_set_field(TCR, WCE, 0);
+}
+
+static void kvx_cpu_wdt_start(void *data)
+{
+	u64 val = kvx_sfr_bit(TCR, WIE) | kvx_sfr_bit(TCR, WUI);
+
+	u64 mask = KVX_SFR_TCR_WIE_MASK | KVX_SFR_TCR_WUI_MASK |
+		   KVX_SFR_TCR_WUS_MASK;
+
+	/* Enable Interrupts and underflow inform logic */
+	kvx_sfr_set_mask(TCR, mask, val);
+
 	/*
 	 * Set a low value for the watchdog in order to reset shortly after
 	 * interrupt.
 	 */
 	kvx_sfr_set(WDR, WDT_BARK_DELAY_SEC * clk_rate);
-	/* Clear WUS to avoid being reset on first interrupt */
-	kvx_sfr_set_field(TCR, WUS, 0);
 	kvx_cpu_wdt_feed();
 
-	/* Start the watchdog */
 	kvx_sfr_set_field(TCR, WCE, 1);
 }
 
@@ -141,6 +156,12 @@ static int kvx_wdt_start(struct watchdog_device *wdt_dev)
 	/* Write memory barrier for wdt_opened to be seen by other processors */
 	smp_wmb();
 
+	/* If watchdog in kernel disabled, then we have to start it */
+	if (!wdt_in_kernel) {
+		on_each_cpu(kvx_cpu_wdt_ping, NULL, 0);
+		on_each_cpu(kvx_cpu_wdt_start, NULL, 0);
+	}
+
 	return 0;
 }
 
@@ -150,9 +171,13 @@ static int kvx_wdt_stop(struct watchdog_device *wdt_dev)
 	/* Write memory barrier for wdt_opened to be seen by other processors */
 	smp_wmb();
 
-	/* Reset timeout to module parameter and ping it for a fresh start */
-	kvx_wdt_set_timeout(wdt_dev, timeout);
-	on_each_cpu(kvx_cpu_wdt_ping, NULL, 0);
+	if (!wdt_in_kernel) {
+		on_each_cpu(kvx_cpu_wdt_stop, NULL, 0);
+	} else {
+		/* Reset timeout to module parameter and ping it */
+		kvx_wdt_set_timeout(wdt_dev, timeout);
+		on_each_cpu(kvx_cpu_wdt_ping, NULL, 0);
+	}
 
 	return 0;
 }
@@ -168,27 +193,18 @@ static unsigned int kvx_wdt_gettimeleft(struct watchdog_device *wdt_dev)
 
 static int kvx_wdt_cpu_online(unsigned int cpu)
 {
-	u64 val = kvx_sfr_bit(TCR, WIE) | kvx_sfr_bit(TCR, WUI);
-
-	u64 mask = KVX_SFR_TCR_WIE_MASK | KVX_SFR_TCR_WUI_MASK;
-
 	enable_percpu_irq(kvx_wdt_irq, IRQ_TYPE_NONE);
 
-	/* Enable Interrupts and underflow inform logic */
-	kvx_sfr_set_mask(TCR, mask, val);
-
-	kvx_cpu_wdt_start_counting();
+	if (wdt_in_kernel)
+		kvx_cpu_wdt_start(NULL);
 
 	return 0;
 }
 
 static int kvx_wdt_cpu_offline(unsigned int cpu)
 {
-	/* Stop watchdog counting, underflow inform, and interrupts */
-	u64 mask = KVX_SFR_TCR_WCE_MASK | KVX_SFR_TCR_WUI_MASK |
-		   KVX_SFR_TCR_WIE_MASK;
-
-	kvx_sfr_set_mask(TCR, mask, 0);
+	if (wdt_in_kernel)
+		kvx_cpu_wdt_stop(NULL);
 
 	disable_percpu_irq(kvx_wdt_irq);
 
@@ -285,7 +301,8 @@ static int kvx_wdt_probe(struct platform_device *pdev)
 		goto remove_cpuhp_state;
 	}
 
-	dev_info(&pdev->dev, "probed\n");
+	dev_info(&pdev->dev, "probed (%sabled in kernel)\n",
+		 wdt_in_kernel ? "en" : "dis");
 
 	return 0;
 
