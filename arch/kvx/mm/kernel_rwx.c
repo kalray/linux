@@ -35,7 +35,7 @@ static int __init parse_kernel_rwx(char *arg)
 
 	return 0;
 }
-early_param("kernel_rwx", parse_kernel_rwx);
+early_param("kvx.kernel_rwx", parse_kernel_rwx);
 
 static void map_exception_only_in_ltlb(void)
 {
