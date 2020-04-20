@@ -153,7 +153,7 @@ static int bug_break_handler(struct break_hook *brk_hook, struct pt_regs *regs)
 static struct break_hook bug_break_hook = {
 	.handler = bug_break_handler,
 	.id = BREAK_CAUSE_BUG,
-	.mode = BREAK_MODE_KERNEL,
+	.mode = MODE_KERNEL,
 };
 
 #define GEN_TRAP_HANDLER(__name, __sig, __code) \
