@@ -9,6 +9,7 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/highmem.h>
+#include <linux/iopoll.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/spi/spi.h>
@@ -227,7 +228,8 @@ static irqreturn_t dw_spi_irq(int irq, void *dev_id)
 	if (!irq_status)
 		return IRQ_NONE;
 
-	if (!master->cur_msg) {
+	/* When using spimem, there is no cur_msg member */
+	if (!dws->mem_op && !master->cur_msg) {
 		spi_mask_intr(dws, SPI_INT_TXEI);
 		return IRQ_HANDLED;
 	}
@@ -409,6 +411,237 @@ static void dw_spi_cleanup(struct spi_device *spi)
 	spi_set_ctldata(spi, NULL);
 }
 
+static void dw_spi_mem_std_read_rx_fifo(struct dw_spi *dws)
+{
+	const struct spi_mem_op *op = dws->mem_op;
+	u16 cmd_addr_dummy_len = 1 + op->addr.nbytes + op->dummy.nbytes;
+	u8 byte;
+	u8 *buf = op->data.buf.in;
+	int i, off = 0;
+
+	for (i = 0; i < dws->cur_xfer_size; i++) {
+		byte = dw_read_io_reg(dws, DW_SPI_DR);
+		/* First bytes read are only sampled data on TX for cmd */
+		if (i < cmd_addr_dummy_len)
+			continue;
+
+		buf[off] = byte;
+		off++;
+	}
+}
+
+static void spi_mem_finish_transfer(struct dw_spi *dws)
+{
+	spi_mask_intr(dws, 0xff);
+	dws->comp_status = 0;
+	complete(&dws->comp);
+}
+
+
+static void dw_spi_mem_handle_irq(struct dw_spi *dws)
+{
+	/* We were expecting data, read the rx fifo */
+	if (dws->mem_op->data.dir == SPI_MEM_DATA_IN)
+		dw_spi_mem_std_read_rx_fifo(dws);
+
+	spi_mem_finish_transfer(dws);
+}
+
+static irqreturn_t dw_spi_mem_irq(struct dw_spi *dws)
+{
+	u16 irq_status = dw_readl(dws, DW_SPI_ISR);
+
+	/* Error handling */
+	if (irq_status & (SPI_INT_TXOI | SPI_INT_RXOI | SPI_INT_RXUI)) {
+		dw_readl(dws, DW_SPI_ICR);
+		spi_reset_chip(dws);
+		complete(&dws->comp);
+		return IRQ_HANDLED;
+	}
+
+	if (irq_status & SPI_INT_RXFI) {
+		/* This is a spurious IRQ, should not happen */
+		if (dws->mem_op->data.dir != SPI_MEM_DATA_IN) {
+			pr_err("Unexpected RX full irq\n");
+			return IRQ_HANDLED;
+		}
+		dw_spi_mem_handle_irq(dws);
+	}
+
+	if (irq_status & SPI_INT_TXEI) {
+		/* This is a spurious IRQ, should not happen */
+		if (dws->mem_op->data.dir == SPI_MEM_DATA_IN) {
+			pr_err("Unexpected TX empty irq\n");
+			return IRQ_HANDLED;
+		}
+		dw_spi_mem_handle_irq(dws);
+	}
+
+	return IRQ_HANDLED;
+}
+
+static void dw_spi_mem_reset_xfer(struct dw_spi *dws,
+				  const struct spi_mem_op *op)
+{
+	reinit_completion(&dws->comp);
+	dws->mem_op = op;
+	dws->cur_data_off = 0;
+	dws->comp_status = -EIO;
+	dws->enhanced_xfer = 0;
+	dws->transfer_handler = dw_spi_mem_irq;
+}
+
+static void dw_spi_mem_start_std_op(struct dw_spi *dws,
+				    const struct spi_mem_op *op)
+{
+	int i;
+	u8 byte;
+	u16 cmd_addr_dummy_len = 1 + op->addr.nbytes + op->dummy.nbytes;
+	/*
+	 * We adjusted the transfer size to ensure there will be no more than
+	 * fifo_len bytes to send, so there is no need to chek the length
+	 */
+	unsigned int xfer_size = op->data.nbytes + cmd_addr_dummy_len;
+	const u8 *buf = op->data.buf.out;
+
+	/* This is the amount of data that will need to be read from the FIFO */
+	dws->cur_xfer_size = xfer_size;
+
+	spi_enable_chip(dws, 0);
+	spi_mask_intr(dws, 0xff);
+
+	/* When reading, we only care about the receive fifo being empty */
+	if (op->data.dir == SPI_MEM_DATA_IN) {
+		/* Set RX fifo level to trigger a rx fifo full interrupt */
+		dw_writel(dws, DW_SPI_RXFTLR, (xfer_size - 1));
+
+		spi_umask_intr(dws, SPI_INT_RXFI);
+	} else {
+		/* We will refill the tx on tx empty fifo interrupt */
+		spi_umask_intr(dws, SPI_INT_TXEI);
+	}
+
+	/* Set TXFTL start fifo level*/
+	dw_writel(dws, DW_SPI_TXFTLR, (xfer_size - 1) << SPI_TXFTL_FTHR);
+
+	spi_enable_chip(dws, 1);
+
+	dw_write_io_reg(dws, DW_SPI_DR, op->cmd.opcode);
+
+	if (op->addr.nbytes) {
+		/* Send address MSB first */
+		for (i = op->addr.nbytes - 1; i >= 0; i--) {
+			byte = (op->addr.val >> (i * 8)) & 0xff;
+			dw_write_io_reg(dws, DW_SPI_DR, byte);
+		}
+	}
+
+	for (i = 0; i < op->dummy.nbytes; i++)
+		dw_write_io_reg(dws, DW_SPI_DR, 0xff);
+
+	byte = 0xff;
+	/* Then send all data up to data_size */
+	for (i = 0; i < op->data.nbytes; i++) {
+		if (op->data.dir == SPI_MEM_DATA_OUT)
+			byte = buf[i];
+
+		dw_write_io_reg(dws, DW_SPI_DR, byte);
+	}
+}
+
+static void dw_spi_mem_exec_std(struct spi_device *spi,
+			       const struct spi_mem_op *op)
+{
+	struct dw_spi *dws = spi_controller_get_devdata(spi->master);
+	struct chip_data *chip = spi_get_ctldata(spi);
+
+	dw_spi_mem_reset_xfer(dws, op);
+
+	if (op->data.dir == SPI_MEM_DATA_IN)
+		chip->tmode = SPI_TMOD_TR;
+	else
+		chip->tmode = SPI_TMOD_TO;
+
+	chip->spi_frf = SPI_SPI_FRF_STANDARD;
+
+	spi_enable_chip(dws, 0);
+	dw_spi_setup_xfer(dws, spi, spi->max_speed_hz, 8);
+	spi_enable_chip(dws, 1);
+
+	dw_spi_mem_start_std_op(dws, op);
+}
+
+static int dw_spi_mem_exec_op(struct spi_mem *mem, const struct spi_mem_op *op)
+{
+	struct dw_spi *dws = spi_controller_get_devdata(mem->spi->master);
+	unsigned long timeout;
+	u32 sr;
+
+	/* Select the slave, it will only be asserted when clock starts */
+	dw_spi_set_cs(mem->spi, true);
+
+	dw_spi_mem_exec_std(mem->spi, op);
+
+	timeout = wait_for_completion_timeout(&dws->comp, 10 * HZ);
+	if (!timeout) {
+		dev_err(&dws->master->dev, "completion timeout");
+		goto err_io;
+	}
+
+	if (dws->comp_status != 0) {
+		dev_err(&dws->master->dev, "completion error");
+		goto err_io;
+	}
+
+	/* Wait for TFE bit to go up */
+	timeout = readl_poll_timeout(dws->regs + DW_SPI_SR, sr,
+				     sr & SR_TF_EMPT, 0, USEC_PER_SEC);
+	if (timeout) {
+		dev_err(&dws->master->dev, "wait for transmit fifo empty failed\n");
+		goto err_io;
+	}
+
+	/* Wait for BUSY bit to go down */
+	timeout = readl_poll_timeout(dws->regs + DW_SPI_SR, sr,
+				     !(sr & SR_BUSY), 0, USEC_PER_SEC);
+	if (timeout) {
+		dev_err(&dws->master->dev, "wait for end of busy failed\n");
+		goto err_io;
+	}
+
+	dw_spi_set_cs(mem->spi, false);
+
+	return 0;
+
+err_io:
+	spi_reset_chip(dws);
+	return -EIO;
+
+}
+
+static bool dw_spi_mem_supports_op(struct spi_mem *mem,
+				   const struct spi_mem_op *op)
+{
+	return spi_mem_default_supports_op(mem, op);
+}
+
+int dw_spi_mem_adjust_op_size(struct spi_mem *mem, struct spi_mem_op *op)
+{
+	struct dw_spi *dws = spi_controller_get_devdata(mem->spi->master);
+	unsigned int max_size = dws->fifo_len - 1 - op->addr.nbytes -
+				op->dummy.nbytes;
+
+	op->data.nbytes = min(op->data.nbytes, max_size);
+
+	return 0;
+}
+
+static const struct spi_controller_mem_ops dw_spi_mem_ops = {
+	.supports_op = dw_spi_mem_supports_op,
+	.exec_op = dw_spi_mem_exec_op,
+	.adjust_op_size = dw_spi_mem_adjust_op_size,
+};
+
 /* Restart the controller, disable all interrupts, clean rx fifo */
 static void spi_hw_init(struct device *dev, struct dw_spi *dws)
 {
@@ -478,6 +711,11 @@ int dw_spi_add_host(struct device *dev, struct dw_spi *dws)
 	master->dev.fwnode = dev->fwnode;
 	master->flags = SPI_MASTER_GPIO_SS;
 	master->auto_runtime_pm = true;
+
+	if (dws->needs_spi_mem) {
+		master->mem_ops = &dw_spi_mem_ops;
+		init_completion(&dws->comp);
+	}
 
 	if (dws->bpw_mask)
 		master->bits_per_word_mask = dws->bpw_mask;

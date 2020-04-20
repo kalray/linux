@@ -7,6 +7,7 @@
 #include <linux/irqreturn.h>
 #include <linux/io.h>
 #include <linux/scatterlist.h>
+#include <linux/spi/spi-mem.h>
 
 /* Register offsets */
 #define DW_SPI_CTRLR0			0x00
@@ -122,6 +123,7 @@ struct dw_spi {
 	u32			max_freq;	/* max bus freq supported */
 
 	int			cs_override;
+	bool			needs_spi_mem;
 	u32			reg_io_width;	/* DR I/O width in bytes */
 	u16			bus_num;
 	u16			num_cs;		/* supported slave numbers */
@@ -151,6 +153,15 @@ struct dw_spi {
 	const struct dw_spi_dma_ops *dma_ops;
 	struct completion	dma_completion;
 
+	/* spi-mem related */
+	const struct spi_mem_op *mem_op;
+	struct completion	comp;
+	int			comp_status;
+	unsigned int		cur_data_off;
+	unsigned int		cur_xfer_size;
+
+	/* Bus interface info */
+	void			*priv;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs;
 	struct debugfs_regset32 regset;
