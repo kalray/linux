@@ -206,6 +206,9 @@ static int dw_ahb_ssi_init(struct platform_device *pdev,
 	spi_enable_chip(dws, 1);
 	dws->num_cs = hweight32(dw_readl(dws, DW_SPI_SER));
 
+	dws->needs_spi_mem = true;
+	dws->support_enhanced = true;
+
 	return 0;
 }
 
