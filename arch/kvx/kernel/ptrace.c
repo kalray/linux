@@ -396,14 +396,14 @@ void user_enable_single_step(struct task_struct *child)
 {
 	struct pt_regs *regs = task_pt_regs(child);
 
-	regs->sps |= KVX_SFR_PS_SME_MASK; /* set saved SPS.SME */
+	enable_single_step(regs);
 }
 
 void user_disable_single_step(struct task_struct *child)
 {
 	struct pt_regs *regs = task_pt_regs(child);
 
-	regs->sps &= ~KVX_SFR_PS_SME_MASK; /* clear saved SPS.SME */
+	disable_single_step(regs);
 }
 
 /**
