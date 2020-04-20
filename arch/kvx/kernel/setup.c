@@ -39,6 +39,20 @@ EXPORT_SYMBOL(memory_start);
 unsigned long memory_end;
 EXPORT_SYMBOL(memory_end);
 
+static bool use_streaming = true;
+static int __init parse_kvx_streaming(char *arg)
+{
+	strtobool(arg, &use_streaming);
+
+	if (!use_streaming) {
+		pr_info("disabling streaming\n");
+		kvx_sfr_set_field(PS, USE, 0);
+	}
+
+	return 0;
+}
+early_param("kvx.streaming", parse_kvx_streaming);
+
 static void __init setup_user_privilege(void)
 {
 	/*
@@ -87,6 +101,9 @@ void __init setup_processor(void)
 	 */
 	kvx_sfr_set_field(MMC, SNE, 0);
 	kvx_sfr_set_field(MMC, SPE, 0);
+
+	if (!use_streaming)
+		kvx_sfr_set_field(PS, USE, 0);
 
 	kvx_init_core_irq();
 
