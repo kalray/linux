@@ -231,6 +231,7 @@ static int kvx_wdt_clock_init(struct platform_device *pdev)
 
 static int kvx_wdt_probe(struct platform_device *pdev)
 {
+	struct device *dev = &pdev->dev;
 	int ret;
 
 	ret = kvx_wdt_clock_init(pdev);
@@ -242,7 +243,7 @@ static int kvx_wdt_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, &kvx_wdt_dev);
 
 	kvx_wdt_dev.max_timeout = UINT_MAX;
-	kvx_wdt_dev.parent = &pdev->dev;
+	kvx_wdt_dev.parent = dev;
 
 	wdt_timeout_value = timeout * clk_rate;
 
@@ -278,7 +279,7 @@ static int kvx_wdt_probe(struct platform_device *pdev)
 
 	kvx_wdt_cpu_hp_state = ret;
 
-	ret = watchdog_register_device(&kvx_wdt_dev);
+	ret = devm_watchdog_register_device(dev, &kvx_wdt_dev);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register watchdog\n");
 		goto remove_cpuhp_state;
@@ -299,10 +300,7 @@ free_percpu_irq:
 
 static int kvx_wdt_remove(struct platform_device *pdev)
 {
-	struct watchdog_device *wdt_dev = platform_get_drvdata(pdev);
-
 	cpuhp_remove_state(kvx_wdt_cpu_hp_state);
-	watchdog_unregister_device(wdt_dev);
 	free_percpu_irq(kvx_wdt_irq, pdev);
 
 	return 0;
