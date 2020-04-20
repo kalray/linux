@@ -374,7 +374,7 @@ void do_syscall_trace_exit(struct pt_regs *regs)
 #endif
 }
 
-static int kvx_bkpt_handler(u64 es, u64 ea, struct pt_regs *regs)
+static int kvx_bkpt_handler(struct break_hook *brk_hook, struct pt_regs *regs)
 {
 	/* Unexpected breakpoint */
 	if (!(current->ptrace & PT_PTRACED))
