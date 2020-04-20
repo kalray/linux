@@ -26,10 +26,10 @@ void kvx_skip_break_insn(struct pt_regs *regs)
 	regs->spc += KVX_BREAK_INSN_SIZE;
 }
 
-int break_hook_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
+int break_hook_handler(uint64_t es, struct pt_regs *regs)
 {
-	int (*fn)(u64 es, u64 ea, struct pt_regs *regs) = NULL;
-	struct break_hook *hook;
+	int (*fn)(struct break_hook *brk_hook, struct pt_regs *regs) = NULL;
+	struct break_hook *tmp_hook, *hook = NULL;
 	struct list_head *list;
 	unsigned long flags;
 	u32 idx;
@@ -42,16 +42,19 @@ int break_hook_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	list = user_mode(regs) ? &user_break_hook : &kernel_break_hook;
 
 	local_irq_save(flags);
-	list_for_each_entry_rcu(hook, list, node) {
-		if (idx == hook->id)
-			fn = hook->handler;
+	list_for_each_entry_rcu(tmp_hook, list, node) {
+		if (idx == tmp_hook->id) {
+			hook = tmp_hook;
+			break;
+		}
 	}
 	local_irq_restore(flags);
 
-	if (fn)
-		return fn(es, ea, regs);
+	if (!hook)
+		return BREAK_HOOK_ERROR;
 
-	return BREAK_HOOK_ERROR;
+	fn = hook->handler;
+	return fn(hook, regs);
 }
 
 void break_hook_register(struct break_hook *brk_hook)
