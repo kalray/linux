@@ -148,8 +148,11 @@ struct pt_regs {
 
 #define pl(__reg) kvx_sfr_field_val(__reg, PS, PL)
 
+#define MODE_KERNEL	0
+#define MODE_USER	1
+
 /* Privilege level is relative in $sps, so 1 indicates current PL + 1 */
-#define user_mode(regs)	(pl((regs)->sps) == 1)
+#define user_mode(regs)	(pl((regs)->sps) == MODE_USER)
 #define es_ec(regs) kvx_sfr_field_val(regs->es, ES, EC)
 #define es_sysno(regs) kvx_sfr_field_val(regs->es, ES, SN)
 #define debug_dc(es) kvx_sfr_field_val((es), ES, DC)
