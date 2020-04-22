@@ -28,7 +28,10 @@ static int apply_rela_bits(Elf64_Addr loc, Elf64_Addr val,
 			goto too_big;
 		val = (Elf64_Addr)(((long) val) >> rshift);
 	} else {
-		umax = (1ULL << immsize) - 1;
+		if (immsize < 64)
+			umax = (1ULL << immsize) - 1;
+		else
+			umax = -1ULL;
 		if ((unsigned long long) val > umax)
 			goto too_big;
 		val >>= rshift;
