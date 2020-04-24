@@ -11,9 +11,8 @@
 #include <linux/tracehook.h>
 
 #include <asm/ucontext.h>
+#include <asm/processor.h>
 #include <asm/cacheflush.h>
-
-#define STACK_ALIGN_MASK	0x3F
 
 struct rt_sigframe {
 	struct siginfo info;
