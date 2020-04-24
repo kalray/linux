@@ -39,6 +39,10 @@ static inline void prefetchw(const void *x)
 #define STACK_TOP		TASK_SIZE
 #define STACK_TOP_MAX		STACK_TOP
 
+/* Stack alignment constant */
+#define STACK_ALIGNMENT		32
+#define STACK_ALIGN_MASK	(STACK_ALIGNMENT - 1)
+
 #define cpu_relax()         barrier()
 
 /* Size for register saving area for refill handler (enough for 3 quad regs) */
