@@ -285,7 +285,7 @@ asn_error_panic_str_label:
 	/* Copy regs stack pointer for macro caller */
 	copyd \pt_regs_sp = $sp
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
-	addd $sp = $sp, -REG_SIZE
+	addd $sp = $sp, -STACK_REG_SIZE
 	;;
 	sd VA_TO_PA_OFFSET[$sp] = $sp
 	;;
@@ -346,7 +346,7 @@ EXCEPTION_ENTRY(return_from_exception)
 	icall $r2
 	;;
 _check_ok:
-	addd $sp = $sp, REG_SIZE
+	addd $sp = $sp, STACK_REG_SIZE
 	;;
 #endif
 	get $r11 = $sr
@@ -1658,7 +1658,7 @@ ret_from_kernel:
 	* Debug code expect entry stack to be stored at current $sp.
 	* Make some room and store current $sp to avoid triggering false alarm.
 	*/
-	addd $sp = $sp, -REG_SIZE
+	addd $sp = $sp, -STACK_REG_SIZE
 	;;
 	sd 0[$sp] = $sp
 #endif
