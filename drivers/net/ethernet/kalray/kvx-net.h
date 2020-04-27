@@ -145,6 +145,8 @@ void kvx_eth_get_formated_speed(int speed, int *speed_fmt, char **unit);
 int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 		  unsigned int rtm, unsigned int speed);
 
+int kvx_eth_get_lut_indir(struct net_device *netdev, u32 lut_id, u32 *cluster_id, u32 *rx_channel);
+
 #ifdef CONFIG_DCB
 void kvx_set_dcb_ops(struct net_device *netdev);
 #else
