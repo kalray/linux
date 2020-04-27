@@ -1670,7 +1670,8 @@ static int sfp_page_select(struct sfp *sfp, u8 page_id)
 	int ret = sfp_write(sfp, false, SFP_PAGE, &page_id, sizeof(page_id));
 
 	if (ret != sizeof(page_id)) {
-		dev_err(sfp->dev, "Failed to select EEPROM page: %d\n", ret);
+		dev_dbg(sfp->dev, "Failed to select EEPROM page[%d]: %d\n",
+			page_id, ret);
 		return -EINVAL;
 	}
 
