@@ -2282,5 +2282,27 @@ static void kvx_eth_exit(void)
 }
 module_exit(kvx_eth_exit);
 
+/* kvx_eth_get_lut_indir() - Get LUT indirection
+ * A LUT entry points to a dispatch entry entry (dt).
+ * This dt entry is a route to a cluster_id / rx_channel pair.
+ *
+ * @netdev: Current netdev
+ * @lut_id: LUT entry to request
+ * @cluster_id: return value
+ * @rx_channel: return value
+ * @return: -1 if error, dispatch table entry otherwise
+ */
+int kvx_eth_get_lut_indir(struct net_device *netdev, u32 lut_id,
+		u32 *cluster_id, u32 *rx_channel)
+{
+	struct kvx_eth_netdev *ndev;
+
+	if (!netdev)
+		return -EINVAL;
+	ndev = netdev_priv(netdev);
+	return kvx_eth_hw_get_lut_indir(ndev->hw, lut_id, cluster_id, rx_channel);
+}
+EXPORT_SYMBOL(kvx_eth_get_lut_indir);
+
 MODULE_AUTHOR("Kalray");
 MODULE_LICENSE("GPL");
