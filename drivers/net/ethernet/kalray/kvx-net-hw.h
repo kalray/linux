@@ -925,6 +925,10 @@ int parser_disable(struct kvx_eth_hw *hw, int parser_id);
 void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
 			    struct kvx_eth_hw_stats *stats);
 
+/* GETTERS */
+int kvx_eth_hw_get_lut_indir(struct kvx_eth_hw *hw, u32 lut_id,
+		u32 *cluster_id, u32 *rx_channel);
+
 /* HELPERS */
 int kvx_eth_speed_to_nb_lanes(unsigned int speed, unsigned int *lane_speed);
 

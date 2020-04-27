@@ -563,3 +563,28 @@ void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr)
 	dev_dbg(hw->dev, "global_pkt_id:   %d\n", hdr->global_pkt_id);
 	dev_dbg(hw->dev, "rule_pkt_id  :   %d\n", hdr->rule_pkt_id);
 }
+
+static int kvx_eth_get_dt_entry_from_lut(struct kvx_eth_hw *hw, u32 lut_id)
+{
+	u32 off = RX_LB_LUT_OFFSET + RX_LB_LUT_LUT_OFFSET +
+		lut_id * 4;
+	u32 val;
+
+	val = kvx_eth_readl(hw, off);
+	return val & RX_LB_LUT_NOC_TABLE_ID_MASK;
+}
+
+int kvx_eth_hw_get_lut_indir(struct kvx_eth_hw *hw, u32 lut_id,
+		u32 *cluster_id, u32 *rx_channel)
+{
+	int dt_id;
+
+	if (lut_id >= RX_LB_LUT_ARRAY_SIZE)
+		return -EINVAL;
+
+	dt_id = kvx_eth_get_dt_entry_from_lut(hw, lut_id);
+
+	*cluster_id = hw->dt_f[dt_id].cluster_id;
+	*rx_channel = hw->dt_f[dt_id].rx_channel;
+	return dt_id;
+}
