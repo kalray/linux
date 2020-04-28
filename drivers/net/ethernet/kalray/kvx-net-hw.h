@@ -485,8 +485,8 @@ void kvx_phy_param_tuning(struct kvx_eth_hw *hw, int lane_id,
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
 void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
-int kvx_eth_phy_init(struct kvx_eth_hw *hw);
-int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw);
+int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
+int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_mac_reset(struct kvx_eth_hw *hw);
