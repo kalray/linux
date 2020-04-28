@@ -224,18 +224,22 @@ static void kvx_eth_phy_reset(struct kvx_eth_hw *hw, int phy_reset)
 	kvx_poll(kvx_phy_readl, PHY_RESET_OFFSET, 0x1FFU, 0, RESET_TIMEOUT_MS);
 }
 
-int kvx_eth_phy_init(struct kvx_eth_hw *hw)
+int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 {
+	struct pll_cfg *pll = &hw->pll_cfg;
+
+	if (speed == SPEED_40000 || speed == SPEED_100000)
+		memset(pll, 0, sizeof(*pll));
 	/* Default PLLA/PLLB are available */
-	set_bit(PLL_A, &hw->pll_cfg.avail);
-	set_bit(PLL_B, &hw->pll_cfg.avail);
+	set_bit(PLL_A, &pll->avail);
+	set_bit(PLL_B, &pll->avail);
 
 	return 0;
 }
 
-int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw)
+int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 {
-	int ret = kvx_eth_phy_init(hw);
+	int ret = kvx_eth_phy_init(hw, speed);
 
 	dev_info(hw->dev, "HAPS Phy force sigdet\n");
 	updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
