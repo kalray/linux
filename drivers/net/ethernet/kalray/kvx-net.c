@@ -135,7 +135,7 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 				    KVX_ETH_PKT_ALIGN);
 
 	ndev->cfg.speed = SPEED_UNKNOWN;
-	ndev->cfg.duplex = DUPLEX_UNKNOWN;
+	ndev->cfg.duplex = DUPLEX_FULL;
 	ndev->hw->fec_en = 0;
 	kvx_eth_mac_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_dt_f_init(ndev->hw, &ndev->cfg);
@@ -1221,7 +1221,6 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 {
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
 
-	phylink_set(mask, Autoneg);
 	phylink_set_port_modes(mask);
 	phylink_set(mask, Pause);
 	phylink_set(mask, Asym_Pause);
@@ -1233,22 +1232,22 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 	phylink_set(mask, 40000baseSR4_Full);
 	phylink_set(mask, 40000baseLR4_Full);
 
-	bitmap_and(supported, supported, mask, __ETHTOOL_LINK_MODE_MASK_NBITS);
-	bitmap_and(state->advertising, state->advertising, mask,
+	bitmap_or(supported, supported, mask, __ETHTOOL_LINK_MODE_MASK_NBITS);
+	bitmap_or(state->advertising, state->advertising, mask,
 		   __ETHTOOL_LINK_MODE_MASK_NBITS);
 }
 
-static void kvx_phylink_mac_link_state(struct phylink_config *cfg,
+static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 				      struct phylink_link_state *state)
 {
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	int ret = 0;
 
-	netdev_dbg(netdev, "%s\n", __func__);
-
 	ret = kvx_eth_mac_status(ndev->hw, &ndev->cfg);
 	state->link = ndev->cfg.link;
+	state->speed = ndev->cfg.speed;
+	state->duplex = DUPLEX_FULL;
 }
 
 
@@ -1309,9 +1308,6 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	bool update_serdes = false;
 	int i, ret = 0;
 
-	netdev_dbg(netdev, "%s netdev: %p hw: %p\n", __func__,
-		   netdev, ndev->hw);
-
 	/* Prevent kvx_eth_phy_serdes_init being called again */
 	if (ndev->cfg.speed != state->speed ||
 	    ndev->cfg.duplex != state->duplex)
@@ -1323,6 +1319,9 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		ndev->cfg.duplex = state->duplex;
 
 	if (update_serdes) {
+		if (dev->type->phy_init)
+			dev->type->phy_init(ndev->hw, state->speed);
+
 		ret = kvx_eth_phy_serdes_init(ndev->hw, &ndev->cfg);
 		if (ret) {
 			netdev_err(ndev->netdev, "Failed to initialize serdes\n");
@@ -1374,7 +1373,7 @@ static void kvx_phylink_mac_link_up(struct phylink_config *cfg,
 
 const static struct phylink_mac_ops kvx_phylink_ops = {
 	.validate          = kvx_phylink_validate,
-	.mac_pcs_get_state = kvx_phylink_mac_link_state,
+	.mac_pcs_get_state = kvx_phylink_mac_pcs_state,
 	.mac_config        = kvx_phylink_mac_config,
 	.mac_an_restart    = kvx_phylink_mac_an_restart,
 	.mac_link_down     = kvx_phylink_mac_link_down,
@@ -1663,7 +1662,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	dev->hw.dev = &pdev->dev;
 
 	if (dev->type->phy_init) {
-		ret = dev->type->phy_init(&dev->hw);
+		ret = dev->type->phy_init(&dev->hw, SPEED_UNKNOWN);
 		if (ret) {
 			dev_err(&pdev->dev, "Mac/Phy init failed (ret: %d)\n",
 				ret);
