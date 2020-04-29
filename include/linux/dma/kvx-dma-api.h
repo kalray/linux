@@ -22,6 +22,7 @@ struct kvx_dma_pkt_full_desc {
 	u64 notif;
 } __aligned(16);
 
+int kvx_dma_get_max_nb_desc(struct platform_device *pdev);
 int kvx_dma_reserve_rx_chan(struct platform_device *pdev, unsigned int id,
 			    unsigned int rx_cache_id,
 			    void (*irq_callback)(void *data),
