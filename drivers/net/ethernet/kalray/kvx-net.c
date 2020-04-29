@@ -834,7 +834,7 @@ static struct page_pool *kvx_eth_create_rx_pool(struct kvx_eth_netdev *ndev,
 		.dma_dir = DMA_BIDIRECTIONAL,
 		.offset = KVX_RX_HEADROOM,
 		.max_len = KVX_MAX_RX_BUF_SIZE,
-                /* Device must be the same for dma_sync_single_for_cpu */
+		/* Device must be the same for dma_sync_single_for_cpu */
 		.dev = ndev->dev,
 	};
 
