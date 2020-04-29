@@ -18,7 +18,7 @@ extern void __iomem *__ioremap(phys_addr_t offset, unsigned long size,
 			       pgprot_t prot);
 extern void iounmap(volatile void __iomem *addr);
 
-#define ioremap(addr, size)		__ioremap((addr), (size), PAGE_DEVICE)
+#define ioremap(addr, size)		__ioremap((addr), (size), PAGE_KERNEL_DEVICE)
 #define ioremap_nocache(addr, size)	__ioremap((addr), (size), PAGE_KERNEL_NOCACHE)
 
 #include <asm-generic/io.h>
