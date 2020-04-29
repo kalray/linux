@@ -22,15 +22,6 @@
 #define KVX_NET_DRIVER_VERSION  "1.0"
 
 #define KVX_ETH_PKT_ALIGN             (8)
-/* Keeping unsused descriptors in HW */
-#define KVX_ETH_MIN_RX_BUF_THRESHOLD  (2)
-/* Total count of buffers in rings*/
-#define KVX_ETH_RX_BUF_NB             (256)
-#define KVX_ETH_TX_BUF_NB             (256)
-#define KVX_ETH_MAX_RX_BUF            (4096)
-#define KVX_ETH_MAX_TX_BUF            (4096)
-/* Min nb of rx buffers to refill in HW */
-#define KVX_ETH_MIN_RX_WRITE          ((2 * KVX_ETH_RX_BUF_NB) / 3)
 #define KVX_ETH_MAX_MTU               (9216)
 
 #define INDEX_TO_LAYER(l)             ((l)+2)
@@ -85,6 +76,7 @@ struct kvx_eth_ring {
 	u16 count;          /* Number of desc in ring */
 	u16 next_to_use;
 	u16 next_to_clean;
+	u16 refill_thres;
 	int qidx;
 };
 
@@ -140,6 +132,7 @@ struct kvx_eth_netdev {
 	struct i2c_client *rtm[RTM_NB];
 };
 
+int kvx_eth_desc_unused(struct kvx_eth_ring *r);
 int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *nd, struct kvx_eth_ring *r);
 int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *nd, struct kvx_eth_ring *r);
 
