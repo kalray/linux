@@ -1465,6 +1465,8 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 		goto tx_chan_failed;
 
 	kvx_set_ethtool_ops(netdev);
+	kvx_set_dcb_ops(netdev);
+
 	/* Register the network device */
 	ret = register_netdev(netdev);
 	if (ret) {
