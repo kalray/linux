@@ -271,7 +271,7 @@ static int __init l2_cache_configure_mailboxes(void)
 	/* Lock this entry into the LTLB */
 	kvx_mmu_ltlb_add_entry((unsigned long) l2c_ctrl.mbox_regs & PAGE_MASK,
 			       l2_mbox_addr & PAGE_MASK,
-			       PAGE_DEVICE, TLB_PS_4K);
+			       PAGE_KERNEL_DEVICE, TLB_PS_4K);
 
 	return 0;
 }
