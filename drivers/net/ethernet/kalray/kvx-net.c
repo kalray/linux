@@ -896,8 +896,8 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 		/* All RX queues share the same rx_cache */
 		ret = kvx_dma_reserve_rx_chan(dma_cfg->pdev,
 					dma_cfg->rx_chan_id.start + r->qidx,
-					dma_cfg->rx_cache_id,
-					kvx_eth_dma_irq_rx, r);
+					(dma_cfg->rx_cache_id + r->qidx) %
+					RX_CACHE_NB, kvx_eth_dma_irq_rx, r);
 		if (ret)
 			goto chan_failed;
 		r->config.trans_type = KVX_DMA_TYPE_MEM2ETH;
@@ -1098,6 +1098,11 @@ static int kvx_eth_get_queue_nb(struct platform_device *pdev,
 				       (u32 *)rxq, 2)) {
 		dev_err(&pdev->dev, "Unable to get dma-rx-channel-ids\n");
 		return -EINVAL;
+	}
+	if (rxq->nb > RX_CACHE_NB) {
+		dev_warn(&pdev->dev, "Limiting RX queue number to %d\n",
+			 RX_CACHE_NB);
+		rxq->nb = RX_CACHE_NB;
 	}
 	if (rxq->start + rxq->nb > KVX_ETH_RX_TAG_NB) {
 		dev_err(&pdev->dev, "RX channels (%d) exceeds max value (%d)\n",
