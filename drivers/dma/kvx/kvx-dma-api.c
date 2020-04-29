@@ -23,6 +23,14 @@ static struct kvx_dma_phy *get_rx_phy(struct kvx_dma_dev *d, unsigned int id)
 	return &d->phy[KVX_DMA_DIR_TYPE_RX][id];
 }
 
+int kvx_dma_get_max_nb_desc(struct platform_device *pdev)
+{
+	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
+
+	return d->dma_requests;
+}
+EXPORT_SYMBOL_GPL(kvx_dma_get_max_nb_desc);
+
 /**
  * kvx_dma_reserve_rx_chan() - Reserve rx channel for MEM2ETH use only
  * Allocates and initialise all required hw RX fifos.
