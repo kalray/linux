@@ -135,10 +135,10 @@ kvx_eth_get_ringparam(struct net_device *netdev, struct ethtool_ringparam *ring)
 	struct kvx_eth_ring *txr = &ndev->tx_ring[0];
 	struct kvx_eth_ring *rxr = &ndev->rx_ring[0];
 
-	ring->rx_max_pending = KVX_ETH_MAX_RX_BUF;
-	ring->tx_max_pending = KVX_ETH_MAX_TX_BUF;
-	ring->rx_pending = rxr->count;
-	ring->tx_pending = txr->count;
+	ring->rx_max_pending = rxr->count;
+	ring->tx_max_pending = txr->count;
+	ring->rx_pending = rxr->count - kvx_eth_desc_unused(rxr);
+	ring->tx_pending = txr->count - kvx_eth_desc_unused(txr);
 }
 
 static int kvx_eth_get_sset_count(struct net_device *netdev, int sset)

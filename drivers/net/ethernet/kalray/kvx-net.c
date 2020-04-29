@@ -53,7 +53,7 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *ring, int count);
  *
  * Return: number of usable buffers
  */
-static int kvx_eth_desc_unused(struct kvx_eth_ring *r)
+int kvx_eth_desc_unused(struct kvx_eth_ring *r)
 {
 	if (r->next_to_clean > r->next_to_use)
 		return 0;
@@ -512,7 +512,7 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
 	struct page *p;
 	int ret = 0;
 
-	while (--unused_desc > KVX_ETH_MIN_RX_BUF_THRESHOLD && count--) {
+	while (--unused_desc > rxr->refill_thres && count--) {
 		qdesc = &rxr->pool.qdesc[rx_w];
 
 		if (!qdesc->dma_addr) {
@@ -666,7 +666,7 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 			rxr->skb = NULL;
 		}
 
-		if (unlikely(rx_count > KVX_ETH_MIN_RX_WRITE)) {
+		if (unlikely(rx_count > rxr->refill_thres)) {
 			kvx_eth_alloc_rx_buffers(rxr, rx_count);
 			rx_count = 0;
 		}
@@ -678,7 +678,7 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 	}
 	rxr->next_to_clean = rx_r;
 	rx_count = kvx_eth_desc_unused(rxr);
-	if (rx_count > KVX_ETH_MIN_RX_WRITE)
+	if (rx_count > rxr->refill_thres)
 		kvx_eth_alloc_rx_buffers(rxr, rx_count);
 
 	return work_done;
@@ -869,12 +869,15 @@ static void kvx_eth_release_rx_pool(struct kvx_eth_ring *r)
 	kfree(r->pool.qdesc);
 }
 
+#define REFILL_THRES(c) ((3 * (c)) / 4)
+
 int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 {
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 	int ret = 0;
 
-	r->count = KVX_ETH_RX_BUF_NB;
+	r->count = kvx_dma_get_max_nb_desc(dma_cfg->pdev);
+	r->refill_thres = REFILL_THRES(r->count);
 	r->next_to_use = 0;
 	r->next_to_clean = 0;
 	ret = kvx_eth_alloc_rx_pool(ndev, r, dma_cfg->rx_cache_id);
@@ -967,7 +970,7 @@ int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	r->next_to_use = 0;
 	r->next_to_clean = 0;
 	if (r->count == 0)
-		r->count = KVX_ETH_TX_BUF_NB;
+		r->count = kvx_dma_get_max_nb_desc(ndev->dma_cfg.pdev);
 	r->tx_buf = kcalloc(r->count, sizeof(*r->tx_buf), GFP_KERNEL);
 	if (!r->tx_buf) {
 		netdev_err(r->netdev, "TX ring allocation failed\n");
