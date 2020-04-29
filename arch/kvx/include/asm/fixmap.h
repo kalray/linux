@@ -38,7 +38,7 @@ enum fixed_addresses {
 
 #define FIXADDR_SIZE  (__end_of_fixed_addresses << PAGE_SHIFT)
 #define FIXADDR_START (FIXADDR_TOP - FIXADDR_SIZE)
-#define FIXMAP_PAGE_IO (PAGE_DEVICE)
+#define FIXMAP_PAGE_IO (PAGE_KERNEL_DEVICE)
 
 void __set_fixmap(enum fixed_addresses idx,
 				phys_addr_t phys, pgprot_t prot);
