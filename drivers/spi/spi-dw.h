@@ -159,22 +159,22 @@ struct dw_spi {
 
 static inline u32 dw_readl(struct dw_spi *dws, u32 offset)
 {
-	return __raw_readl(dws->regs + offset);
+	return readl_relaxed(dws->regs + offset);
 }
 
 static inline u16 dw_readw(struct dw_spi *dws, u32 offset)
 {
-	return __raw_readw(dws->regs + offset);
+	return readw_relaxed(dws->regs + offset);
 }
 
 static inline void dw_writel(struct dw_spi *dws, u32 offset, u32 val)
 {
-	__raw_writel(val, dws->regs + offset);
+	writel_relaxed(val, dws->regs + offset);
 }
 
 static inline void dw_writew(struct dw_spi *dws, u32 offset, u16 val)
 {
-	__raw_writew(val, dws->regs + offset);
+	writew_relaxed(val, dws->regs + offset);
 }
 
 static inline u32 dw_read_io_reg(struct dw_spi *dws, u32 offset)
@@ -203,7 +203,22 @@ static inline void dw_write_io_reg(struct dw_spi *dws, u32 offset, u32 val)
 
 static inline void spi_enable_chip(struct dw_spi *dws, int enable)
 {
+	if (enable) {
+		/*
+		 * When enabling the controller, we must make sure the
+		 * controller configuration reached the controller before
+		 * enabling it
+		 */
+		wmb();
+	}
+
 	dw_writel(dws, DW_SPI_SSIENR, (enable ? 1 : 0));
+
+	/*
+	 * We must make sure the controller is enabled before writing data to
+	 * the fifo or disabled before configuring registers
+	 */
+	wmb();
 }
 
 static inline void spi_set_clk(struct dw_spi *dws, u16 div)
