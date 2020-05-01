@@ -189,6 +189,7 @@ struct dw_spi {
 	unsigned int		cur_data_off;
 	unsigned int		cur_xfer_size;
 	bool			enhanced_xfer;
+	u8			bytes_per_word;
 
 	/* Bus interface info */
 	void			*priv;

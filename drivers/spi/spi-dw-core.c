@@ -12,6 +12,7 @@
 #include <linux/iopoll.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/swab.h>
 #include <linux/spi/spi.h>
 
 #include "spi-dw.h"
@@ -422,10 +423,18 @@ static void dw_spi_mem_enhanced_read_rx_fifo(struct dw_spi *dws)
 	unsigned int max_data = dw_readl(dws, DW_SPI_RXFLR);
 	unsigned int remaining;
 	u8 *buf = op->data.buf.in;
+	u32 val;
 
 	while (max_data--) {
-		buf[dws->cur_data_off] = dw_read_io_reg(dws, DW_SPI_DR);
-		dws->cur_data_off++;
+		val = dw_read_io_reg(dws, DW_SPI_DR);
+		if (dws->bytes_per_word == 4) {
+			val = swab32(val);
+			memcpy(&buf[dws->cur_data_off], &val, 4);
+		} else {
+			buf[dws->cur_data_off] = val;
+		}
+
+		dws->cur_data_off += dws->bytes_per_word;
 	}
 
 	if (dws->cur_data_off == dws->cur_xfer_size)
@@ -436,6 +445,7 @@ static void dw_spi_mem_enhanced_read_rx_fifo(struct dw_spi *dws)
 	 * remaining bytes to come
 	 */
 	remaining = dws->cur_xfer_size - dws->cur_data_off;
+	remaining >>= ffs(dws->bytes_per_word) - 1;
 	if (remaining < dws->fifo_len)
 		dw_writel(dws, DW_SPI_RXFTLR, (remaining - 1));
 }
@@ -445,13 +455,21 @@ static void dw_spi_mem_enhanced_write_tx_fifo(struct dw_spi *dws)
 	const struct spi_mem_op *op = dws->mem_op;
 	unsigned int max_data = dws->fifo_len - dw_readl(dws, DW_SPI_TXFLR);
 	const u8 *buf = op->data.buf.out;
+	u32 val;
 
 	while (max_data--) {
 		if (dws->cur_data_off == dws->cur_xfer_size)
 			break;
 
-		dw_write_io_reg(dws, DW_SPI_DR, buf[dws->cur_data_off]);
-		dws->cur_data_off++;
+		if (dws->bytes_per_word == 4) {
+			memcpy(&val, &buf[dws->cur_data_off], 4);
+			val = swab32(val);
+		} else {
+			val = buf[dws->cur_data_off];
+		}
+
+		dw_write_io_reg(dws, DW_SPI_DR, val);
+		dws->cur_data_off += dws->bytes_per_word;
 	}
 }
 
@@ -549,6 +567,7 @@ static void dw_spi_mem_reset_xfer(struct dw_spi *dws,
 	dws->comp_status = -EIO;
 	dws->enhanced_xfer = 0;
 	dws->transfer_handler = dw_spi_mem_irq;
+	dws->bytes_per_word = 1;
 }
 
 static void dw_spi_mem_start_std_op(struct dw_spi *dws,
@@ -655,6 +674,9 @@ static void dw_spi_mem_setup_enhanced_xfer(struct dw_spi *dws,
 	else if (op->data.buswidth == 2)
 		chip->spi_frf = SPI_SPI_FRF_DUAL;
 
+	if (IS_ALIGNED(op->data.nbytes, 4))
+		dws->bytes_per_word = 4;
+
 	if (op->addr.nbytes == 1)
 		addr_l = SPI_CTRL0_ADDR_L8;
 	else if (op->addr.nbytes == 2)
@@ -673,7 +695,7 @@ static void dw_spi_mem_setup_enhanced_xfer(struct dw_spi *dws,
 		    (SPI_SPI_CTRL0_INST_L8 << SPI_CTRL0_INST_L_OFFSET);
 
 	spi_enable_chip(dws, 0);
-	dw_spi_setup_xfer(dws, spi, spi->max_speed_hz, 8);
+	dw_spi_setup_xfer(dws, spi, spi->max_speed_hz, dws->bytes_per_word * 8);
 	dw_writel(dws, DW_SPI_SPI_CTRL0, spi_ctrl0);
 	spi_enable_chip(dws, 1);
 }
@@ -683,14 +705,16 @@ static void dw_spi_mem_start_enhanced_op(struct dw_spi *dws,
 {
 	unsigned int thres;
 	unsigned long flags;
+	unsigned long fifo_count = op->data.nbytes;
 
+	fifo_count >>= ffs(dws->bytes_per_word) - 1;
 	dws->cur_xfer_size = op->data.nbytes;
 	spi_enable_chip(dws, 0);
 	spi_mask_intr(dws, 0xff);
 
-	dw_writel(dws, DW_SPI_CTRLR1, op->data.nbytes - 1);
+	dw_writel(dws, DW_SPI_CTRLR1, fifo_count - 1);
 	if (op->data.dir == SPI_MEM_DATA_IN) {
-		thres = min(dws->fifo_len, op->data.nbytes);
+		thres = min_t(unsigned long, dws->fifo_len, fifo_count);
 		if (thres < 1)
 			thres = 1;
 		dw_writel(dws, DW_SPI_RXFTLR, thres - 1);
@@ -815,9 +839,16 @@ int dw_spi_mem_adjust_op_size(struct spi_mem *mem, struct spi_mem_op *op)
 	unsigned int max_size;
 
 	if (dw_spi_mem_is_enhanced(op)) {
-		/* Reduce to maximum NDF in enhanced_xfer mode */
+		/*
+		 * Reduce to maximum NDF * 4 in enhanced_xfer mode since we will
+		 * read bytes 4 by 4.
+		 */
 		op->data.nbytes = min_t(unsigned int, op->data.nbytes,
-					SPI_CTRL1_NDF_MASK);
+					SPI_CTRL1_NDF_MASK * 4);
+
+		/* Align on 4 to push 4 bytes at once in the fifo */
+		if (op->data.nbytes > 3)
+			op->data.nbytes = ALIGN_DOWN(op->data.nbytes, 4);
 	} else {
 		max_size = dws->fifo_len - 1 - op->addr.nbytes -
 			   op->dummy.nbytes;
