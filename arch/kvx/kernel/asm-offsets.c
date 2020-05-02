@@ -28,6 +28,11 @@
 int foo(void)
 {
 	BUILD_BUG_ON(sizeof(struct pt_regs) != PT_REGS_STRUCT_EXPECTED_SIZE);
+	/*
+	 * For stack alignment purposes we must make sure the pt_regs size is
+	 * a mutliple of stack_align
+	 */
+	BUILD_BUG_ON(!IS_ALIGNED(sizeof(struct pt_regs), STACK_ALIGNMENT));
 
 	/* Check that user_pt_regs size matches the beginning of pt_regs */
 	BUILD_BUG_ON((offsetof(struct user_pt_regs, spc) + sizeof(uint64_t)) !=
