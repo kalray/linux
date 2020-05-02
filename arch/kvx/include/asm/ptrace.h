@@ -35,7 +35,8 @@
  * (build time check done in asm-offsets.c)
  */
 #define PT_REGS_STRUCT_EXPECTED_SIZE \
-			((GPR_COUNT + SFR_COUNT + VIRT_COUNT) * REG_SIZE)
+			((GPR_COUNT + SFR_COUNT + VIRT_COUNT) * REG_SIZE + \
+			2 * REG_SIZE) /* Padding for stack alignement */
 
 /**
  * Saved register structure. Note that we should save only the necessary
@@ -140,6 +141,9 @@ struct pt_regs {
 
 	/* "Virtual" registers */
 	uint64_t orig_r0;
+
+	/* Padding for stack alignment (see STACK_ALIGN) */
+	uint64_t padding[2];
 
 	/**
 	 * If you add some fields, please read carefully the comment for
