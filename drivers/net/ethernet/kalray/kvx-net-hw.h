@@ -293,6 +293,16 @@ struct kvx_eth_parsing {
 	u8 rx_hash_fields[KVX_TT_PROTOS_NB];
 };
 
+/**
+ * enum serdes_pstate - P2 = off, P1, P0s, P0: running
+ */
+enum serdes_pstate {
+	PSTATE_P0 = 0,
+	PSTATE_P0s,
+	PSTATE_P1,
+	PSTATE_P2,
+};
+
 enum pll_id {
 	PLL_A = 0,
 	PLL_B,
