@@ -19,7 +19,9 @@
  * Possible causes of break
  * Since we use set $vsfr0 = $rx, we use the register to differentiate the cause
  */
-#define BREAK_CAUSE_BUG	KVX_REG_R1
+#define BREAK_CAUSE_BUG		KVX_REG_R1
+#define BREAK_CAUSE_KGDB_DYN	KVX_REG_R2
+#define BREAK_CAUSE_KGDB_COMP	KVX_REG_R3
 #define BREAK_CAUSE_BKPT	KVX_REG_R63
 
 /**
