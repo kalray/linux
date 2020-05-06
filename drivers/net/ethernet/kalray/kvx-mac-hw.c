@@ -1030,9 +1030,16 @@ void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 {
 	struct kvx_eth_lane_cfg *cfg = container_of(mac_f,
 					    struct kvx_eth_lane_cfg, mac_f);
+	u32 reg = PHY_LANE_OFFSET + cfg->id * PHY_LANE_ELEM_SIZE;
+	u32 val = kvx_phy_readl(hw, reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
 
+	/* Must be set in pstate P0 */
+	if (GETF(val, PHY_LANE_TX_SERDES_CFG_PSTATE) != PSTATE_P0) {
+		dev_err(hw->dev, "Unable to set Mac/Phy loopback\n");
+		mac_f->loopback_mode = NO_LOOPBACK;
+		return;
+	}
 	if (mac_f->loopback_mode == MAC_SERDES_LOOPBACK) {
-		/* Must be set in pstate P0 */
 		dev_info(hw->dev, "Mac/Phy TX2RX loopback!!!\n");
 
 		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
