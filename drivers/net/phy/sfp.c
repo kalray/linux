@@ -1705,7 +1705,7 @@ static int sfp_read_eeprom_id(struct sfp *sfp, struct sfp_eeprom_id *id,
 	unsigned int check;
 	int ret;
 
-	ret = sfp_read(sfp, false, 0, &id, sizeof(*id));
+	ret = sfp_read(sfp, false, 0, id, sizeof(*id));
 	if (ret < 0) {
 		if (report)
 			dev_err(sfp->dev, "failed to read EEPROM: %d\n", ret);

@@ -375,6 +375,16 @@ EXPORT_SYMBOL_GPL(sfp_parse_support);
 phy_interface_t sfp_select_interface(struct sfp_bus *bus,
 				     unsigned long *link_modes)
 {
+	if (phylink_test(link_modes, 100000baseKR4_Full) ||
+	    phylink_test(link_modes, 100000baseSR4_Full) ||
+	    phylink_test(link_modes, 100000baseCR4_Full) ||
+	    phylink_test(link_modes, 100000baseLR4_ER4_Full) ||
+	    phylink_test(link_modes, 40000baseKR4_Full) ||
+	    phylink_test(link_modes, 40000baseCR4_Full) ||
+	    phylink_test(link_modes, 40000baseSR4_Full) ||
+	    phylink_test(link_modes, 40000baseLR4_Full))
+		return PHY_INTERFACE_MODE_INTERNAL;
+
 	if (phylink_test(link_modes, 10000baseCR_Full) ||
 	    phylink_test(link_modes, 10000baseSR_Full) ||
 	    phylink_test(link_modes, 10000baseLR_Full) ||
@@ -392,16 +402,6 @@ phy_interface_t sfp_select_interface(struct sfp_bus *bus,
 
 	if (phylink_test(link_modes, 1000baseX_Full))
 		return PHY_INTERFACE_MODE_1000BASEX;
-
-	if (phylink_test(link_modes, 100000baseKR4_Full) ||
-	    phylink_test(link_modes, 100000baseSR4_Full) ||
-	    phylink_test(link_modes, 100000baseCR4_Full) ||
-	    phylink_test(link_modes, 100000baseLR4_ER4_Full) ||
-	    phylink_test(link_modes, 40000baseKR4_Full) ||
-	    phylink_test(link_modes, 40000baseCR4_Full) ||
-	    phylink_test(link_modes, 40000baseSR4_Full) ||
-	    phylink_test(link_modes, 40000baseLR4_Full))
-		return PHY_INTERFACE_MODE_INTERNAL;
 
 	dev_warn(bus->sfp_dev, "Unable to ascertain link mode\n");
 
