@@ -424,9 +424,15 @@ struct kvx_eth_hw_tx_stats {
 	u64 maccontrolframestransmitted;
 } __packed;
 
+struct ring_stats {
+	int skb_alloc_err;
+	int skb_rx_frag_missed;
+};
+
 struct kvx_eth_hw_stats {
 	struct kvx_eth_hw_rx_stats rx;
 	struct kvx_eth_hw_tx_stats tx;
+	struct ring_stats rx_ring;
 } __packed;
 
 struct kvx_eth_rx_dispatch_table_entry {
@@ -543,6 +549,5 @@ int parser_disable(struct kvx_eth_hw *hw, int parser_id);
 /* STATS */
 void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
 			    struct kvx_eth_hw_stats *stats);
-
 
 #endif // KVX_NET_HW_H
