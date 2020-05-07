@@ -46,11 +46,6 @@ struct kvx_eth_dev {
 	struct kvx_eth_type *type;
 };
 
-struct ring_stats {
-	int skb_alloc_err;
-	int skb_rx_frag_missed;
-};
-
 /* TX buffer descriptor */
 struct kvx_eth_netdev_tx {
 	struct kvx_eth_netdev *ndev;
