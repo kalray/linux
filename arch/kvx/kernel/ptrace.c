@@ -300,7 +300,7 @@ static const struct user_regset kvx_user_regset[] = {
 
 static const struct user_regset_view user_kvx_view = {
 	.name = "kvx",
-	.e_machine = EM_KALRAY,
+	.e_machine = EM_KVX,
 	.regsets = kvx_user_regset,
 	.n = ARRAY_SIZE(kvx_user_regset)
 };
