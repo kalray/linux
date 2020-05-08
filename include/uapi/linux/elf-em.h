@@ -51,8 +51,8 @@
 #define EM_RISCV	243	/* RISC-V */
 #define EM_BPF		247	/* Linux BPF - in-kernel virtual machine */
 #define EM_CSKY		252	/* C-SKY */
+#define EM_KVX		256	/* Kalray VLIW Architecture */
 #define EM_LOONGARCH	258	/* LoongArch */
-#define EM_K1		0x1337	/* Kalray K1 Architecture */
 #define EM_FRV		0x5441	/* Fujitsu FR-V */
 
 /*

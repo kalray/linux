@@ -14,16 +14,11 @@
 #include <asm/ptrace.h>
 
 /*
- * FIXME AUTO: Request an officiel elf id for kvx machine
- */
-#define EM_KALRAY 0x1337
-
-/*
  * These are used to set parameters in the core dumps.
  */
 #define ELF_CLASS	ELFCLASS64
 #define ELF_DATA	ELFDATA2LSB
-#define ELF_ARCH	EM_KALRAY
+#define ELF_ARCH	EM_KVX
 
 typedef uint64_t elf_greg_t;
 typedef uint64_t elf_fpregset_t;
@@ -38,7 +33,7 @@ typedef elf_greg_t elf_gregset_t[ELF_NGREG];
 /*
  * This is used to ensure we don't load something for the wrong architecture.
  */
-#define elf_check_arch(x) ((x)->e_machine == EM_KALRAY)
+#define elf_check_arch(x) ((x)->e_machine == EM_KVX)
 
 #define ELF_EXEC_PAGESIZE	(PAGE_SIZE)
 
