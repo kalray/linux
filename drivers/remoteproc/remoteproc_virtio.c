@@ -158,7 +158,8 @@ static struct virtqueue *rp_find_vq(struct virtio_device *vdev,
 
 	/* Update vring in resource table */
 	rsc = (void *)rproc->table_ptr + rvdev->rsc_offset;
-	rsc->vring[id].da = mem->da;
+	rproc_rsc_set_addr(&rsc->vring[id].da_lo, &rsc->vring[id].da_hi,
+			   mem->da);
 
 	return vq;
 }
