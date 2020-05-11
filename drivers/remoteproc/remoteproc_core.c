@@ -331,6 +331,7 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	int ret, notifyid;
 	struct rproc_mem_entry *mem;
 	size_t size;
+	u64 da;
 
 	/* actual size of vring (in bytes) */
 	size = PAGE_ALIGN(vring_size(rvring->num, rvring->align));
@@ -340,13 +341,14 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	/* Search for pre-registered carveout */
 	mem = rproc_find_carveout_by_name(rproc, "vdev%dvring%d", rvdev->index,
 					  i);
+	da = rproc_rsc_get_addr(rsc->vring[i].da_lo, rsc->vring[i].da_hi);
 	if (mem) {
-		if (rproc_check_carveout_da(rproc, mem, rsc->vring[i].da, size))
+		if (rproc_check_carveout_da(rproc, mem, da, size))
 			return -ENOMEM;
 	} else {
 		/* Register carveout in list */
 		mem = rproc_mem_entry_init(dev, NULL, 0,
-					   size, rsc->vring[i].da,
+					   size, da,
 					   rproc_alloc_carveout,
 					   rproc_release_carveout,
 					   "vdev%dvring%d",
@@ -402,7 +404,8 @@ rproc_parse_vring(struct rproc_vdev *rvdev, struct fw_rsc_vdev *rsc, int i)
 	struct rproc_vring *rvring = &rvdev->vring[i];
 
 	dev_dbg(dev, "vdev rsc: vring%d: da 0x%llx, qsz %d, align %d\n",
-		i, vring->da, vring->num, vring->align);
+		i, rproc_rsc_get_addr(vring->da_lo, vring->da_hi), vring->num,
+		vring->align);
 
 	/* verify queue size and vring alignment are sane */
 	if (!vring->num || !vring->align) {
@@ -439,7 +442,7 @@ void rproc_free_vring(struct rproc_vring *rvring)
 	 */
 	if (rproc->table_ptr) {
 		rsc = (void *)rproc->table_ptr + rvring->rvdev->rsc_offset;
-		rsc->vring[idx].da = 0;
+		rproc_rsc_set_addr(&rsc->vring[idx].da_lo, &rsc->vring[idx].da_hi, 0);
 		rsc->vring[idx].notifyid = -1;
 	}
 }
@@ -578,7 +581,7 @@ static int rproc_handle_trace(struct rproc *rproc, void *ptr,
 
 	/* set the trace buffer dma properties */
 	trace->trace_mem.len = rsc->len;
-	trace->trace_mem.da = rsc->da;
+	trace->trace_mem.da = rproc_rsc_get_addr(rsc->da_lo, rsc->da_hi);
 
 	/* set pointer on rproc device */
 	trace->rproc = rproc;
@@ -594,7 +597,7 @@ static int rproc_handle_trace(struct rproc *rproc, void *ptr,
 	rproc->num_traces++;
 
 	dev_dbg(dev, "%s added: da 0x%llx, len 0x%x\n",
-		name, rsc->da, rsc->len);
+		name, trace->trace_mem.da, rsc->len);
 
 	return 0;
 }
@@ -634,6 +637,7 @@ static int rproc_handle_devmem(struct rproc *rproc, void *ptr,
 	struct rproc_mem_entry *mapping;
 	struct device *dev = &rproc->dev;
 	int ret;
+	u64 pa, da;
 
 	/* no point in handling this resource without a valid iommu domain */
 	if (!rproc->domain)
@@ -654,7 +658,9 @@ static int rproc_handle_devmem(struct rproc *rproc, void *ptr,
 	if (!mapping)
 		return -ENOMEM;
 
-	ret = iommu_map(rproc->domain, rsc->da, rsc->pa, rsc->len, rsc->flags);
+	pa = rproc_rsc_get_addr(rsc->pa_lo, rsc->pa_hi);
+	da = rproc_rsc_get_addr(rsc->da_lo, rsc->da_hi);
+	ret = iommu_map(rproc->domain, da, pa, rsc->len, rsc->flags);
 	if (ret) {
 		dev_err(dev, "failed to map devmem: %d\n", ret);
 		goto out;
@@ -667,12 +673,12 @@ static int rproc_handle_devmem(struct rproc *rproc, void *ptr,
 	 * We can't trust the remote processor not to change the resource
 	 * table, so we must maintain this info independently.
 	 */
-	mapping->da = rsc->da;
+	mapping->da = da;
 	mapping->len = rsc->len;
 	list_add_tail(&mapping->node, &rproc->mappings);
 
 	dev_dbg(dev, "mapped devmem pa 0x%llx, da 0x%llx, len 0x%x\n",
-		rsc->pa, rsc->da, rsc->len);
+		pa, da, rsc->len);
 
 	return 0;
 
@@ -831,6 +837,7 @@ static int rproc_handle_carveout(struct rproc *rproc,
 	struct fw_rsc_carveout *rsc = ptr;
 	struct rproc_mem_entry *carveout;
 	struct device *dev = &rproc->dev;
+	u64 pa, da;
 
 	if (sizeof(*rsc) > avail) {
 		dev_err(dev, "carveout rsc is truncated\n");
@@ -843,8 +850,10 @@ static int rproc_handle_carveout(struct rproc *rproc,
 		return -EINVAL;
 	}
 
+	pa = rproc_rsc_get_addr(rsc->pa_lo, rsc->pa_hi);
+	da = rproc_rsc_get_addr(rsc->da_lo, rsc->da_hi);
 	dev_dbg(dev, "carveout rsc: name: %s, da 0x%llx, pa 0x%llx, len 0x%x, flags 0x%x\n",
-		rsc->name, rsc->da, rsc->pa, rsc->len, rsc->flags);
+		rsc->name, da, pa, rsc->len, rsc->flags);
 
 	/*
 	 * Check carveout rsc already part of a registered carveout,
@@ -859,7 +868,7 @@ static int rproc_handle_carveout(struct rproc *rproc,
 			return -ENOMEM;
 		}
 
-		if (rproc_check_carveout_da(rproc, carveout, rsc->da, rsc->len))
+		if (rproc_check_carveout_da(rproc, carveout, da, rsc->len))
 			return -ENOMEM;
 
 		/* Update memory carveout with resource table info */
@@ -870,7 +879,7 @@ static int rproc_handle_carveout(struct rproc *rproc,
 	}
 
 	/* Register carveout in list */
-	carveout = rproc_mem_entry_init(dev, NULL, 0, rsc->len, rsc->da,
+	carveout = rproc_mem_entry_init(dev, NULL, 0, rsc->len, da,
 					rproc_alloc_carveout,
 					rproc_release_carveout, rsc->name);
 	if (!carveout) {
@@ -1201,8 +1210,9 @@ static int rproc_alloc_registered_carveouts(struct rproc *rproc)
 			else
 				pa = (u64)entry->dma;
 
-			rsc->pa = (u32)pa;
-			rsc->da = entry->da;
+			rproc_rsc_set_addr(&rsc->pa_lo, &rsc->pa_hi, pa);
+			rproc_rsc_set_addr(&rsc->da_lo, &rsc->da_hi,
+					   entry->da);
 			rsc->len = entry->len;
 		}
 	}
