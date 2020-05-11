@@ -183,8 +183,7 @@ struct kvx_rproc {
 	struct rproc *rproc;
 	struct regmap *ftu_regmap;
 	struct kvx_mbox_data mbox[KVX_MBOX_MAX];
-	struct kvx_rproc_mem *mem;
-	int mem_count;
+	struct kvx_rproc_mem mem[KVX_INTERNAL_MEM_COUNT];
 	char *params_args;
 	char *params_env;
 };
@@ -341,7 +340,7 @@ static void *kvx_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 	if (len <= 0)
 		return NULL;
 
-	for (i = 0; i < kvx_rproc->mem_count; i++) {
+	for (i = 0; i < KVX_INTERNAL_MEM_COUNT; i++) {
 		bus_addr = kvx_rproc->mem[i].bus_addr;
 		dev_addr = kvx_rproc->mem[i].dev_addr;
 		size = kvx_rproc->mem[i].size;
@@ -625,21 +624,46 @@ static int kvx_rproc_get_internal_memories(struct platform_device *pdev,
 	return 0;
 }
 
-static int kvx_rproc_get_memory_regions(struct platform_device *pdev,
-					struct kvx_rproc *rproc)
+static int kvx_rproc_mem_alloc(struct rproc *rproc,
+			      struct rproc_mem_entry *mem)
+{
+	struct device *dev = rproc->dev.parent;
+	void *va;
+
+	va = ioremap(mem->dma, mem->len);
+	if (!va) {
+		dev_err(dev, "Unable to map memory region: %pa+%zx\n",
+			&mem->dma, mem->len);
+		return -ENOMEM;
+	}
+
+	/* Update memory entry va */
+	mem->va = va;
+
+	return 0;
+}
+
+static int kvx_rproc_mem_release(struct rproc *rproc,
+				struct rproc_mem_entry *mem)
+{
+	iounmap(mem->va);
+
+	return 0;
+}
+static int kvx_rproc_parse_fw(struct rproc *rproc, const struct firmware *fw)
 {
 	int err;
 	struct reserved_mem *rmem;
-	struct kvx_rproc_mem *mem;
+	struct rproc_mem_entry *mem;
 	struct of_phandle_iterator it;
-	struct device *dev = &pdev->dev;
+	struct device *dev = rproc->dev.parent;
 	struct device_node *np = dev->of_node;
-	int mem_idx = KVX_INTERNAL_MEM_COUNT;
 
 	/* Register associated reserved memory regions */
 	err = of_phandle_iterator_init(&it, np, "memory-region", NULL, 0);
+	/* This is not a failure, it means we don't have a memory-region node */
 	if (err)
-		return err;
+		goto load_rsc_table;
 
 	while (of_phandle_iterator_next(&it) == 0) {
 		rmem = of_reserved_mem_lookup(it.node);
@@ -648,27 +672,25 @@ static int kvx_rproc_get_memory_regions(struct platform_device *pdev,
 			return -EINVAL;
 		}
 
-		mem = &rproc->mem[mem_idx];
-		mem->cpu_addr = devm_ioremap(&pdev->dev, rmem->base,
-						     rmem->size);
-		if (IS_ERR(mem->cpu_addr)) {
-			dev_err(dev, "devm_ioremap_resource failed\n");
-			err = PTR_ERR(mem->cpu_addr);
-			return err;
-		}
+		/* Register memory region */
+		mem = rproc_mem_entry_init(dev, NULL,
+					   (dma_addr_t) rmem->base,
+					   rmem->size, rmem->base,
+					   kvx_rproc_mem_alloc,
+					   kvx_rproc_mem_release,
+					   it.node->name);
 
-		/* dev and phys are the same for memory regions */
-		mem->dev_addr = rmem->base;
-		mem->bus_addr = rmem->base;
-		mem->size = rmem->size;
-		mem_idx++;
+		if (!mem)
+			return -ENOMEM;
 
-		dev_dbg(dev, "Adding memory region %s, ba = 0x%llx, da = 0x%llx, va = 0x%pK, len = 0x%zx\n",
-			it.node->name, mem->bus_addr,
-			mem->dev_addr, mem->cpu_addr, mem->size);
+		rproc_add_carveout(rproc, mem);
+
+		dev_dbg(dev, "Adding memory region %s, ba = %pa, len = %pa\n",
+			it.node->name, &rmem->base, &rmem->size);
 	}
 
-	return 0;
+load_rsc_table:
+	return rproc_elf_load_rsc_table(rproc, fw);
 }
 
 static const struct regmap_config config = {
@@ -836,21 +858,13 @@ static const struct attribute_group *kvx_remoteproc_groups[] = {
 static int kvx_rproc_probe(struct platform_device *pdev)
 {
 	struct rproc *rproc;
-	int ret = 0, mem_count = 0, ext_mem_count;
+	int ret = 0;
 	struct kvx_rproc *kvx_rproc;
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
 
-	/* Compute the count of memory region we will have */
-	ext_mem_count = of_count_phandle_with_args(np, "memory-region", NULL);
-	if (ext_mem_count > 0)
-		mem_count = ext_mem_count;
-
-	mem_count += KVX_INTERNAL_MEM_COUNT;
-
 	rproc = rproc_alloc(dev, np->name, &kvx_rproc_ops, NULL,
-			    sizeof(*kvx_rproc) +
-			    mem_count * sizeof(struct kvx_rproc_mem));
+			    sizeof(*kvx_rproc));
 	if (!rproc)
 		return -ENOMEM;
 
@@ -861,8 +875,7 @@ static int kvx_rproc_probe(struct platform_device *pdev)
 	kvx_rproc = rproc->priv;
 	kvx_rproc->rproc = rproc;
 	kvx_rproc->dev = dev;
-	kvx_rproc->mem_count = mem_count;
-	kvx_rproc->mem = (struct kvx_rproc_mem *)(kvx_rproc + 1);
+	rproc->ops->parse_fw = kvx_rproc_parse_fw;
 
 	rproc->auto_boot = of_property_read_bool(np, "kalray,auto-boot");
 
@@ -886,12 +899,6 @@ static int kvx_rproc_probe(struct platform_device *pdev)
 	ret = kvx_rproc_get_internal_memories(pdev, kvx_rproc);
 	if (ret)
 		goto free_kvx_mbox_tx;
-
-	if (ext_mem_count > 0) {
-		ret = kvx_rproc_get_memory_regions(pdev, kvx_rproc);
-		if (ret)
-			goto free_kvx_mbox_tx;
-	}
 
 	ret = kvx_rproc_of_get_dev_syscon(pdev, kvx_rproc);
 	if (ret)
@@ -933,7 +940,6 @@ static int kvx_rproc_remove(struct platform_device *pdev)
 	rproc_del(kvx_rproc->rproc);
 	mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_RX].chan);
 	mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_TX].chan);
-	of_reserved_mem_device_release(&pdev->dev);
 	rproc_free(kvx_rproc->rproc);
 
 	return 0;
