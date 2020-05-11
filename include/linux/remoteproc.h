@@ -170,8 +170,10 @@ enum fw_resource_type {
  * (mainly for debugging purposes).
  */
 struct fw_rsc_carveout {
-	u64 da;
-	u64 pa;
+	u32 da_lo;
+	u32 da_hi;
+	u32 pa_lo;
+	u32 pa_hi;
 	u32 len;
 	u32 flags;
 	u32 reserved;
@@ -208,8 +210,10 @@ struct fw_rsc_carveout {
  * access to physical addresses that are outside those ranges.
  */
 struct fw_rsc_devmem {
-	u64 da;
-	u64 pa;
+	u32 da_lo;
+	u32 da_hi;
+	u32 pa_lo;
+	u32 pa_hi;
 	u32 len;
 	u32 flags;
 	u32 reserved;
@@ -233,7 +237,8 @@ struct fw_rsc_devmem {
  * user via debugfs entries (called trace0, trace1, etc..).
  */
 struct fw_rsc_trace {
-	u64 da;
+	u32 da_lo;
+	u32 da_hi;
 	u32 len;
 	u32 reserved;
 	u8 name[32];
@@ -257,11 +262,13 @@ struct fw_rsc_trace {
  * dynamically allocation of the vring's device address is supported.
  */
 struct fw_rsc_vdev_vring {
-	u64 da;
+	u32 da_lo;
+	u32 da_hi;
 	u32 align;
 	u32 num;
 	u32 notifyid;
-	u64 pa;
+	u32 pa_lo;
+	u32 pa_hi;
 } __packed;
 
 /**
