@@ -16,8 +16,6 @@
 
 #define _PAGE_IOREMAP _PAGE_KERNEL_DEVICE
 
-#define ioremap_nocache(addr, size)	ioremap_prot((addr), (size), _PAGE_KERNEL_NOCACHE)
-
 /*
  * String version of I/O memory access operations.
  */
