@@ -297,8 +297,10 @@ static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 		case RSC_CARVEOUT:
 			c = rsc;
 			seq_printf(seq, "Entry %d is of type %s\n", i, types[hdr->type]);
-			seq_printf(seq, "  Device Address 0x%llx\n", c->da);
-			seq_printf(seq, "  Physical Address 0x%llx\n", c->pa);
+			seq_printf(seq, "  Device Address 0x%llx\n",
+				   rproc_rsc_get_addr(c->da_lo, c->da_hi));
+			seq_printf(seq, "  Physical Address 0x%llx\n",
+				   rproc_rsc_get_addr(c->pa_lo, c->pa_hi));
 			seq_printf(seq, "  Length 0x%x Bytes\n", c->len);
 			seq_printf(seq, "  Flags 0x%x\n", c->flags);
 			seq_printf(seq, "  Reserved (should be zero) [%d]\n", c->reserved);
@@ -307,8 +309,10 @@ static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 		case RSC_DEVMEM:
 			d = rsc;
 			seq_printf(seq, "Entry %d is of type %s\n", i, types[hdr->type]);
-			seq_printf(seq, "  Device Address 0x%llx\n", d->da);
-			seq_printf(seq, "  Physical Address 0x%llx\n", d->pa);
+			seq_printf(seq, "  Device Address 0x%llx\n",
+				   rproc_rsc_get_addr(d->da_lo, d->da_hi));
+			seq_printf(seq, "  Physical Address 0x%llx\n",
+				   rproc_rsc_get_addr(d->pa_lo, d->pa_hi));
 			seq_printf(seq, "  Length 0x%x Bytes\n", d->len);
 			seq_printf(seq, "  Flags 0x%x\n", d->flags);
 			seq_printf(seq, "  Reserved (should be zero) [%d]\n", d->reserved);
@@ -317,7 +321,8 @@ static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 		case RSC_TRACE:
 			t = rsc;
 			seq_printf(seq, "Entry %d is of type %s\n", i, types[hdr->type]);
-			seq_printf(seq, "  Device Address 0x%llx\n", t->da);
+			seq_printf(seq, "  Device Address 0x%llx\n",
+				   rproc_rsc_get_addr(t->da_lo, t->da_hi));
 			seq_printf(seq, "  Length 0x%x Bytes\n", t->len);
 			seq_printf(seq, "  Reserved (should be zero) [%d]\n", t->reserved);
 			seq_printf(seq, "  Name %s\n\n", t->name);
@@ -338,12 +343,13 @@ static int rproc_rsc_table_show(struct seq_file *seq, void *p)
 
 			for (j = 0; j < v->num_of_vrings; j++) {
 				seq_printf(seq, "  Vring %d\n", j);
-				seq_printf(seq, "    Device Address 0x%llx\n", v->vring[j].da);
+				seq_printf(seq, "    Device Address 0x%llx\n",
+					   rproc_rsc_get_addr(v->vring[j].da_lo, v->vring[j].da_hi));
 				seq_printf(seq, "    Alignment %d\n", v->vring[j].align);
 				seq_printf(seq, "    Number of buffers %d\n", v->vring[j].num);
 				seq_printf(seq, "    Notify ID %d\n", v->vring[j].notifyid);
 				seq_printf(seq, "    Physical Address 0x%llx\n\n",
-					   v->vring[j].pa);
+					   rproc_rsc_get_addr(v->vring[j].pa_lo, v->vring[j].pa_hi));
 			}
 			break;
 		default:
