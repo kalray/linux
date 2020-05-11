@@ -605,8 +605,8 @@ static int kvx_rproc_get_internal_memories(struct platform_device *pdev,
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						mem_names[i]);
 
-		mem->cpu_addr = devm_ioremap_nocache(dev, res->start,
-						     resource_size(res));
+		mem->cpu_addr = devm_ioremap(dev, res->start,
+					     resource_size(res));
 		if (IS_ERR(mem->cpu_addr)) {
 			dev_err(&pdev->dev, "devm_ioremap_resource failed\n");
 			err = PTR_ERR(mem->cpu_addr);
@@ -649,7 +649,7 @@ static int kvx_rproc_get_memory_regions(struct platform_device *pdev,
 		}
 
 		mem = &rproc->mem[mem_idx];
-		mem->cpu_addr = devm_ioremap_nocache(&pdev->dev, rmem->base,
+		mem->cpu_addr = devm_ioremap(&pdev->dev, rmem->base,
 						     rmem->size);
 		if (IS_ERR(mem->cpu_addr)) {
 			dev_err(dev, "devm_ioremap_resource failed\n");
