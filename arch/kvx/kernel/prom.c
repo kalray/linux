@@ -22,8 +22,5 @@ void __init setup_device_tree(void)
 	pr_info("Machine model: %s\n", name);
 	dump_stack_set_arch_desc("%s (DT)", name);
 
-	/* Device tree is located in init section so copy it before it
-	 * get reclaimed
-	 */
-	unflatten_and_copy_device_tree();
+	unflatten_device_tree();
 }
