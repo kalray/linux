@@ -174,6 +174,9 @@ static void __init setup_bootmem(void)
 	setup_initrd();
 #endif
 
+	/* Don't reserve the device tree if its builtin */
+	if (!is_kernel_rodata((unsigned long) initial_boot_params))
+		early_init_fdt_reserve_self();
 	early_init_fdt_scan_reserved_mem();
 
 	memblock_allow_resize();
