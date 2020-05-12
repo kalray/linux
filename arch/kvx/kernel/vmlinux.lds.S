@@ -106,13 +106,6 @@ SECTIONS
 	}
 
 	PERCPU_SECTION(L1_CACHE_BYTES)
-	. = ALIGN(32);
-	.dtb : AT(ADDR(.dtb) - LOAD_OFFSET)
-	{
-		__dtb_start = .;
-		. += DTB_DEFAULT_SIZE;
-		__dtb_end = .;
-	}
 	. = ALIGN(PAGE_SIZE);
 	__initdata_end = .;
 	__init_end = .;
@@ -141,6 +134,13 @@ SECTIONS
 	__rodata_start = .;
 	RO_DATA(PAGE_SIZE)
 	EXCEPTION_TABLE(8)
+	. = ALIGN(32);
+	.dtb : AT(ADDR(.dtb) - LOAD_OFFSET)
+	{
+		__dtb_start = .;
+		. += DTB_DEFAULT_SIZE;
+		__dtb_end = .;
+	}
 	. = ALIGN(PAGE_SIZE);
 	__rodata_end = .;
 
