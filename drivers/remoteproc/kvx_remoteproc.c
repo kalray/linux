@@ -86,8 +86,10 @@ enum fw_rsc_kalray_mbox_version {
  */
 struct fw_rsc_kalray_mbox {
 	u32 version;
-	u64 da;
-	u64 pa;
+	u32 da_lo;
+	u32 da_hi;
+	u32 pa_lo;
+	u32 pa_hi;
 	u32 flags;
 	u32 cluster_off;
 	u32 nb_notify_ids;
@@ -475,8 +477,8 @@ static int kvx_handle_mailbox(struct rproc *rproc,
 	if (!mbox)
 		return -EINVAL;
 
-	rsc->pa = mbox->pa;
-	rsc->da = rsc->pa;
+	rproc_rsc_set_addr(&rsc->pa_lo, &rsc->pa_hi, mbox->pa);
+	rproc_rsc_set_addr(&rsc->da_lo, &rsc->da_hi, mbox->pa);
 
 	/* Assign IDs bound to this mailbox */
 	if (rsc->nb_notify_ids > KVX_MAX_VRING_PER_MBOX) {
