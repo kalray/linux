@@ -1337,6 +1337,9 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		}
 	}
 
+	/* Before reconfiguring retimers, serdes must be disabled */
+	kvx_mac_phy_disable_serdes(ndev->hw);
+
 	for (i = 0; i < RTM_NB; i++) {
 		ret = configure_rtm(ndev, i, ndev->cfg.speed);
 		if (ret) {
