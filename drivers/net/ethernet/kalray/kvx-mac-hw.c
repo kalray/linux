@@ -390,8 +390,7 @@ static void dump_phy_status(struct kvx_eth_hw *hw)
 /**
  * kvx_mac_phy_disable_serdes() - Change serdes state to P1
  */
-static int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw,
-				      struct kvx_eth_lane_cfg *cfg)
+int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw)
 {
 	struct pll_cfg *pll = &hw->pll_cfg;
 	u32 val, mask, reg;
@@ -531,7 +530,7 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	/* Enable CR interface */
 	kvx_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
 
-	kvx_mac_phy_disable_serdes(hw, cfg);
+	kvx_mac_phy_disable_serdes(hw);
 
 	kvx_mac_phy_enable_serdes(hw, cfg, PSTATE_P0);
 
