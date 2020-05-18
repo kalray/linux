@@ -806,13 +806,21 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 			kvx_mac_writel(hw, thresh, reg +
 				       XPCS_VENDOR_TXLANE_THRESH_OFFSET);
 			update_set_vendor_cl_intvl(hw, i, mc);
-			DUMP_REG(hw, MAC, reg + XPCS_CTRL1_OFFSET);
-			DUMP_REG(hw, MAC, reg + XPCS_STATUS1_OFFSET);
 		}
 		reg = PCS_100G_OFFSET;
 		kvx_mac_writel(hw, mc, reg + PCS_100G_VL_INTVL_OFFSET);
 		/* Lane 0 */
 		update_ipg_len_compensation(hw, 0, mc);
+
+		/* All lanes */
+		for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
+			reg = XPCS_OFFSET + XPCS_ELEM_SIZE * i;
+			updatel_bits(hw, MAC, reg + XPCS_CTRL1_OFFSET,
+				  XPCS_CTRL1_RESET_MASK, XPCS_CTRL1_RESET_MASK);
+		}
+		updatel_bits(hw, MAC, PCS_100G_OFFSET + PCS_100G_CTRL1_OFFSET,
+			     PCS_100G_CTRL1_RESET_MASK,
+			     PCS_100G_CTRL1_RESET_MASK);
 		DUMP_REG(hw, MAC, PCS_100G_OFFSET + PCS_100G_CTRL1_OFFSET);
 		DUMP_REG(hw, MAC, PCS_100G_OFFSET + PCS_100G_STATUS1_OFFSET);
 		break;
@@ -931,10 +939,6 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	int i, ret = 0;
 	u32 off, val, mask;
 
-	ret = kvx_eth_mac_reset(hw);
-	if (ret)
-		return ret;
-
 	val = kvx_mac_readl(hw, MAC_MODE_OFFSET);
 	if (cfg->speed == SPEED_40000)
 		val |= BIT(MAC_MODE40_EN_IN_SHIFT);
@@ -950,6 +954,10 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	if (cfg->speed == SPEED_1000)
 		val |= (u32) BIT(MAC_SG_TX_LANE_CKMULT_SHIFT);
 	kvx_mac_writel(hw, val, MAC_SG_OFFSET);
+
+	ret = kvx_eth_mac_reset(hw);
+	if (ret)
+		return ret;
 
 	ret = kvx_eth_emac_init(hw, cfg);
 	if (ret)
