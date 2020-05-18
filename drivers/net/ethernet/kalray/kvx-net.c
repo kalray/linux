@@ -786,16 +786,27 @@ static void kvx_eth_netdev_get_stats64(struct net_device *netdev,
  * is behind this netdev, independently of the netdev name
  */
 static int
-kvx_eth_get_phys_port_name(struct net_device *dev,
-						   char *name, size_t len)
+kvx_eth_get_phys_port_name(struct net_device *dev, char *name, size_t len)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(dev);
 	int n;
 
-	n = snprintf(name, len, "eth%d", ndev->hw->eth_id);
+	n = snprintf(name, len, "enmppa%d",
+		     ndev->hw->eth_id * KVX_ETH_LANE_NB + ndev->cfg.id);
 
 	if (n >= len)
 		return -EINVAL;
+
+	return 0;
+}
+
+static int
+kvx_eth_get_phys_port_id(struct net_device *dev, struct netdev_phys_item_id *id)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(dev);
+
+	id->id_len = 1;
+	id->id[0] = ndev->hw->eth_id * KVX_ETH_LANE_NB + ndev->cfg.id;
 
 	return 0;
 }
@@ -809,6 +820,7 @@ static const struct net_device_ops kvx_eth_netdev_ops = {
 	.ndo_set_mac_address    = kvx_eth_set_mac_addr,
 	.ndo_change_mtu         = kvx_eth_change_mtu,
 	.ndo_get_phys_port_name = kvx_eth_get_phys_port_name,
+	.ndo_get_phys_port_id   = kvx_eth_get_phys_port_id,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller    = kvx_eth_netdev_poll_controller,
 #endif
