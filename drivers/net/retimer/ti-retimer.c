@@ -41,8 +41,12 @@ static const struct seq_args speed_set_seq[] = {
 	{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
 	/* Select all lanes (0) */
 	{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 0x00},
+	/* CDR reset */
+	{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x0c},
 	/* Write data rate value (0) */
 	{.reg = 0x2f, .offset = 0x00, .mask = 0xff, .value = 0x00},
+	/* Release CDR reset */
+	{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x00},
 };
 #define TI_RTM_SPEED_SEQ_SIZE (ARRAY_SIZE(speed_set_seq))
 
@@ -281,7 +285,7 @@ int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
 
 	memcpy(seq, speed_set_seq, sizeof(seq));
 	seq[1].value = 1 << lane; /* choose lane */
-	seq[2].value = speed_reg_val; /* apply speed */
+	seq[3].value = speed_reg_val; /* apply speed */
 
 	write_i2c_regs(client, seq, TI_RTM_SPEED_SEQ_SIZE);
 
