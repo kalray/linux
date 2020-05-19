@@ -14,6 +14,8 @@
 #include <linux/of_gpio.h>
 #include <linux/ethtool.h>
 
+#include <linux/ti-retimer.h>
+
 #define TI_RTM_DRIVER_NAME "ti-retimer"
 #define TI_RTM_I2C_ADDR_BUF_SIZE (4)
 #define TI_RTM_GPIO_SLAVE_MODE (1)
@@ -24,14 +26,47 @@
 #define TI_RTM_DEFAULT_TIMEOUT (500)
 #define TI_RTM_NB_LANE (8)
 #define TI_RTM_DEFAULT_SPEED (SPEED_10000)
+#define TI_RTM_MAX_REGINIT_SIZE (256)
 
-/* Format: register address, offset, mask, value */
-static const u32 speed_set_seq[][TI_RTM_SEQ_ARGS_SIZE] = {
-	{0xff, 0x00, 0x01, 0x01}, /* Select channel registers */
-	{0xfc, 0x00, 0xff, 0x00}, /* Select all lanes (0) */
-	{0x2f, 0x00, 0xff, 0x00}, /* Write data rate value (0) */
+struct seq_args {
+	u8 reg;
+	u8 offset;
+	u8 mask;
+	u8 value;
 };
-#define TI_RTM_SEQ_SIZE (ARRAY_SIZE(speed_set_seq))
+
+/* Used to change retimer data rate at runtime */
+static const struct seq_args speed_set_seq[] = {
+	/* Select channel registers */
+	{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
+	/* Select all lanes (0) */
+	{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 0x00},
+	/* Write data rate value (0) */
+	{.reg = 0x2f, .offset = 0x00, .mask = 0xff, .value = 0x00},
+};
+#define TI_RTM_SPEED_SEQ_SIZE (ARRAY_SIZE(speed_set_seq))
+
+/* Used to change retimer settings rate at runtime */
+static const struct seq_args params_set_seq[] = {
+	/* Select channel registers */
+	{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
+	/* Select all lanes (0) */
+	{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 0x00},
+	/* Write pre sign */
+	{.reg = 0x3e, .offset = 0x00, .mask = 0x40, .value = 0x00},
+	/* Write pre value */
+	{.reg = 0x3e, .offset = 0x00, .mask = 0x7f, .value = 0x00},
+	/* Write main sign */
+	{.reg = 0x3d, .offset = 0x00, .mask = 0x40, .value = 0x00},
+	/* Write main value */
+	{.reg = 0x3d, .offset = 0x00, .mask = 0x7f, .value = 0x00},
+	/* Write post sign */
+	{.reg = 0x3f, .offset = 0x00, .mask = 0x40, .value = 0x00},
+	/* Write post value */
+	{.reg = 0x3f, .offset = 0x00, .mask = 0x7f, .value = 0x00},
+};
+#define TI_RTM_PARAMS_SEQ_SIZE (ARRAY_SIZE(params_set_seq))
+
 
 /**
  * struct ti_rtm_reg_init - TI retimer i2c register initialization structure
@@ -39,7 +74,7 @@ static const u32 speed_set_seq[][TI_RTM_SEQ_ARGS_SIZE] = {
  * @size: reg_init number of elements
  */
 struct ti_rtm_reg_init {
-	u32 *seq;
+	struct seq_args *seq;
 	int size;
 };
 
@@ -127,21 +162,22 @@ static inline int ti_rtm_i2c_write(struct i2c_client *client, u8 reg, u8 *buf,
 	return i2c_transfer(client->adapter, write_cmd, 1);
 }
 
-static void write_i2c_regs(struct i2c_client *client, u32 *seq, u64 size)
+static void write_i2c_regs(struct i2c_client *client, struct seq_args seq[],
+		u64 size)
 {
 	struct device *dev = &client->dev;
 	int i, ret;
 
-	for (i = 0; i < size; i += TI_RTM_SEQ_ARGS_SIZE) {
-		u8 reg = seq[i];
-		u8 offset = seq[i + 1];
-		u8 mask = seq[i + 2];
-		u8 value = seq[i + 3];
+	for (i = 0; i < size; i++) {
+		u8 reg = seq[i].reg;
+		u8 offset = seq[i].offset;
+		u8 mask = seq[i].mask;
+		u8 value = seq[i].value;
 		u8 read_buf = 0;
 		u8 write_buf = 0;
 
-		dev_dbg(dev, "i2c regs values: reg 0x%x, offset 0x%x, mask 0x%x, value 0x%x\n",
-				reg, offset, mask, value);
+		dev_dbg(dev, "i2c regs values: reg 0x%x, offset 0x%x, mask 0x%x, value 0x%x (%d)\n",
+				reg, offset, mask, value, (s8) value);
 
 		ret = ti_rtm_i2c_read(client, reg, &read_buf, 1);
 		if (ret < 0) {
@@ -159,6 +195,50 @@ static void write_i2c_regs(struct i2c_client *client, u32 *seq, u64 size)
 		}
 	}
 }
+
+#define TI_RTM_I2C_REG_POSITIVE_VALUE (0x00)
+#define TI_RTM_I2C_REG_NEGATIVE_VALUE (0x40)
+
+static inline void seq_fill_param(struct seq_args seq[], int row,
+		int value)
+{
+	if (value < 0)
+		seq[row].value = TI_RTM_I2C_REG_NEGATIVE_VALUE;
+	else
+		seq[row].value = TI_RTM_I2C_REG_POSITIVE_VALUE;
+	seq[row + 1].value = abs(value);
+}
+
+/**
+ * ti_retimer_set_params() - Set tuning params for a lane
+ * @client: i2c client
+ * @lane: retimer lane [0:7]
+ * @params: tuning parameters to apply
+ * Return: 0 on success, < 0 on failure
+ */
+int ti_retimer_set_params(struct i2c_client *client, u8 lane,
+		struct ti_rtm_params params)
+{
+	struct device *dev = &client->dev;
+	struct seq_args seq[TI_RTM_PARAMS_SEQ_SIZE];
+
+	if (lane >= TI_RTM_NB_LANE) {
+		dev_err(dev, "Wrong lane number %d (max: %d)\n", lane,
+				TI_RTM_NB_LANE);
+		return -EINVAL;
+	}
+
+	memcpy(seq, params_set_seq, sizeof(seq));
+	seq[1].value = 1 << lane; /* choose lane */
+	seq_fill_param(seq, 2, params.pre); //TODO defines
+	seq_fill_param(seq, 4, params.main);
+	seq_fill_param(seq, 6, params.post);
+
+	write_i2c_regs(client, seq, TI_RTM_PARAMS_SEQ_SIZE);
+
+	return 0;
+}
+EXPORT_SYMBOL(ti_retimer_set_params);
 
 static inline int speed_to_rtm_reg_value(int speed)
 {
@@ -182,10 +262,9 @@ static inline int speed_to_rtm_reg_value(int speed)
 int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
 {
 	struct device *dev = &client->dev;
-	u32 seq[TI_RTM_SEQ_SIZE][TI_RTM_SEQ_ARGS_SIZE];
+	struct seq_args seq[TI_RTM_SPEED_SEQ_SIZE];
 	u8 speed_reg_val;
 	int ret;
-	int seq_size = TI_RTM_SEQ_SIZE * TI_RTM_SEQ_ARGS_SIZE;
 
 	if (lane >= TI_RTM_NB_LANE) {
 		dev_err(dev, "Wrong lane number %d (max: %d)\n", lane,
@@ -200,11 +279,11 @@ int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
 	}
 	speed_reg_val = (u8) ret;
 
-	memcpy(seq, speed_set_seq, seq_size * sizeof(seq[0][0]));
-	seq[1][3] = 1 << lane; /* choose lane to modify */
-	seq[2][3] = speed_reg_val; /* apply speed */
+	memcpy(seq, speed_set_seq, sizeof(seq));
+	seq[1].value = 1 << lane; /* choose lane */
+	seq[2].value = speed_reg_val; /* apply speed */
 
-	write_i2c_regs(client, (u32 *) seq, seq_size);
+	write_i2c_regs(client, seq, TI_RTM_SPEED_SEQ_SIZE);
 
 	return 0;
 }
@@ -213,7 +292,7 @@ EXPORT_SYMBOL(ti_retimer_set_speed);
 static int retimer_cfg(struct ti_rtm_dev *rtm)
 {
 	struct device *dev = &rtm->client->dev;
-	int i, ret = 0;
+	int ret = 0;
 
 	/* Force slave mode */
 	dev_dbg(dev, "Setting en_smb_gpio to 0x%x\n", TI_RTM_GPIO_SLAVE_MODE);
@@ -259,18 +338,7 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 		} while (ret != TI_RTM_GPIO_ALL_DONE);
 	}
 
-	write_i2c_regs(rtm->client, rtm->reg_init.seq,
-			rtm->reg_init.size);
-
-	/* Set rtm to default speed */
-	for (i = 0; i < TI_RTM_NB_LANE; i++) {
-		ret = ti_retimer_set_speed(rtm->client, i,
-				TI_RTM_DEFAULT_SPEED);
-		if (ret) {
-			dev_err(dev, "Error while setting retimer default speed\n");
-			return ret;
-		}
-	}
+	write_i2c_regs(rtm->client, rtm->reg_init.seq, rtm->reg_init.size);
 
 	return 0;
 
@@ -291,7 +359,8 @@ static int parse_dt(struct ti_rtm_dev *rtm)
 {
 	struct device_node *np = rtm->client->dev.of_node;
 	struct device *dev = &rtm->client->dev;
-	int ret = 0;
+	int index, i, ret = 0;
+	u32 tmp_reg_init[TI_RTM_MAX_REGINIT_SIZE];
 
 	if (!np)
 		return -EINVAL;
@@ -333,25 +402,40 @@ static int parse_dt(struct ti_rtm_dev *rtm)
 	}
 
 	ret = of_property_count_u32_elems(np, "ti,reg-init");
-	if (ret > 0) {
-		if ((ret % TI_RTM_SEQ_ARGS_SIZE) != 0) {
-			dev_err(dev, "Incorrect reg-init format\n");
-			return ret;
-		}
-		rtm->reg_init.size = ret;
-
-		rtm->reg_init.seq = devm_kzalloc(dev, rtm->reg_init.size *
-				sizeof(*rtm->reg_init.seq), GFP_KERNEL);
-		if (!rtm->reg_init.seq)
-			return -ENOMEM;
-		ret = of_property_read_u32_array(np, "ti,reg-init",
-				rtm->reg_init.seq, rtm->reg_init.size);
-		if (ret) {
-			dev_err(dev, "Failed requesting read reg init\n");
-			return ret;
-		}
-	} else {
+	if (ret < 0) {
 		dev_warn(dev, "No reg-init property found\n");
+		return 0;
+	}
+	if ((ret % TI_RTM_SEQ_ARGS_SIZE) != 0) {
+		dev_err(dev, "Incorrect reg-init format\n");
+		return ret;
+	}
+	if (ret > TI_RTM_REGINIT_MAX_SIZE) {
+		dev_err(dev, "Reg-init is too big (max: %d)\n",
+				TI_RTM_REGINIT_MAX_SIZE);
+		return ret;
+	}
+	rtm->reg_init.size = ret / TI_RTM_SEQ_ARGS_SIZE;
+
+	ret = of_property_read_u32_array(np, "ti,reg-init",
+			tmp_reg_init, rtm->reg_init.size *
+			TI_RTM_SEQ_ARGS_SIZE);
+	if (ret) {
+		dev_err(dev, "Failed requesting read reg init\n");
+		return ret;
+	}
+	rtm->reg_init.seq = devm_kzalloc(dev, rtm->reg_init.size *
+			sizeof(*rtm->reg_init.seq), GFP_KERNEL);
+	if (!rtm->reg_init.seq)
+		return -ENOMEM;
+
+	/* Casting u32 to u8 as I2C registers are 8 bits */
+	for (i = 0; i < rtm->reg_init.size; i++) {
+		index = i * TI_RTM_SEQ_ARGS_SIZE;
+		rtm->reg_init.seq[i].reg    = tmp_reg_init[index + 0];
+		rtm->reg_init.seq[i].offset = tmp_reg_init[index + 1];
+		rtm->reg_init.seq[i].mask   = tmp_reg_init[index + 2];
+		rtm->reg_init.seq[i].value  = tmp_reg_init[index + 3];
 	}
 
 	return 0;
