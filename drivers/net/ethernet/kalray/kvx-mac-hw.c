@@ -22,11 +22,10 @@
 ({ \
 	unsigned long t = jiffies + msecs_to_jiffies(timeout_in_ms); \
 	u32 v = 0; \
-	do { \
-		if (time_after(jiffies, t)) { \
-			dev_err(hw->dev, #reg" TIMEOUT (0x%x exp 0x%x)\n", \
-				(u32)(v & (mask)), (u32)exp); break; } \
-	v = read(hw, reg) & (mask); \
+	do { if (time_after(jiffies, t)) { \
+		dev_err(hw->dev, #reg" TIMEOUT l.%d (0x%x exp 0x%x)\n", \
+			__LINE__, (u32)(v & (mask)), (u32)exp); break; } \
+		v = read(hw, reg) & (mask); \
 	} while (exp != (v & (mask))); \
 	(exp == (v & (mask))) ? 0 : -ETIMEDOUT; \
 })
@@ -228,6 +227,7 @@ int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 {
 	struct pll_cfg *pll = &hw->pll_cfg;
 
+	hw->phy_f.reg_avail = true;
 	if (speed == SPEED_40000 || speed == SPEED_100000)
 		memset(pll, 0, sizeof(*pll));
 	/* Default PLLA/PLLB are available */
@@ -241,7 +241,7 @@ int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 {
 	int ret = kvx_eth_phy_init(hw, speed);
 
-	dev_info(hw->dev, "HAPS Phy force sigdet\n");
+	hw->phy_f.reg_avail = false;
 	updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
 		     PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK,
 		     PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK);
@@ -453,11 +453,10 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw)
 }
 
 /**
- * kvx_mac_phy_enable_serdes() - Change serdes state to P0 based on lane cfg
+ * kvx_mac_phy_enable_serdes() - Change serdes state to P0 based on pll config
  */
 static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw,
-				      struct kvx_eth_lane_cfg *cfg,
-				      enum serdes_pstate pstate)
+				     enum serdes_pstate pstate)
 {
 	struct pll_cfg *pll = &hw->pll_cfg;
 	u32 val, mask, reg;
@@ -491,12 +490,19 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw,
 		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
 	}
 
-	if (cfg->mac_f.loopback_mode == MAC_SERDES_LOOPBACK) {
-		/* Must be set in pstate P0 */
-		dev_info(hw->dev, "Mac/Phy TX2RX loopback!!!\n");
+	/* Must be set in pstate P0 */
+	if (hw->phy_f.loopback_mode == MAC_SERDES_LOOPBACK) {
+		dev_dbg(hw->dev, "Mac serdes TX2RX loopback!!!\n");
 		val = (u32)0xF << PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT;
 		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
 			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, val);
+	} else if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK) {
+		dev_dbg(hw->dev, "Phy TX2RX loopback!!!\n");
+		kvx_phy_loopback(hw, true);
+	} else {
+		kvx_phy_loopback(hw, false);
+		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
+			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, 0);
 	}
 
 	val = PHY_SERDES_CTRL_RX_REQ_MASK | PHY_SERDES_CTRL_TX_REQ_MASK;
@@ -520,8 +526,7 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw,
 /* kvx_eth_phy_serdes_cfg() - config of serdes based on initialized hw->pll_cfg
  * @hw: hardware configuration
  */
-static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
-				  struct kvx_eth_lane_cfg *cfg)
+static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw)
 {
 	dev_dbg(hw->dev, "serdes_mask: 0x%lx serdes_pll_master: 0x%lx avail: 0x%lx\n",
 		hw->pll_cfg.serdes_mask, hw->pll_cfg.serdes_pll_master,
@@ -531,8 +536,7 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	kvx_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
 
 	kvx_mac_phy_disable_serdes(hw);
-
-	kvx_mac_phy_enable_serdes(hw, cfg, PSTATE_P0);
+	kvx_mac_phy_enable_serdes(hw, PSTATE_P0);
 
 	dump_phy_status(hw);
 	dev_dbg(hw->dev, "Serdes cfg done\n");
@@ -540,16 +544,16 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	return 0;
 }
 
-int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw)
 {
-	kvx_mac_phy_serdes_cfg(hw, cfg);
+	kvx_mac_phy_serdes_cfg(hw);
 
 	return 0;
 }
 
-int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+int kvx_eth_phy_cfg(struct kvx_eth_hw *hw)
 {
-	kvx_mac_phy_serdes_cfg(hw, cfg);
+	kvx_mac_phy_serdes_cfg(hw);
 	kvx_phy_param_tuning(hw);
 
 	return 0;
@@ -832,15 +836,6 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 	return 0;
 }
 
-int kvx_eth_mac_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
-{
-	u32 mask = BIT(MAC_SYNC_STATUS_LINK_STATUS_SHIFT + cfg->id);
-	u32 reg = kvx_mac_readl(hw, MAC_SYNC_STATUS_OFFSET);
-
-	cfg->link = ((reg & mask) == mask);
-
-	return 0;
-}
 
 /* Check PCS status */
 void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
@@ -868,13 +863,13 @@ void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 #define MAC_SYNC_TIMEOUT_MS  1000
 #define FEC_MASK_40G         0x55
-static int kvx_eth_wait_link_up(struct kvx_eth_hw *hw,
-				struct kvx_eth_lane_cfg *cfg)
+int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	u32 reg, mask, ref;
 	u32 fec_mask = 0;
 	int ret = 0;
 
+	cfg->link = 0;
 	if (cfg->speed <= SPEED_1000) {
 		reg = MAC_1G_OFFSET + MAC_1G_ELEM_SIZE * cfg->id;
 		ret = kvx_poll(kvx_mac_readl, reg + MAC_1G_STATUS_OFFSET,
@@ -884,6 +879,8 @@ static int kvx_eth_wait_link_up(struct kvx_eth_hw *hw,
 			dev_err(hw->dev, "Link up 1G failed\n");
 			return ret;
 		}
+		cfg->link = 1;
+		return 0;
 	}
 
 	if (hw->fec_en) {
@@ -918,14 +915,17 @@ static int kvx_eth_wait_link_up(struct kvx_eth_hw *hw,
 	}
 
 	mask = BIT(MAC_SYNC_STATUS_LINK_STATUS_SHIFT + cfg->id);
-	reg = kvx_mac_readl(hw, MAC_SYNC_STATUS_OFFSET);
-	dev_dbg(hw->dev, "Link sync status lane[%d]: 0x%x\n", cfg->id, reg);
 	ret = kvx_poll(kvx_mac_readl, MAC_SYNC_STATUS_OFFSET, mask,
 		 mask, MAC_SYNC_TIMEOUT_MS);
 	if (ret) {
 		dev_err(hw->dev, "Link up timeout.\n");
+		reg = kvx_mac_readl(hw, MAC_SYNC_STATUS_OFFSET);
+		dev_dbg(hw->dev, "Link sync status lane[%d]: 0x%x\n",
+			cfg->id, reg);
 		kvx_eth_mac_pcs_status(hw, cfg);
+		return ret;
 	}
+	cfg->link = 1;
 
 	return 0;
 }
@@ -1022,8 +1022,6 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			i, val);
 	}
 
-	kvx_eth_wait_link_up(hw, cfg);
-
 	return 0;
 }
 
@@ -1046,19 +1044,10 @@ void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 		mac_f->loopback_mode = NO_LOOPBACK;
 		return;
 	}
-	if (mac_f->loopback_mode == MAC_SERDES_LOOPBACK) {
-		dev_info(hw->dev, "Mac/Phy TX2RX loopback!!!\n");
 
-		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
-			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK,
-			     (u32)0xF << PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT);
-	} else if (mac_f->loopback_mode == PHY_PMA_LOOPBACK) {
-		kvx_phy_loopback(hw, cfg, true);
-	} else {
-		kvx_phy_loopback(hw, cfg, false);
-		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
-			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, 0);
-	}
+	hw->phy_f.loopback_mode = mac_f->loopback_mode;
+	kvx_mac_phy_serdes_cfg(hw);
+	kvx_eth_mac_cfg(hw, cfg);
 }
 
 void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
