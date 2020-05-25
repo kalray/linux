@@ -48,13 +48,15 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 		hw->phy_f.param[i].en = false;
 }
 
-void kvx_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
-		      bool enable)
+void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable)
 {
 	u32 off, val;
 	u32 mask = BIT(LANE_TX2RX_SER_LB_EN_OVRD_EN_SHIFT) |
 		BIT(LANE_TX2RX_SER_LB_EN_OVRD_VAL_SHIFT) |
 		BIT(LANE_RX2TX_PAR_LB_EN_OVRD_EN_SHIFT);
+
+	if (!hw->phy_f.reg_avail)
+		return;
 
 	off = RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN;
 	val = readw(hw->res[KVX_ETH_RES_PHY].base + off);
