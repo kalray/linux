@@ -1163,9 +1163,11 @@ int kvx_eth_parse_dt(struct platform_device *pdev, struct kvx_eth_netdev *ndev)
 {
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct device_node *np = pdev->dev.of_node;
+	struct kvx_eth_dev *dev = KVX_DEV(ndev);
 	struct device_node *np_dma;
 	struct device_node *rtm_node;
-	int ret = 0;
+	struct list_head *n;
+	int i, ret = 0;
 	int rtm;
 
 	dma_cfg->pdev = kvx_eth_check_dma(pdev, &np_dma);
@@ -1228,11 +1230,15 @@ int kvx_eth_parse_dt(struct platform_device *pdev, struct kvx_eth_netdev *ndev)
 		}
 	}
 
+	i = 0;
+	list_for_each(n, &dev->list)
+		i++;
+	ndev->cfg.id = i;
+
 	/* Default tx eq. parameter tuning */
-	ndev->cfg.phy_param.swing = 40;
-	if (of_property_read_u32_array(np, "kalray,phy-param",
-				   (u32 *)&ndev->cfg.phy_param, 5) != 0)
-		dev_info(ndev->dev, "No kalray,phy-param set\n");
+	if (!of_property_read_u32_array(np, "kalray,phy-param",
+				   (u32 *)&ndev->hw->phy_f.param[i], 5))
+		ndev->hw->phy_f.param[i].en = 1;
 
 	return 0;
 }
@@ -1419,9 +1425,8 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	struct net_device *netdev;
 	struct kvx_eth_node_id txq, rxq;
 	struct phylink *phylink;
-	struct list_head *n;
-	int ret, i = 0;
 	int phy_mode;
+	int ret = 0;
 
 	ret = kvx_eth_get_queue_nb(pdev, &txq, &rxq);
 	if (ret)
@@ -1473,9 +1478,6 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 
 	eth_hw_addr_random(netdev);
 	memcpy(ndev->cfg.mac_f.addr, netdev->dev_addr, ETH_ALEN);
-	list_for_each(n, &dev->list)
-		i++;
-	ndev->cfg.id = i;
 
 	/* Allocate RX/TX rings */
 	ret = kvx_eth_alloc_rx_res(netdev);
@@ -1698,6 +1700,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	}
 
 	kvx_eth_tx_init(&dev->hw);
+	kvx_eth_phy_f_init(&dev->hw);
 	dev_info(&pdev->dev, "KVX network driver\n");
 	return devm_of_platform_populate(&pdev->dev);
 
