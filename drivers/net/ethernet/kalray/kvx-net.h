@@ -29,8 +29,7 @@
 
 struct kvx_eth_type {
 	int (*phy_init)(struct kvx_eth_hw *hw, unsigned int speed);
-	int (*phy_cfg)(struct kvx_eth_hw *hw,
-			       struct kvx_eth_lane_cfg *cfg);
+	int (*phy_cfg)(struct kvx_eth_hw *hw);
 };
 
 /**

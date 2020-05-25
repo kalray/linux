@@ -258,10 +258,13 @@ struct phy_param {
 /**
  * struct kvx_eth_phy_f - Phy controller features
  * @loopback_mode: mac loopback mode
+ * @param: phy param (TX equalization, RX/TX polarity)
+ * @reg_avail: false for HAPS platform
  */
 struct kvx_eth_phy_f {
 	enum kvx_eth_loopback_mode loopback_mode;
 	struct phy_param param[KVX_ETH_LANE_NB];
+	bool reg_avail;
 };
 
 /**
@@ -505,8 +508,7 @@ void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
 /* PHY */
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
 int kvx_eth_phy_serdes_init(struct kvx_eth_hw *h, struct kvx_eth_lane_cfg *cfg);
-void kvx_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
-		      bool enable);
+void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable);
 void kvx_phy_param_tuning(struct kvx_eth_hw *hw);
 
 /* MAC */
@@ -516,13 +518,14 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
 int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw);
 int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
-int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
-int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_phy_cfg(struct kvx_eth_hw *hw);
+int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw);
 int kvx_eth_mac_reset(struct kvx_eth_hw *hw);
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
-int kvx_eth_mac_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
 
 /* LB */
 void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
