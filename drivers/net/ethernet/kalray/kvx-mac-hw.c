@@ -550,7 +550,7 @@ int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	kvx_mac_phy_serdes_cfg(hw, cfg);
-	kvx_phy_param_tuning(hw, cfg->id, &cfg->phy_param);
+	kvx_phy_param_tuning(hw);
 
 	return 0;
 }
