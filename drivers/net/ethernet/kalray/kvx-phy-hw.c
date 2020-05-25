@@ -7,6 +7,7 @@
  * Copyright (C) 2019 Kalray Inc.
  */
 #include "kvx-net-hw.h"
+#include "kvx-mac-regs.h"
 #include "kvx-phy-regs.h"
 
 #define LANE0_DIG_ASIC_TX_OVRD_IN_2  0x400C
@@ -38,6 +39,15 @@
 #define LANE_RX2TX_PAR_LB_EN_OVRD_EN_SHIFT  1
 
 
+void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
+{
+	int i = 0;
+
+	hw->phy_f.loopback_mode = NO_LOOPBACK;
+	for (i = 0; i < KVX_ETH_LANE_NB; i++)
+		hw->phy_f.param[i].en = false;
+}
+
 void kvx_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 		      bool enable)
 {
@@ -46,7 +56,6 @@ void kvx_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 		BIT(LANE_TX2RX_SER_LB_EN_OVRD_VAL_SHIFT) |
 		BIT(LANE_RX2TX_PAR_LB_EN_OVRD_EN_SHIFT);
 
-	/* RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN */
 	off = RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN;
 	val = readw(hw->res[KVX_ETH_RES_PHY].base + off);
 	if (enable)
@@ -56,39 +65,66 @@ void kvx_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 	writew(val, hw->res[KVX_ETH_RES_PHY].base + off);
 }
 
-void kvx_phy_param_tuning(struct kvx_eth_hw *hw, int lane_id,
-			  struct phy_param *param)
+/**
+ * kvx_phy_param_tuning() - Set all lanes phy parameters
+ *
+ * Based on MAC lane configuration (takes into account virtual lane, and
+ * set all physical lane with lane 0 parameters)
+ *
+ * @hw: hw description
+ */
+void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 {
 	u16 mask = TX_MAIN_CURSOR_MASK | TX_MAIN_OVRD_EN_MASK | OVRD_IN_EN_MASK;
-	u16 v = (u16)param->swing << TX_MAIN_CURSOR_SHIFT;
-	u16 reg;
-	u32 off = LANE0_DIG_ASIC_TX_OVRD_IN_2 +
-		lane_id * LANE_DIG_ASIC_TX_OVRD_IN_OFFSET;
+	struct phy_param *param = &hw->phy_f.param[0];
+	u16 v, reg, lane_id;
+	u32 off, val;
+	bool vlane = false;
 
-	v |= OVRD_IN_EN_MASK | TX_MAIN_OVRD_EN_MASK;
-	reg = readw(hw->res[KVX_ETH_RES_PHY].base + off) & ~(mask);
-	writew(reg | v, hw->res[KVX_ETH_RES_PHY].base + off);
+	val = readl(hw->res[KVX_ETH_RES_MAC].base + MAC_MODE_OFFSET);
+	if (GETF(val, MAC_MODE40_EN_IN) || GETF(val, MAC_PCS100_EN_IN))
+		vlane = true;
 
-	mask = PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK |
-		TX_PRE_CURSOR_MASK | TX_POST_CURSOR_MASK;
-	v = ((u16)param->pre << TX_PRE_CURSOR_SHIFT) |
-		((u16)param->post << TX_POST_CURSOR_SHIFT);
-	v |= PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK;
-	off += DIG_ASIC_TX_OVRD_IN_3_OFFSET;
-	reg = readw(hw->res[KVX_ETH_RES_PHY].base + off) & ~(mask);
-	writew(reg | v, hw->res[KVX_ETH_RES_PHY].base + off);
+	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
+		off = LANE0_DIG_ASIC_TX_OVRD_IN_2 +
+			lane_id * LANE_DIG_ASIC_TX_OVRD_IN_OFFSET;
 
-	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
-	mask = PHY_LANE_RX_SERDES_CFG_INVERT_MASK;
-	v = (u16)param->rx_polarity << PHY_LANE_RX_SERDES_CFG_INVERT_SHIFT;
-	updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET, mask, v);
+		if (!vlane)
+			param = &hw->phy_f.param[lane_id];
 
-	mask = PHY_LANE_TX_SERDES_CFG_INVERT_MASK;
-	v = (u16)param->tx_polarity << PHY_LANE_TX_SERDES_CFG_INVERT_SHIFT;
-	updatel_bits(hw, PHYMAC, off + PHY_LANE_TX_SERDES_CFG_OFFSET, mask, v);
+		if (!param->en)
+			continue;
 
-	dev_dbg(hw->dev, "Param tuning (%d, %d, %d, %d, %d) done\n",
-		param->pre, param->post, param->swing,
-		param->rx_polarity, param->tx_polarity);
+		v = (u16) param->swing << TX_MAIN_CURSOR_SHIFT;
+		v |= OVRD_IN_EN_MASK | TX_MAIN_OVRD_EN_MASK;
+		reg = readw(hw->res[KVX_ETH_RES_PHY].base + off) & ~(mask);
+		writew(reg | v, hw->res[KVX_ETH_RES_PHY].base + off);
+
+		mask = PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK |
+			TX_PRE_CURSOR_MASK | TX_POST_CURSOR_MASK;
+		v = ((u16) param->pre << TX_PRE_CURSOR_SHIFT) |
+			((u16) param->post << TX_POST_CURSOR_SHIFT);
+		v |= PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK;
+		off += DIG_ASIC_TX_OVRD_IN_3_OFFSET;
+		reg = readw(hw->res[KVX_ETH_RES_PHY].base + off) & ~(mask);
+		writew(reg | v, hw->res[KVX_ETH_RES_PHY].base + off);
+
+		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
+		mask = PHY_LANE_RX_SERDES_CFG_INVERT_MASK;
+		v = (u16) param->rx_polarity <<
+			PHY_LANE_RX_SERDES_CFG_INVERT_SHIFT;
+		updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
+			     mask, v);
+
+		mask = PHY_LANE_TX_SERDES_CFG_INVERT_MASK;
+		v = (u16) param->tx_polarity <<
+			PHY_LANE_TX_SERDES_CFG_INVERT_SHIFT;
+		updatel_bits(hw, PHYMAC, off + PHY_LANE_TX_SERDES_CFG_OFFSET,
+			     mask, v);
+
+		dev_info(hw->dev, "Lane [%d] param tuning (pre:%d, post:%d, swing:%d, polarity rx:%d/tx: %d) done\n",
+			lane_id, param->pre, param->post, param->swing,
+			param->rx_polarity, param->tx_polarity);
+	}
 }
 
