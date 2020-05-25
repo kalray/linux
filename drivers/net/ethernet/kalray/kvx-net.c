@@ -1270,12 +1270,12 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 {
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	int ret = 0;
 
-	ret = kvx_eth_mac_status(ndev->hw, &ndev->cfg);
+	kvx_eth_wait_link_up(ndev->hw, &ndev->cfg);
 	state->link = ndev->cfg.link;
 	state->speed = ndev->cfg.speed;
 	state->duplex = DUPLEX_FULL;
+	kvx_eth_mac_pcs_status(ndev->hw, &ndev->cfg);
 }
 
 
@@ -1368,9 +1368,9 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 			return;
 		}
 	}
-	/* Setup PHY + serdes */
+
 	if (dev->type->phy_cfg) {
-		ret = dev->type->phy_cfg(ndev->hw, &ndev->cfg);
+		ret = dev->type->phy_cfg(ndev->hw);
 		if (ret)
 			netdev_err(netdev, "Failed to configure PHY/MAC\n");
 	}
