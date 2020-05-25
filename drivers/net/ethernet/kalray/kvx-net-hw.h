@@ -244,6 +244,7 @@ struct kvx_eth_mac_f {
  * @swing: DC swing
  * @rx_polarity: Rx lane polarity
  * @tx_polarity: Tx lane polarity
+ * @en: true if parameters have actually been set
  */
 struct phy_param {
 	u32 pre;
@@ -251,6 +252,16 @@ struct phy_param {
 	u32 swing;
 	u32 rx_polarity;
 	u32 tx_polarity;
+	bool en;
+};
+
+/**
+ * struct kvx_eth_phy_f - Phy controller features
+ * @loopback_mode: mac loopback mode
+ */
+struct kvx_eth_phy_f {
+	enum kvx_eth_loopback_mode loopback_mode;
+	struct phy_param param[KVX_ETH_LANE_NB];
 };
 
 /**
@@ -364,6 +375,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_lb_f lb_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
+	struct kvx_eth_phy_f phy_f;
 	u32 eth_id;
 	struct pll_cfg pll_cfg;
 	u32 asn;
@@ -491,11 +503,11 @@ u32 noc_route_eth2c(enum kvx_eth_io eth_id, int cluster_id);
 void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
 
 /* PHY */
+void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
 int kvx_eth_phy_serdes_init(struct kvx_eth_hw *h, struct kvx_eth_lane_cfg *cfg);
 void kvx_phy_loopback(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 		      bool enable);
-void kvx_phy_param_tuning(struct kvx_eth_hw *hw, int lane_id,
-			  struct phy_param *param);
+void kvx_phy_param_tuning(struct kvx_eth_hw *hw);
 
 /* MAC */
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
