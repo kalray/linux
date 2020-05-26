@@ -425,9 +425,9 @@ struct kvx_eth_hw_tx_stats {
 } __packed;
 
 struct ring_stats {
-	int skb_alloc_err;
-	int skb_rx_frag_missed;
-};
+	u64 skb_alloc_err;
+	u64 skb_rx_frag_missed;
+} __packed;
 
 struct kvx_eth_hw_stats {
 	struct kvx_eth_hw_rx_stats rx;
