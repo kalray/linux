@@ -888,6 +888,7 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 	int ret = 0;
 
+	memset(&r->stats, 0, sizeof(r->stats));
 	r->count = kvx_dma_get_max_nb_desc(dma_cfg->pdev);
 	r->refill_thres = REFILL_THRES(r->count);
 	r->next_to_use = 0;
@@ -978,6 +979,7 @@ int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 {
 	int i, ret = 0;
 
+	memset(&r->stats, 0, sizeof(r->stats));
 	r->netdev = ndev->netdev;
 	r->next_to_use = 0;
 	r->next_to_clean = 0;
