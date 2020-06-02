@@ -482,16 +482,13 @@ EXCEPTION_ENTRY(kvx_debug_handler):
 	switch_stack $r1 $r2 debug_save_regs
 	;;
 debug_save_regs:
-	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r2
+	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r1
 	;;
-	get $r1 = $ea
+	get $r0 = $ea
 	/* tail-call for return_from_exception */
 	make $r3 = return_from_exception
 	;;
 	set $ra = $r3
-	;;
-	/* Handler call */
-	get $r0 = $es
 	;;
 	goto debug_handler
 	;;
