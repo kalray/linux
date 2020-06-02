@@ -29,6 +29,7 @@
 #include <asm/ptrace.h>
 #include <asm/syscall.h>
 #include <asm/break_hook.h>
+#include <asm/debug.h>
 #include <asm/cacheflush.h>
 #include <asm/hw_breakpoint.h>
 
@@ -413,15 +414,9 @@ void user_disable_single_step(struct task_struct *child)
  * @ea: Exception Address register
  * @regs: pointer to registers saved when enter debug
  */
-void debug_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
+int ptrace_debug_handler(u64 ea, struct pt_regs *regs)
 {
-	int debug_cause = debug_dc(es);
-
-	trace_hardirqs_off();
-
-	/* debug triggered from kernel is invalid ! */
-	if (!user_mode(regs))
-		panic("Entered debug from kernel !\n");
+	int debug_cause = debug_dc(regs->es);
 
 	switch (debug_cause) {
 	case DEBUG_CAUSE_STEPI:
@@ -441,8 +436,13 @@ void debug_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
 		break;
 	}
 
-	dame_irq_check(regs);
+	return DEBUG_HOOK_HANDLED;
 }
+
+static struct debug_hook ptrace_debug_hook = {
+	.handler = ptrace_debug_handler,
+	.mode = MODE_USER,
+};
 
 static struct break_hook bkpt_break_hook = {
 	.id = BREAK_CAUSE_BKPT,
@@ -453,6 +453,7 @@ static struct break_hook bkpt_break_hook = {
 static int __init arch_init_breakpoint(void)
 {
 	break_hook_register(&bkpt_break_hook);
+	debug_hook_register(&ptrace_debug_hook);
 
 	return 0;
 }
