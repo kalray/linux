@@ -48,7 +48,7 @@ config PCIE_KVX_NWL
 	 support root port enabling.
 
 config PCIE_KVX_ERR_INJECT_SYSFS
-	tristate "NWL PCIe core for KVX error injection via SYSFS"
+	bool "Enable NWL PCIe core for KVX error injection via SYSFS"
 	depends on PCIE_KVX_NWL
 	help
 	  This will mount in sysfs directory additionnal files which
