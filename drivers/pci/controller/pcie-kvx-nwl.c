@@ -801,10 +801,6 @@ static int nwl_pcie_bridge_init(struct nwl_pcie *pcie)
 			  CFG_M_MAX_RD_RQ_SIZE_512 | CFG_M_MAX_WR_RQ_SIZE_512,
 			  BRCFG_AXI_MASTER);
 
-	/* Enable msg filtering details */
-	nwl_bridge_writel(pcie, CFG_ENABLE_MSG_FILTER_MASK,
-			  BRCFG_PCIE_RX_MSG_FILTER);
-
 	err = nwl_wait_for_link(pcie);
 	if (err)
 		return err;
@@ -1147,6 +1143,16 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 	list_for_each_entry(child, &bus->children, node)
 		pcie_bus_configure_settings(child);
 	pci_bus_add_devices(bus);
+
+	/*
+	 * Enable msg filtering details
+	 * This will enable legacy interrupt support.
+	 * In order not to enter an infinite loop any driver
+	 * using legacy interrupts shall be loaded before
+	 * interrupt activation
+	 */
+	nwl_bridge_writel(pcie, CFG_ENABLE_MSG_FILTER_MASK,
+			  BRCFG_PCIE_RX_MSG_FILTER);
 
 	nwl_pcie_aer_init(pcie, bus);
 
