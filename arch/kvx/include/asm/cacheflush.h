@@ -118,8 +118,11 @@ void local_flush_icache_range(unsigned long start, unsigned long end)
 	sync_dcache_icache(start, end);
 }
 
-
+#ifdef CONFIG_SMP
+void flush_icache_range(unsigned long start, unsigned long end);
+#else
 #define flush_icache_range local_flush_icache_range
+#endif
 
 static inline
 void flush_icache_page(struct vm_area_struct *vma, struct page *page)
