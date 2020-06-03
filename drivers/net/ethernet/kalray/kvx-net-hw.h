@@ -17,6 +17,7 @@
 
 #include "kvx-net-hdr.h"
 #include "kvx-ethtool.h"
+#include "kvx-sfp.h"
 
 #define NB_PE                      16
 #define NB_CLUSTER                 5
@@ -292,6 +293,7 @@ struct kvx_eth_lane_cfg {
 	struct kvx_eth_cl_f cl_f[KVX_ETH_PFC_CLASS_NB];
 	struct kvx_eth_mac_f mac_f;
 	struct phy_param phy_param;
+	struct kvx_transceiver_type transceiver;
 };
 
 struct kvx_eth_parser {
