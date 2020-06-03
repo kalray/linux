@@ -643,6 +643,23 @@ static void update_set_vendor_xpcs_vl(struct kvx_eth_hw *hw, int pcs_id,
 	}
 }
 
+static void kvx_mac_reset_pcs(struct kvx_eth_hw *hw)
+{
+	u32 reg = 0;
+	int i = 0;
+
+	dev_dbg(hw->dev, "reset PCS\n");
+	/* All lanes */
+	for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
+		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * i;
+		kvx_mac_writel(hw, XPCS_CTRL1_RESET_MASK,
+			       reg + XPCS_CTRL1_OFFSET);
+		kvx_mac_writel(hw, 0, reg + XPCS_CTRL2_OFFSET);
+	}
+	reg = PCS_100G_OFFSET + PCS_100G_CTRL1_OFFSET;
+	updatel_bits(hw, MAC, reg, PCS_100G_CTRL1_RESET_MASK,
+		     PCS_100G_CTRL1_RESET_MASK);
+}
 
 /* IPG Biasing */
 /** One 8-byte block of Idle is removed after every 20479 blocks.
@@ -998,10 +1015,10 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 				MAC_1G_MODE_SGMII_EN_MASK, val);
 	}
 	/* config MAC PCS */
+	kvx_mac_reset_pcs(hw);
 	ret = kvx_eth_mac_pcs_cfg(hw, cfg);
 	if (ret)
 		return ret;
-
 
 	mask = (u32)(hw->pll_cfg.serdes_mask <<
 		     PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT);
