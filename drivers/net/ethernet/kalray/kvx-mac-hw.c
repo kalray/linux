@@ -17,6 +17,8 @@
 #include "kvx-phy-regs.h"
 
 #define MAC_LOOPBACK_LATENCY  4
+#define MAC_SYNC_TIMEOUT_MS   1000
+#define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 
 #define kvx_poll(read, reg, mask, exp, timeout_in_ms) \
 ({ \
@@ -268,9 +270,10 @@ static void kvx_eth_phy_pll(struct kvx_eth_hw *hw, enum pll_id pll, u32 r10G_en)
 }
 
 /**
- * kvx_eth_phy_serdes() - Config serdes
+ * kvx_eth_phy_serdes() - Sets sw pll/serdes configuration
  * @hw: hardware description
- * @cfg: current netdev configuration
+ * @lane_id: lane/serdes id for speed
+ * @speed: requested speed
  *
  * Called for each netdev addition
  *
@@ -278,15 +281,12 @@ static void kvx_eth_phy_pll(struct kvx_eth_hw *hw, enum pll_id pll, u32 r10G_en)
  *       PLLA-> used for 1G and/or 10G
  *       PLLB -> 25G only
  */
-int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, int lane_id,
+			    unsigned int speed)
 {
 	struct pll_cfg *pll = &hw->pll_cfg;
-	int serdes_id = 0;
 
-	if (hw->pll_cfg.serdes_mask)
-		serdes_id = fls(hw->pll_cfg.serdes_mask);
-
-	switch (cfg->speed) {
+	switch (speed) {
 	case SPEED_10:
 	case SPEED_100:
 	case SPEED_1000:
@@ -297,9 +297,8 @@ int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			if (pll->rate_plla != SPEED_1000)
 				return -EINVAL;
 		}
-		clear_bit(serdes_id, &pll->serdes_pll_master);
-		set_bit(serdes_id, &pll->serdes_mask);
-		++serdes_id;
+		clear_bit(lane_id, &pll->serdes_pll_master);
+		set_bit(lane_id, &pll->serdes_mask);
 		break;
 	case SPEED_10000:
 		if (test_and_clear_bit(PLL_A, &pll->avail)) {
@@ -311,19 +310,17 @@ int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		}
 		if (test_and_clear_bit(PLL_B, &pll->avail))
 			kvx_eth_phy_pll(hw, PLL_B, 0);
-		clear_bit(serdes_id, &pll->serdes_pll_master);
-		set_bit(serdes_id, &pll->serdes_mask);
-		++serdes_id;
+		clear_bit(lane_id, &pll->serdes_pll_master);
+		set_bit(lane_id, &pll->serdes_mask);
 		break;
 	case SPEED_25000:
 		if (test_and_clear_bit(PLL_B, &pll->avail))
 			kvx_eth_phy_pll(hw, PLL_B, 0);
-		set_bit(serdes_id, &pll->serdes_pll_master);
-		set_bit(serdes_id, &pll->serdes_mask);
-		++serdes_id;
+		set_bit(lane_id, &pll->serdes_pll_master);
+		set_bit(lane_id, &pll->serdes_mask);
 		break;
 	case SPEED_40000:
-		if (serdes_id || !test_bit(PLL_A, &pll->avail) ||
+		if (lane_id || !test_bit(PLL_A, &pll->avail) ||
 		    !test_bit(PLL_B, &pll->avail)) {
 			dev_err(hw->dev, "Failed to set serdes for 40G\n");
 			return -EINVAL;
@@ -335,23 +332,21 @@ int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		kvx_eth_phy_pll(hw, PLL_B, 0);
 		pll->serdes_pll_master = 0;
 		pll->serdes_mask = 0xF;
-		serdes_id += 4;
 		break;
 	case SPEED_50000:
-		if (serdes_id % 2) {
+		if (lane_id % 2) {
 			dev_err(hw->dev, "Failed to set serdes for 50G\n");
 			return -EINVAL;
 		}
 		if (test_and_clear_bit(PLL_B, &pll->avail))
 			kvx_eth_phy_pll(hw, PLL_B, 0);
-		set_bit(serdes_id, &pll->serdes_pll_master);
-		set_bit(serdes_id + 1, &pll->serdes_pll_master);
-		set_bit(serdes_id, &pll->serdes_mask);
-		set_bit(serdes_id + 1, &pll->serdes_mask);
-		serdes_id += 2;
+		set_bit(lane_id, &pll->serdes_pll_master);
+		set_bit(lane_id + 1, &pll->serdes_pll_master);
+		set_bit(lane_id, &pll->serdes_mask);
+		set_bit(lane_id + 1, &pll->serdes_mask);
 		break;
 	case SPEED_100000:
-		if (serdes_id) {
+		if (lane_id) {
 			dev_err(hw->dev, "Failed to set serdes for 100G\n");
 			return -EINVAL;
 		}
@@ -359,7 +354,6 @@ int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			kvx_eth_phy_pll(hw, PLL_B, 0);
 		pll->serdes_pll_master = 0xF;
 		pll->serdes_mask = 0xF;
-		serdes_id += 4;
 		break;
 	default:
 		dev_err(hw->dev, "Unsupported speed for serdes cfg\n");
@@ -373,13 +367,9 @@ static void dump_phy_status(struct kvx_eth_hw *hw)
 {
 	u32 val = kvx_phy_readl(hw, PHY_PLL_STATUS_OFFSET);
 
-	dev_dbg(hw->dev, "phy status\n");
-	dev_dbg(hw->dev, "plla_status: %ld\n",
-		GETF(val, PHY_PLL_STATUS_PLLA));
-	dev_dbg(hw->dev, "pllb_status: %ld\n",
-		GETF(val, PHY_PLL_STATUS_PLLB));
-	dev_dbg(hw->dev, "ref_clk_detected: %ld\n",
-		GETF(val, PHY_PLL_STATUS_REF_CLK_DETECTED));
+	REG_DBG(hw->dev, val, PHY_PLL_STATUS_PLLA);
+	REG_DBG(hw->dev, val, PHY_PLL_STATUS_PLLB);
+	REG_DBG(hw->dev, val, PHY_PLL_STATUS_REF_CLK_DETECTED);
 
 	val = kvx_phy_readl(hw, PHY_PLL_OFFSET);
 	dev_dbg(hw->dev, "phy PLL: 0x%x\n", val);
@@ -539,7 +529,6 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw)
 	kvx_mac_phy_enable_serdes(hw, PSTATE_P0);
 
 	dump_phy_status(hw);
-	dev_dbg(hw->dev, "Serdes cfg done\n");
 
 	return 0;
 }
@@ -675,19 +664,19 @@ static void kvx_mac_reset_pcs(struct kvx_eth_hw *hw)
  */
 #define MARKER_COMP_10G 16383
 
-static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
-			       struct kvx_eth_lane_cfg *cfg)
+static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw, int lane_id,
+			       unsigned int speed)
 {
 	u32 reg, mc, thresh;
 	int i, s;
 	u32 val;
 
-	switch (cfg->speed) {
+	switch (speed) {
 	case SPEED_10:
 	case SPEED_100:
 	case SPEED_1000:
 		/* Disable 1G autoneg & reset PCS */
-		reg = MAC_1G_OFFSET + MAC_1G_ELEM_SIZE * cfg->id;
+		reg = MAC_1G_OFFSET + MAC_1G_ELEM_SIZE * lane_id;
 		val = kvx_mac_readl(hw, reg + MAC_1G_CTRL_OFFSET);
 		clear_bit(MAC_1G_CTRL_AN_EN_SHIFT, (unsigned long *)&val);
 		set_bit(MAC_1G_CTRL_RESET_SHIFT, (unsigned long *)&val);
@@ -700,13 +689,13 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 		/* Set MAC marker compensation to 0, IPG bias mode disabled,
 		 * idle blocks are removed.
 		 */
-		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * cfg->id;
+		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * lane_id;
 		val = XPCS_VENDOR_PCS_MODE_ENA_CLAUSE49_MASK |
 			XPCS_VENDOR_PCS_MODE_ST_DISABLE_MLD_MASK;
 		updatel_bits(hw, MAC, reg +
-			    XPCS_VENDOR_PCS_MODE_OFFSET, val, val);
+			     XPCS_VENDOR_PCS_MODE_OFFSET, val, val);
 		updatel_bits(hw, MAC, reg + XPCS_CTRL1_OFFSET,
-				  XPCS_CTRL1_RESET_MASK, XPCS_CTRL1_RESET_MASK);
+			     XPCS_CTRL1_RESET_MASK, XPCS_CTRL1_RESET_MASK);
 		/* Check speed selection is set to 10G (0x0) */
 		val = kvx_mac_readl(hw, reg + XPCS_CTRL1_OFFSET);
 		if (!!(val & XPCS_CTRL1_SPEED_SELECTION_MASK)) {
@@ -719,11 +708,11 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 		/* Set MAC interface into XGMII */
 		updatel_bits(hw, MAC, PMAC_XIF_OFFSET,
 			     PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
-		update_set_vendor_xpcs_vl(hw, cfg->id, XPCS_RATE_25G);
+		update_set_vendor_xpcs_vl(hw, lane_id, XPCS_RATE_25G);
 
 		if (hw->fec_en) {
-			update_set_vendor_cl_intvl(hw, cfg->id, mc);
-			update_ipg_len_compensation(hw, cfg->id, mc);
+			update_set_vendor_cl_intvl(hw, lane_id, mc);
+			update_ipg_len_compensation(hw, lane_id, mc);
 
 			/* Enable Clause 49 & enable MLD [XPCS_HOST<i>] */
 			val = XPCS_VENDOR_PCS_MODE_HI_BER25_MASK |
@@ -735,7 +724,7 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 				XPCS_VENDOR_PCS_MODE_ENA_CLAUSE49_MASK;
 		}
 
-		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * cfg->id;
+		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * lane_id;
 		kvx_mac_writel(hw, val, reg + XPCS_VENDOR_PCS_MODE_OFFSET);
 		kvx_mac_writel(hw, XPCS_CTRL1_RESET_MASK,
 			       reg + XPCS_CTRL1_OFFSET);
@@ -778,7 +767,7 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 		}
 		break;
 	case SPEED_50000:
-		s = 2 * cfg->id;
+		s = 2 * lane_id;
 		if (hw->fec_en) {
 			mc = MARKER_COMP_25G;
 			update_set_vendor_cl_intvl(hw, s, mc);
@@ -853,10 +842,11 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 	return 0;
 }
 
-
 /* Check PCS status */
 void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
+	u32 i, off, val;
+
 	switch (cfg->speed) {
 	case SPEED_100000:
 		DUMP_REG(hw, MAC, PCS_100G_CTRL1_OFFSET);
@@ -876,9 +866,16 @@ void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	default:
 		break;
 	}
+	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
+		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
+		DUMP_REG(hw, MAC, off + PMAC_STATUS_OFFSET);
+		val =  kvx_mac_readl(hw, off + PMAC_STATUS_OFFSET);
+		REG_DBG(hw->dev, val, PMAC_STATUS_RX_LOC_FAULT);
+		REG_DBG(hw->dev, val, PMAC_STATUS_RX_REM_FAULT);
+		REG_DBG(hw->dev, val, PMAC_STATUS_PHY_LOS);
+	}
 }
 
-#define MAC_SYNC_TIMEOUT_MS  1000
 #define FEC_MASK_40G         0x55
 int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
@@ -954,14 +951,16 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	int i, ret = 0;
-	u32 off, val, mask;
+	u32 off, mask, val = 0;
 
-	val = kvx_mac_readl(hw, MAC_MODE_OFFSET);
 	if (cfg->speed == SPEED_40000)
-		val |= BIT(MAC_MODE40_EN_IN_SHIFT);
+		val = MAC_MODE40_EN_IN_MASK;
 	if (cfg->speed == SPEED_100000)
-		val |= BIT(MAC_PCS100_EN_IN_SHIFT);
-	kvx_mac_writel(hw, val, MAC_MODE_OFFSET);
+		val = MAC_PCS100_EN_IN_MASK;
+
+	updatel_bits(hw, MAC, MAC_MODE_OFFSET,
+		     MAC_PCS100_EN_IN_MASK | MAC_MODE40_EN_IN_MASK, val);
+
 	kvx_mac_writel(hw, MAC_FCS_EN_MASK, MAC_FCS_OFFSET);
 
 	val = kvx_mac_readl(hw, MAC_SG_OFFSET);
@@ -1016,7 +1015,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 	/* config MAC PCS */
 	kvx_mac_reset_pcs(hw);
-	ret = kvx_eth_mac_pcs_cfg(hw, cfg);
+	ret = kvx_eth_mac_pcs_cfg(hw, cfg->id, cfg->speed);
 	if (ret)
 		return ret;
 
