@@ -1247,7 +1247,11 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 			 unsigned long *supported,
 			 struct phylink_link_state *state)
 {
+	struct net_device *netdev = to_net_dev(cfg->dev);
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
+
+	kvx_eth_get_module_transceiver(netdev, &ndev->cfg.transceiver);
 
 	phylink_set_port_modes(mask);
 	phylink_set(mask, Pause);

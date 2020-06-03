@@ -9,6 +9,7 @@
 
 #include <linux/ethtool.h>
 #include <linux/etherdevice.h>
+#include <linux/sfp.h>
 
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
@@ -1099,6 +1100,80 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
 	return phylink_ethtool_ksettings_set(ndev->phylink, cmd);
+}
+
+static void kvx_eth_get_module_status(struct net_device *netdev, u8 *eeprom_id)
+{
+	u8 sfp_status = eeprom_id[SFP_STATUS];
+
+	netdev_dbg(netdev, "Sfp status: Tx_dis: %d Tx_fault: %d Rx_los: %d\n",
+		   sfp_status & SFP_STATUS_TX_DISABLE,
+		   sfp_status & SFP_STATUS_TX_FAULT,
+		   sfp_status & SFP_STATUS_RX_LOS);
+
+	netdev_dbg(netdev, "Sfp Tx_dis: 0x%x\n",
+		   eeprom_id[SFF8636_TX_DIS_OFFSET]);
+	netdev_dbg(netdev, "Sfp Rx_rate_select: 0x%x\n",
+		   eeprom_id[SFF8636_RX_RATE_SELECT_OFFSET]);
+	netdev_dbg(netdev, "Sfp Tx_rate_select: 0x%x\n",
+		   eeprom_id[SFF8636_TX_RATE_SELECT_OFFSET]);
+	netdev_dbg(netdev, "Sfp Rx_app_select: 0x%x 0x%x 0x%x 0x%x\n",
+		   eeprom_id[SFF8636_RX_APP_SELECT_OFFSET],
+		   eeprom_id[SFF8636_RX_APP_SELECT_OFFSET + 1],
+		   eeprom_id[SFF8636_RX_APP_SELECT_OFFSET + 2],
+		   eeprom_id[SFF8636_RX_APP_SELECT_OFFSET + 3]);
+
+	netdev_dbg(netdev, "Sfp power: 0x%x\n",
+		   eeprom_id[SFF8636_POWER_OFFSET]);
+	netdev_dbg(netdev, "Sfp Tx_app_select: 0x%x 0x%x 0x%x 0x%x\n",
+		   eeprom_id[SFF8636_TX_APP_SELECT_OFFSET],
+		   eeprom_id[SFF8636_TX_APP_SELECT_OFFSET + 1],
+		   eeprom_id[SFF8636_TX_APP_SELECT_OFFSET + 2],
+		   eeprom_id[SFF8636_TX_APP_SELECT_OFFSET + 3]);
+	netdev_dbg(netdev, "Sfp Tx_cdr: 0x%x\n",
+		   eeprom_id[SFF8636_TX_CDR_OFFSET]);
+	netdev_dbg(netdev, "Sfp Options: 0x%x 0x%x 0x%x\n",
+		   eeprom_id[SFP_OPTIONS], eeprom_id[SFP_OPTIONS + 1],
+		   eeprom_id[SFP_OPTIONS + 2]);
+	netdev_dbg(netdev, "Sfp Ext. Options: 0x%x\n", eeprom_id[SFP_ENHOPTS]);
+}
+
+int kvx_eth_get_module_transceiver(struct net_device *netdev,
+				   struct kvx_transceiver_type *transceiver)
+{
+	u8 data[ETH_MODULE_SFF_8636_MAX_LEN];
+	struct ethtool_eeprom ee = {
+		.cmd = ETHTOOL_GEEPROM,
+		.len = ETH_MODULE_SFF_8636_LEN,
+		.offset = SFP_PAGE + 1,
+	};
+	u8 *id, tech;
+
+	if (netdev->sfp_bus)
+		sfp_get_module_eeprom(netdev->sfp_bus, &ee, data);
+	id = ee.data;
+
+	if (!sfp_is_qsfp_module((struct sfp_eeprom_id *)id))
+		return -EINVAL;
+
+	tech = id[SFF8636_DEVICE_TECH_OFFSET] & SFF8636_TRANS_TECH_MASK;
+	transceiver->id = id[SFP_PHYS_ID];
+	memcpy(transceiver->oui, &id[SFP_VENDOR_OUI], 3);
+	memcpy(transceiver->pn, &id[SFP_VENDOR_PN], 16);
+	transceiver->copper = (tech == SFF8636_TRANS_COPPER_LNR_EQUAL ||
+			       tech == SFF8636_TRANS_COPPER_NEAR_EQUAL    ||
+			       tech == SFF8636_TRANS_COPPER_FAR_EQUAL     ||
+			       tech == SFF8636_TRANS_COPPER_LNR_FAR_EQUAL ||
+			       tech == SFF8636_TRANS_COPPER_PAS_EQUAL     ||
+			       tech == SFF8636_TRANS_COPPER_PAS_UNEQUAL);
+	netdev_dbg(netdev, "Cable oui: %02x:%02x:%02x pn: %s tech : 0x%x copper: %d\n",
+		    transceiver->oui[0], transceiver->oui[1],
+		    transceiver->oui[2], transceiver->pn,
+		    tech, transceiver->copper);
+
+	kvx_eth_get_module_status(netdev, id);
+
+	return 0;
 }
 
 static const struct ethtool_ops kvx_ethtool_ops = {
