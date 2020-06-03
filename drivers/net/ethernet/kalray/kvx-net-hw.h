@@ -509,7 +509,8 @@ void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
 
 /* PHY */
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
-int kvx_eth_phy_serdes_init(struct kvx_eth_hw *h, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, int lane_id,
+			    unsigned int speed);
 void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable);
 void kvx_phy_param_tuning(struct kvx_eth_hw *hw);
 
