@@ -1352,17 +1352,15 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 
 	if (update_serdes) {
 		if (dev->type->phy_init)
-			dev->type->phy_init(ndev->hw, state->speed);
+			dev->type->phy_init(ndev->hw, ndev->cfg.speed);
 
-		ret = kvx_eth_phy_serdes_init(ndev->hw, &ndev->cfg);
+		ret = kvx_eth_phy_serdes_init(ndev->hw, ndev->cfg.id,
+					      ndev->cfg.speed);
 		if (ret) {
-			netdev_err(ndev->netdev, "Failed to initialize serdes\n");
+			netdev_err(netdev, "Failed to configure serdes\n");
 			return;
 		}
 	}
-
-	/* Before reconfiguring retimers, serdes must be disabled */
-	kvx_mac_phy_disable_serdes(ndev->hw);
 
 	for (i = 0; i < RTM_NB; i++) {
 		ret = configure_rtm(ndev, i, ndev->cfg.speed);
@@ -1373,6 +1371,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		}
 	}
 
+	/* Setup PHY + serdes */
 	if (dev->type->phy_cfg) {
 		ret = dev->type->phy_cfg(ndev->hw);
 		if (ret)
