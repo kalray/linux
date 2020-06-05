@@ -285,6 +285,7 @@ int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, int lane_id,
 			    unsigned int speed)
 {
 	struct pll_cfg *pll = &hw->pll_cfg;
+	u32 mask;
 
 	switch (speed) {
 	case SPEED_10:
@@ -350,6 +351,12 @@ int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, int lane_id,
 			dev_err(hw->dev, "Failed to set serdes for 100G\n");
 			return -EINVAL;
 		}
+
+		mask = (PHY_PLL_PLLA_RATE_10G_EN_MASK |
+			 PHY_PLL_PLLA_FORCE_EN_MASK |
+			 PHY_PLL_PLLB_FORCE_EN_MASK);
+		updatel_bits(hw, PHYMAC,  PHY_PLL_OFFSET,
+			     mask, PHY_PLL_PLLB_FORCE_EN_MASK);
 		if (test_and_clear_bit(PLL_B, &pll->avail))
 			kvx_eth_phy_pll(hw, PLL_B, 0);
 		pll->serdes_pll_master = 0xF;
@@ -632,24 +639,6 @@ static void update_set_vendor_xpcs_vl(struct kvx_eth_hw *hw, int pcs_id,
 	}
 }
 
-static void kvx_mac_reset_pcs(struct kvx_eth_hw *hw)
-{
-	u32 reg = 0;
-	int i = 0;
-
-	dev_dbg(hw->dev, "reset PCS\n");
-	/* All lanes */
-	for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
-		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * i;
-		kvx_mac_writel(hw, XPCS_CTRL1_RESET_MASK,
-			       reg + XPCS_CTRL1_OFFSET);
-		kvx_mac_writel(hw, 0, reg + XPCS_CTRL2_OFFSET);
-	}
-	reg = PCS_100G_OFFSET + PCS_100G_CTRL1_OFFSET;
-	updatel_bits(hw, MAC, reg, PCS_100G_CTRL1_RESET_MASK,
-		     PCS_100G_CTRL1_RESET_MASK);
-}
-
 /* IPG Biasing */
 /** One 8-byte block of Idle is removed after every 20479 blocks.
  * This is the standard compliant mode for 25Geth when using PCS
@@ -866,14 +855,6 @@ void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	default:
 		break;
 	}
-	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
-		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
-		DUMP_REG(hw, MAC, off + PMAC_STATUS_OFFSET);
-		val =  kvx_mac_readl(hw, off + PMAC_STATUS_OFFSET);
-		REG_DBG(hw->dev, val, PMAC_STATUS_RX_LOC_FAULT);
-		REG_DBG(hw->dev, val, PMAC_STATUS_RX_REM_FAULT);
-		REG_DBG(hw->dev, val, PMAC_STATUS_PHY_LOS);
-	}
 }
 
 #define FEC_MASK_40G         0x55
@@ -1014,7 +995,6 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 				MAC_1G_MODE_SGMII_EN_MASK, val);
 	}
 	/* config MAC PCS */
-	kvx_mac_reset_pcs(hw);
 	ret = kvx_eth_mac_pcs_cfg(hw, cfg->id, cfg->speed);
 	if (ret)
 		return ret;
