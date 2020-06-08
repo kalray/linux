@@ -940,7 +940,12 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	updatel_bits(hw, MAC, MAC_MODE_OFFSET,
 		     MAC_PCS100_EN_IN_MASK | MAC_MODE40_EN_IN_MASK, val);
 
-	kvx_mac_writel(hw, MAC_FCS_EN_MASK, MAC_FCS_OFFSET);
+	if (cfg->mac_f.tx_fcs_offload) {
+		updatel_bits(hw, MAC, MAC_FCS_OFFSET,
+			     MAC_FCS_EN_MASK, MAC_FCS_EN_MASK);
+	} else {
+		updatel_bits(hw, MAC, MAC_FCS_OFFSET, MAC_FCS_EN_MASK, 0);
+	}
 
 	val = kvx_mac_readl(hw, MAC_SG_OFFSET);
 	val |= ((u32) 3 << MAC_SG_TX_LANE_CKMULT_SHIFT);
@@ -1023,6 +1028,7 @@ void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	cfg->mac_f.hw = hw;
 	cfg->mac_f.loopback_mode = NO_LOOPBACK;
+	cfg->mac_f.tx_fcs_offload = true;
 }
 
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
