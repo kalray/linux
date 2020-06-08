@@ -235,6 +235,8 @@ struct kvx_eth_dt_f {
  * @addr: MAC address
  * @loopback_mode: mac loopback mode
  * @pfc_mode: control flow config at mac level
+ * @tx_fcs_offload: Enable Tx FCS offload (enabled by default, for testing
+ *                  purpose)
  */
 struct kvx_eth_mac_f {
 	struct kobject kobj;
@@ -243,6 +245,7 @@ struct kvx_eth_mac_f {
 	u8 addr[ETH_ALEN];
 	enum kvx_eth_loopback_mode loopback_mode;
 	enum kvx_eth_pfc_mode pfc_mode;
+	bool tx_fcs_offload;
 };
 
 /**
