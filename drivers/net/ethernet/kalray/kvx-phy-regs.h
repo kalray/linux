@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/**
+/*
  * This file is subject to the terms and conditions of the GNU General Public
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
@@ -10,7 +10,7 @@
 #ifndef ASM_KVX_PHY_REGS_H
 #define ASM_KVX_PHY_REGS_H
 
-/* PHY */
+/* PHYMAC */
 #define PHY_PHY_CR_PARA_CTRL_OFFSET                0x0
 #define PHY_REF_CLK_SEL_OFFSET                     0x4
 #define PHY_RESET_OFFSET                           0x8
@@ -56,8 +56,20 @@
 #define PHY_PLL_PLLA_RATE_10G_EN_MASK              0x1UL
 #define PHY_PLL_PLLA_FORCE_EN_SHIFT                0x2
 #define PHY_PLL_PLLA_FORCE_EN_MASK                 0x4UL
+#define PHY_PLL_PLLA_RECAL_BANK_SEL_SHIFT          0x3
+#define PHY_PLL_PLLA_RECAL_BANK_SEL_MASK           0x18UL
+#define PHY_PLL_PLLA_RECAL_FORCE_EN_SHIFT          0x5
+#define PHY_PLL_PLLA_RECAL_FORCE_EN_MASK           0x20UL
+#define PHY_PLL_PLLA_RECAL_SKIP_EN_SHIFT           0x6
+#define PHY_PLL_PLLA_RECAL_SKIP_EN_MASK            0x40UL
 #define PHY_PLL_PLLB_FORCE_EN_SHIFT                0xa
 #define PHY_PLL_PLLB_FORCE_EN_MASK                 0x400UL
+#define PHY_PLL_PLLB_RECAL_BANK_SEL_SHIFT          0xb
+#define PHY_PLL_PLLB_RECAL_BANK_SEL_MASK           0x1800UL
+#define PHY_PLL_PLLB_RECAL_FORCE_EN_SHIFT          0xd
+#define PHY_PLL_PLLB_RECAL_FORCE_EN_MASK           0x2000UL
+#define PHY_PLL_PLLB_RECAL_SKIP_EN_SHIFT           0xe
+#define PHY_PLL_PLLB_RECAL_SKIP_EN_MASK            0x4000UL
 #define PHY_PLL_STATUS_OFFSET                      0x10
 #define PHY_PLL_STATUS_PLLA_SHIFT                  0x1
 #define PHY_PLL_STATUS_PLLA_MASK                   0x2UL
@@ -88,6 +100,8 @@
 #define PHY_LANE_RX_SERDES_CFG_LPD_MASK            0x4UL
 #define PHY_LANE_RX_SERDES_CFG_DISABLE_SHIFT       0x5
 #define PHY_LANE_RX_SERDES_CFG_DISABLE_MASK        0x20UL
+#define PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_SHIFT     0xf
+#define PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK      0x8000UL
 #define PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_SHIFT    0x11
 #define PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_MASK     0x20000UL
 #define PHY_LANE_RX_SERDES_CFG_INVERT_SHIFT        0x4
@@ -98,10 +112,19 @@
 #define PHY_LANE_TX_SERDES_CFG_PSTATE_MASK         0x3UL
 #define PHY_LANE_TX_SERDES_CFG_DISABLE_SHIFT       0x2
 #define PHY_LANE_TX_SERDES_CFG_DISABLE_MASK        0x4UL
+#define PHY_LANE_TX_SERDES_CFG_DETRX_REQ_SHIFT     0x5
+#define PHY_LANE_TX_SERDES_CFG_DETRX_REQ_MASK      0x20UL
 #define PHY_LANE_TX_SERDES_CFG_LPD_SHIFT           0x6
 #define PHY_LANE_TX_SERDES_CFG_LPD_MASK            0x40UL
 #define PHY_LANE_TX_SERDES_CFG_INVERT_SHIFT        0x4
 #define PHY_LANE_TX_SERDES_CFG_INVERT_MASK         0x10UL
 #define PHY_LANE_TX_SERDES_STATUS_OFFSET           0xC
+#define PHY_LANE_TX_SERDES_EQ_OFFSET               0x10
+#define PHY_LANE_TX_SERDES_EQ_MAIN_SHIFT           0x0
+#define PHY_LANE_TX_SERDES_EQ_MAIN_MASK            0x3FUL
+#define PHY_LANE_TX_SERDES_EQ_POST_SHIFT           0x8
+#define PHY_LANE_TX_SERDES_EQ_POST_MASK            0x3F00UL
+#define PHY_LANE_TX_SERDES_EQ_PRE_SHIFT            0x10
+#define PHY_LANE_TX_SERDES_EQ_PRE_MASK             0x3F0000UL
 
 #endif /* ASM_KVX_PHY_REGS_H */

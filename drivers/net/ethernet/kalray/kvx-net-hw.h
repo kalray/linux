@@ -112,6 +112,7 @@ enum parser_dispatch_policy {
 struct kvx_eth_lb_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
 	enum default_dispatch_policy default_dispatch_policy;
 	u8 store_and_forward;
 	u8 keep_all_crc_error_pkt;
@@ -141,6 +142,7 @@ struct kvx_eth_lb_f {
 struct kvx_eth_cl_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
 	unsigned int release_level;
 	unsigned int drop_level;
 	unsigned int alert_level;
@@ -160,6 +162,7 @@ struct kvx_eth_cl_f {
 struct kvx_eth_pfc_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
 	int global_release_level;
 	int global_drop_level;
 	int global_alert_level;
@@ -190,6 +193,7 @@ struct kvx_eth_tx_f {
 	struct kobject kobj;
 	struct list_head node;
 	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
 	int fifo_id;
 	u8 lane_id;
 	u8 header_en;
@@ -218,6 +222,7 @@ struct kvx_eth_tx_f {
 struct kvx_eth_dt_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
 	u8 cluster_id;
 	u8 rx_channel;
 	u32 split_trigger;
@@ -229,10 +234,12 @@ struct kvx_eth_dt_f {
  * struct kvx_eth_mac_f - MAC controller features
  * @addr: MAC address
  * @loopback_mode: mac loopback mode
+ * @pfc_mode: control flow config at mac level
  */
 struct kvx_eth_mac_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
 	u8 addr[ETH_ALEN];
 	enum kvx_eth_loopback_mode loopback_mode;
 	enum kvx_eth_pfc_mode pfc_mode;
@@ -247,25 +254,65 @@ struct kvx_eth_mac_f {
  * @tx_polarity: Tx lane polarity
  * @en: true if parameters have actually been set
  */
-struct phy_param {
+struct kvx_eth_phy_param {
 	u32 pre;
 	u32 post;
 	u32 swing;
 	u32 rx_polarity;
 	u32 tx_polarity;
 	bool en;
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+};
+
+enum bert_mode {
+	BERT_DISABLED = 0,
+	BERT_LFSR31,
+	BERT_LFSR23,
+	BERT_LFSR23EXT,
+	BERT_LFSR16,
+	BERT_LFSR15,
+	BERT_LFSR11,
+	BERT_LFSR9,
+	BERT_LFSR7,
+	BERT_FIXEDWORD,
+	BERT_DCBALANCEDWORD,
+	BERT_FIXEDPATTERN,
+	BERT_MODE_NB
+};
+
+struct kvx_eth_bert_param {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	enum bert_mode rx_mode;
+	u32 rx_err_cnt;
+	bool rx_sync;
+	enum bert_mode tx_mode;
+	bool tx_trig_err;
+	u16 tx_pat0;
 };
 
 /**
  * struct kvx_eth_phy_f - Phy controller features
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
  * @loopback_mode: mac loopback mode
  * @param: phy param (TX equalization, RX/TX polarity)
+ * @ber: phy BER testing
  * @reg_avail: false for HAPS platform
+ * @bert_en: enable LBERT (set serdes in specific configuration)
  */
 struct kvx_eth_phy_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
 	enum kvx_eth_loopback_mode loopback_mode;
-	struct phy_param param[KVX_ETH_LANE_NB];
+	struct kvx_eth_phy_param param[KVX_ETH_LANE_NB];
+	struct kvx_eth_bert_param ber[KVX_ETH_LANE_NB];
 	bool reg_avail;
+	bool bert_en;
 };
 
 /**
@@ -280,7 +327,6 @@ struct kvx_eth_phy_f {
  * @pfc: Packet Flow Control
  * @cl_f: Array of 8 classes (per lane)
  * @mac: mac controller
- * @phy_param: phy parameters (currently used for tx equalization)
  */
 struct kvx_eth_lane_cfg {
 	int id;
@@ -292,7 +338,6 @@ struct kvx_eth_lane_cfg {
 	struct kvx_eth_pfc_f pfc_f;
 	struct kvx_eth_cl_f cl_f[KVX_ETH_PFC_CLASS_NB];
 	struct kvx_eth_mac_f mac_f;
-	struct phy_param phy_param;
 	struct kvx_transceiver_type transceiver;
 };
 
@@ -511,8 +556,11 @@ void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
 int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, int lane_id,
 			    unsigned int speed);
+void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f);
 void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable);
 void kvx_phy_param_tuning(struct kvx_eth_hw *hw);
+void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p);
+void kvx_eth_bert_param_cfg(struct kvx_eth_hw *h, struct kvx_eth_bert_param *p);
 
 /* MAC */
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
