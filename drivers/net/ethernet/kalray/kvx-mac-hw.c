@@ -834,8 +834,6 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw, int lane_id,
 /* Check PCS status */
 void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	u32 i, off, val;
-
 	switch (cfg->speed) {
 	case SPEED_100000:
 		DUMP_REG(hw, MAC, PCS_100G_CTRL1_OFFSET);
