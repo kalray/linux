@@ -456,7 +456,7 @@ static int rproc_vdev_do_start(struct rproc_subdev *subdev)
 	return rproc_add_virtio_dev(rvdev, rvdev->id);
 }
 
-static void rproc_vdev_do_stop(struct rproc_subdev *subdev, bool crashed)
+static void rproc_vdev_do_unprepare(struct rproc_subdev *subdev)
 {
 	struct rproc_vdev *rvdev = container_of(subdev, struct rproc_vdev, subdev);
 	int ret;
@@ -617,7 +617,7 @@ static int rproc_handle_vdev(struct rproc *rproc, void *ptr,
 	list_add_tail(&rvdev->node, &rproc->rvdevs);
 
 	rvdev->subdev.start = rproc_vdev_do_start;
-	rvdev->subdev.stop = rproc_vdev_do_stop;
+	rvdev->subdev.unprepare = rproc_vdev_do_unprepare;
 
 	rproc_add_subdev(rproc, &rvdev->subdev);
 
