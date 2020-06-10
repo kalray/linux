@@ -1627,8 +1627,6 @@ static struct platform_driver kvx_netdev_driver = {
 	},
 };
 
-module_platform_driver(kvx_netdev_driver);
-
 static const char *kvx_eth_res_names[KVX_ETH_NUM_RES] = {
 	"phy", "phymac", "mac", "eth" };
 
@@ -1738,7 +1736,22 @@ static struct platform_driver kvx_eth_driver = {
 	},
 };
 
-module_platform_driver(kvx_eth_driver);
+static struct platform_driver * const drivers[] = {
+	&kvx_netdev_driver,
+	&kvx_eth_driver,
+};
+
+static int kvx_eth_init(void)
+{
+	return platform_register_drivers(drivers, ARRAY_SIZE(drivers));
+}
+module_init(kvx_eth_init);
+
+static void kvx_eth_exit(void)
+{
+	platform_unregister_drivers(drivers, ARRAY_SIZE(drivers));
+}
+module_exit(kvx_eth_exit);
 
 MODULE_AUTHOR("Kalray");
 MODULE_LICENSE("GPL");
