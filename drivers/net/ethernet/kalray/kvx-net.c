@@ -694,10 +694,9 @@ static int kvx_eth_netdev_poll(struct napi_struct *napi, int budget)
 {
 	int work_done = kvx_eth_clean_rx_irq(napi, budget);
 
-	if (work_done < budget) {
-		if (!napi_complete_done(napi, work_done))
-			napi_reschedule(napi);
-	}
+	if (work_done < budget)
+		napi_complete_done(napi, work_done);
+
 	return work_done;
 }
 
