@@ -190,6 +190,9 @@ struct kvx_rproc {
 	char *params_env;
 };
 
+static int kvx_rproc_request_mboxes(struct kvx_rproc *kvx_rproc);
+static void kvx_rproc_free_mboxes(struct kvx_rproc *kvx_rproc);
+
 static int kvx_rproc_start(struct rproc *rproc)
 {
 	int ret;
@@ -216,10 +219,15 @@ static int kvx_rproc_start(struct rproc *rproc)
 		return -EINVAL;
 	}
 
+	ret = kvx_rproc_request_mboxes(kvx_rproc);
+	if (ret)
+		return ret;
+
 	/* Apply start sequence */
 	ret = regmap_multi_reg_write(kvx_rproc->ftu_regmap, start_cluster,
 				     ARRAY_SIZE(start_cluster));
 	if (ret) {
+		kvx_rproc_free_mboxes(kvx_rproc);
 		dev_err(kvx_rproc->dev, "regmap_write of ctrl failed, status = %d\n",
 			ret);
 		return ret;
@@ -264,6 +272,8 @@ static int kvx_rproc_stop(struct rproc *rproc)
 {
 	int i;
 	struct kvx_rproc *kvx_rproc = rproc->priv;
+
+	kvx_rproc_free_mboxes(kvx_rproc);
 
 	/* Reset vrings in mailbox */
 	for (i = 0; i < KVX_MBOX_MAX; i++)
@@ -560,10 +570,9 @@ static int kvx_rproc_get_mbox_phys_addr(struct kvx_rproc *kvx_rproc,
 	return 0;
 }
 
-static int kvx_rproc_init_mbox(struct kvx_rproc *kvx_rproc, int mbox_id,
-			       const char *mbox_name, void *rx_callback)
+static int kvx_rproc_request_mbox(struct kvx_rproc *kvx_rproc, int mbox_id,
+				  const char *mbox_name, void *rx_callback)
 {
-	int ret;
 	struct mbox_chan *chan;
 	struct mbox_client *client;
 	struct kvx_mbox_data *mbox = &kvx_rproc->mbox[mbox_id];
@@ -572,7 +581,7 @@ static int kvx_rproc_init_mbox(struct kvx_rproc *kvx_rproc, int mbox_id,
 	client->dev = kvx_rproc->dev;
 	client->tx_done	= NULL;
 	client->tx_block = false;
-	client->knows_txdone = false;
+	client->knows_txdone = true;
 	client->rx_callback = rx_callback;
 
 	chan = mbox_request_channel_byname(client, mbox_name);
@@ -584,13 +593,51 @@ static int kvx_rproc_init_mbox(struct kvx_rproc *kvx_rproc, int mbox_id,
 	mbox->chan = chan;
 	mbox->dir = mbox_id;
 
-	ret = kvx_rproc_get_mbox_phys_addr(kvx_rproc, mbox_name, &mbox->pa);
+	return 0;
+}
+
+static int kvx_rproc_request_mboxes(struct kvx_rproc *kvx_rproc)
+{
+	int ret;
+	struct device *dev = kvx_rproc->dev;
+
+	ret = kvx_rproc_request_mbox(kvx_rproc, KVX_MBOX_TX, "tx", NULL);
 	if (ret) {
-		mbox_free_channel(chan);
+		dev_err(dev, "failed to setup tx mailbox, status = %d\n",
+			ret);
+		return ret;
+	}
+
+	ret = kvx_rproc_request_mbox(kvx_rproc, KVX_MBOX_RX, "rx",
+				     kvx_rproc_mbox_rx_callback);
+	if (ret) {
+		mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_TX].chan);
+		dev_err(dev, "failed to setup tx mailbox, status = %d\n",
+			ret);
 		return ret;
 	}
 
 	return 0;
+}
+
+static void kvx_rproc_free_mboxes(struct kvx_rproc *kvx_rproc)
+{
+	mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_RX].chan);
+	mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_TX].chan);
+}
+
+static int kvx_rproc_init_mbox_addr(struct kvx_rproc *kvx_rproc)
+{
+	int ret;
+	struct kvx_mbox_data *mbox;
+
+	mbox = &kvx_rproc->mbox[KVX_MBOX_TX];
+	ret = kvx_rproc_get_mbox_phys_addr(kvx_rproc, "tx", &mbox->pa);
+	if (ret)
+		return ret;
+
+	mbox = &kvx_rproc->mbox[KVX_MBOX_RX];
+	return kvx_rproc_get_mbox_phys_addr(kvx_rproc, "rx", &mbox->pa);
 }
 
 static int kvx_rproc_get_internal_memories(struct platform_device *pdev,
@@ -883,32 +930,24 @@ static int kvx_rproc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, kvx_rproc);
 
-	ret = kvx_rproc_init_mbox(kvx_rproc, KVX_MBOX_RX, "rx",
-				  kvx_rproc_mbox_rx_callback);
+	ret = kvx_rproc_init_mbox_addr(kvx_rproc);
 	if (ret) {
 		dev_err(dev, "failed to setup rx mailbox, status = %d\n",
 			ret);
 		goto free_rproc;
 	}
 
-	ret = kvx_rproc_init_mbox(kvx_rproc, KVX_MBOX_TX, "tx", NULL);
-	if (ret) {
-		dev_err(dev, "failed to setup tx mailbox, status = %d\n",
-			ret);
-		goto free_kvx_mbox_rx;
-	}
-
 	ret = kvx_rproc_get_internal_memories(pdev, kvx_rproc);
 	if (ret)
-		goto free_kvx_mbox_tx;
+		goto free_rproc;
 
 	ret = kvx_rproc_of_get_dev_syscon(pdev, kvx_rproc);
 	if (ret)
-		goto free_kvx_mbox_tx;
+		goto free_rproc;
 
 	ret = kvx_rproc_get_state(kvx_rproc);
 	if (ret)
-		goto free_kvx_mbox_tx;
+		goto free_rproc;
 
 	/* If not running, enable clocking to allow accessing memory */
 	if (rproc->state != RPROC_RUNNING)
@@ -920,15 +959,11 @@ static int kvx_rproc_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(dev, "failed to add device with remoteproc core, status = %d\n",
 			ret);
-		goto free_kvx_mbox_tx;
+		goto free_rproc;
 	}
 
 	return 0;
 
-free_kvx_mbox_tx:
-	mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_TX].chan);
-free_kvx_mbox_rx:
-	mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_RX].chan);
 free_rproc:
 	rproc_free(rproc);
 
@@ -940,8 +975,6 @@ static int kvx_rproc_remove(struct platform_device *pdev)
 	struct kvx_rproc *kvx_rproc = platform_get_drvdata(pdev);
 
 	rproc_del(kvx_rproc->rproc);
-	mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_RX].chan);
-	mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_TX].chan);
 	rproc_free(kvx_rproc->rproc);
 
 	return 0;
