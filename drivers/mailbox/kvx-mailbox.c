@@ -35,6 +35,22 @@ static struct kvx_mbox_priv *to_kvx_mbox_priv(struct mbox_controller *mbox)
 	return container_of(mbox, struct kvx_mbox_priv, mbox);
 }
 
+static irqreturn_t kvx_mbox_isr(int irq, void *p)
+{
+	struct kvx_mbox_priv *mbox = p;
+	uint64_t mbox_value;
+	struct mbox_chan *chan = &mbox->chan;
+
+	WARN_ON(mbox->dir != MBOX_DIR_RX);
+
+	/* Load & clear mailbox value */
+	mbox_value = readq(mbox->base + KVX_MAILBOX_LAC_OFFSET);
+
+	mbox_chan_received_data(chan, &mbox_value);
+
+	return IRQ_HANDLED;
+}
+
 static int kvx_mbox_send_data(struct mbox_chan *chan, void *data)
 {
 	struct kvx_mbox_priv *mbox = to_kvx_mbox_priv(chan->mbox);
@@ -51,9 +67,18 @@ static int kvx_mbox_send_data(struct mbox_chan *chan, void *data)
 
 static int kvx_mbox_startup(struct mbox_chan *chan)
 {
+	int ret;
 	struct kvx_mbox_priv *mbox = to_kvx_mbox_priv(chan->mbox);
 
 	if (mbox->dir == MBOX_DIR_RX) {
+		ret = devm_request_threaded_irq(mbox->dev, mbox->irq, NULL,
+			kvx_mbox_isr, IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+			dev_name(mbox->dev), mbox);
+		if (ret) {
+			dev_err(mbox->dev,
+				"Unable to acquire IRQ %d\n", mbox->irq);
+			return ret;
+		}
 		/* Clear mailbox value */
 		readq(mbox->base + KVX_MAILBOX_LAC_OFFSET);
 		/* Enable all interrupts */
@@ -68,24 +93,10 @@ static void kvx_mbox_shutdown(struct mbox_chan *chan)
 	struct kvx_mbox_priv *mbox = to_kvx_mbox_priv(chan->mbox);
 
 	/* Disable all interrupts */
-	if (mbox->dir == MBOX_DIR_RX)
+	if (mbox->dir == MBOX_DIR_RX) {
 		writeq(0, mbox->base + KVX_MAILBOX_MASK_OFFSET);
-}
-
-static irqreturn_t kvx_mbox_isr(int irq, void *p)
-{
-	struct kvx_mbox_priv *mbox = p;
-	uint64_t mbox_value;
-	struct mbox_chan *chan = &mbox->chan;
-
-	WARN_ON(mbox->dir != MBOX_DIR_RX);
-
-	/* Load & clear mailbox value */
-	mbox_value = readq(mbox->base + KVX_MAILBOX_LAC_OFFSET);
-
-	mbox_chan_received_data(chan, &mbox_value);
-
-	return IRQ_HANDLED;
+		devm_free_irq(mbox->dev, mbox->irq, mbox);
+	}
 }
 
 static const struct mbox_chan_ops kvx_mbox_ops = {
@@ -136,15 +147,6 @@ static int kvx_mbox_probe(struct platform_device *pdev)
 			return priv->irq;
 
 		kvx_mbox_init_hw(priv);
-
-		ret = devm_request_threaded_irq(dev, priv->irq, NULL,
-			kvx_mbox_isr, IRQF_TRIGGER_RISING | IRQF_ONESHOT,
-			dev_name(dev), priv);
-		if (ret) {
-			dev_err(priv->dev,
-				"Unable to acquire IRQ %d\n", priv->irq);
-			return ret;
-		}
 	} else {
 		priv->dir = MBOX_DIR_TX;
 	}
