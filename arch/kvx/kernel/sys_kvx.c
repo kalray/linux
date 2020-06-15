@@ -9,6 +9,9 @@
 
 #include <linux/syscalls.h>
 
+#include <asm/cacheflush.h>
+#include <asm/cachectl.h>
+
 SYSCALL_DEFINE6(mmap, unsigned long, addr, unsigned long, len,
 	unsigned long, prot, unsigned long, flags,
 	unsigned long, fd, off_t, off)
@@ -21,4 +24,26 @@ SYSCALL_DEFINE6(mmap, unsigned long, addr, unsigned long, len,
 	 * is in bytes. So we need to use PAGE_SHIFT.
 	 */
 	return ksys_mmap_pgoff(addr, len, prot, flags, fd, off >> PAGE_SHIFT);
+}
+
+SYSCALL_DEFINE4(cachectl, unsigned long, addr, unsigned long, len,
+		unsigned long, cache, unsigned long, flags)
+{
+	bool wb = !!(flags & CACHECTL_FLAG_OP_WB);
+	bool inval = !!(flags & CACHECTL_FLAG_OP_INVAL);
+
+	if (len == 0)
+		return 0;
+
+	/* Check for overflow */
+	if (addr + len < addr)
+		return -EFAULT;
+
+	if (cache != CACHECTL_CACHE_DCACHE)
+		return -EINVAL;
+
+	if ((flags & CACHECTL_FLAG_OP_MASK) == 0)
+		return -EINVAL;
+
+	return dcache_wb_inval_virt_range(addr, len, wb, inval);
 }
