@@ -35,6 +35,8 @@
 
 int dcache_wb_inval_virt_range(unsigned long vaddr, unsigned long len, bool wb,
 			       bool inval);
+void dcache_wb_inval_phys_range(phys_addr_t addr, unsigned long len, bool wb,
+				bool inval);
 
 /**
  * L1 is indexed by virtual addresses and as such, invalidation takes virtual
