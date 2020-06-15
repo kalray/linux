@@ -33,6 +33,9 @@
 #define kvx_fence __builtin_kvx_fence
 #define l1_inval_icache_all __builtin_kvx_iinval
 
+int dcache_wb_inval_virt_range(unsigned long vaddr, unsigned long len, bool wb,
+			       bool inval);
+
 /**
  * L1 is indexed by virtual addresses and as such, invalidation takes virtual
  * addresses as arguments.
