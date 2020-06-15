@@ -167,6 +167,14 @@ config SECURE_DAME_HANDLING
 	  /!\ Do not disable unless you want to open a giant breach between
 	  user and kernel /!\
 
+config CACHECTL_UNSAFE_PHYS_OPERATIONS
+	bool "Enable cachectl syscall unsafe physical operations"
+	default n
+	help
+	  Enable cachectl syscall to allow writebacking/invalidating ranges
+	  based on physical addresses. These operations requires the
+	  CAP_SYS_ADMIN capability
+
 config ENABLE_TCA
 	bool "Enable TCA coprocessor support"
 	default y
