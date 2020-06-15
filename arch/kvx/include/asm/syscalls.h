@@ -18,4 +18,7 @@ asmlinkage long __sys_clone(unsigned long clone_flags, unsigned long newsp,
 
 #define sys_clone __sys_clone
 
+long sys_cachectl(unsigned long addr, unsigned long len, unsigned long cache,
+		  unsigned long flags);
+
 #endif
