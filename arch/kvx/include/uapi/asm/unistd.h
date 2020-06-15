@@ -12,3 +12,7 @@
 #define __ARCH_WANT_SYS_CLONE3
 
 #include <asm-generic/unistd.h>
+
+/* Additional KVX specific syscalls */
+#define __NR_cachectl (__NR_arch_specific_syscall)
+__SYSCALL(__NR_cachectl, sys_cachectl)
