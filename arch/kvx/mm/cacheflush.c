@@ -37,8 +37,8 @@ EXPORT_SYMBOL(flush_icache_range);
 
 #endif /* CONFIG_SMP */
 
-static void dcache_wb_inval_phys_range(phys_addr_t addr, unsigned long len,
-				       bool wb, bool inval)
+void dcache_wb_inval_phys_range(phys_addr_t addr, unsigned long len, bool wb,
+				bool inval)
 {
 	if (wb && inval) {
 		wbinval_dcache_range(addr, len);
