@@ -45,5 +45,16 @@ SYSCALL_DEFINE4(cachectl, unsigned long, addr, unsigned long, len,
 	if ((flags & CACHECTL_FLAG_OP_MASK) == 0)
 		return -EINVAL;
 
+	if (flags & CACHECTL_FLAG_ADDR_PHYS) {
+		if (!IS_ENABLED(CONFIG_CACHECTL_UNSAFE_PHYS_OPERATIONS))
+			return -EINVAL;
+
+		if (!capable(CAP_SYS_ADMIN))
+			return -EPERM;
+
+		dcache_wb_inval_phys_range(addr, len, wb, inval);
+		return 0;
+	}
+
 	return dcache_wb_inval_virt_range(addr, len, wb, inval);
 }
