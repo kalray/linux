@@ -146,13 +146,15 @@ FIELD_RW_ENTRY(lb_f, keep_all_crc_error_pkt, 0, 1);
 FIELD_RW_ENTRY(lb_f, store_and_forward, 0, 1);
 FIELD_RW_ENTRY(lb_f, add_header, 0, 1);
 FIELD_RW_ENTRY(lb_f, add_footer, 0, 1);
-FIELD_RW_ENTRY(lb_f, drop_mtu_cnt, 0, 1);
-FIELD_RW_ENTRY(lb_f, drop_fcs_cnt, 0, 1);
-FIELD_RW_ENTRY(lb_f, drop_crc_cnt, 0, 1);
-FIELD_RW_ENTRY(lb_f, drop_rule_cnt, 0, 1);
-FIELD_RW_ENTRY(lb_f, drop_fifo_overflow_cnt, 0, 1);
-FIELD_RW_ENTRY(lb_f, drop_total_cnt, 0, 1);
-FIELD_RW_ENTRY(lb_f, default_hit_cnt, 0, 1);
+FIELD_R_ENTRY(lb_f, drop_mtu_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, drop_fcs_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, drop_crc_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, drop_rule_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, drop_fifo_overflow_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, drop_total_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, default_hit_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, global_drop_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, global_no_pfc_drop_cnt, 0, U32_MAX);
 
 static struct attribute *lb_f_attrs[] = {
 	&default_dispatch_policy_attr.attr,
@@ -167,6 +169,8 @@ static struct attribute *lb_f_attrs[] = {
 	&drop_fifo_overflow_cnt_attr.attr,
 	&drop_total_cnt_attr.attr,
 	&default_hit_cnt_attr.attr,
+	&global_drop_cnt_attr.attr,
+	&global_no_pfc_drop_cnt_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(lb_f);
@@ -197,8 +201,8 @@ FIELD_RW_ENTRY(tx_f, pfc_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, pause_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, rr_trigger, 0, 0xF);
 FIELD_RW_ENTRY(tx_f, lane_id, 0, KVX_ETH_LANE_NB - 1);
-FIELD_R_ENTRY(tx_f, drop_cnt, 0, 1);
-FIELD_R_ENTRY(tx_f, fifo_level, 0, 1);
+FIELD_R_ENTRY(tx_f, drop_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(tx_f, fifo_level, 0, U32_MAX);
 FIELD_R_ENTRY(tx_f, xoff, 0, 1);
 
 static struct attribute *tx_f_attrs[] = {
