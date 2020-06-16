@@ -1136,7 +1136,7 @@ static int kvx_dma_allocate_phy(struct kvx_dma_dev *dev)
 	}
 
 	if (kvx_dma_default_ucodes_load(dev) != 0)
-		return -EINVAL;
+		return -EPROBE_DEFER;
 
 	return 0;
 }
@@ -1406,7 +1406,8 @@ static int kvx_dma_probe(struct platform_device *pdev)
 	/* Request irqs in mailbox */
 	ret = kvx_dma_request_msi(pdev);
 	if (ret) {
-		dev_err(&pdev->dev, "Unable to request MSI\n");
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "Unable to request MSI\n");
 		goto err;
 	}
 
@@ -1433,9 +1434,9 @@ static int kvx_dma_probe(struct platform_device *pdev)
 	/* Register channels for dma device */
 	ret = dma_async_device_register(dma);
 	if (ret) {
-		dev_err(&pdev->dev,
-			"%s Failed to register DMA engine device (%d)\n",
-			__func__, ret);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "%s Failed to register DMA engine device (%d)\n",
+				__func__, ret);
 		goto err_nodev;
 	}
 
@@ -1459,14 +1460,14 @@ static int kvx_dma_probe(struct platform_device *pdev)
 err_sysfs:
 	dma_async_device_unregister(dma);
 err_nodev:
-	debugfs_remove_recursive(dev->dbg);
 	kmem_cache_destroy(dev->desc_cache);
 	of_reserved_mem_device_release(&pdev->dev);
 err_msi:
 	kvx_dma_free_msi(pdev);
 err:
+	debugfs_remove_recursive(dev->dbg);
 	platform_set_drvdata(pdev, NULL);
-	return -ENODEV;
+	return ret;
 }
 
 /**
