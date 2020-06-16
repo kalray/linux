@@ -125,6 +125,8 @@ struct kvx_eth_lb_f {
 	u32 drop_fifo_overflow_cnt;
 	u32 drop_total_cnt;
 	u32 default_hit_cnt;
+	u32 global_drop_cnt;
+	u32 global_no_pfc_drop_cnt;
 	int id;
 };
 
