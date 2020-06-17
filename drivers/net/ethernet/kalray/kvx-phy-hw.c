@@ -8,7 +8,9 @@
  */
 #include "kvx-net-hw.h"
 #include "kvx-mac-regs.h"
+#include "kvx-phy-hw.h"
 #include "kvx-phy-regs.h"
+#include "kvx-mac-regs.h"
 
 #define LANE0_DIG_ASIC_TX_OVRD_IN_2  0x400C
 #define LANE0_DIG_ASIC_TX_OVRD_IN_3  0x4010
@@ -265,5 +267,231 @@ void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 			lane_id, param->pre, param->post, param->swing,
 			param->rx_polarity, param->tx_polarity);
 	}
+}
+
+static struct pll_serdes_param pll_serdes_p[] = {
+	[LANE_RATE_DEFAULT_10G_20BITS] = {
+		.pll = {1, 1, 132, 0, 0, 3, 1, 3, 0},
+		.pll_ssc = {0, 0, 0, 0},
+		.pll_frac = {0, 0, 0, 0},
+		.pll_bw = {3, 0, 0, MPLL_CLK_SEL_DWORD, MPLL_CLK_SEL_DIV,
+			22, 22},
+		.serdes_cdr = {0, 11, 4, 2, 0, 1, 0, 0, 2, 1, 21, 18, 1386},
+		.serdes_eq = {0, 11, 2, 4, 6, 6, 10, 5},
+		.serdes = {0, 3, 1, 1, 1, 0, 3, 1, 9, 0},
+		.phy_pll = {6, 0},
+	},
+	[LANE_RATE_10GBASE_KR] = {
+		.pll = {1, 1, 132, 1, 0, 8, 1, 3, 0},
+		.pll_ssc = {0, 0, 0, 0},
+		.pll_frac = {0, 0, 0, 0},
+		.pll_bw = {3, 0, 0, MPLL_CLK_SEL_DWORD, MPLL_CLK_SEL_DIV,
+			24, 24},
+		.serdes_cdr = {0, 11, 4, 2, 0, 0, 0, 0, 2, 1, 21, 18, 1386},
+		.serdes_eq = {0, 17, 2, 4, 5, 5, 15, 6},
+		.serdes = {0, 3, 1, 1, 1, 0, 3, 1, 15, 0},
+		.phy_pll = {6, 0},
+	},
+	[LANE_RATE_25GBASE] = {
+		.pll = {1, 1, 170, 1, 0, 4, 1, 3, 0},
+		.pll_ssc = {0, 0, 0, 0},
+		.pll_frac = {0, 0, 0, 0},
+		.pll_bw = {3, 0, 0, MPLL_CLK_SEL_DWORD, MPLL_CLK_SEL_DIV,
+			24, 24},
+		.serdes_cdr = {0, 11, 4, 2, 0, 0, 0, 0, 2, 1, 16, 18, 1360},
+		.serdes_eq = {0, 17, 2, 4, 5, 5, 15, 6},
+		.serdes = {0, 3, 1, 1, 1, 0, 3, 1, 15, 0},
+		.phy_pll = {6, 0},
+	},
+};
+
+/**
+ * kvx_phy_mac_10G_cfg() - Setup 10G mac/phy parameters interface
+ */
+void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
+			 enum serdes_width w)
+{
+	struct pll_serdes_param *p = &pll_serdes_p[rate_cfg];
+	struct mac_ctrl_pll *pll = &p->pll;
+	struct mac_ctrl_pll_ssc *pll_ssc = &p->pll_ssc;
+	struct mac_ctrl_pll_frac *pll_frac = &p->pll_frac;
+	struct mac_ctrl_pll_bw *pll_bw = &p->pll_bw;
+	struct mac_ctrl_serdes_cdr *cdr = &p->serdes_cdr;
+	struct mac_ctrl_serdes_eq *eq = &p->serdes_eq;
+	struct mac_ctrl_serdes *serdes = &p->serdes;
+	u32 val;
+	u64 v;
+
+	val =  (pll->ref_clk_mpll_div << MAC_PLL_10G_REF_CLK_MPLL_DIV_SHIFT) |
+		(pll->fb_clk_div4_en << MAC_PLL_10G_FB_CLK_DIV4_EN_SHIFT) |
+		(pll->multiplier << MAC_PLL_10G_MULTIPLIER_SHIFT)    |
+		(pll->div16p5_clk_en << MAC_PLL_10G_DIV16P5_CLK_EN_SHIFT) |
+		(pll->div_clk_en << MAC_PLL_10G_DIV_CLK_EN_SHIFT)     |
+		(pll->div_multiplier << MAC_PLL_10G_DIV_MULTIPLIER_SHIFT) |
+		(pll->tx_clk_div << MAC_PLL_10G_TX_CLK_DIV_SHIFT)     |
+		(pll->word_clk_div << MAC_PLL_10G_WORD_CLK_DIV_SHIFT)   |
+		(pll->init_cal_dis << MAC_PLL_10G_INIT_CAL_DIS_SHIFT);
+	kvx_mac_writel(hw, val, MAC_PLL_10G_OFFSET);
+
+	v = (pll_ssc->ssc_en << MAC_PLL_10G_SSC_SSC_EN_SHIFT) |
+	    (pll_ssc->ssc_up_spread << MAC_PLL_10G_SSC_SSC_UP_SPREAD_SHIFT) |
+	    (pll_ssc->ssc_peak << MAC_PLL_10G_SSC_SSC_PEAK_SHIFT) |
+	    (pll_ssc->ssc_step_size << MAC_PLL_10G_SSC_SSC_STEP_SIZE_SHIFT);
+	kvx_mac_writeq(hw, v, MAC_PLL_10G_SSC_OFFSET);
+
+	v = (pll_frac->frac_en << MAC_PLL_10G_FRAC_EN_SHIFT) |
+		(pll_frac->frac_quot << MAC_PLL_10G_FRAC_QUOT_SHIFT) |
+		(pll_frac->frac_den << MAC_PLL_10G_FRAC_DEN_SHIFT) |
+		(pll_frac->frac_rem << MAC_PLL_10G_FRAC_REM_SHIFT);
+	kvx_mac_writeq(hw, v, MAC_PLL_10G_FRAC_OFFSET);
+
+	v = (pll_bw->bw_threshold << MAC_PLL_10G_BW_THRESHOLD_SHIFT) |
+	  (pll_bw->ctl_buf_bypass << MAC_PLL_10G_BW_CTL_BUF_BYPASS_SHIFT) |
+	  (pll_bw->short_lock_en << MAC_PLL_10G_BW_SHORT_LOCK_EN_SHIFT) |
+	  (pll_bw->serdes_clk_sel << MAC_PLL_10G_BW_SERDES_CLK_SEL_SHIFT) |
+	  (pll_bw->core_clk_sel << MAC_PLL_10G_BW_CORE_CLK_SEL_SHIFT) |
+	  (pll_bw->bw_low << MAC_PLL_10G_BW_LOW_SHIFT) |
+	  (pll_bw->bw_high << MAC_PLL_10G_BW_HIGH_SHIFT);
+	kvx_mac_writeq(hw, v, MAC_PLL_10G_BW_OFFSET);
+
+	v =  (cdr->cdr_vco_config << MAC_SERDES_CDR_10G_VCO_CFG_SHIFT) |
+	(cdr->dcc_ctrl_range << MAC_SERDES_CDR_10G_DCC_CTRL_RANGE_SHIFT) |
+	(cdr->sigdet_lf_threshold << MAC_SERDES_CDR_10G_SIGDET_LF_THRES_SHIFT) |
+	(cdr->sigdet_hf_threshold << MAC_SERDES_CDR_10G_SIGDET_HF_THRES_SHIFT) |
+	(cdr->cdr_ssc_en << MAC_SERDES_CDR_10G_SSC_EN_SHIFT) |
+	(cdr->sigdet_hf_en << MAC_SERDES_CDR_10G_SIGDET_HF_EN_SHIFT) |
+	(cdr->sigdet_lfps_filter_en <<
+	 MAC_SERDES_CDR_10G_SIGDET_LFPS_FILTER_EN_SHIFT) |
+	(cdr->dfe_bypass << MAC_SERDES_CDR_10G_DFE_BYPASS_SHIFT) |
+	(cdr->term_ctrl << MAC_SERDES_CDR_10G_TERM_CTRL_SHIFT) |
+	(cdr->term_acdc << MAC_SERDES_CDR_10G_TERM_ACDC_SHIFT) |
+	(cdr->ref_ld_val << MAC_SERDES_CDR_10G_REF_LD_VAL_SHIFT) |
+	(cdr->cdr_ppm_max << MAC_SERDES_CDR_10G_CDR_PPM_MAX_SHIFT) |
+	(cdr->vco_ld_val << MAC_SERDES_CDR_10G_VCO_LD_VAL_SHIFT);
+	kvx_mac_writeq(hw, v, MAC_SERDES_CDR_10G_OFFSET);
+
+	val = (eq->eq_att_lvl << MAC_SERDES_EQ_10G_ATT_LVL_SHIFT) |
+		(eq->eq_ctle_boost <<  MAC_SERDES_EQ_10G_CTLE_BOOST_SHIFT) |
+		(eq->eq_ctle_pole << MAC_SERDES_EQ_10G_CTLE_POLE_SHIFT) |
+		(eq->eq_afe_rate << MAC_SERDES_EQ_10G_AFE_RATE_SHIFT) |
+		(eq->eq_vga1_gain << MAC_SERDES_EQ_10G_VGA1_GAIN_SHIFT) |
+		(eq->eq_vga2_gain << MAC_SERDES_EQ_10G_VGA2_GAIN_SHIFT) |
+		(eq->eq_dfe_tap1 << MAC_SERDES_EQ_10G_DFE_TAP1_SHIFT) |
+		(eq->delta_iq << MAC_SERDES_EQ_10G_DELTA_IQ_SHIFT);
+	kvx_mac_writel(hw, val, MAC_SERDES_EQ_10G_OFFSET);
+
+	val = (serdes->misc << MAC_SERDES_CTRL_10G_MISC_SHIFT) |
+		(w << MAC_SERDES_CTRL_10G_WIDTH_SHIFT) |
+		(serdes->tx_rate << MAC_SERDES_CTRL_10G_TX_RATE_SHIFT) |
+		(serdes->rx_rate << MAC_SERDES_CTRL_10G_RX_RATE_SHIFT) |
+		(serdes->div16p5_clk_en <<
+		 MAC_SERDES_CTRL_10G_DIV16P5_CLK_EN_SHIFT) |
+		(serdes->adapt_sel << MAC_SERDES_CTRL_10G_ADAPT_SEL_SHIFT) |
+		(serdes->adapt_mode << MAC_SERDES_CTRL_10G_ADAPT_MODE_SHIFT) |
+		(serdes->vboost_en << MAC_SERDES_CTRL_10G_VBOOST_EN_SHIFT) |
+		(serdes->iboost_lvl << MAC_SERDES_CTRL_10G_IBOOST_LVL_SHIFT) |
+		(serdes->align_wide_xfer_en <<
+		 MAC_SERDES_CTRL_10G_ALIGN_WIDE_XFER_EN_SHIFT);
+	kvx_mac_writel(hw, val, MAC_SERDES_CTRL_10G_OFFSET);
+
+	val = (p->phy_pll.clk_div2_en << PHY_PLL_REF_CLK_DIV2_EN_SHIFT) |
+		(p->phy_pll.ref_range << PHY_PLL_REF_RANGE_SHIFT);
+	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET,
+		    PHY_PLL_REF_CLK_DIV2_EN_MASK | PHY_PLL_REF_RANGE_MASK, val);
+}
+
+/**
+ * kvx_phy_mac_25G_cfg() - Setup 10G mac/phy parameters interface
+ */
+void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
+			 enum serdes_width w)
+{
+	struct pll_serdes_param *p = &pll_serdes_p[rate_cfg];
+	struct mac_ctrl_pll *pll = &p->pll;
+	struct mac_ctrl_pll_ssc *pll_ssc = &p->pll_ssc;
+	struct mac_ctrl_pll_frac *pll_frac = &p->pll_frac;
+	struct mac_ctrl_pll_bw *pll_bw = &p->pll_bw;
+	struct mac_ctrl_serdes_cdr *cdr = &p->serdes_cdr;
+	struct mac_ctrl_serdes_eq *eq = &p->serdes_eq;
+	struct mac_ctrl_serdes *serdes = &p->serdes;
+	u32 val;
+	u64 v;
+
+	val =  (pll->ref_clk_mpll_div << MAC_PLL_25G_REF_CLK_MPLL_DIV_SHIFT) |
+		(pll->fb_clk_div4_en << MAC_PLL_25G_FB_CLK_DIV4_EN_SHIFT) |
+		(pll->multiplier << MAC_PLL_25G_MULTIPLIER_SHIFT)    |
+		(pll->div16p5_clk_en << MAC_PLL_25G_DIV16P5_CLK_EN_SHIFT) |
+		(pll->div_clk_en << MAC_PLL_25G_DIV_CLK_EN_SHIFT)     |
+		(pll->div_multiplier << MAC_PLL_25G_DIV_MULTIPLIER_SHIFT) |
+		(pll->tx_clk_div << MAC_PLL_25G_TX_CLK_DIV_SHIFT)     |
+		(pll->word_clk_div << MAC_PLL_25G_WORD_CLK_DIV_SHIFT)   |
+		(pll->init_cal_dis << MAC_PLL_25G_INIT_CAL_DIS_SHIFT);
+	kvx_mac_writel(hw, val, MAC_PLL_25G_OFFSET);
+
+	v = (pll_ssc->ssc_en << MAC_PLL_25G_SSC_SSC_EN_SHIFT) |
+	    (pll_ssc->ssc_up_spread << MAC_PLL_25G_SSC_SSC_UP_SPREAD_SHIFT) |
+	    (pll_ssc->ssc_peak << MAC_PLL_25G_SSC_SSC_PEAK_SHIFT) |
+	    (pll_ssc->ssc_step_size << MAC_PLL_25G_SSC_SSC_STEP_SIZE_SHIFT);
+	kvx_mac_writeq(hw, v, MAC_PLL_25G_SSC_OFFSET);
+
+	v = (pll_frac->frac_en << MAC_PLL_25G_FRAC_EN_SHIFT) |
+		(pll_frac->frac_quot << MAC_PLL_25G_FRAC_QUOT_SHIFT) |
+		(pll_frac->frac_den << MAC_PLL_25G_FRAC_DEN_SHIFT) |
+		(pll_frac->frac_rem << MAC_PLL_25G_FRAC_REM_SHIFT);
+	kvx_mac_writeq(hw, v, MAC_PLL_25G_FRAC_OFFSET);
+
+	v = (pll_bw->bw_threshold << MAC_PLL_25G_BW_THRESHOLD_SHIFT) |
+	  (pll_bw->ctl_buf_bypass << MAC_PLL_25G_BW_CTL_BUF_BYPASS_SHIFT) |
+	  (pll_bw->short_lock_en << MAC_PLL_25G_BW_SHORT_LOCK_EN_SHIFT) |
+	  (pll_bw->serdes_clk_sel << MAC_PLL_25G_BW_SERDES_CLK_SEL_SHIFT) |
+	  (pll_bw->core_clk_sel << MAC_PLL_25G_BW_CORE_CLK_SEL_SHIFT) |
+	  (pll_bw->bw_low << MAC_PLL_25G_BW_LOW_SHIFT) |
+	  (pll_bw->bw_high << MAC_PLL_25G_BW_HIGH_SHIFT);
+	kvx_mac_writeq(hw, v, MAC_PLL_25G_BW_OFFSET);
+
+	v =  (cdr->cdr_vco_config << MAC_SERDES_CDR_25G_VCO_CFG_SHIFT) |
+	(cdr->dcc_ctrl_range << MAC_SERDES_CDR_25G_DCC_CTRL_RANGE_SHIFT) |
+	(cdr->sigdet_lf_threshold << MAC_SERDES_CDR_25G_SIGDET_LF_THRES_SHIFT) |
+	(cdr->sigdet_hf_threshold << MAC_SERDES_CDR_25G_SIGDET_HF_THRES_SHIFT) |
+	(cdr->cdr_ssc_en << MAC_SERDES_CDR_25G_SSC_EN_SHIFT) |
+	(cdr->sigdet_hf_en << MAC_SERDES_CDR_25G_SIGDET_HF_EN_SHIFT) |
+	(cdr->sigdet_lfps_filter_en <<
+	 MAC_SERDES_CDR_25G_SIGDET_LFPS_FILTER_EN_SHIFT) |
+	(cdr->dfe_bypass << MAC_SERDES_CDR_25G_DFE_BYPASS_SHIFT) |
+	(cdr->term_ctrl << MAC_SERDES_CDR_25G_TERM_CTRL_SHIFT) |
+	(cdr->term_acdc << MAC_SERDES_CDR_25G_TERM_ACDC_SHIFT) |
+	(cdr->ref_ld_val << MAC_SERDES_CDR_25G_REF_LD_VAL_SHIFT) |
+	(cdr->cdr_ppm_max << MAC_SERDES_CDR_25G_CDR_PPM_MAX_SHIFT) |
+	(cdr->vco_ld_val << MAC_SERDES_CDR_25G_VCO_LD_VAL_SHIFT);
+	kvx_mac_writeq(hw, v, MAC_SERDES_CDR_25G_OFFSET);
+
+	val = (eq->eq_att_lvl << MAC_SERDES_EQ_25G_ATT_LVL_SHIFT) |
+		(eq->eq_ctle_boost <<  MAC_SERDES_EQ_25G_CTLE_BOOST_SHIFT) |
+		(eq->eq_ctle_pole << MAC_SERDES_EQ_25G_CTLE_POLE_SHIFT) |
+		(eq->eq_afe_rate << MAC_SERDES_EQ_25G_AFE_RATE_SHIFT) |
+		(eq->eq_vga1_gain << MAC_SERDES_EQ_25G_VGA1_GAIN_SHIFT) |
+		(eq->eq_vga2_gain << MAC_SERDES_EQ_25G_VGA2_GAIN_SHIFT) |
+		(eq->eq_dfe_tap1 << MAC_SERDES_EQ_25G_DFE_TAP1_SHIFT) |
+		(eq->delta_iq << MAC_SERDES_EQ_25G_DELTA_IQ_SHIFT);
+	kvx_mac_writel(hw, val, MAC_SERDES_EQ_25G_OFFSET);
+
+	val = (serdes->misc << MAC_SERDES_CTRL_25G_MISC_SHIFT) |
+		(w << MAC_SERDES_CTRL_25G_WIDTH_SHIFT) |
+		(serdes->tx_rate << MAC_SERDES_CTRL_25G_TX_RATE_SHIFT) |
+		(serdes->rx_rate << MAC_SERDES_CTRL_25G_RX_RATE_SHIFT) |
+		(serdes->div16p5_clk_en <<
+		 MAC_SERDES_CTRL_25G_DIV16P5_CLK_EN_SHIFT) |
+		(serdes->adapt_sel << MAC_SERDES_CTRL_25G_ADAPT_SEL_SHIFT) |
+		(serdes->adapt_mode << MAC_SERDES_CTRL_25G_ADAPT_MODE_SHIFT) |
+		(serdes->vboost_en << MAC_SERDES_CTRL_25G_VBOOST_EN_SHIFT) |
+		(serdes->iboost_lvl << MAC_SERDES_CTRL_25G_IBOOST_LVL_SHIFT) |
+		(serdes->align_wide_xfer_en <<
+		 MAC_SERDES_CTRL_25G_ALIGN_WIDE_XFER_EN_SHIFT);
+	kvx_mac_writel(hw, val, MAC_SERDES_CTRL_25G_OFFSET);
+
+	val = (p->phy_pll.clk_div2_en << PHY_PLL_REF_CLK_DIV2_EN_SHIFT) |
+		(p->phy_pll.ref_range << PHY_PLL_REF_RANGE_SHIFT);
+	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET,
+		    PHY_PLL_REF_CLK_DIV2_EN_MASK | PHY_PLL_REF_RANGE_MASK, val);
 }
 
