@@ -375,6 +375,19 @@ enum pll_id {
 	PLL_COUNT,
 };
 
+enum serdes_width {
+	WIDTH_16BITS = 2,
+	WIDTH_20BITS = 3,
+	WIDTH_32BITS = 4,
+	WIDTH_40BITS = 5,
+};
+
+enum lane_rate_cfg {
+	LANE_RATE_DEFAULT_10G_20BITS = 0,
+	LANE_RATE_10GBASE_KR,
+	LANE_RATE_25GBASE,
+};
+
 /**
  * struct pll_cfg - Persistent pll and serdes configuration
  *    PLLA-> used for 1G and/or 10G
@@ -382,7 +395,7 @@ enum pll_id {
  *
  * @serdes_mask: 4 serdes
  * @serdes_pll_master: pll configuration per serdes
- * @pll: availability (2 PLLs)
+ * @avail: availability (2 PLLs)
  * @rate_plla: PLLA rate
  */
 struct pll_cfg {
@@ -552,6 +565,15 @@ static inline u32 kvx_eth_readl(struct kvx_eth_hw *hw, const u64 off)
 	return readl(hw->res[KVX_ETH_RES_ETH].base + off);
 }
 
+static inline void kvx_mac_writel(struct kvx_eth_hw *hw, u32 val, u64 off)
+{
+	writel(val, hw->res[KVX_ETH_RES_MAC].base + off);
+}
+
+static inline void kvx_mac_writeq(struct kvx_eth_hw *hw, u64 val, u64 off)
+{
+	writeq(val, hw->res[KVX_ETH_RES_MAC].base + off);
+}
 
 u32 noc_route_c2eth(enum kvx_eth_io eth_id, int cluster_id);
 u32 noc_route_eth2c(enum kvx_eth_io eth_id, int cluster_id);
@@ -566,6 +588,10 @@ void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable);
 void kvx_phy_param_tuning(struct kvx_eth_hw *hw);
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p);
 void kvx_eth_bert_param_cfg(struct kvx_eth_hw *h, struct kvx_eth_bert_param *p);
+void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
+			 enum serdes_width w);
+void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
+			 enum serdes_width w);
 
 /* MAC */
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);

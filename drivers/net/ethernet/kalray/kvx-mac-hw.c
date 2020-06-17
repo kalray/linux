@@ -43,11 +43,6 @@ static u32 kvx_phy_readl(struct kvx_eth_hw *hw, u64 off)
 	return val;
 }
 
-static void kvx_mac_writel(struct kvx_eth_hw *hw, u32 val, u64 off)
-{
-	writel(val, hw->res[KVX_ETH_RES_MAC].base + off);
-}
-
 static u32 kvx_mac_readl(struct kvx_eth_hw *hw, u64 off)
 {
 	u32 val = readl(hw->res[KVX_ETH_RES_MAC].base + off);
