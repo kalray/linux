@@ -1220,11 +1220,11 @@ static struct iommu_domain *kvx_iommu_domain_alloc(unsigned int type)
 
 	/* Currently we only support IOMMU_DOMAIN_DMA */
 	if (type != IOMMU_DOMAIN_DMA)
-		return IOMEM_ERR_PTR(-EINVAL);
+		return NULL;
 
 	kvx_domain = kzalloc(sizeof(struct kvx_iommu_domain), GFP_KERNEL);
 	if (!kvx_domain)
-		return IOMEM_ERR_PTR(-ENOMEM);
+		return NULL;
 
 	if (iommu_get_dma_cookie(&kvx_domain->domain) != 0) {
 		kfree(kvx_domain);
