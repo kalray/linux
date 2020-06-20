@@ -33,11 +33,6 @@
 #include "kvx-net-regs.h"
 #include "kvx-net-hdr.h"
 
-static const char *rtm_prop_name[RTM_NB] = {
-	[RTM_RX] = "kalray,rtmrx",
-	[RTM_TX] = "kalray,rtmtx",
-};
-
 #define KVX_RX_HEADROOM  (NET_IP_ALIGN + NET_SKB_PAD)
 #define KVX_SKB_PAD	(SKB_DATA_ALIGN(sizeof(struct skb_shared_info) + \
 					KVX_RX_HEADROOM))
@@ -45,6 +40,13 @@ static const char *rtm_prop_name[RTM_NB] = {
 #define KVX_MAX_RX_BUF_SIZE	(PAGE_SIZE - KVX_SKB_PAD)
 
 #define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
+
+/* Device tree related entries */
+static const char *rtm_prop_name[RTM_NB] = {
+	[RTM_RX] = "kalray,rtmrx",
+	[RTM_TX] = "kalray,rtmtx",
+};
+
 
 static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *ring, int count);
 
@@ -1150,7 +1152,65 @@ static struct platform_device *kvx_eth_check_dma(struct platform_device *pdev,
 	return dma_pdev;
 }
 
-/* kvx_eth_parse_dt() - Parse device tree inputs
+/* kvx_eth_dev_parse_dt() - Parse eth device tree inputs
+ *
+ * @pdev: platform device
+ * @dev: Current kvx_eth_dev
+ * Return: 0 on success, < 0 on failure
+ */
+int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
+{
+	struct device_node *np = pdev->dev.of_node;
+	struct device_node *rtm_node;
+	struct kvx_eth_rtm_params *params = &dev->hw.rtm_params;
+	int rtm, ret;
+
+	if (of_property_read_u32(np, "cell-index", &dev->hw.eth_id)) {
+		dev_warn(&pdev->dev, "Default kvx ethernet index to 0\n");
+		dev->hw.eth_id = KVX_ETH0;
+	}
+
+	for (rtm = 0; rtm < RTM_NB; rtm++) {
+		rtm_node = of_parse_phandle(pdev->dev.of_node,
+				rtm_prop_name[rtm], 0);
+		if (!rtm_node) {
+			/* This board is missing retimers, throw an info and
+			 * return to stop parsing other retimer parameters
+			 */
+			dev_info(&pdev->dev, "No node %s found\n",
+					rtm_prop_name[rtm]);
+			return 0;
+		}
+		dev->hw.rtm_params.rtm[rtm] =
+			of_find_i2c_device_by_node(rtm_node);
+		if (!dev->hw.rtm_params.rtm[rtm])
+			return -EPROBE_DEFER;
+	}
+
+	if (of_property_read_u32(np, "kalray,rxtx-crossed",
+			(u32 *) &dev->hw.rxtx_crossed) != 0)
+		dev->hw.rxtx_crossed = 0;
+
+	ret = of_property_count_u32_elems(np, "kalray,rtm-channels");
+	if (ret < 0) {
+		dev_err(&pdev->dev, "Unable to get rtm-channels\n");
+		return -EINVAL;
+	} else if (ret != KVX_ETH_LANE_NB) {
+		dev_err(&pdev->dev, "Incorrect channels number (got %d, want %d)\n",
+				ret, KVX_ETH_LANE_NB);
+		return -EINVAL;
+	}
+	ret = of_property_read_u32_array(np, "kalray,rtm-channels",
+			params->channels, KVX_ETH_LANE_NB);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to request rtm-channels\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+/* kvx_eth_netdev_parse_dt() - Parse netdev device tree inputs
  *
  * Sets dma properties accordingly (dma_mem and iommu nodes)
  *
@@ -1158,16 +1218,15 @@ static struct platform_device *kvx_eth_check_dma(struct platform_device *pdev,
  * @ndev: Current kvx_eth_netdev
  * Return: 0 on success, < 0 on failure
  */
-int kvx_eth_parse_dt(struct platform_device *pdev, struct kvx_eth_netdev *ndev)
+int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
+		struct kvx_eth_netdev *ndev)
 {
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct device_node *np = pdev->dev.of_node;
 	struct kvx_eth_dev *dev = KVX_DEV(ndev);
 	struct device_node *np_dma;
-	struct device_node *rtm_node;
 	struct list_head *n;
 	int i, ret = 0;
-	int rtm;
 
 	dma_cfg->pdev = kvx_eth_check_dma(pdev, &np_dma);
 	if (!dma_cfg->pdev)
@@ -1217,16 +1276,6 @@ int kvx_eth_parse_dt(struct platform_device *pdev, struct kvx_eth_netdev *ndev)
 			dma_cfg->rx_chan_id.start, dma_cfg->rx_chan_id.nb,
 			dma_cfg->rx_compq_id.start, dma_cfg->rx_compq_id.nb);
 		return -EINVAL;
-	}
-
-	for (rtm = 0; rtm < RTM_NB; rtm++) {
-		rtm_node = of_parse_phandle(pdev->dev.of_node,
-				rtm_prop_name[rtm], 0);
-		if (rtm_node) {
-			ndev->rtm[rtm] = of_find_i2c_device_by_node(rtm_node);
-			if (!ndev->rtm[rtm])
-				return -EPROBE_DEFER;
-		}
 	}
 
 	i = 0;
@@ -1281,48 +1330,60 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	kvx_eth_mac_pcs_status(ndev->hw, &ndev->cfg);
 }
 
-
 static int configure_rtm(struct kvx_eth_netdev *ndev, unsigned int rtm,
 		unsigned int speed)
 {
-	int first_lane = ndev->hw->eth_id * KVX_ETH_LANE_NB;
-	int last_lane = first_lane + KVX_ETH_LANE_NB;
-	int i;
+	int nb_lanes, lane;
+	int i, rtm_speed_idx, lane_speed;
+	struct kvx_eth_rtm_params *params = &ndev->hw->rtm_params;
 
-	if (ndev->rtm[rtm]) {
-		netdev_info(ndev->netdev, "Setting retimer%d speed to %d\n",
-				rtm, ndev->cfg.speed);
+	if (rtm > RTM_NB) {
+		netdev_err(ndev->netdev, "Unknown retimer id %d\n", rtm);
+		return -EINVAL;
+	}
+	if (!params->rtm[rtm]) {
+		netdev_warn(ndev->netdev, "No retimers to configure\n");
+		return 0;
+	}
 
-		switch (speed) {
-		case SPEED_100000:
-			/* Set all lanes */
-			for (i = first_lane; i < last_lane; i++)
-				ti_retimer_set_speed(ndev->rtm[rtm], i,
-						SPEED_25000);
-			break;
-		case SPEED_40000:
-			/* Set all lanes */
-			for (i = first_lane; i < last_lane; i++)
-				ti_retimer_set_speed(ndev->rtm[rtm], i,
-						SPEED_10000);
-			break;
-		case SPEED_50000:
-			/* Set two lanes */
-			ti_retimer_set_speed(ndev->rtm[rtm], first_lane,
-					SPEED_25000);
-			ti_retimer_set_speed(ndev->rtm[rtm], first_lane + 1,
-					SPEED_25000);
-			break;
-		case SPEED_25000:
-		case SPEED_10000:
-			/* Set only one lane */
-			ti_retimer_set_speed(ndev->rtm[rtm], first_lane, speed);
-			break;
-		default:
-			netdev_err(ndev->netdev, "Unsupported speed %d\n",
-					speed);
-			return -EINVAL;
-		}
+	switch (speed) {
+	case SPEED_100000:
+		nb_lanes = KVX_ETH_LANE_NB;
+		lane_speed = SPEED_25000;
+		rtm_speed_idx = RTM_SPEED_25G;
+		break;
+	case SPEED_40000:
+		nb_lanes = KVX_ETH_LANE_NB;
+		lane_speed = SPEED_10000;
+		rtm_speed_idx = RTM_SPEED_10G;
+		break;
+	case SPEED_50000:
+		nb_lanes = 2;
+		lane_speed = SPEED_25000;
+		rtm_speed_idx = RTM_SPEED_25G;
+		break;
+	case SPEED_25000:
+		nb_lanes = 1;
+		lane_speed = speed;
+		rtm_speed_idx = RTM_SPEED_25G;
+		break;
+	case SPEED_10000:
+		nb_lanes = 1;
+		lane_speed = speed;
+		rtm_speed_idx = RTM_SPEED_10G;
+		break;
+	default:
+		netdev_err(ndev->netdev, "Unsupported speed %d\n", speed);
+		return -EINVAL;
+	}
+
+	netdev_info(ndev->netdev, "Setting retimer%d speed to %d\n",
+			rtm, ndev->cfg.speed);
+
+	for (i = 0; i < nb_lanes; i++) {
+		lane = params->channels[i];
+
+		ti_retimer_set_speed(params->rtm[rtm], lane, lane_speed);
 	}
 
 	return 0;
@@ -1459,7 +1520,7 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 		return NULL;
 	}
 
-	ret = kvx_eth_parse_dt(pdev, ndev);
+	ret = kvx_eth_netdev_parse_dt(pdev, ndev);
 	if (ret)
 		return NULL;
 
@@ -1598,12 +1659,13 @@ err:
 static int kvx_netdev_remove(struct platform_device *pdev)
 {
 	struct kvx_eth_netdev *ndev = platform_get_drvdata(pdev);
+	struct kvx_eth_rtm_params *params = &ndev->hw->rtm_params;
 	int rtm;
 
 	kvx_eth_sysfs_remove(ndev);
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
-		if (ndev->rtm[rtm])
-			put_device(&ndev->rtm[rtm]->dev);
+		if (params->rtm[rtm])
+			put_device(&params->rtm[rtm]->dev);
 	}
 	kvx_eth_free_netdev(ndev);
 	dmaengine_put();
@@ -1683,11 +1745,10 @@ static int kvx_eth_probe(struct platform_device *pdev)
 			 (u64)hw_res->base);
 	}
 
-	if (of_property_read_u32(pdev->dev.of_node, "cell-index",
-				 &dev->hw.eth_id)) {
-		dev_warn(&pdev->dev, "Default kvx ethernet index to 0\n");
-		dev->hw.eth_id = KVX_ETH0;
-	}
+	ret = kvx_eth_dev_parse_dt(pdev, dev);
+	if (ret)
+		goto err;
+
 	dev->hw.dev = &pdev->dev;
 
 	if (dev->type->phy_init) {
