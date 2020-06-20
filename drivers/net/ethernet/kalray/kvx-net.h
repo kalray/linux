@@ -123,7 +123,6 @@ struct kvx_eth_netdev {
 	u16    rx_buffer_len;
 	struct kvx_eth_ring tx_ring[TX_FIFO_NB];
 	struct kvx_eth_hw_stats stats;
-	struct i2c_client *rtm[RTM_NB];
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
