@@ -7,6 +7,10 @@ Required properties:
 
 Optional properties:
 - cell-index: ethernet hw index, used for packet routing
+- kalray,rtmrx: phandle to RX retimer
+- kalray,rtmtx: phandle to TX retimer
+- kalray,rtm-channels: retimer channels connected to this interface
+- kalray,rxtx-crossed: RX/TX lanes crossed
 
 * Kalray netdev
 
@@ -33,6 +37,10 @@ Example:
 	};
 
 	eth0: ethernet@10050000 {
+		kalray,rtmrx = <&rtmrx>;
+		kalray,rtmtx = <&rtmtx>;
+		kalray,rtm-channels = <0 1 2 3>;
+		kalray,rxtx-crossed = <1>;
 		eth0: ethernet@10050000 {
 			compatible = "kalray,kvx-eth";
 			reg = <0x0 0x10000000 0x0 0x3FFFF>,

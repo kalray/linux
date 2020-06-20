@@ -13,6 +13,7 @@
 #include <asm/sys_arch.h>
 #include <linux/netdevice.h>
 #include <linux/types.h>
+#include <linux/ti-retimer.h>
 #include <net/page_pool.h>
 
 #include "kvx-net-hdr.h"
@@ -41,12 +42,6 @@
 enum kvx_eth_io {
 	KVX_ETH0 = 0,
 	KVX_ETH1
-};
-
-enum kvx_eth_rtm {
-	RTM_RX = 0,
-	RTM_TX,
-	RTM_NB,
 };
 
 enum kvx_eth_resource {
@@ -79,6 +74,18 @@ enum kvx_eth_pfc_mode {
 struct kvx_eth_res {
 	const char *name;
 	void __iomem *base;
+};
+
+enum kvx_eth_rtm {
+	RTM_RX = 0,
+	RTM_TX,
+	RTM_NB,
+};
+
+enum {
+	RTM_SPEED_10G,
+	RTM_SPEED_25G,
+	RTM_SPEED_NB,
 };
 
 enum default_dispatch_policy {
@@ -427,10 +434,24 @@ struct kvx_buf_pool {
 };
 
 /**
+ * struct kvx_eth_rtm_params - retimer relative parameters
+ *
+ * @rtm: retimer i2c client to feed to rtm related functions
+ * @channels: channels plugged to this interface
+ */
+struct kvx_eth_rtm_params {
+	struct i2c_client *rtm[RTM_NB];
+	int channels[KVX_ETH_LANE_NB];
+};
+
+/**
  * struct kvx_eth_hw - HW adapter
  * @dev: device
  * @res: HW resource tuple {phy, phymac, mac, eth}
  * @tx_f: tx features for all tx fifos
+ * @rtm_params: retimer relative parameters
+ * @rxtx_crossed: are rx lanes crossed with tx ones
+ *                meaning rx4->tx0, rx3->tx1, etc.
  * @asn: device ASN
  * @vchan: dma-noc vchan (MUST be different of the one used by l2-cache)
  * @max_frame_size: current mtu for mac
@@ -444,6 +465,8 @@ struct kvx_eth_hw {
 	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
 	struct kvx_eth_phy_f phy_f;
+	struct kvx_eth_rtm_params rtm_params;
+	bool rxtx_crossed;
 	u32 eth_id;
 	struct pll_cfg pll_cfg;
 	u32 asn;
