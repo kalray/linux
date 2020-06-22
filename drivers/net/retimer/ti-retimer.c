@@ -27,6 +27,12 @@
 #define TI_RTM_NB_LANE (8)
 #define TI_RTM_DEFAULT_SPEED (SPEED_10000)
 #define TI_RTM_MAX_REGINIT_SIZE (256)
+#define TI_RTM_I2C_REG_POSITIVE_VALUE (0x00)
+#define TI_RTM_I2C_REG_NEGATIVE_VALUE (0x40)
+
+#define VALUE_SIGN(val) \
+	(val < 0 ? TI_RTM_I2C_REG_NEGATIVE_VALUE : \
+	 TI_RTM_I2C_REG_POSITIVE_VALUE)
 
 struct seq_args {
 	u8 reg;
@@ -34,43 +40,6 @@ struct seq_args {
 	u8 mask;
 	u8 value;
 };
-
-/* Used to change retimer data rate at runtime */
-static const struct seq_args speed_set_seq[] = {
-	/* Select channel registers */
-	{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
-	/* Select all lanes (0) */
-	{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 0x00},
-	/* CDR reset */
-	{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x0c},
-	/* Write data rate value (0) */
-	{.reg = 0x2f, .offset = 0x00, .mask = 0xff, .value = 0x00},
-	/* Release CDR reset */
-	{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x00},
-};
-#define TI_RTM_SPEED_SEQ_SIZE (ARRAY_SIZE(speed_set_seq))
-
-/* Used to change retimer settings rate at runtime */
-static const struct seq_args params_set_seq[] = {
-	/* Select channel registers */
-	{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
-	/* Select all lanes (0) */
-	{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 0x00},
-	/* Write pre sign */
-	{.reg = 0x3e, .offset = 0x00, .mask = 0x40, .value = 0x00},
-	/* Write pre value */
-	{.reg = 0x3e, .offset = 0x00, .mask = 0x7f, .value = 0x00},
-	/* Write main sign */
-	{.reg = 0x3d, .offset = 0x00, .mask = 0x40, .value = 0x00},
-	/* Write main value */
-	{.reg = 0x3d, .offset = 0x00, .mask = 0x7f, .value = 0x00},
-	/* Write post sign */
-	{.reg = 0x3f, .offset = 0x00, .mask = 0x40, .value = 0x00},
-	/* Write post value */
-	{.reg = 0x3f, .offset = 0x00, .mask = 0x7f, .value = 0x00},
-};
-#define TI_RTM_PARAMS_SEQ_SIZE (ARRAY_SIZE(params_set_seq))
-
 
 /**
  * struct ti_rtm_reg_init - TI retimer i2c register initialization structure
@@ -200,19 +169,6 @@ static void write_i2c_regs(struct i2c_client *client, struct seq_args seq[],
 	}
 }
 
-#define TI_RTM_I2C_REG_POSITIVE_VALUE (0x00)
-#define TI_RTM_I2C_REG_NEGATIVE_VALUE (0x40)
-
-static inline void seq_fill_param(struct seq_args seq[], int row,
-		int value)
-{
-	if (value < 0)
-		seq[row].value = TI_RTM_I2C_REG_NEGATIVE_VALUE;
-	else
-		seq[row].value = TI_RTM_I2C_REG_POSITIVE_VALUE;
-	seq[row + 1].value = abs(value);
-}
-
 /**
  * ti_retimer_set_params() - Set tuning params for a lane
  * @client: i2c client
@@ -224,7 +180,30 @@ int ti_retimer_set_params(struct i2c_client *client, u8 lane,
 		struct ti_rtm_params params)
 {
 	struct device *dev = &client->dev;
-	struct seq_args seq[TI_RTM_PARAMS_SEQ_SIZE];
+	struct seq_args params_set_seq[] = {
+		/* Select channel registers */
+		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
+		/* Select lane */
+		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 1 << lane},
+		/* Write pre sign */
+		{.reg = 0x3e, .offset = 0x00, .mask = 0x40,
+			.value = VALUE_SIGN(params.pre)},
+		/* Write pre value */
+		{.reg = 0x3e, .offset = 0x00, .mask = 0x7f,
+			.value = abs(params.pre)},
+		/* Write main sign */
+		{.reg = 0x3d, .offset = 0x00, .mask = 0x40,
+			.value = VALUE_SIGN(params.main)},
+		/* Write main value */
+		{.reg = 0x3d, .offset = 0x00, .mask = 0x7f,
+			.value = abs(params.main)},
+		/* Write post sign */
+		{.reg = 0x3f, .offset = 0x00, .mask = 0x40,
+			.value = VALUE_SIGN(params.post)},
+		/* Write post value */
+		{.reg = 0x3f, .offset = 0x00, .mask = 0x7f,
+			.value = abs(params.post)},
+	};
 
 	if (lane >= TI_RTM_NB_LANE) {
 		dev_err(dev, "Wrong lane number %d (max: %d)\n", lane,
@@ -232,13 +211,7 @@ int ti_retimer_set_params(struct i2c_client *client, u8 lane,
 		return -EINVAL;
 	}
 
-	memcpy(seq, params_set_seq, sizeof(seq));
-	seq[1].value = 1 << lane; /* choose lane */
-	seq_fill_param(seq, 2, params.pre); //TODO defines
-	seq_fill_param(seq, 4, params.main);
-	seq_fill_param(seq, 6, params.post);
-
-	write_i2c_regs(client, seq, TI_RTM_PARAMS_SEQ_SIZE);
+	write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq));
 
 	return 0;
 }
@@ -266,9 +239,19 @@ static inline int speed_to_rtm_reg_value(int speed)
 int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
 {
 	struct device *dev = &client->dev;
-	struct seq_args seq[TI_RTM_SPEED_SEQ_SIZE];
-	u8 speed_reg_val;
-	int ret;
+	u8 speed_val = speed_to_rtm_reg_value(speed);
+	struct seq_args speed_set_seq[] = {
+		/* Select channel registers */
+		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
+		/* Select lane */
+		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 1 << lane},
+		/* CDR reset */
+		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x0c},
+		/* Write data rate value */
+		{.reg = 0x2f, .offset = 0x00, .mask = 0xff, .value = speed_val},
+		/* Release CDR reset */
+		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x00},
+	};
 
 	if (lane >= TI_RTM_NB_LANE) {
 		dev_err(dev, "Wrong lane number %d (max: %d)\n", lane,
@@ -276,18 +259,12 @@ int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
 		return -EINVAL;
 	}
 
-	ret = speed_to_rtm_reg_value(speed);
-	if (ret < 0) {
+	if (speed_val < 0) {
 		dev_err(dev, "Unsupported speed %d\n", speed);
-		return ret;
+		return speed_val;
 	}
-	speed_reg_val = (u8) ret;
 
-	memcpy(seq, speed_set_seq, sizeof(seq));
-	seq[1].value = 1 << lane; /* choose lane */
-	seq[3].value = speed_reg_val; /* apply speed */
-
-	write_i2c_regs(client, seq, TI_RTM_SPEED_SEQ_SIZE);
+	write_i2c_regs(client, speed_set_seq, ARRAY_SIZE(speed_set_seq));
 
 	return 0;
 }
