@@ -185,24 +185,28 @@ int ti_retimer_set_params(struct i2c_client *client, u8 lane,
 		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
 		/* Select lane */
 		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 1 << lane},
+		/* CDR reset */
+		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x0c},
 		/* Write pre sign */
 		{.reg = 0x3e, .offset = 0x00, .mask = 0x40,
 			.value = VALUE_SIGN(params.pre)},
 		/* Write pre value */
-		{.reg = 0x3e, .offset = 0x00, .mask = 0x7f,
+		{.reg = 0x3e, .offset = 0x00, .mask = 0x3f,
 			.value = abs(params.pre)},
 		/* Write main sign */
 		{.reg = 0x3d, .offset = 0x00, .mask = 0x40,
 			.value = VALUE_SIGN(params.main)},
 		/* Write main value */
-		{.reg = 0x3d, .offset = 0x00, .mask = 0x7f,
+		{.reg = 0x3d, .offset = 0x00, .mask = 0x3f,
 			.value = abs(params.main)},
 		/* Write post sign */
 		{.reg = 0x3f, .offset = 0x00, .mask = 0x40,
 			.value = VALUE_SIGN(params.post)},
 		/* Write post value */
-		{.reg = 0x3f, .offset = 0x00, .mask = 0x7f,
+		{.reg = 0x3f, .offset = 0x00, .mask = 0x3f,
 			.value = abs(params.post)},
+		/* Release CDR reset */
+		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x00},
 	};
 
 	if (lane >= TI_RTM_NB_LANE) {
