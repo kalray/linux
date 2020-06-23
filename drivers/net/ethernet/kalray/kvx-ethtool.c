@@ -403,11 +403,13 @@ static int fill_udp_filter(struct kvx_eth_netdev *ndev,
 
 static void fill_ipv4_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
-		int ptype)
+		int ptype_ovrd)
 {
 	union ipv4_filter_desc *filter = (union ipv4_filter_desc *) flt;
 	struct ethtool_usrip4_spec *l3_val  = &fs->h_u.usr_ip4_spec;
 	struct ethtool_usrip4_spec *l3_mask  = &fs->m_u.usr_ip4_spec;
+	u8 ptype_rule = l3_val->proto;
+	u8 ptype = 0;
 	int src_ip = ntohl(l3_val->ip4src);
 	int src_mask = ntohl(l3_mask->ip4src);
 	int dst_ip = ntohl(l3_val->ip4dst);
@@ -426,6 +428,11 @@ static void fill_ipv4_filter(struct kvx_eth_netdev *ndev,
 		filter->da = dst_ip;
 		filter->da_mask = dst_mask;
 	}
+
+	if (ptype_ovrd != 0)
+		ptype = ptype_ovrd;
+	else if (ptype_rule != 0)
+		ptype = ptype_rule;
 
 	if (ptype != 0) {
 		filter->protocol = ptype;
@@ -449,11 +456,13 @@ static void fill_ipv4_filter(struct kvx_eth_netdev *ndev,
 
 static void fill_ipv6_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
-		int ptype)
+		int ptype_ovrd)
 {
 	struct ipv6_filter_desc *filter = (struct ipv6_filter_desc *) flt;
 	struct ethtool_usrip6_spec *l3_val  = &fs->h_u.usr_ip6_spec;
 	struct ethtool_usrip6_spec *l3_mask  = &fs->m_u.usr_ip6_spec;
+	u8 ptype_rule = l3_val->l4_proto;
+	u8 ptype = 0;
 	u64 src_addr[2] = {0};
 	u64 src_mask[2] = {0};
 	u64 dst_addr[2] = {0};
@@ -481,6 +490,11 @@ static void fill_ipv6_filter(struct kvx_eth_netdev *ndev,
 		filter->d2.dst_msb_mask = dst_mask[0];
 		filter->d2.dst_lsb_mask = dst_mask[1];
 	}
+
+	if (ptype_ovrd != 0)
+		ptype = ptype_ovrd;
+	else if (ptype_rule != 0)
+		ptype = ptype_rule;
 
 	if (ptype != 0) {
 		filter->d0.nh = ptype;
@@ -558,11 +572,13 @@ static void fill_roce_filter(struct kvx_eth_netdev *ndev,
 /* This functions support only one VLAN level */
 static void fill_eth_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
-		int ethertype)
+		int etype_ovrd)
 {
 	union mac_filter_desc *filter = (union mac_filter_desc *) flt;
 	struct ethhdr *eth_val = &fs->h_u.ether_spec;
 	struct ethhdr *eth_mask = &fs->m_u.ether_spec;
+	u16 etype_rule = ntohs(eth_val->h_proto);
+	u16 etype = 0;
 	u64 src_addr = 0;
 	u64 src_mask = 0;
 	u64 dst_addr = 0;
@@ -598,10 +614,17 @@ static void fill_eth_filter(struct kvx_eth_netdev *ndev,
 		filter->da = dst_addr;
 		filter->da_mask = dst_mask;
 	}
-	if (ethertype != 0) {
-		filter->etype = ethertype;
+
+	if (etype_ovrd != 0)
+		etype = etype_ovrd;
+	else if (etype_rule != 0)
+		etype = etype_rule;
+
+	if (etype != 0) {
+		filter->etype = etype;
 		filter->etype_cmp_polarity = KVX_ETH_ETYPE_MATCH_EQUAL;
 	}
+
 	/* Check VLAN presence */
 	if (fs->flow_type & FLOW_EXT) {
 		filter->tci0 = ntohs(fs->h_ext.vlan_tci);
