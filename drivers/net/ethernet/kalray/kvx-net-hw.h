@@ -107,6 +107,21 @@ enum parser_dispatch_policy {
 };
 
 /**
+ * struct kvx_eth_lut_f - HLUT features
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ */
+struct kvx_eth_lut_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	u32 qpn_enable;
+	u8  lane_enable;
+	u8  rule_enable;
+	u8  pfc_enable;
+};
+
+/**
  * struct kvx_eth_lb_f - Load balancer features
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
@@ -462,6 +477,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_res res[KVX_ETH_NUM_RES];
 	struct kvx_eth_parsing parsing;
 	struct kvx_eth_lb_f lb_f[KVX_ETH_LANE_NB];
+	struct kvx_eth_lut_f lut_f;
 	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
 	struct kvx_eth_phy_f phy_f;
@@ -640,6 +656,7 @@ void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id);
 void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
+void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut);
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg, u32 rx_tag);
