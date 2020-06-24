@@ -1102,6 +1102,22 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 	return phylink_ethtool_ksettings_set(ndev->phylink, cmd);
 }
 
+void kvx_eth_get_pauseparam(struct net_device *netdev,
+			    struct ethtool_pauseparam *pause)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	phylink_ethtool_get_pauseparam(ndev->phylink, pause);
+}
+
+int kvx_eth_set_pauseparam(struct net_device *netdev,
+			   struct ethtool_pauseparam *pause)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	return phylink_ethtool_set_pauseparam(ndev->phylink, pause);
+}
+
 static void kvx_eth_get_module_status(struct net_device *netdev, u8 *eeprom_id)
 {
 	u8 sfp_status = eeprom_id[SFP_STATUS];
@@ -1190,6 +1206,8 @@ static const struct ethtool_ops kvx_ethtool_ops = {
 	.set_rxfh            = kvx_eth_set_rxfh,
 	.get_link_ksettings  = kvx_eth_get_link_ksettings,
 	.set_link_ksettings  = kvx_eth_set_link_ksettings,
+	.get_pauseparam      = kvx_eth_get_pauseparam,
+	.set_pauseparam      = kvx_eth_set_pauseparam,
 };
 
 void kvx_set_ethtool_ops(struct net_device *netdev)
