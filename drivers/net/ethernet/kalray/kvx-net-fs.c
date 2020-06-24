@@ -175,6 +175,21 @@ static struct attribute *lb_f_attrs[] = {
 };
 SYSFS_TYPES(lb_f);
 
+DECLARE_SYSFS_ENTRY(lut_f);
+FIELD_RW_ENTRY(lut_f, qpn_enable, 0, RX_LB_LUT_QPN_CTRL_QPN_EN_MASK);
+FIELD_RW_ENTRY(lut_f, lane_enable, 0, 1);
+FIELD_RW_ENTRY(lut_f, rule_enable, 0, 1);
+FIELD_RW_ENTRY(lut_f, pfc_enable, 0, 1);
+
+static struct attribute *lut_f_attrs[] = {
+	&qpn_enable_attr.attr,
+	&lane_enable_attr.attr,
+	&rule_enable_attr.attr,
+	&pfc_enable_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(lut_f);
+
 DECLARE_SYSFS_ENTRY(pfc_f);
 FIELD_RW_ENTRY(pfc_f, global_release_level, 0,
 	       RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
@@ -371,6 +386,11 @@ int kvx_eth_sysfs_init(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
+	ret = kobject_init_and_add(&ndev->hw->lut_f.kobj, &lut_f_ktype,
+				   &ndev->netdev->dev.kobj, "lut");
+	if (ret)
+		goto err;
+
 	ret = kvx_kset_phy_param_create(ndev, &ndev->hw->phy_f.kobj,
 		phy_param_kset, &ndev->hw->phy_f.param[0], KVX_ETH_LANE_NB);
 	if (ret)
@@ -409,6 +429,8 @@ err:
 	for (j = i - 1; j >= 0; --j)
 		kvx_eth_kobject_del(&ndev->cfg, &t[j]);
 
+	kobject_del(&ndev->hw->lut_f.kobj);
+	kobject_put(&ndev->hw->lut_f.kobj);
 	kobject_del(&ndev->hw->phy_f.kobj);
 	kobject_put(&ndev->hw->phy_f.kobj);
 	return ret;
@@ -431,4 +453,8 @@ void kvx_eth_sysfs_remove(struct kvx_eth_netdev *ndev)
 			&ndev->hw->phy_f.param[0], KVX_ETH_LANE_NB);
 	for (i = 0; i < ARRAY_SIZE(t); ++i)
 		kvx_eth_kobject_del(&ndev->cfg, &t[i]);
+	kobject_del(&ndev->hw->lut_f.kobj);
+	kobject_put(&ndev->hw->lut_f.kobj);
+	kobject_del(&ndev->hw->phy_f.kobj);
+	kobject_put(&ndev->hw->phy_f.kobj);
 }
