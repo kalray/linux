@@ -12,6 +12,9 @@
 #include "kvx-net-hw.h"
 #include "kvx-net-regs.h"
 
+#define DEFAULT_PFC_ALERT_LEVEL   ((7 * PFC_MAX_LEVEL) / 10)
+#define DEFAULT_PFC_RELEASE_LEVEL ((3 * PFC_MAX_LEVEL) / 10)
+
 static const u32 noc_route_table[7][7] = {
 	{
 		0x8   /* C0 -> C0 */, 0x82  /* C0 -> C1 */,
@@ -115,19 +118,25 @@ void kvx_eth_pfc_f_set_default(struct kvx_eth_hw *hw,
 	cfg->pfc_f.global_drop_level = kvx_eth_readl(hw, off +
 				RX_PFC_LANE_GLOBAL_DROP_LEVEL_OFFSET);
 
-	cfg->pfc_f.global_alert_level = kvx_eth_readl(hw, off +
-				RX_PFC_LANE_GLOBAL_ALERT_LEVEL_OFFSET);
+	cfg->pfc_f.global_alert_level = DEFAULT_PFC_ALERT_LEVEL;
+	cfg->pfc_f.global_release_level = DEFAULT_PFC_RELEASE_LEVEL;
+	kvx_eth_writel(hw, cfg->pfc_f.global_alert_level, off +
+		      RX_PFC_LANE_GLOBAL_ALERT_LEVEL_OFFSET);
+	kvx_eth_writel(hw, cfg->pfc_f.global_alert_level, off +
+		      RX_PFC_LANE_GLOBAL_RELEASE_LEVEL_OFFSET);
 
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
 		cl_offset = off + RX_PFC_LANE_CLASS_OFFSET +
 			i * RX_PFC_LANE_CLASS_ELEM_SIZE;
 
-		cfg->cl_f[i].release_level = kvx_eth_readl(hw, cl_offset +
-			RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
 		cfg->cl_f[i].drop_level = kvx_eth_readl(hw, cl_offset +
 			RX_PFC_LANE_CLASS_DROP_LEVEL_OFFSET);
-		cfg->cl_f[i].alert_level = kvx_eth_readl(hw, cl_offset +
-					RX_PFC_LANE_CLASS_ALERT_LEVEL_OFFSET);
+		cfg->cl_f[i].alert_level = DEFAULT_PFC_ALERT_LEVEL;
+		kvx_eth_writel(hw, cfg->cl_f[i].alert_level, cl_offset +
+			       RX_PFC_LANE_CLASS_ALERT_LEVEL_OFFSET);
+		cfg->cl_f[i].release_level = DEFAULT_PFC_RELEASE_LEVEL;
+		kvx_eth_writel(hw, cfg->cl_f[i].release_level, cl_offset +
+			      RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
 	}
 }
 
