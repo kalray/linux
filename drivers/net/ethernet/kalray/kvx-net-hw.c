@@ -244,10 +244,23 @@ void kvx_eth_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	kvx_eth_pfc_class_cfg(hw, cfg);
 }
 
+void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut)
+{
+	u32 reg = RX_LB_LUT_OFFSET;
+	u32 val = ((u32)lut->lane_enable << RX_LB_LUT_CTRL_LANE_EN_SHIFT) |
+		((u32)lut->rule_enable << RX_LB_LUT_CTRL_RULE_EN_SHIFT) |
+		((u32)lut->pfc_enable << RX_LB_LUT_CTRL_PFC_EN_SHIFT);
+
+	kvx_eth_writel(hw, val, reg + RX_LB_LUT_CTRL_OFFSET);
+	val = (lut->qpn_enable << RX_LB_LUT_QPN_CTRL_QPN_EN_SHIFT);
+	kvx_eth_writel(hw, val, reg + RX_LB_LUT_QPN_CTRL_OFFSET);
+}
+
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	int i = 0;
 
+	hw->lut_f.hw = hw;
 	for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
 		hw->lb_f[i].id = i;
 		hw->lb_f[i].hw = hw;
