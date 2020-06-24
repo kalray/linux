@@ -1328,6 +1328,9 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	state->speed = ndev->cfg.speed;
 	state->duplex = DUPLEX_FULL;
 	kvx_eth_mac_pcs_status(ndev->hw, &ndev->cfg);
+	state->pause = 0;
+	if (ndev->cfg.pfc_f.global_pause_en)
+		state->pause = MLO_PAUSE_RX | MLO_PAUSE_TX;
 }
 
 static int configure_rtm(struct kvx_eth_netdev *ndev, unsigned int rtm,
@@ -1399,6 +1402,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 					       struct kvx_eth_dev, hw);
 	bool update_serdes = false;
 	int i, ret = 0;
+	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
 
 	/* Prevent kvx_eth_phy_serdes_init being called again */
 	if (ndev->cfg.speed != state->speed ||
@@ -1409,6 +1413,11 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		ndev->cfg.speed = state->speed;
 	if (state->duplex != DUPLEX_UNKNOWN)
 		ndev->cfg.duplex = state->duplex;
+
+	if (!(ndev->cfg.pfc_f.global_pause_en && pause)) {
+		ndev->cfg.pfc_f.global_pause_en = pause;
+		kvx_eth_pfc_f_cfg(ndev->hw, &ndev->cfg.pfc_f);
+	}
 
 	if (update_serdes) {
 		if (dev->type->phy_init)
