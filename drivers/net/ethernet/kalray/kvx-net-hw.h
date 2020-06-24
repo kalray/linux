@@ -28,7 +28,7 @@
 #define KVX_ETH_PARSERS_MAX_PRIO   7
 #define RX_CACHE_NB                4
 
-#define PFC_MAX_LEVEL 0x7FFFFF80 /* 32 bits, must be 128 aligned */
+#define PFC_MAX_LEVEL 0x60000 /* 32 bits, must be 128 aligned */
 
 #define DUMP_REG(hw, bl, off) { \
 	u32 v = readl(hw->res[KVX_ETH_RES_##bl].base + off); \
