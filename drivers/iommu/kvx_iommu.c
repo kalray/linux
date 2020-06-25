@@ -1273,12 +1273,12 @@ kvx_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 	unsigned long flags;
 	int ret = 0;
 
-	if (!fwspec || !fwspec->iommu_priv) {
+	if (!fwspec || !dev_iommu_priv_get(dev)) {
 		dev_err(dev, "private firmare spec not found\n");
 		return -ENODEV;
 	}
 
-	iommu_dev = (struct kvx_iommu_drvdata *)fwspec->iommu_priv;
+	iommu_dev = dev_iommu_priv_get(dev);
 
 	spin_lock_irqsave(&kvx_domain->lock, flags);
 
@@ -1293,7 +1293,7 @@ kvx_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 	}
 
 	kvx_domain->iommu = iommu_dev;
-	kvx_domain->asn = dev->iommu_fwspec->ids[0];
+	kvx_domain->asn = fwspec->ids[0];
 
 	list_add_tail(&kvx_domain->list, &iommu_dev->domains);
 
@@ -1450,7 +1450,7 @@ static int kvx_iommu_add_device(struct device *dev)
 	if (!kvx_iommu_dev)
 		return -ENODEV;
 
-	fwspec->iommu_priv = kvx_iommu_dev;
+	dev_iommu_priv_set(dev, kvx_iommu_dev);
 
 	group = iommu_group_get_for_dev(dev);
 	if (IS_ERR(group))
@@ -1555,10 +1555,10 @@ static struct iommu_group *kvx_iommu_device_group(struct device *dev)
 	struct kvx_iommu_drvdata *iommu_dev;
 	struct kvx_iommu_group *group;
 
-	if (!fwspec || !fwspec->iommu_priv)
+	if (!fwspec || !dev_iommu_priv_get(dev))
 		return ERR_PTR(-ENODEV);
 
-	iommu_dev = (struct kvx_iommu_drvdata *)fwspec->iommu_priv;
+	iommu_dev = dev_iommu_priv_get(dev);
 
 	mutex_lock(&iommu_dev->lock);
 
