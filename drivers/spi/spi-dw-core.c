@@ -728,8 +728,6 @@ static void dw_spi_mem_start_enhanced_op(struct dw_spi *dws,
 		 */
 		thres = 2;
 		dw_writel(dws, DW_SPI_TXFTLR, thres << SPI_TXFTL_FTHR);
-
-		spi_umask_intr(dws, SPI_INT_TXEI);
 	}
 
 	spi_enable_chip(dws, 1);
@@ -738,8 +736,11 @@ static void dw_spi_mem_start_enhanced_op(struct dw_spi *dws,
 	dw_write_io_reg(dws, DW_SPI_DR, op->cmd.opcode);
 	dw_write_io_reg(dws, DW_SPI_DR, op->addr.val);
 
-	if (op->data.dir == SPI_MEM_DATA_OUT)
+	if (op->data.dir == SPI_MEM_DATA_OUT) {
 		dw_spi_mem_enhanced_write_tx_fifo(dws);
+		/* Unmask tx empty interrupt after data have been pushed in the fifo */
+		spi_umask_intr(dws, SPI_INT_TXEI);
+	}
 
 	spin_unlock_irqrestore(&dws->buf_lock, flags);
 }
