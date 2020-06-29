@@ -1207,6 +1207,10 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 		return ret;
 	}
 
+	if (of_property_read_u32_array(np, "kalray,dma-rx-chan-error",
+				       (u32 *)&dev->hw.rx_chan_error, 1) != 0)
+		dev->hw.rx_chan_error = 0xFF;
+
 	return 0;
 }
 
@@ -1277,6 +1281,10 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 			dma_cfg->rx_compq_id.start, dma_cfg->rx_compq_id.nb);
 		return -EINVAL;
 	}
+
+	if (of_property_read_u32_array(np, "kalray,default-dispatch-entry",
+			     (u32 *)&ndev->cfg.default_dispatch_entry, 1) != 0)
+		ndev->cfg.default_dispatch_entry = DISPATCH_TABLE_LINUX_ENTRY;
 
 	i = 0;
 	list_for_each(n, &dev->list)
