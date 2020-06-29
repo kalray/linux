@@ -1507,6 +1507,10 @@ static phys_addr_t kvx_iommu_iova_to_phys(struct iommu_domain *domain,
 	for (i = 0; i < KVX_IOMMU_PS_NB; i++) {
 		entry.teh.ps = i;
 
+		/* Adapt PN value to the current page size */
+		entry.teh.pn &= ~((kvx_iommu_get_page_size[i] - 1)
+				  >> KVX_IOMMU_PN_SHIFT);
+
 		set = teh_to_set(&entry.teh, iommu_hw->sets);
 		if (set < 0) {
 			dev_err(iommu_hw->dev, "%s: failed to convert TEH to set\n",
