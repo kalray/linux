@@ -43,6 +43,7 @@
 #define MAC_FEC91_CTRL_OFFSET                      0x60C0
 #define MAC_FEC91_ENA_IN_SHIFT                     0x0
 #define MAC_FEC91_ENA_IN_MASK                      0xFUL
+#define MAC_TX_FAULT_CTRL_OFFSET                   0x60D4
 #define MAC_FAULT_STATUS_OFFSET                    0x60D8
 #define MAC_SYNC_STATUS_OFFSET                     0x602C
 #define MAC_SYNC_STATUS_LINK_STATUS_SHIFT          0x19
