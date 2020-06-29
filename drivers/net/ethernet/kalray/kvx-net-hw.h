@@ -27,6 +27,7 @@
 #define KVX_ETH_RX_TAG_NB          64
 #define KVX_ETH_PARSERS_MAX_PRIO   7
 #define RX_CACHE_NB                4
+#define DISPATCH_TABLE_LINUX_ENTRY 256
 
 #define PFC_MAX_LEVEL 0x60000 /* 32 bits, must be 128 aligned */
 
@@ -353,7 +354,8 @@ struct kvx_eth_phy_f {
  * @tx_fifo_list: List of tx features
  * @pfc: Packet Flow Control
  * @cl_f: Array of 8 classes (per lane)
- * @mac: mac controller
+ * @mac_f: mac controller features
+ * @default_dispatch_entry: default dispatch table entry used by current cluster
  */
 struct kvx_eth_lane_cfg {
 	int id;
@@ -366,6 +368,7 @@ struct kvx_eth_lane_cfg {
 	struct kvx_eth_cl_f cl_f[KVX_ETH_PFC_CLASS_NB];
 	struct kvx_eth_mac_f mac_f;
 	struct kvx_transceiver_type transceiver;
+	u32 default_dispatch_entry;
 };
 
 struct kvx_eth_parser {
@@ -471,6 +474,7 @@ struct kvx_eth_rtm_params {
  * @vchan: dma-noc vchan (MUST be different of the one used by l2-cache)
  * @max_frame_size: current mtu for mac
  * @fec_en: Forward Error Correction enabled
+ * @rx_chan_error: rx dma channel used to generate RX_CHAN_CLOSED interrupt
  */
 struct kvx_eth_hw {
 	struct device *dev;
@@ -489,6 +493,7 @@ struct kvx_eth_hw {
 	u32 vchan;
 	u32 max_frame_size;
 	u16 fec_en;
+	u32 rx_chan_error;
 };
 
 struct kvx_eth_hw_rx_stats {
