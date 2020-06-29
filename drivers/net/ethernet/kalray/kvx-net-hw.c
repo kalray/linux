@@ -391,64 +391,73 @@ void kvx_eth_dt_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 }
 
-void kvx_eth_dt_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_f *dt)
+void kvx_eth_dt_f_cfg(struct kvx_eth_hw *h, struct kvx_eth_dt_f *dt)
 {
-	u64 val = (u64)noc_route_eth2c(hw->eth_id, dt->cluster_id) <<
-		RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE_SHIFT;
 	u64 trigger_en = (dt->split_trigger ? 1 : 0);
+	u64 val = 0ULL;
 
-	val |= ((u64)dt->rx_channel << RX_DISPATCH_TABLE_ENTRY_RX_CHAN_SHIFT) |
-		((u64)dt->vchan << RX_DISPATCH_TABLE_ENTRY_NOC_VCHAN_SHIFT) |
-		((u64)hw->asn << RX_DISPATCH_TABLE_ENTRY_ASN_SHIFT) |
+	if (dt->cluster_id < NB_CLUSTER) {
+		val = ((u64)noc_route_eth2c(h->eth_id, dt->cluster_id) <<
+		       RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE_SHIFT) |
+		      ((u64)dt->rx_channel <<
+		       RX_DISPATCH_TABLE_ENTRY_RX_CHAN_SHIFT);
+	} else {
+		if (h->rx_chan_error >= KVX_ETH_RX_TAG_NB) {
+			dev_dbg(h->dev, "kalray,dma-rx-chan-error not set, using rx_chan=%d\n",
+				 dt->rx_channel);
+			val = kvx_eth_readq(h, RX_DISPATCH_TABLE_ENTRY(dt->id));
+			val &= ~RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE_MASK;
+		} else {
+			val = ((u64)h->rx_chan_error <<
+			       RX_DISPATCH_TABLE_ENTRY_RX_CHAN_SHIFT);
+		}
+		/* For uninitialized entries, default route is loopback to Rx
+		 * channel id DMA_RX_CHANNEL_ERROR.  This channel is not
+		 * configured. If the LUT is misconfigured and points to an
+		 * uninitialized dispatch table entry, when a packet hits this
+		 * entry, a RX_CLOSED_CHAN_ERROR is raised.
+		 */
+		val |= ((u64)0x8ULL << RX_DISPATCH_TABLE_ENTRY_NOC_ROUTE_SHIFT);
+	}
+
+	val |= ((u64)dt->vchan << RX_DISPATCH_TABLE_ENTRY_NOC_VCHAN_SHIFT) |
+		((u64)h->asn << RX_DISPATCH_TABLE_ENTRY_ASN_SHIFT) |
 		((u64)trigger_en << RX_DISPATCH_TABLE_ENTRY_SPLIT_EN_SHIFT) |
 		((u64)dt->split_trigger <<
 		 RX_DISPATCH_TABLE_ENTRY_SPLIT_TRIGGER_SHIFT);
-	kvx_eth_writeq(hw, val, RX_DISPATCH_TABLE_ENTRY(dt->id));
+	kvx_eth_writeq(h, val, RX_DISPATCH_TABLE_ENTRY(dt->id));
 }
 
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg,
 				 u32 rx_tag)
 {
-	int i, cid, idx = 0;
 	struct kvx_eth_dt_f *dt;
+	int i;
 
-	/* Add dispatch entries for other clusters (parser policy) */
-	for (cid = 0; cid < NB_CLUSTER; ++cid) {
-		/* Current cluster channels are used for default policy only */
-		if (cid == kvx_cluster_id())
-			continue;
-		/**
-		 * Split headers / payload config per PE
-		 * Even rx_tags will be used for headers, and odd rx_tags are
-		 * reserved for payload
-		 */
-		for (i = 0; i < NB_PE; ++i, ++idx) {
-			dt = &hw->dt_f[idx];
-			dt->cluster_id = cid;
-			/* Default: book rx_tag and rx_tag + 1 if split_en */
-			dt->rx_channel = 2 * i;
-			dt->split_trigger = 0;
-			dt->vchan = hw->vchan;
-			kvx_eth_dt_f_cfg(hw, dt);
-		}
-		/* KVX_ETH_RX_TAG_NB entries per cluster */
-		idx += KVX_ETH_RX_TAG_NB - NB_PE;
+	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; ++i) {
+		dt = &hw->dt_f[i];
+		dt->cluster_id = 0xff;
+		dt->rx_channel = 0;
+		dt->split_trigger = 0;
+		dt->vchan = hw->vchan;
+		kvx_eth_dt_f_cfg(hw, dt);
 	}
 
 	/* Default policy for our cluster */
-	dt = &hw->dt_f[idx];
+	dt = &hw->dt_f[cfg->default_dispatch_entry];
 	dt->cluster_id = kvx_cluster_id();
 	dt->rx_channel = rx_tag;
 	dt->split_trigger = 0;
 	dt->vchan = hw->vchan;
 	kvx_eth_dt_f_cfg(hw, dt);
 
-	enable_default_dispatch_entry(hw, cfg, idx);
+	enable_default_dispatch_entry(hw, cfg, cfg->default_dispatch_entry);
 
 	/* As of now, matching packets will use the same dispatch entry */
 	for (i = 0; i < KVX_ETH_PARSER_NB; ++i)
-		enable_parser_dispatch_entry(hw, i, idx);
+		enable_parser_dispatch_entry(hw, i,
+					     cfg->default_dispatch_entry);
 }
 
 u32 kvx_eth_lb_has_header(struct kvx_eth_hw *hw,
