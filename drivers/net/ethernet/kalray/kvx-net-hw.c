@@ -63,13 +63,6 @@ u32 noc_route_eth2c(enum kvx_eth_io eth_id, int cluster_id)
 	return noc_route_table[5 + eth_id][cluster_id];
 }
 
-void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu)
-{
-	kvx_eth_writel(hw, mtu, TX_OFFSET + TX_LANE +
-		       lane * TX_LANE_ELEM_SIZE + TX_LANE_MTU);
-	kvx_mac_hw_change_mtu(hw, lane, mtu);
-}
-
 #define RX_LB_CTRL(LANE) (RX_LB_OFFSET + RX_LB_CTRL_OFFSET \
 	+ (LANE) * RX_LB_CTRL_ELEM_SIZE)
 
@@ -92,6 +85,14 @@ void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu)
 
 #define RX_LB_DEFAULT_RULE_LANE_CTRL(LANE) \
 	(RX_LB_DEFAULT_RULE_LANE(LANE) + RX_LB_DEFAULT_RULE_LANE_CTRL_OFFSET)
+
+void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu)
+{
+	updatel_bits(hw, ETH, RX_LB_CTRL(lane), RX_LB_CTRL_MTU_SIZE_MASK, mtu);
+	kvx_eth_writel(hw, mtu, TX_OFFSET + TX_LANE +
+		       lane * TX_LANE_ELEM_SIZE + TX_LANE_MTU);
+	kvx_mac_hw_change_mtu(hw, lane, mtu);
+}
 
 void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id)
 {

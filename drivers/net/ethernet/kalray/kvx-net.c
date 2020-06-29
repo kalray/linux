@@ -578,7 +578,7 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 	enum dma_data_direction dma_dir;
 	void *data, *data_end, *va = NULL;
 	struct page *page = NULL;
-	size_t data_len;
+	size_t data_len = len;
 	int ret = 0;
 
 	page = qdesc->va;
@@ -588,23 +588,15 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 	}
 	dma_dir = page_pool_get_dma_dir(rxr->pool.pagepool);
 	dma_sync_single_for_cpu(ndev->dev, buf, len, dma_dir);
-	data_len = len - ETH_FCS_LEN;
-	va = page_address(page);
-	/* Prefetch header */
-	prefetch(va);
-	data = va + KVX_RX_HEADROOM;
-	data_end = data + data_len;
+	if (eop)
+		data_len = len - ETH_FCS_LEN;
 
-	if (unlikely(!eop)) {
-		if (unlikely(!rxr->skb)) {
-			rxr->stats.skb_rx_frag_missed++;
-			ret = -EINVAL;
-			goto recycle_page;
-		}
-		skb_add_rx_frag(rxr->skb, skb_shinfo(rxr->skb)->nr_frags, page,
-				KVX_RX_HEADROOM, data_len,
-				KVX_SKB_SIZE(data_len));
-	} else {
+	if (likely(!rxr->skb)) {
+		va = page_address(page);
+		/* Prefetch header */
+		prefetch(va);
+		data = va + KVX_RX_HEADROOM;
+		data_end = data + data_len;
 		rxr->skb = build_skb(va, KVX_SKB_SIZE(data_len));
 		if (unlikely(!rxr->skb)) {
 			rxr->stats.skb_alloc_err++;
@@ -613,9 +605,15 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 		}
 		skb_reserve(rxr->skb, data - va);
 		skb_put(rxr->skb, data_end - data);
+	} else {
+		skb_add_rx_frag(rxr->skb, skb_shinfo(rxr->skb)->nr_frags, page,
+			KVX_RX_HEADROOM, data_len, data_len);
+	}
 
+	if (eop) {
 		kvx_eth_rx_hdr(ndev, rxr->skb);
 		rxr->skb->dev = rxr->napi.dev;
+		skb_record_rx_queue(rxr->skb, rxr->qidx);
 		rxr->skb->protocol = eth_type_trans(rxr->skb, netdev);
 	}
 
@@ -744,13 +742,12 @@ static int kvx_eth_change_mtu(struct net_device *netdev, int new_mtu)
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	int max_frame_len = new_mtu + (2 * KVX_ETH_HEADER_SIZE) + KVX_ETH_FCS;
 
-	if (netif_running(netdev))
-		kvx_eth_down(netdev);
-
 	ndev->rx_buffer_len = ALIGN(max_frame_len, KVX_ETH_PKT_ALIGN);
 	ndev->hw->max_frame_size = max_frame_len;
 	netdev->mtu = new_mtu;
 
+	if (netif_running(netdev))
+		kvx_eth_down(netdev);
 	kvx_eth_hw_change_mtu(ndev->hw, ndev->cfg.id, max_frame_len);
 	if (netif_running(netdev))
 		kvx_eth_up(netdev);
