@@ -254,7 +254,7 @@ static struct attribute *cl_f_attrs[] = {
 SYSFS_TYPES(cl_f);
 
 DECLARE_SYSFS_ENTRY(dt_f);
-FIELD_RW_ENTRY(dt_f, cluster_id, 0, NB_CLUSTER - 1);
+FIELD_RW_ENTRY(dt_f, cluster_id, 0, 0xFF);
 FIELD_RW_ENTRY(dt_f, rx_channel, 0, KVX_ETH_RX_TAG_NB - 1);
 FIELD_RW_ENTRY(dt_f, split_trigger, 0, 0x7F);
 FIELD_RW_ENTRY(dt_f, vchan, 0, 1);
