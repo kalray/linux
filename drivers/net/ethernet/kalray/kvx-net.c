@@ -137,7 +137,7 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 				    KVX_ETH_PKT_ALIGN);
 
 	ndev->cfg.speed = SPEED_UNKNOWN;
-	ndev->cfg.duplex = DUPLEX_FULL;
+	ndev->cfg.duplex = DUPLEX_UNKNOWN;
 	ndev->hw->fec_en = 0;
 	kvx_eth_mac_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_dt_f_init(ndev->hw, &ndev->cfg);
@@ -1334,7 +1334,7 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	kvx_eth_wait_link_up(ndev->hw, &ndev->cfg);
 	state->link = ndev->cfg.link;
 	state->speed = ndev->cfg.speed;
-	state->duplex = DUPLEX_FULL;
+	state->duplex = ndev->cfg.duplex;
 	kvx_eth_mac_pcs_status(ndev->hw, &ndev->cfg);
 	state->pause = 0;
 	if (ndev->cfg.pfc_f.global_pause_en)
