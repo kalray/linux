@@ -17,7 +17,11 @@
 #include "kvx-phy-regs.h"
 
 #define MAC_LOOPBACK_LATENCY  4
-#define MAC_SYNC_TIMEOUT_MS   1000
+#define MAC_SYNC_TIMEOUT_MS   2000
+#define SIGDET_TIMEOUT_MS     1000
+#define AN_TIMEOUT_MS         6000
+#define NONCE                 0x13
+
 #define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 
 #define kvx_poll(read, reg, mask, exp, timeout_in_ms) \
@@ -94,7 +98,9 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 		BIT(EMAC_CMD_CFG_RX_EN_SHIFT)         |
 		BIT(EMAC_CMD_CFG_PROMIS_EN_SHIFT)     |
 		BIT(EMAC_CMD_CFG_CNTL_FRAME_EN_SHIFT) |
-		BIT(EMAC_CMD_CFG_SW_RESET_SHIFT);
+		BIT(EMAC_CMD_CFG_SW_RESET_SHIFT) |
+		EMAC_CMD_CFG_TX_FIFO_RESET_MASK |
+		EMAC_CMD_CFG_TX_FLUSH_MASK;
 
 	if (cfg->mac_f.pfc_mode == MAC_PAUSE) {
 		val |= BIT(EMAC_CMD_CFG_PAUSE_PFC_COMP_SHIFT) |
@@ -930,7 +936,320 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	return 0;
 }
 
-#define SIGDET_TIMEOUT_MS 1000
+
+static void kvx_eth_dump_an_regs(struct kvx_eth_hw *hw,
+				 struct kvx_eth_lane_cfg *cfg, int lane)
+{
+	/* kxan_status, an_ability_X et kxan_rem_ability */
+	u32 an_ctrl_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_CTRL_OFFSET;
+	u32 an_off, an_status_off;
+	u32 val;
+
+	an_off = MAC_CTRL_AN_OFFSET + lane * MAC_CTRL_AN_ELEM_SIZE;
+	an_status_off = MAC_CTRL_AN_OFFSET +
+		MAC_CTRL_AN_STATUS_OFFSET + 4 * lane;
+
+	dev_dbg(hw->dev, "Local KXAN_ABILITY lane[%d]\n", lane);
+	val = kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
+	REG_DBG(hw->dev, val, AN_KXAN_STATUS_LPANCAPABLE);
+	REG_DBG(hw->dev, val, AN_KXAN_STATUS_LINKSTATUS);
+	REG_DBG(hw->dev, val, AN_KXAN_STATUS_AN_ABILITY);
+	REG_DBG(hw->dev, val, AN_KXAN_STATUS_REMOTEFAULT);
+	REG_DBG(hw->dev, val, AN_KXAN_STATUS_AN_COMPLETE);
+	REG_DBG(hw->dev, val, AN_KXAN_STATUS_PAGERECEIVED);
+	REG_DBG(hw->dev, val, AN_KXAN_STATUS_EXTDNEXTPAGE);
+	REG_DBG(hw->dev, val, AN_KXAN_STATUS_PARALLELDETECTFAULT);
+
+	val = kvx_mac_readl(hw, an_off + AN_KXAN_ABILITY_0_OFFSET);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_SEL);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ECHOEDNONCE);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_PAUSEABILITY);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_REMOTEFAULT);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ACK);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_NEXTPAGE);
+
+	val = kvx_mac_readl(hw, an_off + AN_KXAN_ABILITY_1_OFFSET);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TXNONCE);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TECHNOLOGY);
+
+	val = kvx_mac_readl(hw, an_off + AN_KXAN_ABILITY_2_OFFSET);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_TECHNOLOGY);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_FECABILITY);
+
+	dev_dbg(hw->dev, "Remote KXAN_ABILITY\n");
+	val = kvx_mac_readl(hw, an_off + AN_KXAN_REM_ABILITY_0_OFFSET);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_SEL);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ECHOEDNONCE);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_PAUSEABILITY);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_REMOTEFAULT);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ACK);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_NEXTPAGE);
+	val = kvx_mac_readl(hw, an_off + AN_KXAN_REM_ABILITY_1_OFFSET);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TXNONCE);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TECHNOLOGY);
+
+	val = kvx_mac_readl(hw, an_off + AN_KXAN_REM_ABILITY_2_OFFSET);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_TECHNOLOGY);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_FECABILITY);
+
+	dev_dbg(hw->dev, "MAC CTRL\n");
+	val = kvx_mac_readl(hw, an_ctrl_off);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_CTRL_EN);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_CTRL_DIS_TIMER);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_CTRL_PCS_LINK_STATUS);
+
+	val = kvx_mac_readl(hw, an_status_off);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_INT);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_DONE);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_VAL);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_STATUS);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_SELECT);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_TR_DIS);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_FEC_EN);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_RS_FEC_EN);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_STATE);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_INT);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_VAL);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_STATUS);
+	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_LOCK);
+}
+
+static int kvx_mac_negotiated_link(struct kvx_eth_hw *hw, int lane_id,
+				   struct link_capability *ln)
+{
+	u32 an_off = MAC_CTRL_AN_OFFSET + lane_id * MAC_CTRL_AN_ELEM_SIZE;
+	u32 val = kvx_mac_readl(hw, an_off + AN_BP_STATUS_OFFSET);
+
+	dev_dbg(hw->dev, "%s BP_STATUS[%d]: 0x%x\n", __func__, lane_id, val);
+	/* Gets autonegotiation rate and fec */
+	ln->rate = 0;
+	ln->speed = SPEED_UNKNOWN;
+	if (val & AN_BP_STATUS_TECHNOLOGY_A0_MASK) {
+		dev_dbg(hw->dev, "Negotiated 1G KX rate\n");
+		ln->rate |= RATE_1GBASE_KX;
+		ln->speed = SPEED_1000;
+	}
+	if (val & AN_BP_STATUS_TECHNOLOGY_A11_MASK)
+		dev_err(hw->dev, "Unsupported 2.5G-KX negotiated rate\n");
+	if (val & AN_BP_STATUS_TECHNOLOGY_A12_MASK)
+		dev_err(hw->dev, "Unsupported 5G-KR negotiated rate\n");
+	if (val & AN_BP_STATUS_TECHNOLOGY_A1_MASK) {
+		dev_err(hw->dev, "Unsupported 10G-KX4 negotiated rate\n");
+		ln->rate |= RATE_10GBASE_KX4;
+	}
+	if (val & AN_BP_STATUS_TECHNOLOGY_A2_MASK) {
+		dev_dbg(hw->dev, "Negotiated 10G KR rate.\n");
+		ln->rate |= RATE_10GBASE_KR;
+		ln->speed = SPEED_10000;
+	}
+	if (val & AN_BP_STATUS_TECHNOLOGY_A10_MASK) {
+		dev_dbg(hw->dev, "Negotiated 25G KR/CR rate.\n");
+		ln->rate |= RATE_25GBASE_KR_CR;
+		ln->speed = SPEED_25000;
+	}
+	if (val & AN_BP_STATUS_TECHNOLOGY_A9_MASK) {
+		dev_dbg(hw->dev, "Negotiated 25G KR/CR-S rate.\n");
+		ln->rate |= RATE_25GBASE_KR_CR_S;
+		ln->speed = SPEED_25000;
+	}
+	if (val & AN_BP_STATUS_TECHNOLOGY_A3_MASK) {
+		dev_dbg(hw->dev, "Negotiated 40G KR4 rate.\n");
+		ln->rate |= RATE_40GBASE_KR4;
+		ln->speed = SPEED_40000;
+	}
+	if (val & AN_BP_STATUS_TECHNOLOGY_A4_MASK) {
+		dev_dbg(hw->dev, "Negotiated 40G CR4 rate.\n");
+		ln->rate |= RATE_40GBASE_CR4;
+		ln->speed = SPEED_40000;
+	}
+	if (val & AN_BP_STATUS_TECHNOLOGY_A5_MASK)
+		dev_err(hw->dev, "Unsupported 100G-CR10 negotiated rate\n");
+	if (val & AN_BP_STATUS_TECHNOLOGY_A6_MASK) {
+		dev_dbg(hw->dev, "Negotiated 100G KP4 rate.\n");
+		ln->rate |= RATE_100GBASE_KP4;
+		ln->speed = SPEED_100000;
+	}
+	if (val & AN_BP_STATUS_TECHNOLOGY_A7_MASK) {
+		dev_dbg(hw->dev, "Negotiated 100G KR4 rate.\n");
+		ln->rate |= RATE_100GBASE_KR4;
+		ln->speed = SPEED_100000;
+	}
+	if (val & AN_BP_STATUS_TECHNOLOGY_A8_MASK) {
+		dev_dbg(hw->dev, "Negotiated 100G CR4 rate.\n");
+		ln->rate |= RATE_100GBASE_CR4;
+		ln->speed = SPEED_100000;
+	}
+	val = kvx_mac_readl(hw, an_off + AN_BP_STATUS_2_OFFSET);
+	if (val & AN_BP_STATUS_2_TECHNOLOGY_A15_MASK)
+		dev_err(hw->dev, "Unsupported 200G-FR4/CR4 negotiated rate\n");
+	if (val & AN_BP_STATUS_2_TECHNOLOGY_A14_MASK)
+		dev_err(hw->dev, "Unsupported 100G-KR2/CR2 negotiated rate.\n");
+	if (val & AN_BP_STATUS_2_TECHNOLOGY_A13_MASK) {
+		dev_dbg(hw->dev, "Negotiated 50G KR/CR rate.\n");
+		ln->rate |= RATE_25GBASE_KR_CR;
+		ln->speed = SPEED_50000;
+	}
+
+	ln->fec = 0;
+	if (val & AN_BP_STATUS_BPETHSTATUSRSV_MASK) {
+		dev_dbg(hw->dev, "Autoneg RS-FEC\n");
+		ln->fec = FEC_25G_RS_REQUESTED;
+	} else if (val & AN_BP_STATUS_FEC_MASK) {
+		dev_dbg(hw->dev, "Autoneg FEC\n");
+		ln->fec = FEC_10G_FEC_ABILITY;
+	}
+
+	return 0;
+}
+
+/**
+ * kvx_eth_autoneg_cfg() - Configures autoneg for MAC
+ *
+ * Requirements
+ *    - 10G serdes with 20-bits MAC/Serdes interface (MDI autoneg)
+ *    - clause 72 MAX TIMER (10G) instead of clause 92 (25G rate)
+ */
+int kvx_mac_autoneg_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	u32 mask, val = 0;
+	u32 an_off = MAC_CTRL_AN_OFFSET + cfg->id * MAC_CTRL_AN_ELEM_SIZE;
+	u32 an_status_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_STATUS_OFFSET +
+		4 * cfg->id;
+	u32 an_ctrl_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_CTRL_OFFSET;
+	u32 reg_clk = 1000; /* MHz*/
+	int ret;
+	int lane_id = cfg->id;
+	u32 nonce;
+
+	kvx_eth_phy_reset(hw, 1);
+	/* Setup PHY + serdes */
+	kvx_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
+	kvx_mac_phy_disable_serdes(hw);
+	kvx_phy_mac_10G_cfg(hw, LANE_RATE_10GBASE_KR, WIDTH_20BITS);
+	kvx_mac_phy_enable_serdes(hw, PSTATE_P0);
+
+	kvx_eth_mac_reset(hw, lane_id);
+
+	/* Force abilities */
+	cfg->lc.rate = (RATE_1GBASE_KX | RATE_10GBASE_KX4 |
+			RATE_10GBASE_KR | RATE_40GBASE_KR4  |
+			RATE_40GBASE_CR4 | RATE_100GBASE_CR10 |
+			RATE_100GBASE_KP4 | RATE_100GBASE_KR4  |
+			RATE_100GBASE_CR4 | RATE_25GBASE_KR_CR_S |
+			RATE_25GBASE_KR_CR);
+	cfg->lc.fec = 0;
+	cfg->lc.pause = 1;
+
+	/* Enable clause 72 MAX TIMER instead of clause 92 (25G rate) */
+	val = LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK;
+	kvx_mac_writel(hw, val, LT_OFFSET + cfg->id * LT_ELEM_SIZE +
+		       LT_KR_MODE_OFFSET);
+	kvx_mac_writel(hw, val, LT_OFFSET + lane_id * LT_ELEM_SIZE +
+		       LT_KR_MODE_OFFSET);
+
+	val = (1 << AN_KXAN_ABILITY_0_SEL_SHIFT);
+	if (cfg->lc.pause)
+		val |= (1 << AN_KXAN_ABILITY_0_PAUSEABILITY_SHIFT);
+	kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_0_OFFSET);
+
+	/* Write speed abilities */
+	nonce = NONCE + lane_id;
+	val = (cfg->lc.rate << AN_KXAN_ABILITY_1_TECHNOLOGY_SHIFT) |
+		(nonce << AN_KXAN_ABILITY_1_TXNONCE_SHIFT);
+	kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_1_OFFSET);
+
+	/* Write FEC ability */
+	val = (cfg->lc.fec << AN_KXAN_ABILITY_2_FECABILITY_SHIFT);
+	kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_2_OFFSET);
+
+	/* 5 bits shift unused as specified */
+#define MS_COUNT_SHIFT 5
+	val = ((reg_clk * 1000 >> MS_COUNT_SHIFT) <<
+	       AN_KXAN_MS_COUNT_NUMCLOCKS_SHIFT);
+	kvx_mac_writel(hw, val, an_off + AN_KXAN_MS_COUNT_OFFSET);
+	kvx_mac_writel(hw, val, an_off + AN_KXAN_MS_COUNT_OFFSET);
+
+	dev_info(hw->dev, "Performing autonegotiation..\n");
+
+	/* Read to reset all latches */
+	kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
+
+	/* Start AN */
+	mask = MAC_CTRL_AN_CTRL_EN_MASK;
+	updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
+
+	ret = kvx_mac_readl(hw, an_status_off);
+	if (!(ret & MAC_CTRL_AN_STATUS_AN_VAL_MASK)) {
+		dev_err(hw->dev, "Autonegotiation could not be activated\n");
+		goto exit;
+	}
+
+	mask = MAC_CTRL_AN_STATUS_AN_STATUS_MASK;
+	ret = kvx_poll(kvx_mac_readl, an_status_off,
+			mask, mask, AN_TIMEOUT_MS);
+	if (ret) {
+		/* Autoneg timeout, check what happened */
+		val = kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
+		if (GETF(val, AN_KXAN_STATUS_LPANCAPABLE) == 0) {
+			dev_err(hw->dev, "Autonegociation not supported by link partner\n");
+		} else if (GETF(val, AN_KXAN_STATUS_PAGERECEIVED)) {
+			dev_err(hw->dev, "Autonegotiation no page received from link partner\n");
+		} else {
+			/* Default error message */
+			dev_err(hw->dev, "Autonegotiation completion timeout\n");
+		}
+		goto exit;
+	}
+
+	/* Clear AN and LT ITs */
+	mask = MAC_CTRL_AN_CTRL_INT_CLEAR_MASK |
+		MAC_CTRL_AN_STATUS_LT_INT_MASK;
+	updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
+
+	kvx_mac_negotiated_link(hw, lane_id, &cfg->ln);
+	if (cfg->ln.speed == SPEED_UNKNOWN) {
+		dev_err(hw->dev, "No autonegotiation common speed could be identified\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	/**
+	 * To reach the autoneg completion stage, the application has to provide
+	 * the PCS link status to 1. Thus, the application has to update PHY
+	 * PLL to generate negotiated rate associated frequency.
+	 * Then it has to configure the good PCS and wait for PCS link be up.
+	 * The application can at least set the PCS link status to 1.
+	 * Link training (if activated) starts.
+	 * Then, the autoneg FSM reach the final completion state.
+	 */
+	/* Force PCS link status as link training not supported here */
+	mask = BIT(MAC_CTRL_AN_CTRL_PCS_LINK_STATUS_SHIFT + cfg->id);
+	updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
+
+	mask = AN_KXAN_STATUS_AN_COMPLETE_MASK;
+	ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_STATUS_OFFSET,
+			mask, mask, AN_TIMEOUT_MS);
+	if (ret) {
+		dev_err(hw->dev, "Autonegotiation completion timeout\n");
+		goto exit;
+	}
+
+	dev_info(hw->dev, "Autonegotiation done - negotiated speed: %d Mb/s\n",
+		 cfg->ln.speed);
+
+	ret = 0;
+
+exit:
+	if (ret != 0)
+		kvx_eth_dump_an_regs(hw, cfg, 0);
+
+	/* Stop AN */
+	mask = MAC_CTRL_AN_CTRL_EN_MASK;
+	updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
+
+	return ret;
+}
+
 /**
  * kvx_eth_mac_cfg() - MAC configuration
  */
