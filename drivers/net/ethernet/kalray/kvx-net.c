@@ -1178,6 +1178,14 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 		dev->hw.eth_id = KVX_ETH0;
 	}
 
+	if (of_property_read_u32(np, "kalray,rxtx-crossed",
+			(u32 *) &dev->hw.rxtx_crossed) != 0)
+		dev->hw.rxtx_crossed = 0;
+
+	if (of_property_read_u32_array(np, "kalray,dma-rx-chan-error",
+				       (u32 *)&dev->hw.rx_chan_error, 1) != 0)
+		dev->hw.rx_chan_error = 0xFF;
+
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
 		rtm_node = of_parse_phandle(pdev->dev.of_node,
 				rtm_prop_name[rtm], 0);
@@ -1195,10 +1203,6 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 			return -EPROBE_DEFER;
 	}
 
-	if (of_property_read_u32(np, "kalray,rxtx-crossed",
-			(u32 *) &dev->hw.rxtx_crossed) != 0)
-		dev->hw.rxtx_crossed = 0;
-
 	ret = of_property_count_u32_elems(np, "kalray,rtm-channels");
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Unable to get rtm-channels\n");
@@ -1214,10 +1218,6 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 		dev_err(&pdev->dev, "Failed to request rtm-channels\n");
 		return ret;
 	}
-
-	if (of_property_read_u32_array(np, "kalray,dma-rx-chan-error",
-				       (u32 *)&dev->hw.rx_chan_error, 1) != 0)
-		dev->hw.rx_chan_error = 0xFF;
 
 	return 0;
 }
