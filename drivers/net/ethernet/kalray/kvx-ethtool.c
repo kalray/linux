@@ -549,12 +549,6 @@ static void fill_roce_filter(struct kvx_eth_netdev *ndev,
 	union roce_filter_desc *filter = (union roce_filter_desc *) flt;
 	u32 qpair = be64_to_cpu(*((__be64 *)fs->h_ext.data));
 	u32 qpair_mask = be64_to_cpu(*((__be64 *)fs->m_ext.data));
-	enum kvx_roce_version version;
-
-	if (!is_roce_filter(ndev, fs, &version))
-		return;
-	if (version != roce_version)
-		return;
 
 	netdev_dbg(ndev->netdev, "Adding a RoCE rule (qpair: 0x%x, mask: 0x%x)\n",
 			qpair, qpair_mask);
@@ -693,38 +687,24 @@ err:
 	return -ENOMEM;
 }
 
-static int get_layer(struct kvx_eth_netdev *ndev,
+static inline int is_protocol_supported(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs)
 {
 	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
-	int layer;
 
 	switch (proto) {
 	case TCP_V4_FLOW:
 	case UDP_V4_FLOW:
 	case TCP_V6_FLOW:
 	case UDP_V6_FLOW:
-		layer = KVX_NET_LAYER_4;
-		break;
 	case IP_USER_FLOW:
 	case IPV6_USER_FLOW:
-		layer = KVX_NET_LAYER_3;
-		break;
 	case ETHER_FLOW:
-		layer = KVX_NET_LAYER_2;
-		break;
+		return 0;
 	default:
 		netdev_err(ndev->netdev, "Unsupported protocol (expect TCP, UDP, IP4, IP6, ETH)\n");
-		return -EINVAL;
 	}
-
-	/* RoCE is not a proper layer in ethtool terms, but kvx need a parser
-	 * filter for RoCE itself.
-	 */
-	if (is_roce_filter(ndev, fs, NULL))
-		layer++;
-
-	return layer;
+	return -EINVAL;
 }
 
 static int kvx_eth_fill_parser(struct kvx_eth_netdev *ndev,
@@ -734,58 +714,66 @@ static int kvx_eth_fill_parser(struct kvx_eth_netdev *ndev,
 	struct kvx_eth_hw *hw = ndev->hw;
 	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
 	union filter_desc **flt = hw->parsing.parsers[parser_index].filters;
+	int nb_layers = KVX_NET_LAYER_2;
+	enum kvx_roce_version roce_version;
 
 	/* Apply correct filer */
 	switch (proto) {
 	/* tcp/udp layer */
 	case TCP_V4_FLOW:
-		if (fill_tcp_filter(ndev, fs, flt[KVX_NET_LAYER_4]))
+		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IP);
+		fill_ipv4_filter(ndev, fs, flt[nb_layers++], IPPROTO_TCP);
+		if (fill_tcp_filter(ndev, fs, flt[nb_layers++]))
 			return -EINVAL;
-		fill_ipv4_filter(ndev, fs, flt[KVX_NET_LAYER_3], IPPROTO_TCP);
-		fill_eth_filter(ndev, fs, flt[KVX_NET_LAYER_2], ETH_P_IP);
 		break;
 	case UDP_V4_FLOW:
-		fill_roce_filter(ndev, fs, flt[KVX_NET_LAYER_5], ROCE_V2);
-		if (fill_udp_filter(ndev, fs, flt[KVX_NET_LAYER_4]))
+		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IP);
+		fill_ipv4_filter(ndev, fs, flt[nb_layers++], IPPROTO_UDP);
+		if (fill_udp_filter(ndev, fs, flt[nb_layers++]))
 			return -EINVAL;
-		fill_ipv4_filter(ndev, fs, flt[KVX_NET_LAYER_3], IPPROTO_UDP);
-		fill_eth_filter(ndev, fs, flt[KVX_NET_LAYER_2], ETH_P_IP);
+		if (is_roce_filter(ndev, fs, &roce_version))
+			fill_roce_filter(ndev, fs, flt[nb_layers++],
+					roce_version);
 		break;
 	case TCP_V6_FLOW:
-		if (fill_tcp_filter(ndev, fs, flt[KVX_NET_LAYER_4]))
+		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IPV6);
+		fill_ipv6_filter(ndev, fs, flt[nb_layers++], IPPROTO_TCP);
+		if (fill_tcp_filter(ndev, fs, flt[nb_layers++]))
 			return -EINVAL;
-		fill_tcp_filter(ndev, fs, flt[KVX_NET_LAYER_4]);
-		fill_ipv6_filter(ndev, fs, flt[KVX_NET_LAYER_3], IPPROTO_TCP);
-		fill_eth_filter(ndev, fs, flt[KVX_NET_LAYER_2], ETH_P_IPV6);
 		break;
 	case UDP_V6_FLOW:
-		fill_roce_filter(ndev, fs, flt[KVX_NET_LAYER_5], ROCE_V2);
-		if (fill_udp_filter(ndev, fs, flt[KVX_NET_LAYER_4]))
+		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IPV6);
+		fill_ipv6_filter(ndev, fs, flt[nb_layers++], IPPROTO_UDP);
+		if (fill_udp_filter(ndev, fs, flt[nb_layers++]))
 			return -EINVAL;
-		fill_ipv6_filter(ndev, fs, flt[KVX_NET_LAYER_3], IPPROTO_UDP);
-		fill_eth_filter(ndev, fs, flt[KVX_NET_LAYER_2], ETH_P_IPV6);
+		if (is_roce_filter(ndev, fs, &roce_version))
+			fill_roce_filter(ndev, fs, flt[nb_layers++],
+					roce_version);
 		break;
 	/* ip layer */
 	case IP_USER_FLOW:
-		fill_ipv4_filter(ndev, fs, flt[KVX_NET_LAYER_3], 0);
-		fill_eth_filter(ndev, fs, flt[KVX_NET_LAYER_2], ETH_P_IP);
+		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IP);
+		fill_ipv4_filter(ndev, fs, flt[nb_layers++], 0);
 		break;
 	case IPV6_USER_FLOW:
-		fill_ipv6_filter(ndev, fs, flt[KVX_NET_LAYER_3], 0);
-		fill_eth_filter(ndev, fs, flt[KVX_NET_LAYER_2], ETH_P_IPV6);
+		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IPV6);
+		fill_ipv6_filter(ndev, fs, flt[nb_layers++], 0);
 		break;
 	/* mac layer */
 	case ETHER_FLOW:
-		fill_roce_filter(ndev, fs, flt[KVX_NET_LAYER_3], ROCE_V1);
-		fill_eth_filter(ndev, fs, flt[KVX_NET_LAYER_2], 0);
+		fill_eth_filter(ndev, fs, flt[nb_layers++], 0);
+		if (is_roce_filter(ndev, fs, &roce_version))
+			fill_roce_filter(ndev, fs, flt[nb_layers++],
+					roce_version);
 		break;
 	default:
 		/* Should never happen as it is checked earlier */
+		nb_layers = 0;
 		return -EINVAL;
 	}
 
+	hw->parsing.parsers[parser_index].nb_layers = nb_layers;
 	hw->parsing.parsers[parser_index].enabled = 1;
-	hw->parsing.parsers[parser_index].nb_layers = get_layer(ndev, fs) + 1;
 
 	return 0;
 }
@@ -797,19 +785,18 @@ static int kvx_eth_parse_ethtool_rule(struct kvx_eth_netdev *ndev,
 	struct kvx_eth_hw *hw = ndev->hw;
 	struct ethtool_rx_flow_spec *rule;
 	union filter_desc **flt = hw->parsing.parsers[parser_index].filters;
-	int ret, layer, i;
+	int ret, i;
 
-	ret = get_layer(ndev, fs);
-	if (ret < 0)
+	ret = is_protocol_supported(ndev, fs);
+	if (ret)
 		return ret;
-	layer = ret;
 
-	ret = alloc_filters(ndev, flt, layer + 1);
-	if (ret != 0)
+	ret = alloc_filters(ndev, flt, KVX_NET_LAYER_NB);
+	if (ret)
 		return ret;
 
 	ret = kvx_eth_fill_parser(ndev, fs, parser_index);
-	if (ret != 0)
+	if (ret)
 		return ret;
 
 	/* Copy ethtool rule for retrieving it when needed */
@@ -821,7 +808,7 @@ static int kvx_eth_parse_ethtool_rule(struct kvx_eth_netdev *ndev,
 	return 0;
 
 err:
-	for (i = 0; i < layer + 1; i++)
+	for (i = 0; i < KVX_NET_LAYER_NB; i++)
 		delete_filter(ndev, parser_index, i);
 	return -ENOMEM;
 }
@@ -847,7 +834,7 @@ static int add_parser_filter(struct kvx_eth_netdev *ndev,
 	/* Use the layer as priority to avoid parser collision for lower
 	 * importance filters
 	 */
-	prio = get_layer(ndev, fs);
+	prio = ndev->hw->parsing.parsers[parser_index].nb_layers;
 	if (prio > KVX_ETH_PARSERS_MAX_PRIO)
 		return -EINVAL;
 
