@@ -108,6 +108,23 @@ enum parser_dispatch_policy {
 	PARSER_POLICY_NB,
 };
 
+#define RATE_1GBASE_KX              BIT(0)
+#define RATE_10GBASE_KX4            BIT(1)
+#define RATE_10GBASE_KR             BIT(2)
+#define RATE_40GBASE_KR4            BIT(3)
+#define RATE_40GBASE_CR4            BIT(4)
+#define RATE_100GBASE_CR10          BIT(5)
+#define RATE_100GBASE_KP4           BIT(6)
+#define RATE_100GBASE_KR4           BIT(7)
+#define RATE_100GBASE_CR4           BIT(8)
+#define RATE_25GBASE_KR_CR_S        BIT(9)
+#define RATE_25GBASE_KR_CR          BIT(10)
+
+#define FEC_25G_RS_REQUESTED        BIT(0)
+#define FEC_25G_BASE_R_REQUESTED    BIT(1)
+#define FEC_10G_FEC_ABILITY         BIT(2)
+#define FEC_10G_FEC_REQUESTED       BIT(3)
+
 /**
  * struct kvx_eth_lut_f - HLUT features
  * @kobj: kobject for sysfs
@@ -345,11 +362,27 @@ struct kvx_eth_phy_f {
 };
 
 /**
+ * struct link_capability - Link capabilities
+ * @speed: current data rate in Mb/s
+ * @rate: supported data rates
+ * @fec: FEC types mask
+ * @pause: is pause enabled
+ */
+struct link_capability {
+	unsigned int speed;
+	u32 rate;
+	u32 fec;
+	u8  pause;
+};
+
+/**
  * struct kvx_eth_lane_cfg - Lane configuration
  * @id: lane_id [0, 3]
  * @link: phy link state
  * @speed: phy node speed
  * @duplex: duplex mode
+ * @lc: link capabilities
+ * @ln: link negotiated rate/fec/pause
  * @hw: back pointer to hw description
  * @lb_f: Load balancer features
  * @tx_fifo_list: List of tx features
@@ -363,6 +396,8 @@ struct kvx_eth_lane_cfg {
 	int link;
 	unsigned int speed;
 	unsigned int duplex;
+	struct link_capability lc;
+	struct link_capability ln;
 	struct kvx_eth_hw *hw;
 	struct list_head tx_fifo_list;
 	struct kvx_eth_pfc_f pfc_f;
@@ -647,6 +682,7 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw);
 int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw);
 int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw);
+int kvx_mac_autoneg_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);

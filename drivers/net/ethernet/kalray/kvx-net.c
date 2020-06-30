@@ -1317,6 +1317,7 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 
 	kvx_eth_get_module_transceiver(netdev, &ndev->cfg.transceiver);
 
+	phylink_set(mask, Autoneg);
 	phylink_set_port_modes(mask);
 	phylink_set(mask, Pause);
 	phylink_set(mask, Asym_Pause);
@@ -1396,7 +1397,7 @@ static int configure_rtm(struct kvx_eth_netdev *ndev, unsigned int rtm,
 		return -EINVAL;
 	}
 
-	netdev_info(ndev->netdev, "Setting retimer%d speed to %d\n",
+	netdev_dbg(ndev->netdev, "Setting retimer%d speed to %d\n",
 			rtm, ndev->cfg.speed);
 
 	for (i = 0; i < nb_lanes; i++) {
@@ -1408,19 +1409,58 @@ static int configure_rtm(struct kvx_eth_netdev *ndev, unsigned int rtm,
 	return 0;
 }
 
+/**
+ * kvx_eth_autoneg() - Autoneg config: set phy/serdes in 10G mode (mandatory)
+ */
+static int kvx_eth_autoneg(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_dev *dev = KVX_DEV(ndev);
+	int i, ret = 0;
+
+	if (dev->hw.rxtx_crossed) {
+		netdev_err(ndev->netdev, "Autonegotiation is not supported with inverted lanes\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	/* Before reconfiguring retimers, serdes must be disabled */
+	kvx_mac_phy_disable_serdes(ndev->hw);
+
+	if (dev->type->phy_init)
+		dev->type->phy_init(ndev->hw, SPEED_40000);
+
+	ret = kvx_eth_phy_serdes_init(ndev->hw, ndev->cfg.id, SPEED_40000);
+	if (ret)
+		netdev_err(ndev->netdev, "Failed to configure serdes\n");
+
+	for (i = 0; i < RTM_NB; i++) {
+		ret = configure_rtm(ndev, i, SPEED_40000);
+		if (ret) {
+			netdev_err(ndev->netdev, "Failed to configure retimer %i\n",
+				   i);
+			goto exit;
+		}
+	}
+
+	ret = kvx_mac_autoneg_cfg(ndev->hw, &ndev->cfg);
+	if (!ret)
+		ndev->cfg.speed = ndev->cfg.ln.speed;
+
+exit:
+	return ret;
+}
+
 static void kvx_phylink_mac_config(struct phylink_config *cfg,
 				   unsigned int mode,
 				   const struct phylink_link_state *state)
 {
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_dev *dev = container_of(ndev->hw,
-					       struct kvx_eth_dev, hw);
+	struct kvx_eth_dev *dev = KVX_DEV(ndev);
 	bool update_serdes = false;
 	int i, ret = 0;
 	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
 
-	/* Prevent kvx_eth_phy_serdes_init being called again */
 	if (ndev->cfg.speed != state->speed ||
 	    ndev->cfg.duplex != state->duplex)
 		update_serdes = true;
@@ -1433,6 +1473,14 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	if (!(ndev->cfg.pfc_f.global_pause_en && pause)) {
 		ndev->cfg.pfc_f.global_pause_en = pause;
 		kvx_eth_pfc_f_cfg(ndev->hw, &ndev->cfg.pfc_f);
+	}
+
+	if (state->an_enabled) {
+		ret = kvx_eth_autoneg(ndev);
+		if (ret)
+			netdev_err(netdev, "Autonegotiation failed, using default speed %i Mb/s\n",
+					ndev->cfg.speed);
+		update_serdes = true;
 	}
 
 	if (update_serdes) {
