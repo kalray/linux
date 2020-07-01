@@ -1117,6 +1117,7 @@ static int kvx_rproc_probe(struct platform_device *pdev)
 	kvx_rproc->has_dev_state = false;
 	init_completion(&kvx_rproc->shutdown_comp);
 	rproc->ops->parse_fw = kvx_rproc_parse_fw;
+	rproc->ops->sanity_check = rproc_elf_sanity_check;
 
 	rproc->auto_boot = of_property_read_bool(np, "kalray,auto-boot");
 
