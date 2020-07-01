@@ -15,6 +15,7 @@
 #include <asm/insns.h>
 #include <asm/sfr_defs.h>
 #include <asm/break_hook.h>
+#include <asm/cacheflush.h>
 #include <asm/insns_defs.h>
 
 #include <uapi/asm/ptrace.h>
@@ -277,4 +278,12 @@ int kgdb_arch_remove_breakpoint(struct kgdb_bkpt *bpt)
 {
 	return kvx_insns_write_nostop((u32 *) bpt->saved_instr,
 				      BREAK_INSTR_SIZE, (void *) bpt->bpt_addr);
+}
+
+void kgdb_call_nmi_hook(void *ignored)
+{
+	kgdb_nmicallback(raw_smp_processor_id(), get_irq_regs());
+
+	/* Inval I-cache to reload from memory if breakpoints have been set */
+	l1_inval_icache_all();
 }
