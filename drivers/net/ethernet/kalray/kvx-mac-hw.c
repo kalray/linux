@@ -910,10 +910,6 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		dev_err(hw->dev, "Link up timeout.\n");
 		reg = kvx_mac_readl(hw, MAC_SYNC_STATUS_OFFSET);
 		dev_dbg(hw->dev, "Link MAC sync status: 0x%x\n", reg);
-		reg = kvx_mac_readl(hw, MAC_FAULT_STATUS_OFFSET);
-		dev_dbg(hw->dev, "Link MAC fault status: 0x%x\n", reg);
-		reg = kvx_mac_readl(hw, MAC_TX_FAULT_CTRL_OFFSET);
-		dev_dbg(hw->dev, "Link MAC TX fault ctrl: 0x%x\n", reg);
 		kvx_eth_mac_pcs_status(hw, cfg);
 		return ret;
 	}
