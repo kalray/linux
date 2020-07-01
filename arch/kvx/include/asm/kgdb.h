@@ -16,7 +16,7 @@
 #include <asm/ptrace.h>
 #include <asm/break_hook.h>
 
-#define CACHE_FLUSH_IS_SAFE  1
+#define CACHE_FLUSH_IS_SAFE	0
 
 #define KGDB_DYN_BREAK_INSN	KVX_BREAK_INSN(BREAK_CAUSE_KGDB_DYN)
 #define KGDB_COMP_BREAK_INSN	KVX_BREAK_INSN(BREAK_CAUSE_KGDB_COMP)
