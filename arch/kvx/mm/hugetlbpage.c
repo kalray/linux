@@ -57,9 +57,15 @@ pte_t huge_ptep_get_and_clear(struct mm_struct *mm,
 
 	nr_cont = get_nr_cont_huge_pages(pte_val(pte));
 
-	for (i = 0; i < nr_cont; i++, ptep++)
+	for (i = 0; i < nr_cont; i++, ptep++) {
+		if (pte_dirty(*ptep))
+			pte = pte_mkdirty(pte);
+		if (pte_young(*ptep))
+			pte = pte_mkyoung(pte);
 		pte_clear(mm, addr, ptep);
+	}
 
+	flush_tlb_mm(mm);
 	return pte;
 }
 
