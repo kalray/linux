@@ -52,21 +52,27 @@ void __init smp_cpus_done(unsigned int max_cpus)
 void __init smp_init_cpus(void)
 {
 	struct cpumask cpumask;
-	struct device_node *cpus, *cpu;
+	struct device_node *cpu;
 	const __be32 *reg;
+	u32 cpu_num;
 	unsigned int nr_cpus = 0;
 
-	cpus = of_find_node_by_name(NULL, "cpus");
-	if (!cpus)
-		cpumask_setall(&cpumask);
-
 	cpumask_clear(&cpumask);
-	for_each_child_of_node(cpus, cpu) {
+
+	for_each_of_cpu_node(cpu) {
+		if (!of_device_is_available(cpu))
+			continue;
+
 		reg = of_get_property(cpu, "reg", NULL);
 		if (!reg)
 			continue;
+
+		cpu_num = be32_to_cpup(reg);
+		if (cpu_num >= NR_CPUS)
+			continue;
+
 		nr_cpus++;
-		cpumask_set_cpu(be32_to_cpup(reg), &cpumask);
+		cpumask_set_cpu(cpu_num, &cpumask);
 	}
 
 	pr_info("%d possible cpus\n", nr_cpus);
