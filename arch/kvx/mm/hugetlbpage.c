@@ -15,14 +15,15 @@
 
 /**
  * get_nr_cont_huge_pages - return the number of contiguous pages
- * @ptev: the value of the PTE
+ * @ptep: a PTE
  *
  * Return: it reads the page size and depending of the value it returns the
  * number of contiguous entries used by the huge page.
  */
-static unsigned int get_nr_cont_huge_pages(unsigned long ptev)
+static unsigned int get_nr_cont_huge_pages(pte_t pte)
 {
 	unsigned int psize, nr_cont;
+	unsigned long ptev = pte_val(pte);
 
 	psize = (ptev & KVX_PAGE_SZ_MASK) >> KVX_PAGE_SZ_SHIFT;
 
@@ -42,7 +43,7 @@ void set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
 {
 	unsigned int nr_cont, i;
 
-	nr_cont = get_nr_cont_huge_pages(pte_val(pte));
+	nr_cont = get_nr_cont_huge_pages(pte);
 
 	for (i = 0; i < nr_cont; i++, ptep++)
 		set_pte_at(mm, addr, ptep, pte);
@@ -53,9 +54,9 @@ pte_t huge_ptep_get_and_clear(struct mm_struct *mm,
 			      pte_t *ptep)
 {
 	unsigned int nr_cont, i;
-	pte_t pte = *ptep;
+	pte_t pte = huge_ptep_get(ptep);
 
-	nr_cont = get_nr_cont_huge_pages(pte_val(pte));
+	nr_cont = get_nr_cont_huge_pages(pte);
 
 	for (i = 0; i < nr_cont; i++, ptep++) {
 		if (pte_dirty(*ptep))
@@ -67,6 +68,95 @@ pte_t huge_ptep_get_and_clear(struct mm_struct *mm,
 
 	flush_tlb_mm(mm);
 	return pte;
+}
+
+static pte_t get_dirty_young_from_cont(pte_t *ptep)
+{
+	unsigned int nr_cont, i;
+	pte_t pte_orig = huge_ptep_get(ptep);
+
+	nr_cont = get_nr_cont_huge_pages(pte_orig);
+
+	for (i = 0; i < nr_cont; i++, ptep++) {
+		pte_t pte = huge_ptep_get(ptep);
+
+		if (pte_dirty(pte))
+			pte_orig = pte_mkdirty(pte_orig);
+
+		if (pte_young(pte))
+			pte_orig = pte_mkyoung(pte_orig);
+	}
+
+	return pte_orig;
+}
+
+int huge_ptep_set_access_flags(struct vm_area_struct *vma,
+			       unsigned long addr, pte_t *ptep,
+			       pte_t pte, int dirty)
+{
+	unsigned int nr_cont, i;
+	int flush = 0;
+	pte_t pte_tmp;
+
+	nr_cont = get_nr_cont_huge_pages(huge_ptep_get(ptep));
+
+	/*
+	 * As it is done by ARM64, make sure we don't lose the dirty or young
+	 * state. So first we read dirty and young bits from all contiguous
+	 * PTEs and update the pte given as argument if needed.
+	 */
+	pte_tmp = get_dirty_young_from_cont(ptep);
+	if (pte_dirty(pte_tmp))
+		pte = pte_mkdirty(pte);
+
+	if (pte_young(pte_tmp))
+		pte = pte_mkyoung(pte);
+
+	for (i = 0; i < nr_cont; i++, ptep++) {
+		if (!pte_same(*ptep, pte)) {
+			set_pte_at(vma->vm_mm, addr, ptep, pte);
+			flush = 1;
+		}
+	}
+
+	if (flush)
+		flush_tlb_page(vma, addr);
+
+	return flush;
+}
+
+void huge_ptep_set_wrprotect(struct mm_struct *mm,
+			     unsigned long addr, pte_t *ptep)
+{
+	unsigned int nr_cont, i;
+
+	nr_cont = get_nr_cont_huge_pages(huge_ptep_get(ptep));
+
+	for (i = 0; i < nr_cont; i++, ptep++)
+		ptep_set_wrprotect(mm, addr, ptep);
+}
+
+
+void huge_ptep_clear_flush(struct vm_area_struct *vma,
+			   unsigned long addr, pte_t *ptep)
+{
+	unsigned int nr_cont, i;
+	struct mm_struct *mm;
+	int flush = 0;
+	pte_t pte_orig = huge_ptep_get(ptep);
+
+	nr_cont = get_nr_cont_huge_pages(huge_ptep_get(ptep));
+
+	mm = vma->vm_mm;
+	for (i = 0; i < nr_cont; i++, ptep++) {
+		BUG_ON(pte_orig.pte != pte_val(*ptep));
+		pte_clear(mm, address, ptep);
+		if (pte_accessible(mm, *ptep))
+			flush = 1;
+	}
+
+	if (flush)
+		flush_tlb_page(vma, addr);
 }
 
 pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
