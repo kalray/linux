@@ -32,6 +32,24 @@ int kvx_dma_get_max_nb_desc(struct platform_device *pdev)
 EXPORT_SYMBOL_GPL(kvx_dma_get_max_nb_desc);
 
 /**
+ * kvx_dma_release_phy() - release hw_queues associated to phy
+ * @dev: Current device
+ * @phy: phy to release
+ */
+void kvx_dma_release_phy(struct kvx_dma_dev *dev, struct kvx_dma_phy *phy)
+{
+	if (!phy)
+		return;
+
+	dev_dbg(dev->dma.dev, "%s dir: %d hw_id: %d\n", __func__,
+		phy->dir, phy->hw_id);
+	spin_lock(&dev->lock);
+	kvx_dma_release_queues(phy, &dev->jobq_list);
+	phy->used = 0;
+	spin_unlock(&dev->lock);
+}
+
+/**
  * kvx_dma_reserve_rx_chan() - Reserve rx channel for MEM2ETH use only
  * Allocates and initialise all required hw RX fifos.
  *

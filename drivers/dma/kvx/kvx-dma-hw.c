@@ -90,8 +90,11 @@ static int kvx_dma_alloc_queue(struct kvx_dma_phy *phy,
 			       size_t size, u64 offset)
 {
 	gfp_t flags = GFP_DMA;
+	struct platform_device *pdev = container_of(phy->dev,
+					struct platform_device, dev);
+	struct kvx_dma_dev *dev = platform_get_drvdata(pdev);
 
-	q->vaddr = dma_alloc_coherent(phy->dev, size, &q->paddr, flags);
+	q->vaddr = gen_pool_dma_alloc(dev->dma_pool, size, &q->paddr);
 	if (!q->vaddr)
 		return -ENOMEM;
 
@@ -115,11 +118,15 @@ static int kvx_dma_alloc_queue(struct kvx_dma_phy *phy,
 static void kvx_dma_release_queue(struct kvx_dma_phy *phy,
 				  struct kvx_dma_hw_queue *q)
 {
+	struct platform_device *pdev = container_of(phy->dev,
+					struct platform_device, dev);
+	struct kvx_dma_dev *dev = platform_get_drvdata(pdev);
+
 	dev_dbg(phy->dev, "%s q[%d].base: 0x%llx .vaddr: 0x%llx .paddr: 0x%llx .size: %d\n",
 		__func__, phy->hw_id, (u64)q->base, (u64)q->vaddr,
 		(u64)q->paddr, (int)q->size);
 	if (q->vaddr)
-		dma_free_coherent(phy->dev, q->size, q->vaddr, q->paddr);
+		gen_pool_free(dev->dma_pool, q->vaddr, q->size);
 
 	q->vaddr = 0;
 	q->paddr = 0;
