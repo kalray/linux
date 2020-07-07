@@ -522,24 +522,6 @@ out:
 }
 
 /**
- * kvx_dma_release_phy() - release hw_queues associated to phy
- * @dev: Current device
- * @phy: phy to release
- */
-void kvx_dma_release_phy(struct kvx_dma_dev *dev, struct kvx_dma_phy *phy)
-{
-	if (!phy)
-		return;
-
-	dev_dbg(dev->dma.dev, "%s dir: %d hw_id: %d\n", __func__,
-		phy->dir, phy->hw_id);
-	spin_lock(&dev->lock);
-	kvx_dma_release_queues(phy, &dev->jobq_list);
-	phy->used = 0;
-	spin_unlock(&dev->lock);
-}
-
-/**
  * kvx_dma_slave_config() - Configures slave before actual transfer
  * @chan: Channel to configure
  * @cfg: Base dmaengine configuration (contained in kvx_dma_slave_cfg)
@@ -1212,6 +1194,7 @@ static int kvx_dma_parse_dt(struct platform_device *pdev,
 	struct device_node *node, *np = pdev->dev.of_node;
 	struct reserved_mem *rmem = NULL;
 	dma_addr_t rmem_dma;
+	void *dma_vaddr;
 	int ret = 0;
 
 	if (of_property_read_u32_array(np, "dma-channels",
@@ -1277,9 +1260,21 @@ static int kvx_dma_parse_dt(struct platform_device *pdev,
 		rmem_dma = dma_map_resource(&pdev->dev, rmem->base, rmem->size,
 					    DMA_BIDIRECTIONAL, 0);
 		if (rmem_dma != DMA_MAPPING_ERROR) {
-			ret = dma_declare_coherent_memory(&pdev->dev,
-							  rmem->base,
-							  rmem_dma, rmem->size);
+			dev->dma_pool = devm_gen_pool_create(&pdev->dev,
+					fls(rmem->size / dev->dma_requests), -1,
+					KVX_DMA_DRIVER_NAME);
+			if (!dev->dma_pool) {
+				dev_err(&pdev->dev, "Unable to alloc dma pool\n");
+				return -ENOMEM;
+			}
+
+			dma_vaddr = devm_memremap(&pdev->dev, rmem->base,
+						  rmem->size, MEMREMAP_WC);
+			if (IS_ERR(dma_vaddr))
+				return PTR_ERR(dma_vaddr);
+
+			ret = gen_pool_add_virt(dev->dma_pool, dma_vaddr,
+						 rmem_dma, rmem->size, -1);
 			if (ret) {
 				dma_unmap_resource(&pdev->dev, rmem_dma,
 						   rmem->size,
