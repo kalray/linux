@@ -13,6 +13,7 @@
 #include <linux/scatterlist.h>
 #include <linux/platform_device.h>
 #include <linux/dma/kvx-dma.h>
+#include <linux/genalloc.h>
 
 #include "../virt-dma.h"
 #include "kvx-dma-hw.h"
@@ -155,6 +156,7 @@ struct kvx_dma_fws {
  * @task: Tasklet handling
  * @chan: Array of channels for device
  * @desc_cache: Cache of descriptors
+ * @dma_pool: Used for queue allocations
  * @phy: RX/TX HW resources
  * @jobq_list: owns jobq list for allocator (under lock)
  * @lock: Lock on device/channel lists
@@ -180,6 +182,7 @@ struct kvx_dma_dev {
 	struct tasklet_struct task;
 	struct kvx_dma_chan **chan;
 	struct kmem_cache *desc_cache;
+	struct gen_pool *dma_pool;
 	struct kvx_dma_phy *phy[KVX_DMA_DIR_TYPE_MAX];
 	struct kvx_dma_job_queue_list jobq_list;
 	spinlock_t lock;
