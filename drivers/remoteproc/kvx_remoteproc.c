@@ -781,30 +781,6 @@ static int kvx_rproc_of_get_dev_syscon(struct platform_device *pdev,
 	return 0;
 }
 
-static int kvx_rproc_get_state(struct kvx_rproc *kvx_rproc)
-{
-	int ret;
-	unsigned int clus_status = 0;
-	struct rproc *rproc = kvx_rproc->rproc;
-	u64 offset = KVX_FTU_CLUSTER_STATUS +
-		     kvx_rproc->cluster_id * KVX_FTU_CLUSTER_STRIDE;
-
-	ret = regmap_read(kvx_rproc->ftu_regmap, offset,
-			  &clus_status);
-	if (ret) {
-		dev_err(kvx_rproc->dev, "regmap_read of cluster status failed, status = %d\n",
-			ret);
-		return ret;
-	}
-
-	if (clus_status & BIT(KVX_FTU_CLUSTER_STATUS_RM_RUNNING_BIT)) {
-		atomic_inc(&rproc->power);
-		rproc->state = RPROC_RUNNING;
-	}
-
-	return 0;
-}
-
 #define to_rproc(d) container_of(d, struct rproc, dev)
 
 static ssize_t str_store(struct rproc *rproc,
@@ -945,13 +921,7 @@ static int kvx_rproc_probe(struct platform_device *pdev)
 	if (ret)
 		goto free_rproc;
 
-	ret = kvx_rproc_get_state(kvx_rproc);
-	if (ret)
-		goto free_rproc;
-
-	/* If not running, enable clocking to allow accessing memory */
-	if (rproc->state != RPROC_RUNNING)
-		kvx_rproc_reset(kvx_rproc);
+	kvx_rproc_reset(kvx_rproc);
 
 	rproc->dev.groups = kvx_remoteproc_groups;
 
