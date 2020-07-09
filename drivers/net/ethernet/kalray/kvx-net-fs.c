@@ -107,8 +107,6 @@ DECLARE_SYSFS_ENTRY(phy_param);
 FIELD_RW_ENTRY(phy_param, pre, 0, 32);
 FIELD_RW_ENTRY(phy_param, post, 0, 32);
 FIELD_RW_ENTRY(phy_param, swing, 0, 32);
-FIELD_RW_ENTRY(phy_param, rx_polarity, 0, 1);
-FIELD_RW_ENTRY(phy_param, tx_polarity, 0, 1);
 FIELD_RW_ENTRY(phy_param, en, 0, 1);
 FIELD_R_ENTRY(phy_param, fom, 0, U8_MAX);
 
@@ -116,8 +114,6 @@ static struct attribute *phy_param_attrs[] = {
 	&pre_attr.attr,
 	&post_attr.attr,
 	&swing_attr.attr,
-	&rx_polarity_attr.attr,
-	&tx_polarity_attr.attr,
 	&fom_attr.attr,
 	&en_attr.attr,
 	NULL,
