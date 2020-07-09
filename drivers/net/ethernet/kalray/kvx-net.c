@@ -1158,31 +1158,18 @@ static struct platform_device *kvx_eth_check_dma(struct platform_device *pdev,
 	return dma_pdev;
 }
 
-/* kvx_eth_dev_parse_dt() - Parse eth device tree inputs
+/* kvx_eth_rtm_parse_dt() - Parse retimer related device tree inputs
  *
  * @pdev: platform device
  * @dev: Current kvx_eth_dev
  * Return: 0 on success, < 0 on failure
  */
-int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
+int kvx_eth_rtm_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *rtm_node;
 	struct kvx_eth_rtm_params *params = &dev->hw.rtm_params;
-	int rtm, ret;
-
-	if (of_property_read_u32(np, "cell-index", &dev->hw.eth_id)) {
-		dev_warn(&pdev->dev, "Default kvx ethernet index to 0\n");
-		dev->hw.eth_id = KVX_ETH0;
-	}
-
-	if (of_property_read_u32(np, "kalray,rxtx-crossed",
-			(u32 *) &dev->hw.rxtx_crossed) != 0)
-		dev->hw.rxtx_crossed = 0;
-
-	if (of_property_read_u32_array(np, "kalray,dma-rx-chan-error",
-				       (u32 *)&dev->hw.rx_chan_error, 1) != 0)
-		dev->hw.rx_chan_error = 0xFF;
+	int rtm, i, ret = 0;
 
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
 		rtm_node = of_parse_phandle(pdev->dev.of_node,
@@ -1218,6 +1205,47 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	}
 
 	return 0;
+}
+
+/* kvx_eth_dev_parse_dt() - Parse eth device tree inputs
+ *
+ * @pdev: platform device
+ * @dev: Current kvx_eth_dev
+ * Return: 0 on success, < 0 on failure
+ */
+int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
+{
+	struct device_node *np = pdev->dev.of_node;
+	int i, ret = 0;
+	u32 tmp_rx_polarities[KVX_ETH_LANE_NB] = {0};
+	u32 tmp_tx_polarities[KVX_ETH_LANE_NB] = {0};
+
+	if (of_property_read_u32(np, "cell-index", &dev->hw.eth_id)) {
+		dev_warn(&pdev->dev, "Default kvx ethernet index to 0\n");
+		dev->hw.eth_id = KVX_ETH0;
+	}
+
+	if (of_property_read_u32(np, "kalray,rxtx-crossed",
+			(u32 *) &dev->hw.rxtx_crossed) != 0)
+		dev->hw.rxtx_crossed = 0;
+
+	if (of_property_read_u32_array(np, "kalray,dma-rx-chan-error",
+				       (u32 *)&dev->hw.rx_chan_error, 1) != 0)
+		dev->hw.rx_chan_error = 0xFF;
+
+	of_property_read_u32_array(np, "kalray,rx-phy-polarities",
+			tmp_rx_polarities, KVX_ETH_LANE_NB);
+	of_property_read_u32_array(np, "kalray,tx-phy-polarities",
+			tmp_tx_polarities, KVX_ETH_LANE_NB);
+
+	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
+		dev->hw.phy_f.polarities[i].rx = (bool) tmp_rx_polarities[i];
+		dev->hw.phy_f.polarities[i].tx = (bool) tmp_tx_polarities[i];
+	}
+
+	ret = kvx_eth_rtm_parse_dt(pdev, dev);
+
+	return ret;
 }
 
 /* kvx_eth_netdev_parse_dt() - Parse netdev device tree inputs
@@ -1299,7 +1327,7 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 
 	/* Default tx eq. parameter tuning */
 	if (!of_property_read_u32_array(np, "kalray,phy-param",
-				   (u32 *)&ndev->hw->phy_f.param[i], 5))
+				   (u32 *)&ndev->hw->phy_f.param[i], 3))
 		ndev->hw->phy_f.param[i].en = 1;
 
 	return 0;
