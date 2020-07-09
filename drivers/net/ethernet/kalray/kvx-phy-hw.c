@@ -201,6 +201,7 @@ void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p)
 {
 	kvx_phy_param_tuning(hw);
+	kvx_phy_set_polarities(hw);
 }
 
 void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable)
@@ -266,22 +267,34 @@ void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 		reg = readw(hw->res[KVX_ETH_RES_PHY].base + off) & ~(mask);
 		writew(reg | v, hw->res[KVX_ETH_RES_PHY].base + off);
 
+		dev_dbg(hw->dev, "Lane [%d] param tuning (pre:%d, post:%d, swing:%d) done\n",
+			lane_id, param->pre, param->post, param->swing);
+	}
+}
+
+void kvx_phy_set_polarities(struct kvx_eth_hw *hw)
+{
+	u16 mask;
+	struct kvx_eth_polarities *pol;
+	u16 v, lane_id;
+	u32 off;
+
+	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
+		pol = &hw->phy_f.polarities[lane_id];
+
 		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
 		mask = PHY_LANE_RX_SERDES_CFG_INVERT_MASK;
-		v = (u16) param->rx_polarity <<
-			PHY_LANE_RX_SERDES_CFG_INVERT_SHIFT;
+		v = (u16) pol->rx << PHY_LANE_RX_SERDES_CFG_INVERT_SHIFT;
 		updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
 			     mask, v);
 
 		mask = PHY_LANE_TX_SERDES_CFG_INVERT_MASK;
-		v = (u16) param->tx_polarity <<
-			PHY_LANE_TX_SERDES_CFG_INVERT_SHIFT;
+		v = (u16) pol->tx << PHY_LANE_TX_SERDES_CFG_INVERT_SHIFT;
 		updatel_bits(hw, PHYMAC, off + PHY_LANE_TX_SERDES_CFG_OFFSET,
 			     mask, v);
 
-		dev_info(hw->dev, "Lane [%d] param tuning (pre:%d, post:%d, swing:%d, polarity rx:%d/tx: %d) done\n",
-			lane_id, param->pre, param->post, param->swing,
-			param->rx_polarity, param->tx_polarity);
+		dev_dbg(hw->dev, "Lane [%d] polarity rx:%d/tx:%d done\n",
+			lane_id, pol->rx, pol->tx);
 	}
 }
 
