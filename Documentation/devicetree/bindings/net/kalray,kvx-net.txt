@@ -23,7 +23,11 @@ Required properties:
 - kalray,dma-rx-channel-ids: start index of RX channel followed by number
 - kalray,dma-rx-comp-queue-ids: start index of RX completion queue followed by number
 - kalray,phy-param: phy parameters for Tx equalization, as follow:
-  <tx pre-amp, tx post-amp, tx swing, rx polarity, tx polarity>
+  <tx pre-amp, tx post-amp, tx swing>
+- kalray,rx-phy-polarities: Indexed by lane, 1 to invert rx lane polarity, 0
+  otherwise.
+- kalray,tx-phy-polarities: Indexed by lane, 1 to invert tx lane polarity, 0
+  otherwise.
 - kalray,dma-tx-channel-ids: stat index of TX channel followed by number [0, 9]
 - kalray,default-dispatch-entry: default dispatch table entry used by current cluster
 - sfp: sfp definition
@@ -44,6 +48,8 @@ Example:
 		kalray,rtm-channels = <0 1 2 3>;
 		kalray,rxtx-crossed = <1>;
 		kalray,dma-rx-chan-error = <63>;
+		kalray,rx-phy-polarities = <0 0 0 0>;
+		kalray,tx-phy-polarities = <0 0 0 0>;
 		eth0: ethernet@10050000 {
 			compatible = "kalray,kvx-eth";
 			reg = <0x0 0x10000000 0x0 0x3FFFF>,
@@ -61,7 +67,7 @@ Example:
 				kalray,dma-rx-channel-ids = <0 1>;
 				kalray,dma-rx-comp-queue-ids = <0 1>;
 				kalray,dma-tx-channel-ids = <0 4>;
-				kalray,phy-param = <0 0 40 0 0>;
+				kalray,phy-param = <0 0 40>;
 				kalray,default-dispatch-entry = <256>;
 				phy-mode = "internal";
 				sfp = <&qsfp0>;

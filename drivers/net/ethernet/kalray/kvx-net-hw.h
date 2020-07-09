@@ -314,8 +314,6 @@ struct kvx_eth_mac_f {
  * @pre: pre-amplitude
  * @post: post-amplitude
  * @swing: DC swing
- * @rx_polarity: Rx lane polarity
- * @tx_polarity: Tx lane polarity
  * @en: true if parameters have actually been set
  * @fom: launch FOM process and return its value
  * @lane_id: lane id
@@ -324,8 +322,6 @@ struct kvx_eth_phy_param {
 	u32 pre;
 	u32 post;
 	u32 swing;
-	u32 rx_polarity;
-	u32 tx_polarity;
 	u32 fom;
 	bool en;
 	int lane_id;
@@ -371,12 +367,23 @@ struct kvx_eth_tx_bert_param {
 };
 
 /**
+ * Lane polarities (p/n)
+ * @rx: receiver polarity
+ * @tx: transceiver polarity
+ */
+struct kvx_eth_polarities {
+	bool rx;
+	bool tx;
+};
+
+/**
  * struct kvx_eth_phy_f - Phy controller features
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
  * @loopback_mode: mac loopback mode
  * @param: phy param (TX equalization, RX/TX polarity)
  * @ber: phy BER testing
+ * @polarities: lane polarities
  * @reg_avail: false for HAPS platform
  * @bert_en: enable LBERT (set serdes in specific configuration)
  */
@@ -388,6 +395,7 @@ struct kvx_eth_phy_f {
 	struct kvx_eth_phy_param param[KVX_ETH_LANE_NB];
 	struct kvx_eth_rx_bert_param rx_ber[KVX_ETH_LANE_NB];
 	struct kvx_eth_tx_bert_param tx_ber[KVX_ETH_LANE_NB];
+	struct kvx_eth_polarities polarities[KVX_ETH_LANE_NB];
 	bool reg_avail;
 	bool bert_en;
 };
@@ -703,6 +711,7 @@ void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_rx_bert_param *p);
 void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_tx_bert_param *p);
+void kvx_phy_set_polarities(struct kvx_eth_hw *hw);
 void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
 void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
