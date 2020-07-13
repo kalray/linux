@@ -27,7 +27,8 @@
 #define KVX_ETH_RX_TAG_NB          64
 #define KVX_ETH_PARSERS_MAX_PRIO   7
 #define RX_CACHE_NB                4
-#define DISPATCH_TABLE_LINUX_ENTRY 256
+/* Use last 64 entries for current cluster */
+#define KVX_ETH_DEFAULT_RULE_DTABLE_IDX 256
 
 #define PFC_MAX_LEVEL 0x60000 /* 32 bits, must be 128 aligned */
 
@@ -663,6 +664,9 @@ void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id);
 void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut);
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
+void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
+				 struct kvx_eth_lane_cfg *cfg,
+				 struct kvx_eth_dt_f *dt, int idx);
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg, u32 rx_tag);
 void kvx_eth_dt_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_f *dt);
