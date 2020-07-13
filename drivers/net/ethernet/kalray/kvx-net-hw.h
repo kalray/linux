@@ -141,6 +141,21 @@ struct kvx_eth_lut_f {
 };
 
 /**
+ * struct kvx_eth_rx_noc - rx_noc features (PPS limiter config)
+ */
+struct kvx_eth_rx_noc {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	u16 vchan0_pps_timer;
+	u16 vchan0_payload_flit_nb;
+	u16 vchan1_pps_timer;
+	u16 vchan1_payload_flit_nb;
+	int lane_id;
+	int fdir;
+};
+
+/**
  * struct kvx_eth_lb_f - Load balancer features
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
@@ -149,6 +164,8 @@ struct kvx_eth_lut_f {
  * @keep_all_crc_error_pkt: Keep all received eth pkts including erroneous ones
  * @add_header: Add metadata to packet header
  * @add_footer: Add metadata to packet footer
+ * @rx_noc: pps limiter features per direction
+ * @id: lane id
  */
 struct kvx_eth_lb_f {
 	struct kobject kobj;
@@ -159,6 +176,7 @@ struct kvx_eth_lb_f {
 	u8 keep_all_crc_error_pkt;
 	u8 add_header;
 	u8 add_footer;
+	struct kvx_eth_rx_noc rx_noc[NB_CLUSTER];
 	u32 drop_mtu_cnt;
 	u32 drop_fcs_cnt;
 	u32 drop_crc_cnt;
@@ -696,6 +714,7 @@ u32 kvx_eth_lb_has_footer(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id);
+void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc);
 void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut);
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
