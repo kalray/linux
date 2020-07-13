@@ -1273,8 +1273,9 @@ static int kvx_dma_parse_dt(struct platform_device *pdev,
 			if (IS_ERR(dma_vaddr))
 				return PTR_ERR(dma_vaddr);
 
-			ret = gen_pool_add_virt(dev->dma_pool, dma_vaddr,
-						 rmem_dma, rmem->size, -1);
+			ret = gen_pool_add_virt(dev->dma_pool,
+					(unsigned long)dma_vaddr, rmem_dma,
+					rmem->size, -1);
 			if (ret) {
 				dma_unmap_resource(&pdev->dev, rmem_dma,
 						   rmem->size,
