@@ -550,12 +550,24 @@ int kvx_eth_phy_cfg(struct kvx_eth_hw *hw)
 	return 0;
 }
 
-int kvx_eth_mac_reset(struct kvx_eth_hw *hw)
+static int kvx_eth_mac_reset(struct kvx_eth_hw *hw, int lane_id)
 {
+	u32 mask, val = kvx_mac_readl(hw, MAC_RESET_OFFSET);
 	int ret = 0;
-	u32 val = 0;
 
-	kvx_mac_writel(hw, (~0U), MAC_RESET_CLEAR_OFFSET);
+	if (val) {
+		/* Initial state: MAC under reset */
+		kvx_mac_writel(hw, (~0U), MAC_RESET_CLEAR_OFFSET);
+	} else {
+		val = (BIT(lane_id) << MAC_RESET_SD_TX_CLK_SHIFT) |
+		       (BIT(lane_id) << MAC_RESET_SD_RX_CLK_SHIFT) |
+		       (BIT(lane_id) << MAC_RESET_MAC0_REF_CLK_SHIFT) |
+		       (BIT(lane_id) << MAC_RESET_MAC0_FF_CLK_SHIFT);
+		mask = MAC_RESET_SD_TX_CLK_MASK | MAC_RESET_SD_RX_CLK_MASK |
+		  MAC_RESET_MAC0_REF_CLK_MASK | MAC_RESET_MAC0_FF_CLK_MASK;
+		updatel_bits(hw, MAC, MAC_RESET_CLEAR_OFFSET, mask, val);
+	}
+
 	ret = kvx_poll(kvx_mac_readl, MAC_RESET_OFFSET, (u32)(~0U), 0,
 		       RESET_TIMEOUT_MS);
 	if (ret) {
@@ -950,7 +962,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		val |= (u32) BIT(MAC_SG_TX_LANE_CKMULT_SHIFT);
 	kvx_mac_writel(hw, val, MAC_SG_OFFSET);
 
-	ret = kvx_eth_mac_reset(hw);
+	ret = kvx_eth_mac_reset(hw, cfg->id);
 	if (ret)
 		return ret;
 
