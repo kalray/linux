@@ -175,6 +175,21 @@ static struct attribute *lb_f_attrs[] = {
 };
 SYSFS_TYPES(lb_f);
 
+DECLARE_SYSFS_ENTRY(rx_noc);
+FIELD_RW_ENTRY(rx_noc, vchan0_pps_timer, 0, U16_MAX);
+FIELD_RW_ENTRY(rx_noc, vchan0_payload_flit_nb, 0, 0xF);
+FIELD_RW_ENTRY(rx_noc, vchan1_pps_timer, 0, U16_MAX);
+FIELD_RW_ENTRY(rx_noc, vchan1_payload_flit_nb, 0, 0xF);
+
+static struct attribute *rx_noc_attrs[] = {
+	&vchan0_pps_timer_attr.attr,
+	&vchan0_payload_flit_nb_attr.attr,
+	&vchan1_pps_timer_attr.attr,
+	&vchan1_payload_flit_nb_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(rx_noc);
+
 DECLARE_SYSFS_ENTRY(lut_f);
 FIELD_RW_ENTRY(lut_f, qpn_enable, 0, RX_LB_LUT_QPN_CTRL_QPN_EN_MASK);
 FIELD_RW_ENTRY(lut_f, lane_enable, 0, 1);
@@ -312,6 +327,7 @@ static void kvx_eth_kobject_del(struct kvx_eth_lane_cfg *cfg,
 }
 
 static struct kset *lb_kset;
+static struct kset *rx_noc_kset;
 static struct kset *tx_kset;
 static struct kset *dt_kset;
 static struct kset *pfc_cl_kset;
@@ -365,6 +381,7 @@ void kvx_kset_##s##_remove(struct kvx_eth_netdev *ndev, struct kset *k, \
 }
 
 kvx_declare_kset(lb_f, "lb")
+kvx_declare_kset(rx_noc, "rx_noc")
 kvx_declare_kset(tx_f, "tx")
 kvx_declare_kset(cl_f, "pfc_cl")
 kvx_declare_kset(dt_f, "dispatch_table")
@@ -407,6 +424,14 @@ int kvx_eth_sysfs_init(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
+	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
+		ret = kvx_kset_rx_noc_create(ndev, &ndev->hw->lb_f[i].kobj,
+				rx_noc_kset, &ndev->hw->lb_f[i].rx_noc[0],
+				NB_CLUSTER);
+		if (ret)
+			goto err;
+	}
+
 	ret = kvx_kset_tx_f_create(ndev, &ndev->netdev->dev.kobj, tx_kset,
 				   &ndev->hw->tx_f[0], TX_FIFO_NB);
 	if (ret)
@@ -445,6 +470,10 @@ void kvx_eth_sysfs_remove(struct kvx_eth_netdev *ndev)
 	kvx_kset_cl_f_remove(ndev, pfc_cl_kset, &ndev->cfg.cl_f[0],
 			     KVX_ETH_PFC_CLASS_NB);
 	kvx_kset_tx_f_remove(ndev, tx_kset, &ndev->hw->tx_f[0], TX_FIFO_NB);
+	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
+		kvx_kset_rx_noc_remove(ndev, rx_noc_kset,
+				&ndev->hw->lb_f[i].rx_noc[0], NB_CLUSTER);
+	}
 	kvx_kset_lb_f_remove(ndev, lb_kset, &ndev->hw->lb_f[0],
 			     KVX_ETH_LANE_NB);
 	kvx_kset_bert_param_remove(ndev, bert_param_kset,
