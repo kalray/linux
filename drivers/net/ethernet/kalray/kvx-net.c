@@ -884,6 +884,7 @@ static void kvx_eth_release_rx_pool(struct kvx_eth_ring *r)
 int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 {
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
+	struct kvx_eth_dt_f dt;
 	int ret = 0;
 
 	memset(&r->stats, 0, sizeof(r->stats));
@@ -903,14 +904,24 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 
 	/* Reserve channel only once */
 	if (r->config.trans_type != KVX_DMA_TYPE_MEM2ETH) {
+		/* Only RX_CACHE_NB can be used and 1 rx_cache per queue */
+		if (dma_cfg->rx_cache_id + r->qidx >= RX_CACHE_NB) {
+			netdev_err(ndev->netdev, "Unable to get cache id\n");
+			goto chan_failed;
+		}
 		memset(&r->config, 0, sizeof(r->config));
-		/* All RX queues share the same rx_cache */
 		ret = kvx_dma_reserve_rx_chan(dma_cfg->pdev,
 					dma_cfg->rx_chan_id.start + r->qidx,
 					(dma_cfg->rx_cache_id + r->qidx) %
 					RX_CACHE_NB, kvx_eth_dma_irq_rx, r);
 		if (ret)
 			goto chan_failed;
+		dt.cluster_id = kvx_cluster_id();
+		dt.rx_channel = dma_cfg->rx_chan_id.start + r->qidx;
+		dt.split_trigger = 0;
+		dt.vchan = ndev->hw->vchan;
+		kvx_eth_add_dispatch_table_entry(ndev->hw, &ndev->cfg, &dt,
+			 ndev->cfg.default_dispatch_entry + dt.rx_channel);
 		r->config.trans_type = KVX_DMA_TYPE_MEM2ETH;
 	}
 	return 0;
@@ -1281,7 +1292,7 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 
 	if (of_property_read_u32_array(np, "kalray,default-dispatch-entry",
 			     (u32 *)&ndev->cfg.default_dispatch_entry, 1) != 0)
-		ndev->cfg.default_dispatch_entry = DISPATCH_TABLE_LINUX_ENTRY;
+	     ndev->cfg.default_dispatch_entry = KVX_ETH_DEFAULT_RULE_DTABLE_IDX;
 
 	i = 0;
 	list_for_each(n, &dev->list)
@@ -1645,6 +1656,7 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	kvx_eth_lb_set_default(&dev->hw, &ndev->cfg);
 	kvx_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
 	kvx_eth_lb_set_default(&dev->hw, &ndev->cfg);
+
 	kvx_eth_fill_dispatch_table(&dev->hw, &ndev->cfg,
 				    ndev->dma_cfg.rx_chan_id.start);
 	kvx_eth_tx_fifo_cfg(&dev->hw, &ndev->cfg);
