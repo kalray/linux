@@ -359,7 +359,7 @@ static void enable_default_dispatch_entry(struct kvx_eth_hw *hw,
 }
 
 /**
- * enable_default_dispatch_entry() - Writes route cfg for PARSER RR policy
+ * enable_parser_dispatch_entry() - Writes route cfg for PARSER RR policy
  * @hw: HW description
  * @cfg: Lane config
  * @dispatch_table_idx: Entry index to be set
@@ -429,6 +429,21 @@ void kvx_eth_dt_f_cfg(struct kvx_eth_hw *h, struct kvx_eth_dt_f *dt)
 	kvx_eth_writeq(h, val, RX_DISPATCH_TABLE_ENTRY(dt->id));
 }
 
+void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
+				 struct kvx_eth_lane_cfg *cfg,
+				 struct kvx_eth_dt_f *dt, int idx)
+{
+	struct kvx_eth_dt_f *dt_entry = &hw->dt_f[idx];
+
+	dt_entry->cluster_id = dt->cluster_id;
+	dt_entry->rx_channel = dt->rx_channel;
+	dt_entry->split_trigger = dt->split_trigger;
+	dt_entry->vchan = dt->vchan;
+	kvx_eth_dt_f_cfg(hw, dt_entry);
+
+	enable_default_dispatch_entry(hw, cfg, idx);
+}
+
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg,
 				 u32 rx_tag)
@@ -446,19 +461,20 @@ void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 	}
 
 	/* Default policy for our cluster */
-	dt = &hw->dt_f[cfg->default_dispatch_entry];
+	dt = &hw->dt_f[cfg->default_dispatch_entry + rx_tag];
 	dt->cluster_id = kvx_cluster_id();
 	dt->rx_channel = rx_tag;
 	dt->split_trigger = 0;
 	dt->vchan = hw->vchan;
 	kvx_eth_dt_f_cfg(hw, dt);
 
-	enable_default_dispatch_entry(hw, cfg, cfg->default_dispatch_entry);
+	enable_default_dispatch_entry(hw, cfg,
+				      cfg->default_dispatch_entry + rx_tag);
 
 	/* As of now, matching packets will use the same dispatch entry */
 	for (i = 0; i < KVX_ETH_PARSER_NB; ++i)
 		enable_parser_dispatch_entry(hw, i,
-					     cfg->default_dispatch_entry);
+					  cfg->default_dispatch_entry + rx_tag);
 }
 
 u32 kvx_eth_lb_has_header(struct kvx_eth_hw *hw,
