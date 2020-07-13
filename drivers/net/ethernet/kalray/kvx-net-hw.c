@@ -15,6 +15,32 @@
 #define DEFAULT_PFC_ALERT_LEVEL   ((7 * PFC_MAX_LEVEL) / 10)
 #define DEFAULT_PFC_RELEASE_LEVEL ((3 * PFC_MAX_LEVEL) / 10)
 
+#define RX_LB_CTRL(LANE) (RX_LB_OFFSET + RX_LB_CTRL_OFFSET \
+	+ (LANE) * RX_LB_CTRL_ELEM_SIZE)
+
+#define RX_LB_DEFAULT_RULE_LANE(LANE) \
+	(RX_LB_DEFAULT_RULE_OFFSET + RX_LB_DEFAULT_RULE_LANE_OFFSET \
+	+ (LANE) * RX_LB_DEFAULT_RULE_LANE_ELEM_SIZE)
+
+#define RX_LB_DEFAULT_RULE_LANE_RR_TARGET(LANE, RR_TARGET) \
+	(RX_LB_DEFAULT_RULE_LANE(LANE) + \
+	RX_LB_DEFAULT_RULE_LANE_RR_TARGET_OFFSET + \
+	(RR_TARGET) * RX_LB_DEFAULT_RULE_LANE_RR_TARGET_ELEM_SIZE)
+
+#define RX_LB_PARSER_RR_TARGET(PARSER_ID, RR_TARGET) \
+	(PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * (PARSER_ID) + \
+	PARSER_CTRL_RR_TARGET + (RR_TARGET) * PARSER_CTRL_RR_TARGET_ELEM_SIZE)
+
+#define RX_DISPATCH_TABLE_ENTRY(ENTRY) \
+	(RX_DISPATCH_TABLE_OFFSET + RX_DISPATCH_TABLE_ENTRY_OFFSET + \
+	(ENTRY) * RX_DISPATCH_TABLE_ENTRY_ELEM_SIZE)
+
+#define RX_LB_DEFAULT_RULE_LANE_CTRL(LANE) \
+	(RX_LB_DEFAULT_RULE_LANE(LANE) + RX_LB_DEFAULT_RULE_LANE_CTRL_OFFSET)
+
+#define RX_NOC_PKT_LANE(LANE, FDIR) (RX_LB_OFFSET + RX_NOC_PKT_CTRL_OFFSET + \
+			LANE * RX_NOC_PKT_CTRL_LANE_ELEM_SIZE + 8 * FDIR)
+
 static const u32 noc_route_table[7][7] = {
 	{
 		0x8   /* C0 -> C0 */, 0x82  /* C0 -> C1 */,
@@ -62,29 +88,6 @@ u32 noc_route_eth2c(enum kvx_eth_io eth_id, int cluster_id)
 {
 	return noc_route_table[5 + eth_id][cluster_id];
 }
-
-#define RX_LB_CTRL(LANE) (RX_LB_OFFSET + RX_LB_CTRL_OFFSET \
-	+ (LANE) * RX_LB_CTRL_ELEM_SIZE)
-
-#define RX_LB_DEFAULT_RULE_LANE(LANE) \
-	(RX_LB_DEFAULT_RULE_OFFSET + RX_LB_DEFAULT_RULE_LANE_OFFSET \
-	+ (LANE) * RX_LB_DEFAULT_RULE_LANE_ELEM_SIZE)
-
-#define RX_LB_DEFAULT_RULE_LANE_RR_TARGET(LANE, RR_TARGET) \
-	(RX_LB_DEFAULT_RULE_LANE(LANE) + \
-	RX_LB_DEFAULT_RULE_LANE_RR_TARGET_OFFSET + \
-	(RR_TARGET) * RX_LB_DEFAULT_RULE_LANE_RR_TARGET_ELEM_SIZE)
-
-#define RX_LB_PARSER_RR_TARGET(PARSER_ID, RR_TARGET) \
-	(PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * (PARSER_ID) + \
-	PARSER_CTRL_RR_TARGET + (RR_TARGET) * PARSER_CTRL_RR_TARGET_ELEM_SIZE)
-
-#define RX_DISPATCH_TABLE_ENTRY(ENTRY) \
-	(RX_DISPATCH_TABLE_OFFSET + RX_DISPATCH_TABLE_ENTRY_OFFSET + \
-	(ENTRY) * RX_DISPATCH_TABLE_ENTRY_ELEM_SIZE)
-
-#define RX_LB_DEFAULT_RULE_LANE_CTRL(LANE) \
-	(RX_LB_DEFAULT_RULE_LANE(LANE) + RX_LB_DEFAULT_RULE_LANE_CTRL_OFFSET)
 
 void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu)
 {
@@ -259,12 +262,17 @@ void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut)
 
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	int i = 0;
+	int i, j;
 
 	hw->lut_f.hw = hw;
 	for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
 		hw->lb_f[i].id = i;
 		hw->lb_f[i].hw = hw;
+		for (j = 0; j < NB_CLUSTER; j++) {
+			hw->lb_f[i].rx_noc[j].hw = hw;
+			hw->lb_f[i].rx_noc[j].lane_id = i;
+			hw->lb_f[i].rx_noc[j].fdir = j;
+		}
 	}
 }
 
@@ -279,11 +287,34 @@ void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	lb_f->keep_all_crc_error_pkt = 1;
 	lb_f->add_header = 0;
 	lb_f->add_footer = 0;
+	for (i = 0; i < NB_CLUSTER; i++) {
+		lb_f->rx_noc[i].vchan0_pps_timer = 0;
+		lb_f->rx_noc[i].vchan0_payload_flit_nb = 0xF;
+		lb_f->rx_noc[i].vchan1_pps_timer = 0;
+		lb_f->rx_noc[i].vchan1_payload_flit_nb = 0xF;
+	}
 
 	for (i = 0; i < RX_LB_DEFAULT_RULE_LANE_RR_TARGET_ARRAY_SIZE; ++i)
 		kvx_eth_writel(hw, 0, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(l, i));
 	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; ++i)
 		kvx_eth_writeq(hw, 0, RX_DISPATCH_TABLE_ENTRY(i));
+}
+
+void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc)
+{
+	int lane = rx_noc->lane_id;
+	int fdir = rx_noc->fdir;
+	u32 val = (rx_noc->vchan0_pps_timer <<
+	       RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PPS_TIMER_SHIFT) |
+		((rx_noc->vchan0_payload_flit_nb - 1) <<
+		 RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PAYLOAD_FLIT_NB_MINUS1_SHIFT);
+
+	kvx_eth_writel(hw, val, RX_NOC_PKT_LANE(lane, fdir));
+	val = (rx_noc->vchan1_pps_timer <<
+	       RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PPS_TIMER_SHIFT) |
+		((rx_noc->vchan1_payload_flit_nb - 1) <<
+		 RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PAYLOAD_FLIT_NB_MINUS1_SHIFT);
+	kvx_eth_writel(hw, val, RX_NOC_PKT_LANE(lane, fdir) + 4);
 }
 
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
