@@ -89,7 +89,6 @@ static int kvx_dma_alloc_queue(struct kvx_dma_phy *phy,
 			       struct kvx_dma_hw_queue *q,
 			       size_t size, u64 offset)
 {
-	gfp_t flags = GFP_DMA;
 	struct platform_device *pdev = container_of(phy->dev,
 					struct platform_device, dev);
 	struct kvx_dma_dev *dev = platform_get_drvdata(pdev);
@@ -126,7 +125,7 @@ static void kvx_dma_release_queue(struct kvx_dma_phy *phy,
 		__func__, phy->hw_id, (u64)q->base, (u64)q->vaddr,
 		(u64)q->paddr, (int)q->size);
 	if (q->vaddr)
-		gen_pool_free(dev->dma_pool, q->vaddr, q->size);
+		gen_pool_free(dev->dma_pool, (unsigned long)q->vaddr, q->size);
 
 	q->vaddr = 0;
 	q->paddr = 0;
