@@ -84,20 +84,35 @@ static inline pte_t *get_ptep(struct mm_struct *mm, unsigned long addr)
 	return pte;
 }
 
-static void dcache_wb_inval_virt_to_phys(struct vm_area_struct *vma,
-					 unsigned long vaddr, unsigned long len,
-					 bool wb, bool inval)
+static unsigned long dcache_wb_inval_virt_to_phys(struct vm_area_struct *vma,
+						  unsigned long vaddr,
+						  unsigned long len,
+						  bool wb, bool inval)
 {
-	unsigned long pfn, offset;
+	unsigned long pfn, offset, pgsize;
 	pte_t *ptep;
 
-	offset = vaddr & (~PAGE_MASK);
-	ptep = get_ptep(vma->vm_mm, vaddr - offset);
-	if (!ptep)
-		return;
+	ptep = get_ptep(vma->vm_mm, vaddr);
+	if (!ptep) {
+		/*
+		 * Since we did not found a matching pte, return needed
+		 * length to be aligned on next page boundary
+		 */
+		offset = (vaddr & (PAGE_SIZE - 1));
+		return PAGE_SIZE - offset;
+	}
 
+	/* Handle page sizes correctly */
+	pgsize = (pte_val(*ptep) & KVX_PAGE_SZ_MASK) >> KVX_PAGE_SZ_SHIFT;
+	pgsize = (1 << get_page_size_shift(pgsize));
+
+	offset = vaddr & (pgsize - 1);
+	len = min(pgsize - offset, len);
 	pfn = pte_pfn(*ptep);
+
 	dcache_wb_inval_phys_range(PFN_PHYS(pfn) + offset, len, wb, inval);
+
+	return len;
 }
 
 int dcache_wb_inval_virt_range(unsigned long vaddr, unsigned long len, bool wb,
@@ -105,6 +120,7 @@ int dcache_wb_inval_virt_range(unsigned long vaddr, unsigned long len, bool wb,
 {
 	unsigned long end = vaddr + len;
 	struct vm_area_struct *vma;
+	unsigned long rlen;
 
 	/*
 	 * Verify that the specified address region actually belongs to this
@@ -114,19 +130,10 @@ int dcache_wb_inval_virt_range(unsigned long vaddr, unsigned long len, bool wb,
 	if (vma == NULL || vaddr < vma->vm_start || vaddr + len > vma->vm_end)
 		return -EFAULT;
 
-	/* Invalidate end of start page if unaligned */
-	if (!IS_ALIGNED(vaddr, PAGE_SIZE)) {
-		len = min(len, PAGE_SIZE - (vaddr & ~PAGE_MASK));
-		dcache_wb_inval_virt_to_phys(vma, vaddr, len, wb, inval);
-		vaddr = PAGE_ALIGN(vaddr);
-	}
-
 	while (vaddr < end) {
-		/* Handle last incomplete page of the range */
-		len = min(PAGE_SIZE, end - vaddr);
-		dcache_wb_inval_virt_to_phys(vma, vaddr, len, wb, inval);
-
-		vaddr += len;
+		rlen = dcache_wb_inval_virt_to_phys(vma, vaddr, len, wb, inval);
+		len -= rlen;
+		vaddr += rlen;
 	}
 
 	return 0;
