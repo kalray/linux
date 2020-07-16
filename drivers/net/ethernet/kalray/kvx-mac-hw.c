@@ -19,6 +19,7 @@
 #define MAC_LOOPBACK_LATENCY  4
 #define MAC_SYNC_TIMEOUT_MS   2000
 #define SIGDET_TIMEOUT_MS     1000
+#define SERDES_ACK_TIMEOUT_MS 60
 #define AN_TIMEOUT_MS         6000
 #define NONCE                 0x13
 
@@ -383,7 +384,48 @@ static void dump_phy_status(struct kvx_eth_hw *hw)
 	dev_dbg(hw->dev, "phy PLL: 0x%x\n", val);
 }
 
-#define SERDES_ACK_TIMEOUT_MS 30
+int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p)
+{
+	struct kvx_eth_hw *hw = p->hw;
+	int i = p->lane_id;
+	u32 val, off;
+	int ret = 0;
+
+	if (!test_bit(i, &hw->pll_cfg.serdes_mask)) {
+		dev_err(hw->dev, "Serdes not enabled for lane %d\n", i);
+		return -EINVAL;
+	}
+
+	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
+	updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
+		     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK,
+		     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK);
+	ret = kvx_poll(kvx_phy_readl,
+		       off + PHY_LANE_RX_SERDES_STATUS_OFFSET,
+		       PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+		       PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+		       SIGDET_TIMEOUT_MS);
+
+	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+	p->fom = GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
+	dev_dbg(hw->dev, "lane[%d] FOM = %d\n", i, p->fom);
+
+	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+	dev_dbg(hw->dev, "PHY_LANE_RX_SERDES_STATUS[%d] (adapt): 0x%x\n",
+		i, val);
+	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
+	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_TXPRE_DIR);
+	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_TXPOST_DIR);
+	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_TXMAIN_DIR);
+	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_PPM_DRIFT);
+	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_PPM_DRIFT_VLD);
+
+	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
+	updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
+		     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK, 0);
+
+	return ret;
+}
 
 /**
  * kvx_mac_phy_disable_serdes() - Change serdes state to P1
@@ -453,8 +495,7 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw)
 /**
  * kvx_mac_phy_enable_serdes() - Change serdes state to P0 based on pll config
  */
-static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw,
-				     enum serdes_pstate pstate)
+int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, enum serdes_pstate pstate)
 {
 	struct pll_cfg *pll = &hw->pll_cfg;
 	u32 val, mask, reg;
@@ -935,7 +976,6 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 	return 0;
 }
-
 
 static void kvx_eth_dump_an_regs(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg, int lane)
