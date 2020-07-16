@@ -76,6 +76,8 @@ static struct sysfs_##s##_entry f##_attr = __ATTR_RW(f)
 #define FIELD_R_ENTRY(s, f, min, max) \
 static ssize_t f##_show(struct kvx_eth_##s *p, char *buf) \
 { \
+	if (p->update) \
+		p->update(p); \
 	return scnprintf(buf, STR_LEN, "%i\n", p->f); \
 } \
 static struct sysfs_##s##_entry f##_attr = __ATTR_RO(f)
@@ -108,6 +110,7 @@ FIELD_RW_ENTRY(phy_param, swing, 0, 32);
 FIELD_RW_ENTRY(phy_param, rx_polarity, 0, 1);
 FIELD_RW_ENTRY(phy_param, tx_polarity, 0, 1);
 FIELD_RW_ENTRY(phy_param, en, 0, 1);
+FIELD_R_ENTRY(phy_param, fom, 0, U8_MAX);
 
 static struct attribute *phy_param_attrs[] = {
 	&pre_attr.attr,
@@ -115,29 +118,37 @@ static struct attribute *phy_param_attrs[] = {
 	&swing_attr.attr,
 	&rx_polarity_attr.attr,
 	&tx_polarity_attr.attr,
+	&fom_attr.attr,
 	&en_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(phy_param);
 
-DECLARE_SYSFS_ENTRY(bert_param);
-FIELD_RW_ENTRY(bert_param, rx_err_cnt, 0, U32_MAX);
-FIELD_RW_ENTRY(bert_param, rx_sync, 0, 1);
-FIELD_RW_ENTRY(bert_param, rx_mode, BERT_DISABLED, BERT_MODE_NB);
-FIELD_RW_ENTRY(bert_param, tx_trig_err, 0, 1);
-FIELD_RW_ENTRY(bert_param, tx_pat0, 0, U16_MAX);
-FIELD_RW_ENTRY(bert_param, tx_mode, BERT_DISABLED, BERT_MODE_NB);
+DECLARE_SYSFS_ENTRY(rx_bert_param);
+FIELD_RW_ENTRY(rx_bert_param, err_cnt, 0, U32_MAX);
+FIELD_RW_ENTRY(rx_bert_param, sync, 0, 1);
+FIELD_RW_ENTRY(rx_bert_param, rx_mode, BERT_DISABLED, BERT_MODE_NB);
 
-static struct attribute *bert_param_attrs[] = {
-	&rx_err_cnt_attr.attr,
-	&rx_sync_attr.attr,
+static struct attribute *rx_bert_param_attrs[] = {
+	&err_cnt_attr.attr,
+	&sync_attr.attr,
 	&rx_mode_attr.attr,
-	&tx_trig_err_attr.attr,
-	&tx_pat0_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(rx_bert_param);
+
+DECLARE_SYSFS_ENTRY(tx_bert_param);
+FIELD_RW_ENTRY(tx_bert_param, trig_err, 0, 1);
+FIELD_RW_ENTRY(tx_bert_param, pat0, 0, U16_MAX);
+FIELD_RW_ENTRY(tx_bert_param, tx_mode, BERT_DISABLED, BERT_MODE_NB);
+
+static struct attribute *tx_bert_param_attrs[] = {
+	&trig_err_attr.attr,
+	&pat0_attr.attr,
 	&tx_mode_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(bert_param);
+SYSFS_TYPES(tx_bert_param);
 
 DECLARE_SYSFS_ENTRY(lb_f);
 FIELD_RW_ENTRY(lb_f, default_dispatch_policy,
@@ -332,7 +343,8 @@ static struct kset *tx_kset;
 static struct kset *dt_kset;
 static struct kset *pfc_cl_kset;
 static struct kset *phy_param_kset;
-static struct kset *bert_param_kset;
+static struct kset *rx_bert_param_kset;
+static struct kset *tx_bert_param_kset;
 
 #define kvx_declare_kset(s, name) \
 int kvx_kset_##s##_create(struct kvx_eth_netdev *ndev, struct kobject *pkobj, \
@@ -386,7 +398,8 @@ kvx_declare_kset(tx_f, "tx")
 kvx_declare_kset(cl_f, "pfc_cl")
 kvx_declare_kset(dt_f, "dispatch_table")
 kvx_declare_kset(phy_param, "param")
-kvx_declare_kset(bert_param, "bert_param")
+kvx_declare_kset(rx_bert_param, "rx_bert_param")
+kvx_declare_kset(tx_bert_param, "tx_bert_param")
 
 int kvx_eth_sysfs_init(struct kvx_eth_netdev *ndev)
 {
@@ -413,8 +426,14 @@ int kvx_eth_sysfs_init(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
-	ret = kvx_kset_bert_param_create(ndev, &ndev->hw->phy_f.kobj,
-			 bert_param_kset, &ndev->hw->phy_f.ber[0],
+	ret = kvx_kset_rx_bert_param_create(ndev, &ndev->hw->phy_f.kobj,
+			 rx_bert_param_kset, &ndev->hw->phy_f.rx_ber[0],
+			 KVX_ETH_LANE_NB);
+	if (ret)
+		goto err;
+
+	ret = kvx_kset_tx_bert_param_create(ndev, &ndev->hw->phy_f.kobj,
+			 tx_bert_param_kset, &ndev->hw->phy_f.tx_ber[0],
 			 KVX_ETH_LANE_NB);
 	if (ret)
 		goto err;
@@ -476,8 +495,10 @@ void kvx_eth_sysfs_remove(struct kvx_eth_netdev *ndev)
 	}
 	kvx_kset_lb_f_remove(ndev, lb_kset, &ndev->hw->lb_f[0],
 			     KVX_ETH_LANE_NB);
-	kvx_kset_bert_param_remove(ndev, bert_param_kset,
-			&ndev->hw->phy_f.ber[0], KVX_ETH_LANE_NB);
+	kvx_kset_rx_bert_param_remove(ndev, rx_bert_param_kset,
+			&ndev->hw->phy_f.rx_ber[0], KVX_ETH_LANE_NB);
+	kvx_kset_tx_bert_param_remove(ndev, tx_bert_param_kset,
+			&ndev->hw->phy_f.tx_ber[0], KVX_ETH_LANE_NB);
 	kvx_kset_phy_param_remove(ndev, phy_param_kset,
 			&ndev->hw->phy_f.param[0], KVX_ETH_LANE_NB);
 	for (i = 0; i < ARRAY_SIZE(t); ++i)
