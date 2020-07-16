@@ -16,6 +16,8 @@
 #include "kvx-ethtool.h"
 #include "kvx-net-regs.h"
 
+#include "kvx-scramble-lut.h"
+
 #define STAT(n, m)   { n, sizeof_field(struct kvx_eth_hw_stats, m), \
 	offsetof(struct kvx_eth_hw_stats, m) }
 
@@ -1048,7 +1050,7 @@ static void kvx_eth_get_lut(struct net_device *netdev, struct kvx_eth_hw *hw,
 
 	for (i = 0; i < kvx_eth_rss_indir_size(netdev); ++i, r += 4) {
 		v = kvx_eth_readl(hw, r);
-		indir[i] = v & RX_LB_LUT_NOC_TABLE_ID_MASK;
+		indir[scrambled2lut[i]] = v & RX_LB_LUT_NOC_TABLE_ID_MASK;
 	}
 }
 
@@ -1059,7 +1061,7 @@ static void kvx_eth_set_lut(struct net_device *netdev, struct kvx_eth_hw *hw,
 	u32 i, r = off;
 
 	for (i = 0; i < kvx_eth_rss_indir_size(netdev); ++i, r += 4)
-		kvx_eth_writel(hw, indir[i] & RX_LB_LUT_NOC_TABLE_ID_MASK, r);
+		kvx_eth_writel(hw, indir[lut2scrambled[i]] & RX_LB_LUT_NOC_TABLE_ID_MASK, r);
 }
 
 static int kvx_eth_get_rxfh(struct net_device *netdev, u32 *indir, u8 *key,
