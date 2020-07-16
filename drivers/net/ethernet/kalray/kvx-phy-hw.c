@@ -59,39 +59,47 @@
 #define LANE0_RX_LBERT_ERR_OV14_SHIFT     15
 #define LANE0_RX_LBERT_ERR_OV14_MASK      0x8000UL
 
-static void bert_param_update(void *data)
+static void tx_ber_param_update(void *data)
 {
-	struct kvx_eth_bert_param *p = (struct kvx_eth_bert_param *)data;
-	u16 v, val;
-	u32 reg;
-	int i;
+	struct kvx_eth_tx_bert_param *p = (struct kvx_eth_tx_bert_param *)data;
+	u32 reg = LANE0_TX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
+	u16 val = readw(p->hw->res[KVX_ETH_RES_PHY].base + reg);
 
-	for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
-		reg = LANE0_TX_LBERT_CTL_OFFSET + i * LANE_OFFSET;
-		val = readw(p->hw->res[KVX_ETH_RES_PHY].base + reg);
-		p->tx_trig_err = GETF(val, LANE0_TX_LBERT_CTL_TRIG_ERR);
-		p->tx_pat0 = GETF(val, LANE0_TX_LBERT_CTL_PAT0);
-		p->tx_mode = GETF(val, LANE0_TX_LBERT_CTL_MODE);
+	p->trig_err = GETF(val, LANE0_TX_LBERT_CTL_TRIG_ERR);
+	p->pat0 = GETF(val, LANE0_TX_LBERT_CTL_PAT0);
+	p->tx_mode = GETF(val, LANE0_TX_LBERT_CTL_MODE);
+}
 
-		reg = LANE0_RX_LBERT_CTL_OFFSET + i * LANE_OFFSET;
-		val = readw(p->hw->res[KVX_ETH_RES_PHY].base + reg);
-		p->rx_sync = GETF(val, LANE0_RX_LBERT_CTL_SYNC);
-		p->rx_mode = GETF(val, LANE0_RX_LBERT_CTL_MODE);
+static void rx_ber_param_update(void *data)
+{
+	struct kvx_eth_rx_bert_param *p = (struct kvx_eth_rx_bert_param *)data;
+	u32 reg = LANE0_RX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
+	u16 v, val = readw(p->hw->res[KVX_ETH_RES_PHY].base + reg);
 
-		reg = LANE0_RX_LBERT_ERR_OFFSET + i * LANE_OFFSET;
-		/* Read it twice */
-		val = readw(p->hw->res[KVX_ETH_RES_PHY].base + reg);
-		val = readw(p->hw->res[KVX_ETH_RES_PHY].base + reg);
-		p->rx_err_cnt = GETF(val, LANE0_RX_LBERT_ERR_COUNT);
-		v = GETF(val, LANE0_RX_LBERT_ERR_OV14);
-		if (v)
-			p->rx_err_cnt *= 128;
-	}
+	p->sync = GETF(val, LANE0_RX_LBERT_CTL_SYNC);
+	p->rx_mode = GETF(val, LANE0_RX_LBERT_CTL_MODE);
+
+	reg = LANE0_RX_LBERT_ERR_OFFSET + p->lane_id * LANE_OFFSET;
+	/* Read it twice */
+	val = readw(p->hw->res[KVX_ETH_RES_PHY].base + reg);
+	val = readw(p->hw->res[KVX_ETH_RES_PHY].base + reg);
+	p->err_cnt = GETF(val, LANE0_RX_LBERT_ERR_COUNT);
+	v = GETF(val, LANE0_RX_LBERT_ERR_OV14);
+	if (v)
+		p->err_cnt *= 128;
+}
+
+void phy_param_update(void *data)
+{
+	struct kvx_eth_phy_param *p = (struct kvx_eth_phy_param *)data;
+
+	kvx_mac_phy_rx_adapt(p);
 }
 
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 {
-	struct kvx_eth_bert_param *bert;
+	struct kvx_eth_rx_bert_param *rx_ber;
+	struct kvx_eth_tx_bert_param *tx_ber;
 	struct kvx_eth_phy_param *p;
 	int i = 0;
 
@@ -99,13 +107,20 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 	hw->phy_f.loopback_mode = NO_LOOPBACK;
 	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
 		p = &hw->phy_f.param[i];
-		bert = &hw->phy_f.ber[i];
+		rx_ber = &hw->phy_f.rx_ber[i];
+		tx_ber = &hw->phy_f.tx_ber[i];
 		p->hw = hw;
+		p->lane_id = i;
+		p->update = phy_param_update;
 		p->en = false;
-		bert->hw = hw;
-		bert->update = bert_param_update;
-		bert->tx_mode = BERT_DISABLED;
-		bert->rx_mode = BERT_DISABLED;
+		rx_ber->hw = hw;
+		rx_ber->lane_id = i;
+		rx_ber->update = rx_ber_param_update;
+		rx_ber->rx_mode = BERT_DISABLED;
+		tx_ber->hw = hw;
+		tx_ber->lane_id = i;
+		tx_ber->update = tx_ber_param_update;
+		tx_ber->tx_mode = BERT_DISABLED;
 	}
 }
 
@@ -120,19 +135,19 @@ static int kvx_mac_phy_bert_init(struct kvx_eth_hw *hw)
 			continue;
 
 		reg = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
-		if (hw->phy_f.ber[i].rx_mode != BERT_DISABLED) {
+		if (hw->phy_f.rx_ber[i].rx_mode != BERT_DISABLED) {
 			mask = (PHY_LANE_RX_SERDES_CFG_DISABLE_MASK |
 				PHY_LANE_RX_SERDES_CFG_LPD_MASK |
 				PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK |
 				PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_MASK);
-			val = 0;
+			val = PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_MASK;
 			updatel_bits(hw, PHYMAC, reg +
 				     PHY_LANE_RX_SERDES_CFG_OFFSET, mask, val);
 			DUMP_REG(hw, PHYMAC,
 				 reg + PHY_LANE_RX_SERDES_CFG_OFFSET);
 		}
 
-		if (hw->phy_f.ber[i].tx_mode != BERT_DISABLED) {
+		if (hw->phy_f.tx_ber[i].tx_mode != BERT_DISABLED) {
 			mask = (PHY_LANE_TX_SERDES_CFG_DISABLE_MASK |
 				PHY_LANE_TX_SERDES_CFG_LPD_MASK |
 				PHY_LANE_TX_SERDES_CFG_DETRX_REQ_MASK);
@@ -156,31 +171,32 @@ void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f)
 		kvx_mac_phy_bert_init(hw);
 }
 
-void kvx_eth_bert_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_bert_param *p)
+void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
+			       struct kvx_eth_tx_bert_param *p)
 {
-	u16 val;
-	u32 reg;
-	int i;
+	u32 reg = LANE0_TX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
+	u16 val = (p->tx_mode << LANE0_TX_LBERT_CTL_MODE_SHIFT) |
+		(p->trig_err << LANE0_TX_LBERT_CTL_TRIG_ERR_SHIFT) |
+		(p->pat0 << LANE0_TX_LBERT_CTL_PAT0_SHIFT);
 
-	for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
-		reg = LANE0_TX_LBERT_CTL_OFFSET + i * LANE_OFFSET;
-		val = (p->tx_mode << LANE0_TX_LBERT_CTL_MODE_SHIFT) |
-			(p->tx_trig_err << LANE0_TX_LBERT_CTL_TRIG_ERR_SHIFT) |
-			(p->tx_pat0 << LANE0_TX_LBERT_CTL_PAT0_SHIFT);
-		writew(val, hw->res[KVX_ETH_RES_PHY].base + reg);
-
-		if (p->rx_err_cnt == 0) {
-			reg = LANE0_RX_LBERT_ERR_OFFSET + i * LANE_OFFSET;
-			writew(0, hw->res[KVX_ETH_RES_PHY].base + reg);
-		}
-
-		reg = LANE0_RX_LBERT_CTL_OFFSET + i * LANE_OFFSET;
-		val = (p->rx_mode << LANE0_RX_LBERT_CTL_MODE_SHIFT) |
-			(p->rx_sync << LANE0_RX_LBERT_CTL_SYNC_SHIFT);
-		writew(val, hw->res[KVX_ETH_RES_PHY].base + reg);
-	}
+	writew(val, hw->res[KVX_ETH_RES_PHY].base + reg);
 }
 
+void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
+			       struct kvx_eth_rx_bert_param *p)
+{
+	u16 val = (p->rx_mode << LANE0_RX_LBERT_CTL_MODE_SHIFT) |
+		(p->sync << LANE0_RX_LBERT_CTL_SYNC_SHIFT);
+	u32 reg;
+
+	if (p->err_cnt == 0) {
+		reg = LANE0_RX_LBERT_ERR_OFFSET + p->lane_id * LANE_OFFSET;
+		writew(0, hw->res[KVX_ETH_RES_PHY].base + reg);
+	}
+
+	reg = LANE0_RX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
+	writew(val, hw->res[KVX_ETH_RES_PHY].base + reg);
+}
 
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p)
 {
