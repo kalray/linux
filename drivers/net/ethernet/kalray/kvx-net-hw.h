@@ -317,6 +317,8 @@ struct kvx_eth_mac_f {
  * @rx_polarity: Rx lane polarity
  * @tx_polarity: Tx lane polarity
  * @en: true if parameters have actually been set
+ * @fom: launch FOM process and return its value
+ * @lane_id: lane id
  */
 struct kvx_eth_phy_param {
 	u32 pre;
@@ -324,7 +326,9 @@ struct kvx_eth_phy_param {
 	u32 swing;
 	u32 rx_polarity;
 	u32 tx_polarity;
+	u32 fom;
 	bool en;
+	int lane_id;
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
 	void (*update)(void *p);
@@ -346,16 +350,24 @@ enum bert_mode {
 	BERT_MODE_NB
 };
 
-struct kvx_eth_bert_param {
+struct kvx_eth_rx_bert_param {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
 	void (*update)(void *p);
 	enum bert_mode rx_mode;
-	u32 rx_err_cnt;
-	bool rx_sync;
+	u32  err_cnt;
+	bool sync;
+	int lane_id;
+};
+
+struct kvx_eth_tx_bert_param {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
 	enum bert_mode tx_mode;
-	bool tx_trig_err;
-	u16 tx_pat0;
+	bool trig_err;
+	u16 pat0;
+	int lane_id;
 };
 
 /**
@@ -374,7 +386,8 @@ struct kvx_eth_phy_f {
 	void (*update)(void *p);
 	enum kvx_eth_loopback_mode loopback_mode;
 	struct kvx_eth_phy_param param[KVX_ETH_LANE_NB];
-	struct kvx_eth_bert_param ber[KVX_ETH_LANE_NB];
+	struct kvx_eth_rx_bert_param rx_ber[KVX_ETH_LANE_NB];
+	struct kvx_eth_tx_bert_param tx_ber[KVX_ETH_LANE_NB];
 	bool reg_avail;
 	bool bert_en;
 };
@@ -683,9 +696,13 @@ int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, int lane_id,
 			    unsigned int speed);
 void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f);
 void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable);
+int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p);
 void kvx_phy_param_tuning(struct kvx_eth_hw *hw);
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p);
-void kvx_eth_bert_param_cfg(struct kvx_eth_hw *h, struct kvx_eth_bert_param *p);
+void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
+			       struct kvx_eth_rx_bert_param *p);
+void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
+			       struct kvx_eth_tx_bert_param *p);
 void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
 void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
