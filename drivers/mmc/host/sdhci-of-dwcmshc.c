@@ -276,7 +276,7 @@ static const struct sdhci_ops sdhci_dwcmshc_rk3568_ops = {
 static const struct sdhci_pltfm_data sdhci_dwcmshc_pdata = {
 	.ops = &sdhci_dwcmshc_ops,
 	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN,
-	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN,
+	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN | SDHCI_QUIRK2_BROKEN_HS200 | SDHCI_QUIRK2_NO_1_8_V,
 };
 
 static const struct sdhci_pltfm_data sdhci_dwcmshc_rk3568_pdata = {
@@ -395,6 +395,7 @@ static int dwcmshc_probe(struct platform_device *pdev)
 		goto err_clk;
 
 	sdhci_get_of_property(pdev);
+	sdhci_enable_v4_mode(host);
 
 	priv->vendor_specific_area1 =
 		sdhci_readl(host, DWCMSHC_P_VENDOR_AREA1) & DWCMSHC_AREA1_MASK;
