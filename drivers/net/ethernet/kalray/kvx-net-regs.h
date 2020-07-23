@@ -11,7 +11,6 @@
 #define ASM_KVX_ETH_REGS_H
 
 #define KVX_ETH_JUMBO_MTU         (9216)
-#define KVX_ETH_FCS               (4)
 #define KVX_ETH_HEADER_SIZE       (32)
 #define KVX_ETH_PARSER_NB         (32)
 
