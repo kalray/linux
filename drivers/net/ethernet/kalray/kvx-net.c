@@ -131,7 +131,7 @@ static int kvx_eth_netdev_close(struct net_device *netdev)
 static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 {
 	ndev->hw->max_frame_size = ndev->netdev->mtu +
-		(2 * KVX_ETH_HEADER_SIZE) + KVX_ETH_FCS;
+		(2 * KVX_ETH_HEADER_SIZE);
 	/* Takes into account alignement offsets (footers) */
 	ndev->rx_buffer_len = ALIGN(ndev->hw->max_frame_size,
 				    KVX_ETH_PKT_ALIGN);
@@ -578,7 +578,7 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 	enum dma_data_direction dma_dir;
 	void *data, *data_end, *va = NULL;
 	struct page *page = NULL;
-	size_t data_len = len;
+	size_t data_len = len; /* Assuming no FCS fwd from MAC*/
 	int ret = 0;
 
 	page = qdesc->va;
@@ -588,8 +588,6 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 	}
 	dma_dir = page_pool_get_dma_dir(rxr->pool.pagepool);
 	dma_sync_single_for_cpu(ndev->dev, buf, len, dma_dir);
-	if (eop)
-		data_len = len - ETH_FCS_LEN;
 
 	if (likely(!rxr->skb)) {
 		va = page_address(page);
@@ -740,7 +738,7 @@ static int kvx_eth_set_mac_addr(struct net_device *netdev, void *p)
 static int kvx_eth_change_mtu(struct net_device *netdev, int new_mtu)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	int max_frame_len = new_mtu + (2 * KVX_ETH_HEADER_SIZE) + KVX_ETH_FCS;
+	int max_frame_len = new_mtu + (2 * KVX_ETH_HEADER_SIZE);
 
 	ndev->rx_buffer_len = ALIGN(max_frame_len, KVX_ETH_PKT_ALIGN);
 	ndev->hw->max_frame_size = max_frame_len;
