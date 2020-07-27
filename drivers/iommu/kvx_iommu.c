@@ -1375,24 +1375,22 @@ static int kvx_iommu_map(struct iommu_domain *domain,
 	unsigned long num_pages;
 	int i, ret;
 
-	if (iova & KVX_IOMMU_ADDR_MASK_VIRT) {
-		pr_err("%s: Found ignored bits in iova (0x%lx)\n",
-				__func__, iova);
-		return -EINVAL;
-	}
-
-	if ((unsigned long)paddr & KVX_IOMMU_ADDR_MASK_PHYS) {
-		pr_err("%s: Found ignored bits in paddr (0x%lx)\n",
-				__func__, (unsigned long)paddr);
-		return -EINVAL;
-	}
-
 	kvx_domain = to_kvx_domain(domain);
 	iommu = kvx_domain->iommu;
 
 	/* Always map page on RX and TX */
 	iommu_hw[KVX_IOMMU_RX] = &iommu->iommu_hw[KVX_IOMMU_RX];
 	iommu_hw[KVX_IOMMU_TX] = &iommu->iommu_hw[KVX_IOMMU_TX];
+
+	for (i = 0; i < KVX_IOMMU_NB_TYPE; i++) {
+		u64 mask = GENMASK_ULL(iommu_hw[i]->out_addr_size - 1, 0);
+
+		if ((unsigned long)paddr & ~mask) {
+			pr_err("%s: physical address (0x%lx) larger than IOMMU supported range (%u bits)\n",
+					__func__, (unsigned long)paddr, iommu_hw[i]->out_addr_size);
+			return -EINVAL;
+		}
+	}
 
 	num_pages = iommu_num_pages(paddr, size, size);
 	start = paddr;
