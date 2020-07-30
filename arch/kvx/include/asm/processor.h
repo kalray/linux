@@ -172,4 +172,13 @@ static inline void local_cpu_stop(void)
 	);
 }
 
+struct cpuinfo_kvx {
+	u64 freq;
+	u8 arch_rev;
+	u8 uarch_rev;
+	u8 copro_enable;
+};
+
+DECLARE_PER_CPU_READ_MOSTLY(struct cpuinfo_kvx, cpu_info);
+
 #endif	/* _ASM_KVX_PROCESSOR_H */
