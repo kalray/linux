@@ -39,6 +39,9 @@ EXPORT_SYMBOL(memory_start);
 unsigned long memory_end;
 EXPORT_SYMBOL(memory_end);
 
+DEFINE_PER_CPU_READ_MOSTLY(struct cpuinfo_kvx, cpu_info);
+EXPORT_PER_CPU_SYMBOL(cpu_info);
+
 static bool use_streaming = true;
 static int __init parse_kvx_streaming(char *arg)
 {
@@ -71,6 +74,16 @@ static void __init setup_user_privilege(void)
 
 	kvx_sfr_set_mask(PSOW, mask, value);
 
+}
+
+void __init setup_cpuinfo(void)
+{
+	struct cpuinfo_kvx *n = this_cpu_ptr(&cpu_info);
+	u64 pcr = kvx_sfr_get(PCR);
+
+	n->copro_enable = kvx_sfr_field_val(pcr, PCR, COE);
+	n->arch_rev = kvx_sfr_field_val(pcr, PCR, CAR);
+	n->uarch_rev = kvx_sfr_field_val(pcr, PCR, CMA);
 }
 
 /*
@@ -108,6 +121,8 @@ void __init setup_processor(void)
 	kvx_init_core_irq();
 
 	setup_user_privilege();
+
+	setup_cpuinfo();
 }
 
 void __init setup_arch(char **cmdline_p)
