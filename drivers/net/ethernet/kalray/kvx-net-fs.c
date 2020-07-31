@@ -52,13 +52,14 @@ struct kobj_type s##_ktype = { \
 }
 
 #define FIELD_RW_ENTRY(s, f, min, max) \
-static ssize_t f##_show(struct kvx_eth_##s *p, char *buf) \
+static ssize_t s##_##f##_show(struct kvx_eth_##s *p, char *buf) \
 { \
 	if (p->update) \
 		p->update(p); \
 	return scnprintf(buf, STR_LEN, "%i\n", p->f); \
 } \
-static ssize_t f##_store(struct kvx_eth_##s *p, const char *buf, size_t count) \
+static ssize_t s##_##f##_store(struct kvx_eth_##s *p, const char *buf, \
+		size_t count) \
 { \
 	ssize_t ret; \
 	unsigned int val; \
@@ -71,16 +72,18 @@ static ssize_t f##_store(struct kvx_eth_##s *p, const char *buf, size_t count) \
 	kvx_eth_##s##_cfg(p->hw, p); \
 	return count; \
 } \
-static struct sysfs_##s##_entry f##_attr = __ATTR_RW(f)
+static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0644, \
+		s##_##f##_show, s##_##f##_store) \
 
 #define FIELD_R_ENTRY(s, f, min, max) \
-static ssize_t f##_show(struct kvx_eth_##s *p, char *buf) \
+static ssize_t s##_##f##_show(struct kvx_eth_##s *p, char *buf) \
 { \
 	if (p->update) \
 		p->update(p); \
 	return scnprintf(buf, STR_LEN, "%i\n", p->f); \
 } \
-static struct sysfs_##s##_entry f##_attr = __ATTR_RO(f)
+static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0444, \
+		s##_##f##_show, NULL)
 
 DECLARE_SYSFS_ENTRY(mac_f);
 FIELD_RW_ENTRY(mac_f, loopback_mode, 0, MAC_RX2TX_LOOPBACK);
@@ -88,9 +91,9 @@ FIELD_RW_ENTRY(mac_f, tx_fcs_offload, 0, 1);
 FIELD_R_ENTRY(mac_f, pfc_mode, 0, MAC_PAUSE);
 
 static struct attribute *mac_f_attrs[] = {
-	&loopback_mode_attr.attr,
-	&tx_fcs_offload_attr.attr,
-	&pfc_mode_attr.attr,
+	&mac_f_loopback_mode_attr.attr,
+	&mac_f_tx_fcs_offload_attr.attr,
+	&mac_f_pfc_mode_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(mac_f);
@@ -98,7 +101,7 @@ SYSFS_TYPES(mac_f);
 DECLARE_SYSFS_ENTRY(phy_f);
 FIELD_RW_ENTRY(phy_f, bert_en, 0, 1);
 static struct attribute *phy_f_attrs[] = {
-	&bert_en_attr.attr,
+	&phy_f_bert_en_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(phy_f);
@@ -111,11 +114,11 @@ FIELD_RW_ENTRY(phy_param, en, 0, 1);
 FIELD_R_ENTRY(phy_param, fom, 0, U8_MAX);
 
 static struct attribute *phy_param_attrs[] = {
-	&pre_attr.attr,
-	&post_attr.attr,
-	&swing_attr.attr,
-	&fom_attr.attr,
-	&en_attr.attr,
+	&phy_param_pre_attr.attr,
+	&phy_param_post_attr.attr,
+	&phy_param_swing_attr.attr,
+	&phy_param_fom_attr.attr,
+	&phy_param_en_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(phy_param);
@@ -126,9 +129,9 @@ FIELD_RW_ENTRY(rx_bert_param, sync, 0, 1);
 FIELD_RW_ENTRY(rx_bert_param, rx_mode, BERT_DISABLED, BERT_MODE_NB);
 
 static struct attribute *rx_bert_param_attrs[] = {
-	&err_cnt_attr.attr,
-	&sync_attr.attr,
-	&rx_mode_attr.attr,
+	&rx_bert_param_err_cnt_attr.attr,
+	&rx_bert_param_sync_attr.attr,
+	&rx_bert_param_rx_mode_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(rx_bert_param);
@@ -139,9 +142,9 @@ FIELD_RW_ENTRY(tx_bert_param, pat0, 0, U16_MAX);
 FIELD_RW_ENTRY(tx_bert_param, tx_mode, BERT_DISABLED, BERT_MODE_NB);
 
 static struct attribute *tx_bert_param_attrs[] = {
-	&trig_err_attr.attr,
-	&pat0_attr.attr,
-	&tx_mode_attr.attr,
+	&tx_bert_param_trig_err_attr.attr,
+	&tx_bert_param_pat0_attr.attr,
+	&tx_bert_param_tx_mode_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(tx_bert_param);
@@ -164,20 +167,20 @@ FIELD_R_ENTRY(lb_f, global_drop_cnt, 0, U32_MAX);
 FIELD_R_ENTRY(lb_f, global_no_pfc_drop_cnt, 0, U32_MAX);
 
 static struct attribute *lb_f_attrs[] = {
-	&default_dispatch_policy_attr.attr,
-	&keep_all_crc_error_pkt_attr.attr,
-	&store_and_forward_attr.attr,
-	&add_header_attr.attr,
-	&add_footer_attr.attr,
-	&drop_mtu_cnt_attr.attr,
-	&drop_fcs_cnt_attr.attr,
-	&drop_crc_cnt_attr.attr,
-	&drop_rule_cnt_attr.attr,
-	&drop_fifo_overflow_cnt_attr.attr,
-	&drop_total_cnt_attr.attr,
-	&default_hit_cnt_attr.attr,
-	&global_drop_cnt_attr.attr,
-	&global_no_pfc_drop_cnt_attr.attr,
+	&lb_f_default_dispatch_policy_attr.attr,
+	&lb_f_keep_all_crc_error_pkt_attr.attr,
+	&lb_f_store_and_forward_attr.attr,
+	&lb_f_add_header_attr.attr,
+	&lb_f_add_footer_attr.attr,
+	&lb_f_drop_mtu_cnt_attr.attr,
+	&lb_f_drop_fcs_cnt_attr.attr,
+	&lb_f_drop_crc_cnt_attr.attr,
+	&lb_f_drop_rule_cnt_attr.attr,
+	&lb_f_drop_fifo_overflow_cnt_attr.attr,
+	&lb_f_drop_total_cnt_attr.attr,
+	&lb_f_default_hit_cnt_attr.attr,
+	&lb_f_global_drop_cnt_attr.attr,
+	&lb_f_global_no_pfc_drop_cnt_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(lb_f);
@@ -189,10 +192,10 @@ FIELD_RW_ENTRY(rx_noc, vchan1_pps_timer, 0, U16_MAX);
 FIELD_RW_ENTRY(rx_noc, vchan1_payload_flit_nb, 0, 0xF);
 
 static struct attribute *rx_noc_attrs[] = {
-	&vchan0_pps_timer_attr.attr,
-	&vchan0_payload_flit_nb_attr.attr,
-	&vchan1_pps_timer_attr.attr,
-	&vchan1_payload_flit_nb_attr.attr,
+	&rx_noc_vchan0_pps_timer_attr.attr,
+	&rx_noc_vchan0_payload_flit_nb_attr.attr,
+	&rx_noc_vchan1_pps_timer_attr.attr,
+	&rx_noc_vchan1_payload_flit_nb_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(rx_noc);
@@ -204,10 +207,10 @@ FIELD_RW_ENTRY(lut_f, rule_enable, 0, 1);
 FIELD_RW_ENTRY(lut_f, pfc_enable, 0, 1);
 
 static struct attribute *lut_f_attrs[] = {
-	&qpn_enable_attr.attr,
-	&lane_enable_attr.attr,
-	&rule_enable_attr.attr,
-	&pfc_enable_attr.attr,
+	&lut_f_qpn_enable_attr.attr,
+	&lut_f_lane_enable_attr.attr,
+	&lut_f_rule_enable_attr.attr,
+	&lut_f_pfc_enable_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(lut_f);
@@ -222,11 +225,11 @@ FIELD_RW_ENTRY(pfc_f, global_pfc_en, 0, 1);
 FIELD_RW_ENTRY(pfc_f, global_pause_en, 0, 1);
 
 static struct attribute *pfc_f_attrs[] = {
-	&global_release_level_attr.attr,
-	&global_drop_level_attr.attr,
-	&global_alert_level_attr.attr,
-	&global_pfc_en_attr.attr,
-	&global_pause_en_attr.attr,
+	&pfc_f_global_release_level_attr.attr,
+	&pfc_f_global_drop_level_attr.attr,
+	&pfc_f_global_alert_level_attr.attr,
+	&pfc_f_global_pfc_en_attr.attr,
+	&pfc_f_global_pause_en_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(pfc_f);
@@ -245,17 +248,17 @@ FIELD_R_ENTRY(tx_f, fifo_level, 0, U32_MAX);
 FIELD_R_ENTRY(tx_f, xoff, 0, 1);
 
 static struct attribute *tx_f_attrs[] = {
-	&header_en_attr.attr,
-	&drop_en_attr.attr,
-	&nocx_en_attr.attr,
-	&nocx_pack_en_attr.attr,
-	&pfc_en_attr.attr,
-	&pause_en_attr.attr,
-	&rr_trigger_attr.attr,
-	&lane_id_attr.attr,
-	&drop_cnt_attr.attr,
-	&fifo_level_attr.attr,
-	&xoff_attr.attr,
+	&tx_f_header_en_attr.attr,
+	&tx_f_drop_en_attr.attr,
+	&tx_f_nocx_en_attr.attr,
+	&tx_f_nocx_pack_en_attr.attr,
+	&tx_f_pfc_en_attr.attr,
+	&tx_f_pause_en_attr.attr,
+	&tx_f_rr_trigger_attr.attr,
+	&tx_f_lane_id_attr.attr,
+	&tx_f_drop_cnt_attr.attr,
+	&tx_f_fifo_level_attr.attr,
+	&tx_f_xoff_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(tx_f);
@@ -267,10 +270,10 @@ FIELD_RW_ENTRY(cl_f, alert_level, 0, RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
 FIELD_RW_ENTRY(cl_f, pfc_ena, 0, 1);
 
 static struct attribute *cl_f_attrs[] = {
-	&release_level_attr.attr,
-	&drop_level_attr.attr,
-	&alert_level_attr.attr,
-	&pfc_ena_attr.attr,
+	&cl_f_release_level_attr.attr,
+	&cl_f_drop_level_attr.attr,
+	&cl_f_alert_level_attr.attr,
+	&cl_f_pfc_ena_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(cl_f);
@@ -282,10 +285,10 @@ FIELD_RW_ENTRY(dt_f, split_trigger, 0, 0x7F);
 FIELD_RW_ENTRY(dt_f, vchan, 0, 1);
 
 static struct attribute *dt_f_attrs[] = {
-	&cluster_id_attr.attr,
-	&rx_channel_attr.attr,
-	&split_trigger_attr.attr,
-	&vchan_attr.attr,
+	&dt_f_cluster_id_attr.attr,
+	&dt_f_rx_channel_attr.attr,
+	&dt_f_split_trigger_attr.attr,
+	&dt_f_vchan_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(dt_f);
