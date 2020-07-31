@@ -31,25 +31,13 @@ enum tx_crc_mode {
 enum parser_ptype {
 	PTYPE_END_OF_RULE = 0x0,
 	PTYPE_MAC_VLAN    = 0x01,
-	PTYPE_MACSEC      = 0x02,
 	PTYPE_IP_V4       = 0x03,
 	PTYPE_IP_V6       = 0x04,
-	PTYPE_IPSEC_AH    = 0x05,
-	PTYPE_IPSEC_ESP   = 0x06,
 	PTYPE_VXLAN       = 0x07,
 	PTYPE_UDP         = 0x08,
 	PTYPE_TCP         = 0x09,
 	PTYPE_MPLS        = 0x0A,
 	PTYPE_ROCE        = 0x0B,
-	PTYPE_GRE         = 0x0C,
-	PTYPE_NVGRE       = 0x0D,
-	PTYPE_GENEVE      = 0x0E,
-	PTYPE_PPPOE       = 0x0F,
-	PTYPE_GTPU        = 0x10,
-	PTYPE_L2TP        = 0x11,
-	PTYPE_IWARP       = 0x12,
-	PTYPE_NVME_TCP    = 0x13,
-	PTYPE_ISCSI       = 0x14,
 	PTYPE_SKIP        = 0x1E,
 	PTYPE_CUSTOM      = 0x1F,
 };
@@ -305,23 +293,6 @@ union tcp_filter_desc {
 	} __packed;
 };
 
-union nvme_tcp_filter_desc {
-	u8 word[16];
-	struct {
-		u32 ptype              : 5;
-		u32 add_metadata_index : 1;
-		u32 check_ddgst        : 1;
-		u32 expected_pdu_type  : 1; /* 0: CapsuleCmd, 1: H2Cdata */
-		u32 pdu_hash_en        : 1;
-		u32 flags_cmp_polarity : 1; /* 0: Match if flags == expected,
-					     * 1: Match if flags != expected
-					     */
-		u32 expected_flags     : 8;
-		u32 flag_mask          : 8;
-		u32 skip_length        : 2;
-	} __packed;
-};
-
 union roce_filter_desc {
 	u8 word[16];
 	struct {
@@ -353,25 +324,6 @@ union mpls_filter_desc {
 		u32 tc_mask            : 3;
 		u32 tc_hash_mask       : 3;
 		u32 skip_length        : 2;
-	} __packed;
-};
-
-union gre_filter_desc {
-	u8 word[16];
-	struct {
-		u32 ptype                 : 5;
-		u32 add_metadata_index    : 1;
-		u32 protocol_cmp_polarity : 1; /* 0: Match if prot == expected,
-						* 1: Match if prot != expected
-						*/
-		u32 protocol              : 16;
-		u32 protocol_mask         : 16;
-		u32 protocol_hash_mask    : 16;
-		u32 key_cmp_polarity      : 1;
-		u32 key                   : 16;
-		u32 key_mask              : 16;
-		u32 key_hash_mask         : 16;
-		u32 skip_length           : 2;
 	} __packed;
 };
 
@@ -418,10 +370,8 @@ union filter_desc {
 	struct ipv6_filter_desc    ipv6;
 	union udp_filter_desc      udp;
 	union tcp_filter_desc      tcp;
-	union nvme_tcp_filter_desc nvme_tcp;
 	union roce_filter_desc     roce;
 	union mpls_filter_desc     mpls;
-	union gre_filter_desc      gre;
 	union skip_filter_desc   skip;
 	union custom_filter_desc custom;
 };
