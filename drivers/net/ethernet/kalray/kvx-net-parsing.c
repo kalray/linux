@@ -208,10 +208,6 @@ static int parser_add_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
 		return write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->custom.word[0],
 				     sizeof(desc->custom));
-	case PTYPE_NVME_TCP:
-		return write_ramline(hw, parser_id, idx,
-				     (u32 *)&desc->nvme_tcp.word[0],
-				     sizeof(desc->nvme_tcp));
 	case PTYPE_ROCE:
 		return write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->roce.word[0],
@@ -220,10 +216,6 @@ static int parser_add_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
 		return write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->mpls.word[0],
 				     sizeof(desc->mpls));
-	case PTYPE_GRE:
-		return write_ramline(hw, parser_id, idx,
-				     (u32 *)&desc->gre.word[0],
-				     sizeof(desc->gre));
 	case PTYPE_SKIP:
 		return write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->skip.word[0],
