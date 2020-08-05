@@ -25,14 +25,19 @@
 
 /**
  * Mailboxes types
- * @KVX_MBOX_RX:  RX mailbox (master side)
- * @KVX_MBOX_TX:  TX mailbox (slave side)
+ * @KVX_MBOX_MASTER:  RX mailbox (master side)
+ * @KVX_MBOX_SLAVE:  TX mailbox (slave side)
  * @KVX_MBOX_MAX: just keep this one at the end
  */
 enum {
-	KVX_MBOX_RX,
-	KVX_MBOX_TX,
+	KVX_MBOX_MASTER,
+	KVX_MBOX_SLAVE,
 	KVX_MBOX_MAX,
+};
+
+static const char *vring_mboxes_names[KVX_MBOX_MAX] = {
+	[KVX_MBOX_MASTER]	= "rx",
+	[KVX_MBOX_SLAVE]	= "tx",
 };
 
 /**
@@ -153,19 +158,28 @@ struct kvx_rproc_mem {
 };
 
 /**
- * struct kvx_mbox_data - per direction mailbox data
+ * struct kvx_mbox_data - mailbox data
  * @pa: Mailbox physical address
  * @chan: Mailbox channel
  * @client: Mailbox client
- * @vrings: bitmap of notify ids to be associated to this mailbox
  */
 struct kvx_mbox_data {
 	u64 pa;
 	struct mbox_chan *chan;
 	struct mbox_client client;
+};
+
+/**
+ * struct kvx_vring_mbox_data - Communication mailbox for vring
+ * @dir: direction of the mailbox
+ * @vrings: bitmap of notify ids to be associated to this mailbox
+ */
+struct kvx_vring_mbox_data {
+	struct kvx_mbox_data mbox;
 	int dir;
 	DECLARE_BITMAP(vrings, KVX_MAX_VRING_PER_MBOX);
 };
+
 
 /**
  * struct kvx_rproc - kvx remote processor driver structure
@@ -173,7 +187,7 @@ struct kvx_mbox_data {
  * @dev: cached device pointer
  * @rproc: remoteproc device handle
  * @ftu_regmap: regmap struct to the ftu controller
- * @mbox: Per direction mailbox data
+ * @vring_mbox: Vring mailboxes
  * @mem: List of memories
  * @mem_count: Count of memories in mem
  * @params_args: Args for the remote processor
@@ -184,7 +198,7 @@ struct kvx_rproc {
 	struct device *dev;
 	struct rproc *rproc;
 	struct regmap *ftu_regmap;
-	struct kvx_mbox_data mbox[KVX_MBOX_MAX];
+	struct kvx_vring_mbox_data vring_mbox[KVX_MBOX_MAX];
 	struct kvx_rproc_mem mem[KVX_INTERNAL_MEM_COUNT];
 	char *params_args;
 	char *params_env;
@@ -277,7 +291,7 @@ static int kvx_rproc_stop(struct rproc *rproc)
 
 	/* Reset vrings in mailbox */
 	for (i = 0; i < KVX_MBOX_MAX; i++)
-		bitmap_clear(kvx_rproc->mbox[i].vrings, 0,
+		bitmap_clear(kvx_rproc->vring_mbox[i].vrings, 0,
 			     KVX_MAX_VRING_PER_MBOX);
 
 	/* reset args and env to avoid reusing arguments between runs */
@@ -291,30 +305,29 @@ static void kvx_rproc_mbox_rx_callback(struct mbox_client *mbox_client,
 				       void *data)
 {
 	unsigned int vq_id;
-	struct kvx_mbox_data *mbox = container_of(mbox_client,
-						   struct kvx_mbox_data,
-						   client);
 	struct kvx_rproc *kvx_rproc = container_of(mbox_client,
 						   struct kvx_rproc,
-						   mbox[KVX_MBOX_RX].client);
+						   vring_mbox[KVX_MBOX_MASTER].mbox.client);
+
+	struct kvx_vring_mbox_data *vring_mbox = &kvx_rproc->vring_mbox[KVX_MBOX_MASTER];
 	struct rproc *rproc = kvx_rproc->rproc;
 
-	for_each_set_bit(vq_id, mbox->vrings, KVX_MAX_VRING_PER_MBOX)
+	for_each_set_bit(vq_id, vring_mbox->vrings, KVX_MAX_VRING_PER_MBOX)
 		rproc_vq_interrupt(rproc, vq_id);
 }
 
-static struct kvx_mbox_data *kvx_rproc_tx_mbox(struct kvx_rproc *kvx_rproc,
+static struct kvx_vring_mbox_data *kvx_rproc_tx_mbox(struct kvx_rproc *kvx_rproc,
 					       int vqid)
 {
 	int i;
 
 	for (i = 0; i < KVX_MBOX_MAX; i++) {
-		struct kvx_mbox_data *mbox = &kvx_rproc->mbox[i];
+		struct kvx_vring_mbox_data *vring_mbox = &kvx_rproc->vring_mbox[i];
 
-		if (mbox->dir != KVX_MBOX_TX)
+		if (vring_mbox->dir != KVX_MBOX_SLAVE)
 			continue;
-		if (test_bit(vqid, mbox->vrings))
-			return mbox;
+		if (test_bit(vqid, vring_mbox->vrings))
+			return vring_mbox;
 	}
 
 	return NULL;
@@ -326,12 +339,12 @@ static void kvx_rproc_kick(struct rproc *rproc, int vqid)
 	struct mbox_chan *chan;
 	struct kvx_rproc *rdata = rproc->priv;
 	u64 mbox_val = -1ULL;
-	struct kvx_mbox_data *mbox = kvx_rproc_tx_mbox(rdata, vqid);
+	struct kvx_vring_mbox_data *vring_mbox = kvx_rproc_tx_mbox(rdata, vqid);
 
-	if (WARN_ON(!mbox))
+	if (WARN_ON(!vring_mbox))
 		return;
 
-	chan = mbox->chan;
+	chan = vring_mbox->mbox.chan;
 	ret = mbox_send_message(chan, (void *) &mbox_val);
 	if (ret < 0)
 		dev_err(rdata->dev, "failed to send message via mbox: %d\n",
@@ -464,7 +477,7 @@ static int kvx_handle_mailbox(struct rproc *rproc,
 {
 	int i;
 	struct device *dev = &rproc->dev;
-	struct kvx_mbox_data *mbox = NULL;
+	struct kvx_vring_mbox_data *vring_mbox = NULL;
 	struct kvx_rproc *kvx_rproc = rproc->priv;
 
 	if (sizeof(*rsc) > avail) {
@@ -479,16 +492,16 @@ static int kvx_handle_mailbox(struct rproc *rproc,
 	}
 
 	if (rsc->flags & FW_RSC_MBOX_SLAVE2MASTER)
-		mbox = &kvx_rproc->mbox[KVX_MBOX_RX];
+		vring_mbox = &kvx_rproc->vring_mbox[KVX_MBOX_MASTER];
 
 	if (rsc->flags & FW_RSC_MBOX_MASTER2SLAVE)
-		mbox = &kvx_rproc->mbox[KVX_MBOX_TX];
+		vring_mbox = &kvx_rproc->vring_mbox[KVX_MBOX_SLAVE];
 
-	if (!mbox)
+	if (!vring_mbox)
 		return -EINVAL;
 
-	rproc_rsc_set_addr(&rsc->pa_lo, &rsc->pa_hi, mbox->pa);
-	rproc_rsc_set_addr(&rsc->da_lo, &rsc->da_hi, mbox->pa);
+	rproc_rsc_set_addr(&rsc->pa_lo, &rsc->pa_hi, vring_mbox->mbox.pa);
+	rproc_rsc_set_addr(&rsc->da_lo, &rsc->da_hi, vring_mbox->mbox.pa);
 
 	/* Assign IDs bound to this mailbox */
 	if (rsc->nb_notify_ids > KVX_MAX_VRING_PER_MBOX) {
@@ -502,7 +515,7 @@ static int kvx_handle_mailbox(struct rproc *rproc,
 				KVX_MAX_VRING_PER_MBOX);
 			return -EINVAL;
 		}
-		__set_bit(rsc->notify_ids[i], mbox->vrings);
+		__set_bit(rsc->notify_ids[i], vring_mbox->vrings);
 	}
 
 	return RSC_HANDLED;
@@ -570,12 +583,12 @@ static int kvx_rproc_get_mbox_phys_addr(struct kvx_rproc *kvx_rproc,
 	return 0;
 }
 
-static int kvx_rproc_request_mbox(struct kvx_rproc *kvx_rproc, int mbox_id,
+static int kvx_rproc_request_mbox(struct kvx_rproc *kvx_rproc,
+				  struct kvx_mbox_data *mbox,
 				  const char *mbox_name, void *rx_callback)
 {
 	struct mbox_chan *chan;
 	struct mbox_client *client;
-	struct kvx_mbox_data *mbox = &kvx_rproc->mbox[mbox_id];
 
 	client = &mbox->client;
 	client->dev = kvx_rproc->dev;
@@ -591,53 +604,70 @@ static int kvx_rproc_request_mbox(struct kvx_rproc *kvx_rproc, int mbox_id,
 		return PTR_ERR(chan);
 	}
 	mbox->chan = chan;
-	mbox->dir = mbox_id;
 
 	return 0;
+}
+
+static int kvx_rproc_request_vring_mbox(struct kvx_rproc *kvx_rproc, int id,
+				  const char *mbox_name, void *rx_callback)
+{
+	struct kvx_vring_mbox_data *vring_mbox = &kvx_rproc->vring_mbox[id];
+
+	vring_mbox->dir = id;
+
+	return kvx_rproc_request_mbox(kvx_rproc, &vring_mbox->mbox, mbox_name,
+				      rx_callback);
 }
 
 static int kvx_rproc_request_mboxes(struct kvx_rproc *kvx_rproc)
 {
-	int ret;
+	int ret = 0;
 	struct device *dev = kvx_rproc->dev;
 
-	ret = kvx_rproc_request_mbox(kvx_rproc, KVX_MBOX_TX, "tx", NULL);
+	ret = kvx_rproc_request_vring_mbox(kvx_rproc, KVX_MBOX_SLAVE, "tx", NULL);
 	if (ret) {
 		dev_err(dev, "failed to setup tx mailbox, status = %d\n",
 			ret);
 		return ret;
 	}
 
-	ret = kvx_rproc_request_mbox(kvx_rproc, KVX_MBOX_RX, "rx",
-				     kvx_rproc_mbox_rx_callback);
+	ret = kvx_rproc_request_vring_mbox(kvx_rproc, KVX_MBOX_MASTER, "rx",
+					   kvx_rproc_mbox_rx_callback);
 	if (ret) {
-		mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_TX].chan);
 		dev_err(dev, "failed to setup tx mailbox, status = %d\n",
 			ret);
-		return ret;
+		goto free_vring_slave_mbox;
 	}
 
 	return 0;
+
+free_vring_slave_mbox:
+	mbox_free_channel(kvx_rproc->vring_mbox[KVX_MBOX_SLAVE].mbox.chan);
+
+	return ret;
 }
 
 static void kvx_rproc_free_mboxes(struct kvx_rproc *kvx_rproc)
 {
-	mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_RX].chan);
-	mbox_free_channel(kvx_rproc->mbox[KVX_MBOX_TX].chan);
+	int i;
+
+	for (i = 0; i < KVX_MBOX_MAX; i++)
+		mbox_free_channel(kvx_rproc->vring_mbox[i].mbox.chan);
 }
 
 static int kvx_rproc_init_mbox_addr(struct kvx_rproc *kvx_rproc)
 {
-	int ret;
-	struct kvx_mbox_data *mbox;
+	int ret, i;
+	struct kvx_vring_mbox_data *mbox;
 
-	mbox = &kvx_rproc->mbox[KVX_MBOX_TX];
-	ret = kvx_rproc_get_mbox_phys_addr(kvx_rproc, "tx", &mbox->pa);
-	if (ret)
-		return ret;
+	for (i = 0; i < KVX_MBOX_MAX; i++) {
+		mbox = &kvx_rproc->vring_mbox[i];
+		ret = kvx_rproc_get_mbox_phys_addr(kvx_rproc, vring_mboxes_names[i], &mbox->mbox.pa);
+		if (ret)
+			return ret;
+	}
 
-	mbox = &kvx_rproc->mbox[KVX_MBOX_RX];
-	return kvx_rproc_get_mbox_phys_addr(kvx_rproc, "rx", &mbox->pa);
+	return 0;
 }
 
 static int kvx_rproc_get_internal_memories(struct platform_device *pdev,
