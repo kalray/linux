@@ -77,7 +77,7 @@ static void __init zone_sizes_init(void)
 	zones_size[ZONE_DMA32] = min(MAX_DMA32_PFN, max_low_pfn);
 	zones_size[ZONE_NORMAL] = max_low_pfn;
 
-	free_area_init_nodes(zones_size);
+	free_area_init(zones_size);
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
