@@ -65,7 +65,7 @@ int kvx_insns_write_nostop(u32 *insns, u8 insns_len, u32 *insn_addr)
 
 		/* Map & patch patch insns */
 		map_patch_addr = insn_patch_map((void *) current_insn_addr);
-		ret = probe_kernel_write(map_patch_addr, insns, patch_len);
+		ret = copy_to_kernel_nofault(map_patch_addr, insns, patch_len);
 		if (ret)
 			break;
 
@@ -139,5 +139,5 @@ int kvx_insns_write(u32 *insns, unsigned long insns_len, u32 *addr)
 
 int kvx_insns_read(u32 *insns, unsigned long insns_len, u32 *addr)
 {
-	return probe_kernel_read(insns, addr, insns_len);
+	return copy_from_kernel_nofault(insns, addr, insns_len);
 }
