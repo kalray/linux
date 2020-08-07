@@ -63,7 +63,7 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 
-	down_write(&mm->mmap_sem);
+	mmap_write_lock(mm);
 
 	addr = get_unmapped_area(NULL, STACK_TOP, PAGE_SIZE, 0, 0);
 	if (IS_ERR_VALUE(addr)) {
@@ -85,6 +85,6 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 	mm->context.sigpage = addr;
 
 up_fail:
-	up_write(&mm->mmap_sem);
+	mmap_write_unlock(mm);
 	return ret;
 }
