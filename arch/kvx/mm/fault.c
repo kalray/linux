@@ -113,7 +113,7 @@ void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, ea);
 
 retry:
-	down_read(&mm->mmap_sem);
+	mmap_read_lock(mm);
 
 	vma = find_vma(mm, ea);
 	if (!vma)
@@ -204,11 +204,11 @@ good_area:
 	}
 
 	/* Fault errors and retry case have been handled nicely */
-	up_read(&mm->mmap_sem);
+	mmap_read_unlock(mm);
 	return;
 
 bad_area:
-	up_read(&mm->mmap_sem);
+	mmap_read_unlock(mm);
 
 	if (user_mode(regs)) {
 		user_do_sig(regs, SIGSEGV, code, ea);
@@ -249,14 +249,14 @@ out_of_memory:
 	 * We ran out of memory, call the OOM killer, and return the userspace
 	 * (which will retry the fault, or kill us if we got oom-killed).
 	 */
-	up_read(&mm->mmap_sem);
+	mmap_read_unlock(mm);
 	if (!user_mode(regs))
 		goto no_context;
 	pagefault_out_of_memory();
 	return;
 
 do_sigbus:
-	up_read(&mm->mmap_sem);
+	mmap_read_unlock(mm);
 	/* Kernel mode? Handle exceptions or die */
 	if (!user_mode(regs))
 		goto no_context;
