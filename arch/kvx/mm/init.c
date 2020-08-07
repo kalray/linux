@@ -201,6 +201,7 @@ void __init early_fixmap_init(void)
 {
 	unsigned long vaddr;
 	pgd_t *pgd;
+	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
 
@@ -208,8 +209,9 @@ void __init early_fixmap_init(void)
 	 * Fixed mappings:
 	 */
 	vaddr = __fix_to_virt(__end_of_fixed_addresses - 1);
-	pgd = pgd_offset_raw(swapper_pg_dir, vaddr);
-	pud = pud_offset(pgd, vaddr);
+	pgd = pgd_offset_pgd(swapper_pg_dir, vaddr);
+	p4d = p4d_offset(pgd, vaddr);
+	pud = pud_offset(p4d, vaddr);
 	set_pud(pud, __pud(__pa_symbol(fixmap_pmd)));
 
 	pmd = pmd_offset(pud, vaddr);
@@ -275,10 +277,12 @@ static void create_pmd_mapping(pgd_t *pgdp, unsigned long va_start,
 	bool use_huge;
 	pmd_t *pmdp;
 	pud_t *pudp;
+	p4d_t *p4dp;
 	pud_t pud;
 	pte_t pte;
 
-	pudp = pud_offset(pgdp, va_start);
+	p4dp = p4d_offset(pgdp, va_start);
+	pudp = pud_offset(p4dp, va_start);
 	pud = READ_ONCE(*pudp);
 
 	if (pud_none(pud)) {
@@ -332,7 +336,7 @@ static void create_pgd_mapping(pgd_t *pgdir, phys_addr_t phys,
 				 pgprot_t prot, bool alloc_pgtable)
 {
 	unsigned long next;
-	pgd_t *pgdp = pgd_offset_raw(pgdir, va_start);
+	pgd_t *pgdp = pgd_offset_pgd(pgdir, va_start);
 
 	BUG_ON(!PAGE_ALIGNED(phys));
 	BUG_ON(!PAGE_ALIGNED(va_start));
