@@ -26,8 +26,7 @@
 
 #include "kvx_iommu_defs.h"
 
-static const struct dma_map_ops kvx_iommu_dma_ops;
-static struct platform_driver kvx_iommu_driver;
+static const struct iommu_ops kvx_iommu_ops;
 
 /**
  * Operations available on the IOMMU TLB
@@ -1411,65 +1410,33 @@ static int kvx_iommu_map(struct iommu_domain *domain,
 }
 
 /**
- * kvx_iommu_match_node() - check if data is matching a device
- * @dev: the reference to the device
- * @data: the data to check
- *
- * Return: 0 if the driver doesn't match, non-zero if it does.
- */
-static int kvx_iommu_match_node(struct device *dev, const void *data)
-{
-	return dev->fwnode == data;
-}
-
-/**
- * kvx_iommu_add_device() - add a device to an IOMMU group
+ * kvx_iommu_probe_device() - add a device to an IOMMU group
  * @dev: the device to be added in the group
  *
- * Return: 0 if succeed, a negative value otherwise.
+ * Return: a pointer to an iommu device on success, NULL on error.
  */
-static int kvx_iommu_add_device(struct device *dev)
+static struct iommu_device *kvx_iommu_probe_device(struct device *dev)
 {
-	struct device *iommu_dev;
 	struct kvx_iommu_drvdata *kvx_iommu_dev;
-	struct iommu_group *group;
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 
-	if (!fwspec)
-		return -ENODEV;
+	if (!fwspec || fwspec->ops != &kvx_iommu_ops)
+		return ERR_PTR(-ENODEV); /* Not a iommu client device */
 
-	iommu_dev = driver_find_device(&kvx_iommu_driver.driver,
-				       NULL, fwspec->iommu_fwnode,
-				       kvx_iommu_match_node);
+	kvx_iommu_dev = dev_iommu_priv_get(dev);
 
-	if (!iommu_dev)
-		return -ENODEV;
-
-	kvx_iommu_dev = dev_get_drvdata(iommu_dev);
-	put_device(iommu_dev);
-	if (!kvx_iommu_dev)
-		return -ENODEV;
-
-	dev_iommu_priv_set(dev, kvx_iommu_dev);
-
-	group = iommu_group_get_for_dev(dev);
-	if (IS_ERR(group))
-		return  PTR_ERR(group);
-
-	iommu_group_put(group);
-	return 0;
+	return &kvx_iommu_dev->iommu;
 }
 
 /**
- * kvx_iommu_remove_device() - Remove the device from IOMMU
+ * kvx_iommu_release_device() - Remove the device from IOMMU
  * @dev: the device to be removed
  *
  * It decrements the group reference, cleans pointers to the IOMMU  group and
  * to the DMA ops.
  */
-static void kvx_iommu_remove_device(struct device *dev)
+static void kvx_iommu_release_device(struct device *dev)
 {
-	iommu_group_remove_device(dev);
 	iommu_fwspec_free(dev);
 
 	dev_dbg(dev, "device has been removed from IOMMU\n");
@@ -1603,6 +1570,7 @@ static struct iommu_group *kvx_iommu_device_group(struct device *dev)
 static int kvx_iommu_of_xlate(struct device *dev,
 			      struct of_phandle_args *spec)
 {
+	struct platform_device *pdev;
 	int ret;
 	u32 asn;
 
@@ -1616,6 +1584,15 @@ static int kvx_iommu_of_xlate(struct device *dev,
 	if (asn_is_invalid(asn)) {
 		dev_err(dev, "ASN %u is not valid\n", asn);
 		return -EINVAL;
+	}
+
+	if (!dev_iommu_priv_get(dev)) {
+		/* Get the kvx iommu device */
+		pdev = of_find_device_by_node(spec->np);
+		if (WARN_ON(!pdev))
+			return -EINVAL;
+
+		dev_iommu_priv_set(dev, platform_get_drvdata(pdev));
 	}
 
 	ret = iommu_fwspec_add_ids(dev, &asn, 1);
@@ -1632,8 +1609,8 @@ static const struct iommu_ops kvx_iommu_ops = {
 	.detach_dev = kvx_iommu_detach_dev,
 	.map = kvx_iommu_map,
 	.unmap = kvx_iommu_unmap,
-	.add_device = kvx_iommu_add_device,
-	.remove_device = kvx_iommu_remove_device,
+	.probe_device = kvx_iommu_probe_device,
+	.release_device = kvx_iommu_release_device,
 	.iova_to_phys = kvx_iommu_iova_to_phys,
 	.device_group = kvx_iommu_device_group,
 	.pgsize_bitmap = KVX_IOMMU_SUPPORTED_SIZE,
