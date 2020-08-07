@@ -108,81 +108,89 @@ clear_user(void __user *to, unsigned long n)
 extern __must_check long strnlen_user(const char __user *str, long n);
 extern long strncpy_from_user(char *dest, const char __user *src, long count);
 
-/*
- * Single-value transfer routines.  They automatically use the right
- * size if we just have the right pointer type.  Note that the functions
- * which read from user space (*get_*) need to take care not to leak
- * kernel data even if the calling code is buggy and fails to check
- * the return value.  This means zeroing out the destination variable
- * or buffer on error.  Normally this is done out of line by the
- * fixup code, but there are a few places where it intrudes on the
- * main code path.  When we only write to user space, there is no
- * problem.
+/**
+ * get_user: - Get a simple variable from user space.
+ * @x:   Variable to store result.
+ * @ptr: Source address, in user space.
  *
- * The "__xxx" versions of the user access functions do not verify the
- * address space - it must have been done previously with a separate
- * "access_ok()" call.
+ * Context: User context only.  This function may sleep.
  *
- * The "xxx_error" versions set the third argument to EFAULT if an
- * error occurs, and leave it unchanged on success.  Note that these
- * versions are void (ie, don't return a value as such).
+ * This macro copies a single simple variable from user space to kernel
+ * space.  It supports simple types like char and int, but not larger
+ * data types like structures or arrays.
+ *
+ * @ptr must have pointer-to-simple-variable type, and the result of
+ * dereferencing @ptr must be assignable to @x without a cast.
+ *
+ * Returns zero on success, or -EFAULT on error.
+ * On error, the variable @x is set to zero.
  */
-
-#define get_user(x, p)							\
+#define get_user(x, ptr)						\
 ({									\
 	long __e = -EFAULT;						\
+	const __typeof__(*(ptr)) __user *__p = (ptr);			\
 	might_fault();							\
-	if (likely(access_ok(p, sizeof(*p)))) {		\
-		__e = __get_user(x, p);					\
+	if (likely(access_ok(__p, sizeof(*__p)))) {			\
+		__e = __get_user(x, __p);				\
 	} else								\
 		x = 0;							\
 	__e;								\
 })
+
+/**
+ * __get_user: - Get a simple variable from user space, with less checking.
+ * @x:   Variable to store result.
+ * @ptr: Source address, in user space.
+ *
+ * Context: User context only.  This function may sleep.
+ *
+ * This macro copies a single simple variable from user space to kernel
+ * space.  It supports simple types like char and int, but not larger
+ * data types like structures or arrays.
+ *
+ * @ptr must have pointer-to-simple-variable type, and the result of
+ * dereferencing @ptr must be assignable to @x without a cast.
+ *
+ * Caller must check the pointer with access_ok() before calling this
+ * function.
+ *
+ * Returns zero on success, or -EFAULT on error.
+ * On error, the variable @x is set to zero.
+ */
 #define __get_user(x, ptr)						\
 ({									\
-	long __gu_err = 0;						\
-	__get_user_err((x), (ptr), __gu_err);				\
-	__gu_err;							\
-})
-
-#define __get_user_error(x, ptr, err)					\
-({									\
-	__get_user_err((x), (ptr), err);				\
-	(void) 0;							\
-})
-
-#define __get_user_err(x, ptr, err)					\
-do {									\
 	unsigned long __gu_addr = (unsigned long)(ptr);			\
-	unsigned long __gu_val;						\
+	unsigned long __gu_val, __err = 0;					\
 	__chk_user_ptr(ptr);						\
 	switch (sizeof(*(ptr))) {					\
 	case 1:								\
-		__get_user_asm("lbz", __gu_val, __gu_addr, err);	\
+		__get_user_asm("lbz", __gu_val, __gu_addr, __err);	\
 		break;							\
 	case 2:								\
-		__get_user_asm("lhz", __gu_val, __gu_addr, err);	\
+		__get_user_asm("lhz", __gu_val, __gu_addr, __err);	\
 		break;							\
 	case 4:								\
-		__get_user_asm("lwz", __gu_val, __gu_addr, err);	\
+		__get_user_asm("lwz", __gu_val, __gu_addr, __err);	\
 		break;							\
 	case 8:								\
-		__get_user_asm("ld", __gu_val, __gu_addr, err);		\
+		__get_user_asm("ld", __gu_val, __gu_addr, __err);	\
 		break;							\
 	default:							\
 		BUILD_BUG();						\
-		break;							\
 	}								\
 	(x) = (__typeof__(*(ptr)))__gu_val;				\
-} while (0)
+	__err;								\
+})
 
 #define __get_user_asm(op, x, addr, err)				\
+({									\
 	__asm__ __volatile__(						\
 			"1:     "op" %1 = 0[%2]\n"			\
 			"       ;;\n"					\
 			"2:\n"						\
 			".section .fixup,\"ax\"\n"			\
 			"3:     make %0 = 2b\n"				\
+			"	make %1 = 0\n"				\
 			"       ;;\n"					\
 			"       make %0 = %3\n"				\
 			"       igoto %0\n"				\
@@ -193,55 +201,82 @@ do {									\
 			"       .dword 1b,3b\n"				\
 			".previous"					\
 			: "=r"(err), "=r"(x)				\
-			: "r"(addr), "i"(-EFAULT), "0"(err))
+			: "r"(addr), "i"(-EFAULT), "0"(err));		\
+})
 
-
-#define put_user(x, p)							\
+/**
+ * put_user: - Write a simple value into user space.
+ * @x:   Value to copy to user space.
+ * @ptr: Destination address, in user space.
+ *
+ * Context: User context only.  This function may sleep.
+ *
+ * This macro copies a single simple value from kernel space to user
+ * space.  It supports simple types like char and int, but not larger
+ * data types like structures or arrays.
+ *
+ * @ptr must have pointer-to-simple-variable type, and @x must be assignable
+ * to the result of dereferencing @ptr.
+ *
+ * Returns zero on success, or -EFAULT on error.
+ */
+#define put_user(x, ptr)						\
 ({									\
 	long __e = -EFAULT;						\
-	if (likely(access_ok(p, sizeof(*p)))) {		\
-		__e = __put_user(x, p);					\
+	__typeof__(*(ptr)) __user *__p = (ptr);				\
+	might_fault();							\
+	if (likely(access_ok(__p, sizeof(*__p)))) {			\
+		__e = __put_user(x, __p);				\
 	}								\
 	__e;								\
 })
+
+/**
+ * __put_user: - Write a simple value into user space, with less checking.
+ * @x:   Value to copy to user space.
+ * @ptr: Destination address, in user space.
+ *
+ * Context: User context only.  This function may sleep.
+ *
+ * This macro copies a single simple value from kernel space to user
+ * space.  It supports simple types like char and int, but not larger
+ * data types like structures or arrays.
+ *
+ * @ptr must have pointer-to-simple-variable type, and @x must be assignable
+ * to the result of dereferencing @ptr.
+ *
+ * Caller must check the pointer with access_ok() before calling this
+ * function.
+ *
+ * Returns zero on success, or -EFAULT on error.
+ */
 #define __put_user(x, ptr)						\
 ({									\
-	long __pu_err = 0;						\
-	__put_user_err((x), (ptr), __pu_err);				\
-	__pu_err;							\
-})
-
-#define __put_user_error(x, ptr, err)					\
-({									\
-	__put_user_err((x), (ptr), err);				\
-	(void) 0;							\
-})
-
-#define __put_user_err(x, ptr, err)					\
-do {									\
 	unsigned long __pu_addr = (unsigned long)(ptr);			\
+	unsigned long __err = 0;						\
 	__typeof__(*(ptr)) __pu_val = (x);				\
 	__chk_user_ptr(ptr);						\
 	switch (sizeof(*(ptr))) {					\
 	case 1:								\
-		__put_user_asm("sb", __pu_val, __pu_addr, err);		\
+		__put_user_asm("sb", __pu_val, __pu_addr, __err);	\
 		break;							\
 	case 2:								\
-		__put_user_asm("sh", __pu_val, __pu_addr, err);		\
+		__put_user_asm("sh", __pu_val, __pu_addr, __err);	\
 		break;							\
 	case 4:								\
-		__put_user_asm("sw", __pu_val, __pu_addr, err);		\
+		__put_user_asm("sw", __pu_val, __pu_addr, __err);	\
 		break;							\
 	case 8:								\
-		__put_user_asm("sd", __pu_val, __pu_addr, err);		\
+		__put_user_asm("sd", __pu_val, __pu_addr, __err);	\
 		break;							\
 	default:							\
 		BUILD_BUG();						\
-		break;							\
 	}								\
-} while (0)
+	__err;								\
+})
 
 #define __put_user_asm(op, x, addr, err)				\
+({									\
 	__asm__ __volatile__(						\
 			"1:     "op" 0[%2], %1\n"			\
 			"       ;;\n"					\
@@ -258,6 +293,7 @@ do {									\
 			"       .dword 1b,3b\n"				\
 			".previous"					\
 			: "=r"(err)					\
-			: "r"(x), "r"(addr), "i"(-EFAULT), "0"(err))
+			: "r"(x), "r"(addr), "i"(-EFAULT), "0"(err));	\
+})
 
 #endif	/* _ASM_KVX_UACCESS_H */
