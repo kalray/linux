@@ -82,7 +82,7 @@ void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 	struct vm_area_struct *vma;
 	unsigned long flags, cause, vma_mask;
 	int code = SEGV_MAPERR;
-	int fault;
+	vm_fault_t fault;
 
 	cause = kvx_sfr_field_val(es, ES, RWX);
 
@@ -105,7 +105,7 @@ void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
 		goto no_context;
 
 	/* By default we retry and fault task can be killed */
-	flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
+	flags = FAULT_FLAG_DEFAULT;
 
 	if (user_mode(regs))
 		flags |= FAULT_FLAG_USER;
@@ -164,7 +164,7 @@ good_area:
 	 * signal first. We do not need to release the mmap_sem because it
 	 * would already be released in __lock_page_or_retry in mm/filemap.c.
 	 */
-	if (unlikely((fault & VM_FAULT_RETRY) && fatal_signal_pending(current)))
+	if (fault_signal_pending(fault, regs))
 		return;
 
 	if (unlikely(fault & VM_FAULT_ERROR)) {
