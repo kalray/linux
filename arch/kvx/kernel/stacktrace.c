@@ -104,7 +104,7 @@ static bool print_pc(unsigned long pc, void *arg)
 	unsigned long *skip = arg;
 
 	if (*skip == 0)
-		print_ip_sym(pc);
+		print_ip_sym(KERN_INFO, pc);
 	else
 		(*skip)--;
 
