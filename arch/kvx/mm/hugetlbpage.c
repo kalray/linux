@@ -191,14 +191,18 @@ pte_t *huge_pte_alloc(struct mm_struct *mm,
 		      unsigned long size)
 {
 	pgd_t *pgd;
+	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd = NULL;
 
 	pgd = pgd_offset(mm, addr);
 	if (pgd_present(*pgd)) {
-		pud = pud_offset(pgd, addr);
-		if (pud_present(*pud))
-			pmd = pmd_alloc(mm, pud, addr);
+		p4d = p4d_offset(pgd, addr);
+		if (p4d_present(*p4d)) {
+			pud = pud_offset(p4d, addr);
+			if (pud_present(*pud))
+				pmd = pmd_alloc(mm, pud, addr);
+		}
 	}
 
 	if (size > KVX_PAGE_64K_SIZE)
@@ -224,6 +228,7 @@ pte_t *huge_pte_offset(struct mm_struct *mm,
 		       unsigned long size)
 {
 	pgd_t *pgd;
+	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *pte;
@@ -242,7 +247,11 @@ pte_t *huge_pte_offset(struct mm_struct *mm,
 	if (!pgd_present(*pgd))
 		return NULL;
 
-	pud = pud_offset(pgd, addr);
+	p4d = p4d_offset(pgd, addr);
+	if (!p4d_present(*p4d))
+		return NULL;
+
+	pud = pud_offset(p4d, addr);
 	if (!pud_present(*pud))
 		return NULL;
 
