@@ -16,7 +16,6 @@
 #include <asm/page.h>
 #include <asm/pgtable-bits.h>
 
-#define __ARCH_USE_5LEVEL_HACK
 #include <asm-generic/pgtable-nopud.h>
 
 #include <asm/mem_map.h>
@@ -141,29 +140,9 @@ extern struct page *empty_zero_page;
 /**********************
  * PGD definitions:
  *   - pgd_ERROR
- *   - pgd_index
- *   - pgd_offset
- *   - pgd_offset_k
  */
 #define pgd_ERROR(e) \
 	pr_err("%s:%d: bad pgd %016lx.\n", __FILE__, __LINE__, pgd_val(e))
-
-/* Take a virtual address and extract the index in the PGD */
-static inline unsigned long pgd_index(unsigned long addr)
-{
-	return ((addr >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1));
-}
-
-#define pgd_offset_raw(pgd, addr)	((pgd) + pgd_index(addr))
-
-/* Find an entry in the page global directory */
-static inline pgd_t *pgd_offset(const struct mm_struct *mm, unsigned long addr)
-{
-	return pgd_offset_raw(mm->pgd, addr);
-}
-
-/* Locate an entry in the kernel page global directory */
-#define pgd_offset_k(addr)      pgd_offset(&init_mm, (addr))
 
 /**
  * PUD
@@ -203,8 +182,6 @@ static inline void pud_clear(pud_t *pud)
  *   - pmd_bad
  *   - pmd_clear
  *   - pmd_page
- *
- * Note: pmd_offset is defined in the pgtable-3levels.h
  */
 
 static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
@@ -253,19 +230,9 @@ static inline struct page *pmd_page(pmd_t pmd)
 #define pmd_ERROR(e) \
 	pr_err("%s:%d: bad pmd %016lx.\n", __FILE__, __LINE__, pmd_val(e))
 
-static inline unsigned long pmd_index(unsigned long addr)
-{
-	return ((addr) >> PMD_SHIFT) & (PTRS_PER_PMD - 1);
-}
-
 static inline unsigned long pud_page_vaddr(pud_t pud)
 {
 	return (unsigned long)pfn_to_virt(pud_val(pud) >> PAGE_SHIFT);
-}
-
-static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
-{
-	return (pmd_t *)pud_page_vaddr(*pud) + pmd_index(addr);
 }
 
 /**********************
@@ -274,9 +241,6 @@ static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
  *   - set_pte_at
  *   - pte_clear
  *   - pte_page
- *   - pte_index
- *   - pte_offset_kernel
- *   - pte_offset_map
  *   - pte_pfn
  *   - pte_present
  *   - pte_none
@@ -329,23 +293,10 @@ static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 
 #define pte_page(x)     pfn_to_page(pte_pfn(x))
 
-static inline unsigned long pte_index(unsigned long addr)
-{
-	return ((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1);
-}
-
 static inline unsigned long pmd_page_vaddr(pmd_t pmd)
 {
 	return (unsigned long)pfn_to_virt(pmd_val(pmd) >> PAGE_SHIFT);
 }
-
-static inline pte_t *pte_offset_kernel(pmd_t *pmd, unsigned long addr)
-{
-	return (pte_t *)pmd_page_vaddr(*pmd) + pte_index(addr);
-}
-
-#define pte_offset_map(dir, addr)	pte_offset_kernel((dir), (addr))
-#define pte_unmap(pte)			((void)(pte))
 
 /* Yields the page frame number (PFN) of a page table entry */
 static inline unsigned long pte_pfn(pte_t pte)
@@ -468,7 +419,7 @@ static inline pmd_t pmd_mkhuge(pmd_t pmd)
 			_PAGE_HUGE | (TLB_PS_2M << KVX_PAGE_SZ_SHIFT));
 }
 
-static inline pmd_t pmd_mknotpresent(pmd_t pmd)
+static inline pmd_t pmd_mkinvalid(pmd_t pmd)
 {
 	pmd_val(pmd) &= ~(_PAGE_PRESENT);
 
@@ -496,7 +447,5 @@ static inline void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 }
 
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
-
-#include <asm-generic/pgtable.h>
 
 #endif	/* _ASM_KVX_PGTABLE_H */
