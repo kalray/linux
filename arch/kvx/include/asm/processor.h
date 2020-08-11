@@ -131,12 +131,6 @@ struct thread_struct {
 #define KSTK_ESP(tsk)   (task_pt_regs(tsk)->sp)
 #define KSTK_EIP(tsk)   (task_pt_regs(tsk)->spc)
 
-/*
- * Default implementation of macro that returns current
- * instruction pointer ("program counter").
- */
-#define current_text_addr() ({ __label__ _l; _l: &&_l; })
-
 #define task_pt_regs(p) \
 	((struct pt_regs *)(task_stack_page(p) + THREAD_SIZE) - 1)
 
