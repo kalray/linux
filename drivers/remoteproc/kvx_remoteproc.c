@@ -40,6 +40,11 @@ static const char *vring_mboxes_names[KVX_MBOX_MAX] = {
 	[KVX_MBOX_SLAVE]	= "tx",
 };
 
+static const char *ctrl_mboxes_names[KVX_MBOX_MAX] = {
+	[KVX_MBOX_MASTER]	= "ctrl-master",
+	[KVX_MBOX_SLAVE]	= "ctrl-slave",
+};
+
 /**
  * Internal Memory types
  * @KVX_INTERNAL_MEM_TCM: Tightly Coupled Memory
@@ -60,7 +65,57 @@ static const char *mem_names[KVX_INTERNAL_MEM_COUNT] = {
 enum fw_kalray_resource_type {
 	RSC_KALRAY_MBOX = RSC_VENDOR_START,
 	RSC_KALRAY_BOOT_PARAMS = RSC_VENDOR_START + 1,
+	RSC_KALRAY_DEV_STATE = RSC_VENDOR_START + 2,
 };
+
+/**
+ * Kalray device state version
+ */
+enum fw_rsc_kalray_dev_state_version {
+	FW_RSC_KALRAY_DEV_STATE_VERSION_1 = 1
+};
+
+/**
+ * Kalray device state actions
+ * @FW_RSC_KALRAY_DEV_STATE_UNDEF:	Device is not up
+ * @FW_RSC_KALRAY_DEV_STATE_RUN:	Device is up
+ * @FW_RSC_KALRAY_DEV_STATE_SHUTDOWN:	Device is shutdown
+ * @FW_RSC_KALRAY_DEV_STATE_ERROR:	Device is in error state
+ *
+ */
+enum fw_rsc_kalray_dev_state_e {
+	FW_RSC_KALRAY_DEV_STATE_UNDEF       = 0,
+	FW_RSC_KALRAY_DEV_STATE_RUN         = BIT(0),
+	FW_RSC_KALRAY_DEV_STATE_SHUTDOWN    = BIT(1),
+	FW_RSC_KALRAY_DEV_STATE_ERROR       = BIT(2),
+};
+
+
+/**
+ * struct fw_rsc_kalray_dev_state - kalray device state resource
+ * @version: Version of device_state
+ * @mbox_slave_da_lo: Device address low bits of master to slave mailbox
+ * @mbox_slave_da_hi: Device address high bits of master to slave mailbox
+ * @mbox_slave_pa_lo: Physical address low bits of master to slave mailbox
+ * @mbox_slave_pa_hi: Physical address high bits of master to slave mailbox
+ * @mbox_master_da_lo: Device address low bits of slave to master mailbox
+ * @mbox_master_da_hi: Device address high bits of slave to master mailbox
+ * @mbox_master_pa_lo: Physical address low bits of slave to master mailbox
+ * @mbox_master_pa_hi: Physical address high bits of slave to master mailbox
+ * @reserved: reserved bits
+ */
+struct fw_rsc_kalray_dev_state {
+	u32    version;
+	u32    mbox_slave_da_lo;
+	u32    mbox_slave_da_hi;
+	u32    mbox_slave_pa_lo;
+	u32    mbox_slave_pa_hi;
+	u32    mbox_master_da_lo;
+	u32    mbox_master_da_hi;
+	u32    mbox_master_pa_lo;
+	u32    mbox_master_pa_hi;
+	u64    reserved[2];
+} __packed;
 
 /**
  * Flags for kalray mailbox resource
@@ -189,9 +244,12 @@ struct kvx_vring_mbox_data {
  * @ftu_regmap: regmap struct to the ftu controller
  * @vring_mbox: Vring mailboxes
  * @mem: List of memories
- * @mem_count: Count of memories in mem
+ * @ctrl_mbox: Control mailboxes
+ * @shutdown_comp: Completion for slave shutdown
+ * @remote_status: Remote status sent by the slave
+ * @has_dev_state: True if the current running firmware has a dev_state resource
  * @params_args: Args for the remote processor
- * @params_env: Env for remote processor.
+ * @params_env: Env for remote processor
  */
 struct kvx_rproc {
 	int cluster_id;
@@ -200,6 +258,10 @@ struct kvx_rproc {
 	struct regmap *ftu_regmap;
 	struct kvx_vring_mbox_data vring_mbox[KVX_MBOX_MAX];
 	struct kvx_rproc_mem mem[KVX_INTERNAL_MEM_COUNT];
+	struct kvx_mbox_data ctrl_mbox[KVX_MBOX_MAX];
+	struct completion shutdown_comp;
+	u64 remote_status;
+	bool has_dev_state;
 	char *params_args;
 	char *params_env;
 };
@@ -232,6 +294,8 @@ static int kvx_rproc_start(struct rproc *rproc)
 			boot_addr);
 		return -EINVAL;
 	}
+
+	reinit_completion(&kvx_rproc->shutdown_comp);
 
 	ret = kvx_rproc_request_mboxes(kvx_rproc);
 	if (ret)
@@ -282,10 +346,50 @@ static void kvx_rproc_free_args_env(struct kvx_rproc *kvx_rproc, char **str)
 	}
 }
 
+static int kvx_send_shutdown_request(struct kvx_rproc *kvx_rproc)
+{
+	int ret;
+	u64 mbox_val = FW_RSC_KALRAY_DEV_STATE_SHUTDOWN;
+	unsigned long timeout;
+	struct mbox_chan *chan = kvx_rproc->ctrl_mbox[KVX_MBOX_SLAVE].chan;
+
+	/* Send stop request to the device */
+	ret = mbox_send_message(chan, (void *) &mbox_val);
+	if (ret < 0)
+		dev_err(kvx_rproc->dev, "failed to send message via mbox: %d\n",
+			ret);
+
+	mbox_client_txdone(chan, 0);
+
+	/* Wait for reply */
+	timeout = wait_for_completion_interruptible_timeout(
+						&kvx_rproc->shutdown_comp, HZ);
+
+	/* Error path are returning 0 because this is non fatal */
+	if (!timeout) {
+		dev_warn(kvx_rproc->dev, "completion timeout for remote shutdown\n");
+		return 0;
+	}
+
+	if (kvx_rproc->remote_status != FW_RSC_KALRAY_DEV_STATE_SHUTDOWN) {
+		dev_warn(kvx_rproc->dev, "Remote processor did not shutdown, state %llx\n",
+			kvx_rproc->remote_status);
+		return 0;
+	}
+
+	return 0;
+}
+
 static int kvx_rproc_stop(struct rproc *rproc)
 {
-	int i;
+	int i, ret;
 	struct kvx_rproc *kvx_rproc = rproc->priv;
+
+	if (kvx_rproc->has_dev_state) {
+		ret = kvx_send_shutdown_request(kvx_rproc);
+		if (ret)
+			return ret;
+	}
 
 	kvx_rproc_free_mboxes(kvx_rproc);
 
@@ -297,6 +401,8 @@ static int kvx_rproc_stop(struct rproc *rproc)
 	/* reset args and env to avoid reusing arguments between runs */
 	kvx_rproc_free_args_env(kvx_rproc, &kvx_rproc->params_args);
 	kvx_rproc_free_args_env(kvx_rproc, &kvx_rproc->params_env);
+	kvx_rproc->has_dev_state = false;
+	kvx_rproc->remote_status = FW_RSC_KALRAY_DEV_STATE_UNDEF;
 
 	return kvx_rproc_reset(kvx_rproc);
 }
@@ -314,6 +420,19 @@ static void kvx_rproc_mbox_rx_callback(struct mbox_client *mbox_client,
 
 	for_each_set_bit(vq_id, vring_mbox->vrings, KVX_MAX_VRING_PER_MBOX)
 		rproc_vq_interrupt(rproc, vq_id);
+}
+
+static void kvx_rproc_ctrl_mbox_rx_callback(struct mbox_client *mbox_client,
+				       void *data)
+{
+	struct kvx_rproc *kvx_rproc = container_of(mbox_client,
+						   struct kvx_rproc,
+						   ctrl_mbox[KVX_MBOX_MASTER].client);
+
+	kvx_rproc->remote_status = *(u64 *) data;
+
+	if (kvx_rproc->remote_status == FW_RSC_KALRAY_DEV_STATE_SHUTDOWN)
+		complete(&kvx_rproc->shutdown_comp);
 }
 
 static struct kvx_vring_mbox_data *kvx_rproc_tx_mbox(struct kvx_rproc *kvx_rproc,
@@ -521,13 +640,48 @@ static int kvx_handle_mailbox(struct rproc *rproc,
 	return RSC_HANDLED;
 }
 
+static int kvx_handle_dev_state(struct rproc *rproc,
+				     struct fw_rsc_kalray_dev_state *rsc,
+				     int offset,
+				     int avail)
+{
+	struct kvx_mbox_data *mbox;
+	struct device *dev = &rproc->dev;
+	struct kvx_rproc *kvx_rproc = rproc->priv;
+
+	if (sizeof(*rsc) > avail) {
+		dev_err(dev, "dev_state rsc is truncated\n");
+		return -EINVAL;
+	}
+
+	if (rsc->version != FW_RSC_KALRAY_DEV_STATE_VERSION_1) {
+		dev_err(dev, "Invalid dev_state resource version (%d)\n",
+			rsc->version);
+		return -EINVAL;
+	}
+
+	mbox = &kvx_rproc->ctrl_mbox[KVX_MBOX_SLAVE];
+	rproc_rsc_set_addr(&rsc->mbox_slave_da_lo, &rsc->mbox_slave_da_hi, mbox->pa);
+	rproc_rsc_set_addr(&rsc->mbox_slave_pa_lo, &rsc->mbox_slave_pa_hi, mbox->pa);
+
+	mbox = &kvx_rproc->ctrl_mbox[KVX_MBOX_MASTER];
+	rproc_rsc_set_addr(&rsc->mbox_master_da_lo, &rsc->mbox_master_da_hi, mbox->pa);
+	rproc_rsc_set_addr(&rsc->mbox_master_pa_lo, &rsc->mbox_master_pa_hi, mbox->pa);
+
+	kvx_rproc->has_dev_state = true;
+
+	return RSC_HANDLED;
+}
+
 static int kvx_rproc_handle_rsc(struct rproc *rproc, u32 type, void *rsc,
 				int offset, int avail)
 {
 	if (type == RSC_KALRAY_MBOX)
 		return kvx_handle_mailbox(rproc, rsc, offset, avail);
-	if (type == RSC_KALRAY_BOOT_PARAMS)
+	else if (type == RSC_KALRAY_BOOT_PARAMS)
 		return kvx_handle_boot_params(rproc, rsc, offset, avail);
+	else if (type == RSC_KALRAY_DEV_STATE)
+		return kvx_handle_dev_state(rproc, rsc, offset, avail);
 
 	return 1;
 }
@@ -624,7 +778,8 @@ static int kvx_rproc_request_mboxes(struct kvx_rproc *kvx_rproc)
 	int ret = 0;
 	struct device *dev = kvx_rproc->dev;
 
-	ret = kvx_rproc_request_vring_mbox(kvx_rproc, KVX_MBOX_SLAVE, "tx", NULL);
+	ret = kvx_rproc_request_vring_mbox(kvx_rproc, KVX_MBOX_SLAVE, "tx",
+					   NULL);
 	if (ret) {
 		dev_err(dev, "failed to setup tx mailbox, status = %d\n",
 			ret);
@@ -639,8 +794,25 @@ static int kvx_rproc_request_mboxes(struct kvx_rproc *kvx_rproc)
 		goto free_vring_slave_mbox;
 	}
 
+	ret = kvx_rproc_request_mbox(kvx_rproc,
+				     &kvx_rproc->ctrl_mbox[KVX_MBOX_SLAVE],
+				     "ctrl-slave", NULL);
+	if (ret)
+		goto free_vring_rx_mbox;
+
+	ret = kvx_rproc_request_mbox(kvx_rproc,
+				     &kvx_rproc->ctrl_mbox[KVX_MBOX_MASTER],
+				     "ctrl-master",
+				     kvx_rproc_ctrl_mbox_rx_callback);
+	if (ret)
+		goto free_ctrl_slave_mbox;
+
 	return 0;
 
+free_ctrl_slave_mbox:
+	mbox_free_channel(kvx_rproc->ctrl_mbox[KVX_MBOX_SLAVE].chan);
+free_vring_rx_mbox:
+	mbox_free_channel(kvx_rproc->vring_mbox[KVX_MBOX_MASTER].mbox.chan);
 free_vring_slave_mbox:
 	mbox_free_channel(kvx_rproc->vring_mbox[KVX_MBOX_SLAVE].mbox.chan);
 
@@ -651,18 +823,29 @@ static void kvx_rproc_free_mboxes(struct kvx_rproc *kvx_rproc)
 {
 	int i;
 
-	for (i = 0; i < KVX_MBOX_MAX; i++)
+	for (i = 0; i < KVX_MBOX_MAX; i++) {
 		mbox_free_channel(kvx_rproc->vring_mbox[i].mbox.chan);
+		mbox_free_channel(kvx_rproc->ctrl_mbox[i].chan);
+	}
 }
 
 static int kvx_rproc_init_mbox_addr(struct kvx_rproc *kvx_rproc)
 {
 	int ret, i;
-	struct kvx_vring_mbox_data *mbox;
+	struct kvx_mbox_data *mbox;
 
 	for (i = 0; i < KVX_MBOX_MAX; i++) {
-		mbox = &kvx_rproc->vring_mbox[i];
-		ret = kvx_rproc_get_mbox_phys_addr(kvx_rproc, vring_mboxes_names[i], &mbox->mbox.pa);
+		mbox = &kvx_rproc->vring_mbox[i].mbox;
+		ret = kvx_rproc_get_mbox_phys_addr(kvx_rproc,
+						   vring_mboxes_names[i],
+						   &mbox->pa);
+		if (ret)
+			return ret;
+
+		mbox = &kvx_rproc->ctrl_mbox[i];
+		ret = kvx_rproc_get_mbox_phys_addr(kvx_rproc,
+						   ctrl_mboxes_names[i],
+						   &mbox->pa);
 		if (ret)
 			return ret;
 	}
@@ -930,6 +1113,8 @@ static int kvx_rproc_probe(struct platform_device *pdev)
 	kvx_rproc = rproc->priv;
 	kvx_rproc->rproc = rproc;
 	kvx_rproc->dev = dev;
+	kvx_rproc->has_dev_state = false;
+	init_completion(&kvx_rproc->shutdown_comp);
 	rproc->ops->parse_fw = kvx_rproc_parse_fw;
 
 	rproc->auto_boot = of_property_read_bool(np, "kalray,auto-boot");
