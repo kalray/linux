@@ -1112,7 +1112,7 @@ static int domain_finalize_setup(struct kvx_iommu_domain *kvx_domain)
 
 	kvx_domain->domain.geometry.aperture_end =
 		GENMASK_ULL(hw[KVX_IOMMU_RX]->in_addr_size - 1, 0);
-	kvx_domain->domain.geometry.force_aperture = 1;
+	kvx_domain->domain.geometry.force_aperture = true;
 
 	return 0;
 }
