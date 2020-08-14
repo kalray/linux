@@ -749,7 +749,7 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 			val = MAC_1G_MODE_SGMII_EN_MASK |
 				MAC_1G_MODE_USE_SGMII_AN_MASK;
 			mask = val;
-			if (cfg->an_mode != MLO_AN_FIXED) {
+			if (cfg->an_mode == MLO_AN_FIXED) {
 				mask |= MAC_1G_MODE_SGMII_SPEED_MASK;
 				val |= (speed_to_sgmii(cfg->speed)
 					<< MAC_1G_MODE_SGMII_SPEED_SHIFT);
