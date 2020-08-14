@@ -1491,6 +1491,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_dev *dev = KVX_DEV(ndev);
 	bool update_serdes = false;
+	int an_enabled = state->an_enabled;
 	int i, ret = 0;
 	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
 
@@ -1505,6 +1506,12 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 			ndev->cfg.speed = SPEED_1000;
 		if (state->duplex == DUPLEX_UNKNOWN)
 			ndev->cfg.duplex = DUPLEX_FULL;
+		/*
+		 * SGMII autoneg is based on clause 37 (not clause 73).
+		 * This avoid a timeout and make link up faster.
+		 */
+		an_enabled = false;
+		update_serdes = true;
 	}
 
 	if (state->interface != PHY_INTERFACE_MODE_NA)
@@ -1525,7 +1532,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		kvx_eth_pfc_f_cfg(ndev->hw, &ndev->cfg.pfc_f);
 	}
 
-	if (state->an_enabled) {
+	if (an_enabled) {
 		ret = kvx_eth_autoneg(ndev);
 		if (ret)
 			netdev_err(netdev, "Autonegotiation failed, using default speed %i Mb/s\n",
