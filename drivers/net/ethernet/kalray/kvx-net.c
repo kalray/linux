@@ -75,7 +75,7 @@ void kvx_eth_up(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_ring *r;
-	int i;
+	int i, ret;
 
 	for (i = 0; i < ndev->dma_cfg.rx_chan_id.nb; i++) {
 		r = &ndev->rx_ring[i];
@@ -84,6 +84,12 @@ void kvx_eth_up(struct net_device *netdev)
 	}
 
 	netif_tx_start_all_queues(netdev);
+	ret = phylink_of_phy_connect(ndev->phylink, ndev->dev->of_node, 0);
+	if (ret) {
+		netdev_err(netdev, "Unable to get phy (%i)\n", ret);
+		return;
+	}
+
 	phylink_start(ndev->phylink);
 }
 
@@ -109,6 +115,7 @@ void kvx_eth_down(struct net_device *netdev)
 		napi_disable(&ndev->rx_ring[i].napi);
 
 	phylink_stop(ndev->phylink);
+	phylink_disconnect_phy(ndev->phylink);
 }
 
 /* kvx_eth_netdev_close() - Close ops
@@ -119,7 +126,6 @@ static int kvx_eth_netdev_close(struct net_device *netdev)
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
 	kvx_eth_down(netdev);
-	phylink_disconnect_phy(ndev->phylink);
 
 	return 0;
 }
@@ -1649,12 +1655,6 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 		return NULL;
 	}
 	ndev->phylink = phylink;
-
-	ret = phylink_of_phy_connect(ndev->phylink, pdev->dev.of_node, 0);
-	if (ret) {
-		netdev_err(netdev, "Unable to get phy (%i)\n", ret);
-		goto phylink_err;
-	}
 
 	eth_hw_addr_random(netdev);
 	memcpy(ndev->cfg.mac_f.addr, netdev->dev_addr, ETH_ALEN);
