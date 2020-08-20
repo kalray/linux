@@ -9,6 +9,7 @@
 #include <linux/device.h>
 #include <linux/iopoll.h>
 #include <linux/phy.h>
+#include <linux/phylink.h>
 #include <linux/io.h>
 #include <linux/of.h>
 
@@ -707,23 +708,55 @@ static void update_set_vendor_xpcs_vl(struct kvx_eth_hw *hw, int pcs_id,
  */
 #define MARKER_COMP_10G 16383
 
-static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw, int lane_id,
-			       unsigned int speed)
+static inline int speed_to_sgmii(unsigned int net_speed)
+{
+	switch (net_speed) {
+	case SPEED_10:
+		return 0;
+	case SPEED_100:
+		return 1;
+	case SPEED_1000:
+		return 2;
+	}
+
+	return -1;
+}
+
+static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
+			const struct kvx_eth_lane_cfg *cfg)
 {
 	u32 reg, mc, thresh;
 	int i, s;
-	u32 val;
+	u32 val, mask, lane_id, speed;
 
+	lane_id = cfg->id;
+	speed = cfg->speed;
 	switch (speed) {
 	case SPEED_10:
 	case SPEED_100:
 	case SPEED_1000:
-		/* Disable 1G autoneg & reset PCS */
+		val = 0;
 		reg = MAC_1G_OFFSET + MAC_1G_ELEM_SIZE * lane_id;
-		val = kvx_mac_readl(hw, reg + MAC_1G_CTRL_OFFSET);
-		clear_bit(MAC_1G_CTRL_AN_EN_SHIFT, (unsigned long *)&val);
-		set_bit(MAC_1G_CTRL_RESET_SHIFT, (unsigned long *)&val);
-		kvx_mac_writel(hw, val, reg + MAC_1G_CTRL_OFFSET);
+		mask = BIT(MAC_1G_CTRL_AN_EN_SHIFT) |
+			BIT(MAC_1G_CTRL_RESET_SHIFT);
+
+		if (cfg->an_mode != MLO_AN_FIXED)
+			val |= BIT(MAC_1G_CTRL_AN_EN_SHIFT);
+		val |= BIT(MAC_1G_CTRL_RESET_SHIFT);
+		updatel_bits(hw, MAC, reg + MAC_1G_CTRL_OFFSET, mask, val);
+
+		if (cfg->phy_mode == PHY_INTERFACE_MODE_SGMII) {
+			val = MAC_1G_MODE_SGMII_EN_MASK |
+				MAC_1G_MODE_USE_SGMII_AN_MASK;
+			mask = val;
+			if (cfg->an_mode != MLO_AN_FIXED) {
+				mask |= MAC_1G_MODE_SGMII_SPEED_MASK;
+				val |= (speed_to_sgmii(cfg->speed)
+					<< MAC_1G_MODE_SGMII_SPEED_SHIFT);
+			}
+			updatel_bits(hw, MAC, reg + MAC_1G_MODE_OFFSET,
+					mask, val);
+		}
 		break;
 	case SPEED_10000:
 		/* Set MAC interface to XGMII */
@@ -1351,21 +1384,9 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			kvx_mac_writel(hw, val, MAC_FEC_CTRL_OFFSET);
 		}
 	}
-	if (cfg->speed == SPEED_10)
-		val = (0 << MAC_1G_MODE_SGMII_SPEED_SHIFT);
-	else if (cfg->speed == SPEED_100)
-		val = (1 << MAC_1G_MODE_SGMII_SPEED_SHIFT);
-	else if (cfg->speed == SPEED_1000)
-		val = (2 << MAC_1G_MODE_SGMII_SPEED_SHIFT);
 
-	if (cfg->speed <= SPEED_1000) {
-		val |= MAC_1G_MODE_SGMII_EN_MASK;
-		updatel_bits(hw, MAC, MAC_1G_MODE_OFFSET,
-				MAC_1G_MODE_SGMII_SPEED_MASK |
-				MAC_1G_MODE_SGMII_EN_MASK, val);
-	}
 	/* config MAC PCS */
-	ret = kvx_eth_mac_pcs_cfg(hw, cfg->id, cfg->speed);
+	ret = kvx_eth_mac_pcs_cfg(hw, cfg);
 	if (ret)
 		return ret;
 

@@ -32,6 +32,7 @@
 #include "kvx-net-hw.h"
 #include "kvx-net-regs.h"
 #include "kvx-net-hdr.h"
+#include "kvx-mac-regs.h"
 
 #define KVX_RX_HEADROOM  (NET_IP_ALIGN + NET_SKB_PAD)
 #define KVX_SKB_PAD	(SKB_DATA_ALIGN(sizeof(struct skb_shared_info) + \
@@ -1477,7 +1478,7 @@ exit:
 }
 
 static void kvx_phylink_mac_config(struct phylink_config *cfg,
-				   unsigned int mode,
+				   unsigned int an_mode,
 				   const struct phylink_link_state *state)
 {
 	struct net_device *netdev = to_net_dev(cfg->dev);
@@ -1486,6 +1487,23 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	bool update_serdes = false;
 	int i, ret = 0;
 	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
+
+	if (state->interface == PHY_INTERFACE_MODE_SGMII) {
+		/*
+		 * Speed might be undetermined when autoneg is enabled
+		 * but has not completed yet. By setting a default speed
+		 * it ensures that the minimum configuration required
+		 * for autoneg to complete successfully is done
+		 */
+		if (state->speed == SPEED_UNKNOWN)
+			ndev->cfg.speed = SPEED_1000;
+		if (state->duplex == DUPLEX_UNKNOWN)
+			ndev->cfg.duplex = DUPLEX_FULL;
+	}
+
+	if (state->interface != PHY_INTERFACE_MODE_NA)
+		ndev->cfg.phy_mode = state->interface;
+	ndev->cfg.an_mode = an_mode;
 
 	if (ndev->cfg.speed != state->speed ||
 	    ndev->cfg.duplex != state->duplex)
