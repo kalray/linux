@@ -1314,11 +1314,12 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 
 	val = kvx_mac_readl(hw, MAC_SG_OFFSET);
-	val |= ((u32) 3 << MAC_SG_TX_LANE_CKMULT_SHIFT);
-	if (cfg->speed <= SPEED_1000)
+	if (cfg->speed <= SPEED_1000) {
 		val |= ((u32) BIT(cfg->id) << MAC_SG_EN_SHIFT);
-	if (cfg->speed == SPEED_1000)
 		val |= (u32) BIT(MAC_SG_TX_LANE_CKMULT_SHIFT);
+	} else {
+		val |= ((u32) 3 << MAC_SG_TX_LANE_CKMULT_SHIFT);
+	}
 	kvx_mac_writel(hw, val, MAC_SG_OFFSET);
 
 	ret = kvx_eth_mac_reset(hw, cfg->id);
