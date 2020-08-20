@@ -1317,7 +1317,7 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 	}
 
 	if (of_property_read_u32_array(np, "kalray,default-dispatch-entry",
-			     (u32 *)&ndev->cfg.default_dispatch_entry, 1) != 0)
+			(u32 *)&ndev->cfg.default_dispatch_entry, 1) != 0)
 	     ndev->cfg.default_dispatch_entry = KVX_ETH_DEFAULT_RULE_DTABLE_IDX;
 
 	i = 0;
@@ -1736,7 +1736,7 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	kvx_eth_tx_fifo_cfg(&dev->hw, &ndev->cfg);
 	kvx_eth_lb_f_cfg(&dev->hw, &ndev->hw->lb_f[ndev->cfg.id]);
 
-	ret = kvx_eth_sysfs_init(ndev);
+	ret = kvx_eth_netdev_sysfs_init(ndev);
 	if (ret)
 		netdev_warn(ndev->netdev, "Failed to initialize sysfs\n");
 
@@ -1762,7 +1762,7 @@ static int kvx_netdev_remove(struct platform_device *pdev)
 	struct kvx_eth_rtm_params *params = &ndev->hw->rtm_params;
 	int rtm;
 
-	kvx_eth_sysfs_remove(ndev);
+	kvx_eth_netdev_sysfs_uninit(ndev);
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
 		if (params->rtm[rtm])
 			put_device(&params->rtm[rtm]->dev);
@@ -1862,6 +1862,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 
 	kvx_eth_tx_init(&dev->hw);
 	kvx_eth_phy_f_init(&dev->hw);
+	kvx_eth_hw_sysfs_init(&dev->hw);
 	dev_info(&pdev->dev, "KVX network driver\n");
 	return devm_of_platform_populate(&pdev->dev);
 
