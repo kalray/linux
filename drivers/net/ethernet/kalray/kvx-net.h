@@ -136,8 +136,9 @@ void kvx_eth_up(struct net_device *netdev);
 void kvx_eth_down(struct net_device *netdev);
 void kvx_set_ethtool_ops(struct net_device *netdev);
 
-int kvx_eth_sysfs_init(struct kvx_eth_netdev *ndev);
-void kvx_eth_sysfs_remove(struct kvx_eth_netdev *ndev);
+int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw);
+int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev);
+void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev);
 
 #ifdef CONFIG_DCB
 void kvx_set_dcb_ops(struct net_device *netdev);
