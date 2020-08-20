@@ -6,7 +6,6 @@
  *
  * Copyright (C) 2019 Kalray Inc.
  */
-
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>

@@ -13,6 +13,7 @@
 #include <asm/sys_arch.h>
 #include <linux/netdevice.h>
 #include <linux/types.h>
+#include <linux/phy.h>
 #include <linux/ti-retimer.h>
 #include <net/page_pool.h>
 
@@ -420,6 +421,8 @@ struct link_capability {
  * @link: phy link state
  * @speed: phy node speed
  * @duplex: duplex mode
+ * @phy_mode: phy interface mode
+ * @an_mode: enable autonegociation
  * @lc: link capabilities
  * @ln: link negotiated rate/fec/pause
  * @hw: back pointer to hw description
@@ -435,6 +438,8 @@ struct kvx_eth_lane_cfg {
 	int link;
 	unsigned int speed;
 	unsigned int duplex;
+	phy_interface_t phy_mode;
+	unsigned int an_mode;
 	struct link_capability lc;
 	struct link_capability ln;
 	struct kvx_eth_hw *hw;
