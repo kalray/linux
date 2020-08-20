@@ -4,6 +4,7 @@ Required properties:
 - compatible: Should be "kalray,kvx-eth"
 - reg: {phy, phymac, mac, eth} registers and length
 - reg-names: {phy, phymac, mac, eth} names
+- kalray,lane: index of first lane
 
 Optional properties:
 - cell-index: ethernet hw index, used for packet routing
@@ -19,6 +20,9 @@ Required properties:
 - compatible: Should be "kalray,kvx-net";
 - dmas: tx dma-noc channels
 - dma-names: as defined in bindings/dma/dma.txt
+- kalray,lane: Each device (eth0/eth1) has four lanes.
+  When link is not aggregated (SGMII/10Gb/25Gb) indicate the lane being used.
+  When link is aggregated (40Gb/50Gb/100G) indicate the first lane being used.
 - kalray,dma-rx-cache-id: dma pool of RX buffers [0, 3]
 - kalray,dma-rx-channel-ids: start index of RX channel followed by number
 - kalray,dma-rx-comp-queue-ids: start index of RX completion queue followed by number
@@ -63,6 +67,7 @@ Example:
 				compatible = "kalray,kvx-net";
 				dmas = <&dma_noc 1>;
 				dma-names = "tx";
+				kalray,lane = <0>;
 				kalray,dma-rx-cache-id = <0>;
 				kalray,dma-rx-channel-ids = <0 1>;
 				kalray,dma-rx-comp-queue-ids = <0 1>;

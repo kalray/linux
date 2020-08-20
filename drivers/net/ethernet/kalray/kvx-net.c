@@ -1264,7 +1264,7 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 	struct kvx_eth_dev *dev = KVX_DEV(ndev);
 	struct device_node *np_dma;
 	struct list_head *n;
-	int i, ret = 0;
+	int ret = 0;
 
 	dma_cfg->pdev = kvx_eth_check_dma(pdev, &np_dma);
 	if (!dma_cfg->pdev)
@@ -1320,15 +1320,15 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 			(u32 *)&ndev->cfg.default_dispatch_entry, 1) != 0)
 	     ndev->cfg.default_dispatch_entry = KVX_ETH_DEFAULT_RULE_DTABLE_IDX;
 
-	i = 0;
-	list_for_each(n, &dev->list)
-		i++;
-	ndev->cfg.id = i;
+	if (of_property_read_u32(np, "kalray,lane", &ndev->cfg.id)) {
+		dev_err(ndev->dev, "Unable to get lane\n");
+		return -EINVAL;
+	}
 
 	/* Default tx eq. parameter tuning */
 	if (!of_property_read_u32_array(np, "kalray,phy-param",
-				   (u32 *)&ndev->hw->phy_f.param[i], 3))
-		ndev->hw->phy_f.param[i].en = 1;
+			(u32 *)&ndev->hw->phy_f.param[ndev->cfg.id], 3))
+		ndev->hw->phy_f.param[ndev->cfg.id].en = 1;
 
 	return 0;
 }
