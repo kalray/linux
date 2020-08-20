@@ -356,11 +356,10 @@ int kvx_kset_##s##_create(struct kvx_eth_netdev *ndev, struct kobject *pkobj, \
 	for (i = 0; i < size; ++i) { \
 		f = &p[i]; \
 		f->kobj.kset = k; \
-		ret = kobject_init_and_add(&f->kobj, &s##_ktype, \
-					   NULL, "%d", i); \
+		ret = kobject_add(&f->kobj, NULL, "%d", i); \
 		if (ret) { \
 			netdev_warn(ndev->netdev, "Sysfs init error (%d)\n", \
-				    ret); \
+				ret); \
 			kobject_put(&f->kobj); \
 			goto err; \
 		} \
@@ -397,9 +396,40 @@ kvx_declare_kset(phy_param, "param")
 kvx_declare_kset(rx_bert_param, "rx_bert_param")
 kvx_declare_kset(tx_bert_param, "tx_bert_param")
 
-int kvx_eth_sysfs_init(struct kvx_eth_netdev *ndev)
+int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 {
 	int i, j, ret = 0;
+
+	kobject_init(&hw->phy_f.kobj, &phy_f_ktype);
+	kobject_init(&hw->lut_f.kobj, &lut_f_ktype);
+
+	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
+		kobject_init(&hw->phy_f.param[i].kobj, &phy_f_ktype);
+		kobject_init(&hw->phy_f.rx_ber[i].kobj, &rx_bert_param_ktype);
+		kobject_init(&hw->phy_f.tx_ber[i].kobj, &tx_bert_param_ktype);
+		kobject_init(&hw->lb_f[i].kobj, &lb_f_ktype);
+		for (j = 0; j < NB_CLUSTER; j++)
+			kobject_init(&hw->lb_f[i].rx_noc[j].kobj,
+					&rx_noc_ktype);
+	}
+
+	for (i = 0; i < TX_FIFO_NB; i++)
+		kobject_init(&hw->tx_f[i].kobj, &tx_f_ktype);
+
+	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; i++)
+		kobject_init(&hw->dt_f[i].kobj, &dt_f_ktype);
+
+	return ret;
+}
+
+int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_hw *hw = ndev->hw;
+	int lane_id = ndev->cfg.id;
+	int i, j, ret = 0;
+
+	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++)
+		kobject_init(&ndev->cfg.cl_f[i].kobj, &cl_f_ktype);
 
 	for (i = 0; i < ARRAY_SIZE(t); ++i) {
 		ret = kvx_eth_kobject_add(ndev->netdev, &ndev->cfg, &t[i]);
@@ -407,48 +437,44 @@ int kvx_eth_sysfs_init(struct kvx_eth_netdev *ndev)
 			goto err;
 	}
 
-	ret = kobject_init_and_add(&ndev->hw->phy_f.kobj, &phy_f_ktype,
-				   &ndev->netdev->dev.kobj, "phy");
+	ret = kobject_add(&hw->phy_f.kobj, &ndev->netdev->dev.kobj, "phy");
 	if (ret)
 		goto err;
 
-	ret = kobject_init_and_add(&ndev->hw->lut_f.kobj, &lut_f_ktype,
-				   &ndev->netdev->dev.kobj, "lut");
+	ret = kobject_add(&hw->lut_f.kobj, &ndev->netdev->dev.kobj, "lut");
 	if (ret)
 		goto err;
 
-	ret = kvx_kset_phy_param_create(ndev, &ndev->hw->phy_f.kobj,
-		phy_param_kset, &ndev->hw->phy_f.param[0], KVX_ETH_LANE_NB);
+	ret = kvx_kset_phy_param_create(ndev, &hw->phy_f.kobj,
+		phy_param_kset, &hw->phy_f.param[0], KVX_ETH_LANE_NB);
 	if (ret)
 		goto err;
 
-	ret = kvx_kset_rx_bert_param_create(ndev, &ndev->hw->phy_f.kobj,
-			 rx_bert_param_kset, &ndev->hw->phy_f.rx_ber[0],
+	ret = kvx_kset_rx_bert_param_create(ndev, &hw->phy_f.kobj,
+			 rx_bert_param_kset, &hw->phy_f.rx_ber[0],
 			 KVX_ETH_LANE_NB);
 	if (ret)
 		goto err;
 
-	ret = kvx_kset_tx_bert_param_create(ndev, &ndev->hw->phy_f.kobj,
-			 tx_bert_param_kset, &ndev->hw->phy_f.tx_ber[0],
+	ret = kvx_kset_tx_bert_param_create(ndev, &hw->phy_f.kobj,
+			 tx_bert_param_kset, &hw->phy_f.tx_ber[0],
 			 KVX_ETH_LANE_NB);
 	if (ret)
 		goto err;
 
 	ret = kvx_kset_lb_f_create(ndev, &ndev->netdev->dev.kobj, lb_kset,
-				   &ndev->hw->lb_f[0], KVX_ETH_LANE_NB);
+				   &hw->lb_f[lane_id], 1);
 	if (ret)
 		goto err;
 
-	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
-		ret = kvx_kset_rx_noc_create(ndev, &ndev->hw->lb_f[i].kobj,
-				rx_noc_kset, &ndev->hw->lb_f[i].rx_noc[0],
+	ret = kvx_kset_rx_noc_create(ndev, &ndev->hw->lb_f[lane_id].kobj,
+				rx_noc_kset, &ndev->hw->lb_f[lane_id].rx_noc[0],
 				NB_CLUSTER);
-		if (ret)
-			goto err;
-	}
+	if (ret)
+		goto err;
 
 	ret = kvx_kset_tx_f_create(ndev, &ndev->netdev->dev.kobj, tx_kset,
-				   &ndev->hw->tx_f[0], TX_FIFO_NB);
+				   &hw->tx_f[0], TX_FIFO_NB);
 	if (ret)
 		goto err;
 
@@ -458,8 +484,7 @@ int kvx_eth_sysfs_init(struct kvx_eth_netdev *ndev)
 		goto err;
 
 	ret = kvx_kset_dt_f_create(ndev, &ndev->netdev->dev.kobj, dt_kset,
-				   &ndev->hw->dt_f[0],
-				   RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
+			&hw->dt_f[0], RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 	if (ret)
 		goto err;
 
@@ -476,21 +501,21 @@ err:
 	return ret;
 }
 
-void kvx_eth_sysfs_remove(struct kvx_eth_netdev *ndev)
+void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 {
 	int i;
 
 	kvx_kset_dt_f_remove(ndev, dt_kset, &ndev->hw->dt_f[0],
-			     RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
+			RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 	kvx_kset_cl_f_remove(ndev, pfc_cl_kset, &ndev->cfg.cl_f[0],
-			     KVX_ETH_PFC_CLASS_NB);
+			KVX_ETH_PFC_CLASS_NB);
 	kvx_kset_tx_f_remove(ndev, tx_kset, &ndev->hw->tx_f[0], TX_FIFO_NB);
 	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
 		kvx_kset_rx_noc_remove(ndev, rx_noc_kset,
 				&ndev->hw->lb_f[i].rx_noc[0], NB_CLUSTER);
 	}
 	kvx_kset_lb_f_remove(ndev, lb_kset, &ndev->hw->lb_f[0],
-			     KVX_ETH_LANE_NB);
+			KVX_ETH_LANE_NB);
 	kvx_kset_rx_bert_param_remove(ndev, rx_bert_param_kset,
 			&ndev->hw->phy_f.rx_ber[0], KVX_ETH_LANE_NB);
 	kvx_kset_tx_bert_param_remove(ndev, tx_bert_param_kset,
