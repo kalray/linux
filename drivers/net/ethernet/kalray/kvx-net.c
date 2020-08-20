@@ -1344,16 +1344,16 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 	kvx_eth_get_module_transceiver(netdev, &ndev->cfg.transceiver);
 
 	phylink_set(mask, Autoneg);
-	phylink_set_port_modes(mask);
+	phylink_set(mask, FIBRE);
 	phylink_set(mask, Pause);
 	phylink_set(mask, Asym_Pause);
 
-	phylink_set(mask, 100000baseKR4_Full);
-	phylink_set(mask, 100000baseCR4_Full);
-	phylink_set(mask, 40000baseKR4_Full);
-	phylink_set(mask, 40000baseCR4_Full);
-	phylink_set(mask, 40000baseSR4_Full);
-	phylink_set(mask, 40000baseLR4_Full);
+	if (state->interface != PHY_INTERFACE_MODE_SGMII) {
+		phylink_set(mask, 100000baseCR4_Full);
+		phylink_set(mask, 40000baseCR4_Full);
+		phylink_set(mask, 40000baseSR4_Full);
+		phylink_set(mask, 40000baseLR4_Full);
+	}
 
 	bitmap_or(supported, supported, mask, __ETHTOOL_LINK_MODE_MASK_NBITS);
 	bitmap_or(state->advertising, state->advertising, mask,
