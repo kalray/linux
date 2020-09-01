@@ -270,4 +270,15 @@ config SPRD_EFUSE
 	  This driver can also be built as a module. If so, the module
 	  will be called nvmem-sprd-efuse.
 
+config KVX_OTP_NV
+	tristate "kalray KVX OTP Non volatile regs Support"
+	depends on KVX || COMPILE_TEST
+	depends on HAS_IOMEM
+	help
+	  This is a simple driver to dump specified values of KVX OTP non
+	  volatile regs.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called nvmem-kvx-otp-nv.
+
 endif
