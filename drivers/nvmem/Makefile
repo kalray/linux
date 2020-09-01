@@ -67,3 +67,5 @@ obj-$(CONFIG_NVMEM_SUNPLUS_OCOTP)	+= nvmem_sunplus_ocotp.o
 nvmem_sunplus_ocotp-y		:= sunplus-ocotp.o
 obj-$(CONFIG_NVMEM_APPLE_EFUSES)	+= nvmem-apple-efuses.o
 nvmem-apple-efuses-y 		:= apple-efuses.o
+obj-$(CONFIG_KVX_OTP_NV)	+= nvmem_kvx-otp-nv.o
+nvmem_kvx-otp-nv-y		:= kvx-otp-nv.o
