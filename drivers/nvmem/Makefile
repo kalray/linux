@@ -69,3 +69,5 @@ obj-$(CONFIG_NVMEM_APPLE_EFUSES)	+= nvmem-apple-efuses.o
 nvmem-apple-efuses-y 		:= apple-efuses.o
 obj-$(CONFIG_MICROCHIP_OTPC)	+= nvmem-microchip-otpc.o
 nvmem-microchip-otpc-y		:= microchip-otpc.o
+obj-$(CONFIG_KVX_OTP_NV)	+= nvmem_kvx-otp-nv.o
+nvmem_kvx-otp-nv-y		:= kvx-otp-nv.o
