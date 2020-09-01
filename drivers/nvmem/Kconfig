@@ -98,6 +98,17 @@ config NVMEM_JZ4780_EFUSE
 	  To compile this driver as a module, choose M here: the module
 	  will be called nvmem_jz4780_efuse.
 
+config KVX_OTP_NV
+	tristate "kalray KVX OTP Non volatile regs Support"
+	depends on KVX || COMPILE_TEST
+	depends on HAS_IOMEM
+	help
+	  This is a simple driver to dump specified values of KVX OTP non
+	  volatile regs.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called nvmem-kvx-otp-nv.
+
 config NVMEM_LAN9662_OTPC
 	tristate "Microchip LAN9662 OTP controller support"
 	depends on SOC_LAN966 || COMPILE_TEST
