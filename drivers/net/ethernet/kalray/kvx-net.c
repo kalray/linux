@@ -13,6 +13,7 @@
 #include <linux/kernel.h>
 #include <linux/ethtool.h>
 #include <linux/etherdevice.h>
+#include <linux/nvmem-consumer.h>
 #include <linux/skbuff.h>
 #include <linux/ip.h>
 #include <linux/init.h>
@@ -27,6 +28,7 @@
 #include <net/checksum.h>
 #include <linux/dma/kvx-dma-api.h>
 #include <linux/ti-retimer.h>
+#include <linux/hash.h>
 
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
@@ -1223,9 +1225,12 @@ int kvx_eth_rtm_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	int i, ret = 0;
 	u32 tmp_rx_polarities[KVX_ETH_LANE_NB] = {0};
 	u32 tmp_tx_polarities[KVX_ETH_LANE_NB] = {0};
+	struct nvmem_cell *cell;
+	int i, ret = 0;
+	u8 *cell_data;
+	size_t len;
 
 	if (of_property_read_u32(np, "cell-index", &dev->hw.eth_id)) {
 		dev_warn(&pdev->dev, "Default kvx ethernet index to 0\n");
@@ -1250,9 +1255,61 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 		dev->hw.phy_f.polarities[i].tx = (bool) tmp_tx_polarities[i];
 	}
 
+	cell = nvmem_cell_get(&pdev->dev, "mppaid");
+	if (!IS_ERR(cell)) {
+		cell_data = nvmem_cell_read(cell, &len);
+		nvmem_cell_put(cell);
+		if (!IS_ERR(cell_data))
+			dev->hw.mppa_id = *(u64 *)cell_data;
+		kfree(cell_data);
+	}
+
 	ret = kvx_eth_rtm_parse_dt(pdev, dev);
 
 	return ret;
+}
+
+/* kvx_eth_netdev_set_hw_addr() - Use nvmem to get mac addr
+ *
+ * @ndev: kvx net device
+ */
+static void kvx_eth_netdev_set_hw_addr(struct kvx_eth_netdev *ndev)
+{
+	const void *addr = NULL;
+	struct net_device *netdev = ndev->netdev;
+	struct kvx_eth_dev *dev = KVX_DEV(ndev);
+	struct device *d = &dev->pdev->dev;
+	u8 *a;
+	u64 h;
+
+	addr = of_get_mac_address(ndev->netdev->dev.of_node);
+	if (!IS_ERR(addr) && addr) {
+		a = (u8 *)addr;
+		goto exit;
+	}
+
+	if (dev->hw.mppa_id == 0) {
+		dev_warn(d, "Using random hwaddr\n");
+		eth_hw_addr_random(netdev);
+		h = *(u64 *)netdev->dev_addr;
+	} else {
+		h = dev->hw.mppa_id;
+	}
+
+	/* Hash 64bits -> keep 20MSB (host order) -> 20LSB (network order) */
+	h = (h * GOLDEN_RATIO_64);
+	a = (u8 *)&h;
+	/* Prefix (endianess -> network format) */
+	a[0] = 0xA0;
+	a[1] = 0x28;
+	a[2] = 0x33;
+	a[3] |= 0xC0;
+	a[5] += ndev->hw->eth_id * KVX_ETH_LANE_NB + ndev->cfg.id;
+
+exit:
+	netdev->addr_assign_type = NET_ADDR_PERM;
+	ether_addr_copy(netdev->dev_addr, a);
+	ether_addr_copy(ndev->cfg.mac_f.addr, a);
 }
 
 /* kvx_eth_netdev_parse_dt() - Parse netdev device tree inputs
@@ -1661,8 +1718,7 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	}
 	ndev->phylink = phylink;
 
-	eth_hw_addr_random(netdev);
-	memcpy(ndev->cfg.mac_f.addr, netdev->dev_addr, ETH_ALEN);
+	kvx_eth_netdev_set_hw_addr(ndev);
 
 	/* Allocate RX/TX rings */
 	ret = kvx_eth_alloc_rx_res(netdev);

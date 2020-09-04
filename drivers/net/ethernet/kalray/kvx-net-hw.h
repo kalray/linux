@@ -568,6 +568,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_rtm_params rtm_params;
 	bool rxtx_crossed;
 	u32 eth_id;
+	u64 mppa_id;
 	struct pll_cfg pll_cfg;
 	u32 asn;
 	u32 vchan;
