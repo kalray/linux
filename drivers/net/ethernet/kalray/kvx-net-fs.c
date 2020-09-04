@@ -404,7 +404,7 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 	kobject_init(&hw->lut_f.kobj, &lut_f_ktype);
 
 	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
-		kobject_init(&hw->phy_f.param[i].kobj, &phy_f_ktype);
+		kobject_init(&hw->phy_f.param[i].kobj, &phy_param_ktype);
 		kobject_init(&hw->phy_f.rx_ber[i].kobj, &rx_bert_param_ktype);
 		kobject_init(&hw->phy_f.tx_ber[i].kobj, &tx_bert_param_ktype);
 		kobject_init(&hw->lb_f[i].kobj, &lb_f_ktype);
