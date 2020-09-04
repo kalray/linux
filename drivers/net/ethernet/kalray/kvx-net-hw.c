@@ -456,7 +456,7 @@ void kvx_eth_dt_f_cfg(struct kvx_eth_hw *h, struct kvx_eth_dt_f *dt)
 		((u64)dt->split_trigger <<
 		 RX_DISPATCH_TABLE_ENTRY_SPLIT_TRIGGER_SHIFT);
 	kvx_eth_writeq(h, val, RX_DISPATCH_TABLE_ENTRY(dt->id));
-	dev_dbg(h->dev, "%s dispatch_table_idx: %d rx_chan: %d\n", __func__,
+	dev_dbg(h->dev, "%s dispatch_table_idx: %d rx_chan: %lld\n", __func__,
 		dt->id, (val & RX_DISPATCH_TABLE_ENTRY_RX_CHAN_MASK) >>
 		RX_DISPATCH_TABLE_ENTRY_RX_CHAN_SHIFT);
 }
