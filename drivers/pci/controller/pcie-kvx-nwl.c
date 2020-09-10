@@ -463,14 +463,12 @@ static void nwl_pcie_leg_handler(struct irq_desc *desc)
 
 	chained_irq_enter(chip, desc);
 	pcie = irq_desc_get_handler_data(desc);
+	status = nwl_bridge_readl(pcie, MSGF_LEG_STATUS) & MSGF_LEG_SR_MASKALL;
 
-	while ((status = nwl_bridge_readl(pcie, MSGF_LEG_STATUS) &
-				MSGF_LEG_SR_MASKALL) != 0) {
-		for_each_set_bit(bit, &status, PCI_NUM_INTX) {
-			virq = irq_find_mapping(pcie->legacy_irq_domain, bit);
-			if (virq)
-				generic_handle_irq(virq);
-		}
+	for_each_set_bit(bit, &status, PCI_NUM_INTX) {
+		virq = irq_find_mapping(pcie->legacy_irq_domain, bit);
+		if (virq)
+			generic_handle_irq(virq);
 	}
 
 	chained_irq_exit(chip, desc);
