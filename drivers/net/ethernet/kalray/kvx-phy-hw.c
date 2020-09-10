@@ -263,7 +263,8 @@ void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 		v = ((u16) param->pre << TX_PRE_CURSOR_SHIFT) |
 			((u16) param->post << TX_POST_CURSOR_SHIFT);
 		v |= PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK;
-		off += DIG_ASIC_TX_OVRD_IN_3_OFFSET;
+		off = LANE0_DIG_ASIC_TX_OVRD_IN_3 +
+			lane_id * LANE_DIG_ASIC_TX_OVRD_IN_OFFSET;
 		reg = readw(hw->res[KVX_ETH_RES_PHY].base + off) & ~(mask);
 		writew(reg | v, hw->res[KVX_ETH_RES_PHY].base + off);
 
