@@ -276,6 +276,17 @@ void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 }
 
+void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	int i, j;
+
+	for (i = 0; i < KVX_ETH_PARSER_NB; ++i) {
+		hw->parser_f[i].hw = hw;
+		for (j = 0; j < KVX_NET_LAYER_NB; ++j)
+			hw->parser_f[i].rules[j].hw = hw;
+	}
+}
+
 void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	int i, l = cfg->id;
