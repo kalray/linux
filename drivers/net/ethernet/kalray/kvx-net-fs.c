@@ -293,6 +293,30 @@ static struct attribute *dt_f_attrs[] = {
 };
 SYSFS_TYPES(dt_f);
 
+DECLARE_SYSFS_ENTRY(parser_f);
+FIELD_R_ENTRY(parser_f, enable, 0, 1);
+static struct attribute *parser_f_attrs[] = {
+	&parser_f_enable_attr.attr,
+	NULL,
+};
+
+SYSFS_TYPES(parser_f);
+
+DECLARE_SYSFS_ENTRY(rule_f);
+FIELD_R_ENTRY(rule_f, enable, 0, 1);
+FIELD_R_ENTRY(rule_f, type, 0, 0x1F);
+FIELD_R_ENTRY(rule_f, add_metadata_index, 0, 1);
+FIELD_R_ENTRY(rule_f, check_header_checksum, 0, 1);
+
+static struct attribute *rule_f_attrs[] = {
+	&rule_f_enable_attr.attr,
+	&rule_f_type_attr.attr,
+	&rule_f_add_metadata_index_attr.attr,
+	&rule_f_check_header_checksum_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(rule_f);
+
 /**
  * struct sysfs_type
  * @name: sysfs entry name
@@ -340,6 +364,8 @@ static struct kset *lb_kset;
 static struct kset *rx_noc_kset;
 static struct kset *tx_kset;
 static struct kset *dt_kset;
+static struct kset *parser_kset;
+static struct kset *rule_kset;
 static struct kset *pfc_cl_kset;
 static struct kset *phy_param_kset;
 static struct kset *rx_bert_param_kset;
@@ -395,6 +421,8 @@ kvx_declare_kset(rx_noc, "rx_noc")
 kvx_declare_kset(tx_f, "tx")
 kvx_declare_kset(cl_f, "pfc_cl")
 kvx_declare_kset(dt_f, "dispatch_table")
+kvx_declare_kset(parser_f, "parser")
+kvx_declare_kset(rule_f, "rule")
 kvx_declare_kset(phy_param, "param")
 kvx_declare_kset(rx_bert_param, "rx_bert_param")
 kvx_declare_kset(tx_bert_param, "tx_bert_param")
@@ -422,6 +450,14 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; i++)
 		kobject_init(&hw->dt_f[i].kobj, &dt_f_ktype);
 
+	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
+		kobject_init(&hw->parser_f[i].kobj, &parser_f_ktype);
+		for (j = 0; j < KVX_NET_LAYER_NB; j++) {
+			kobject_init(&hw->parser_f[i].rules[j].kobj,
+					&rule_f_ktype);
+		}
+	}
+
 	return ret;
 }
 
@@ -429,7 +465,7 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 {
 	struct kvx_eth_hw *hw = ndev->hw;
 	int lane_id = ndev->cfg.id;
-	int i, j, ret = 0;
+	int i, j, p, ret = 0;
 
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++)
 		kobject_init(&ndev->cfg.cl_f[i].kobj, &cl_f_ktype);
@@ -491,6 +527,18 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
+	ret = kvx_kset_parser_f_create(ndev, &ndev->netdev->dev.kobj,
+			parser_kset, &hw->parser_f[0], KVX_ETH_PARSER_NB);
+	if (ret)
+		goto err;
+	for (p = 0; p < KVX_ETH_PARSER_NB; p++) {
+		ret = kvx_kset_rule_f_create(ndev, &ndev->hw->parser_f[p].kobj,
+				rule_kset, &hw->parser_f[p].rules[0],
+				KVX_NET_LAYER_NB);
+		if (ret)
+			goto err;
+	}
+
 	return ret;
 
 err:
@@ -525,10 +573,22 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 			&ndev->hw->phy_f.tx_ber[0], KVX_ETH_LANE_NB);
 	kvx_kset_phy_param_remove(ndev, phy_param_kset,
 			&ndev->hw->phy_f.param[0], KVX_ETH_LANE_NB);
+
+	for (i = 0; i < KVX_ETH_PARSER_NB; i++)
+		kvx_kset_rule_f_remove(ndev, rule_kset,
+				&ndev->hw->parser_f[i].rules[0],
+				KVX_NET_LAYER_NB);
+	kvx_kset_parser_f_remove(ndev, parser_kset, &ndev->hw->parser_f[0],
+			KVX_ETH_PARSER_NB);
+
 	for (i = 0; i < ARRAY_SIZE(t); ++i)
 		kvx_eth_kobject_del(&ndev->cfg, &t[i]);
 	kobject_del(&ndev->hw->lut_f.kobj);
 	kobject_put(&ndev->hw->lut_f.kobj);
 	kobject_del(&ndev->hw->phy_f.kobj);
 	kobject_put(&ndev->hw->phy_f.kobj);
+
+	for (i = 0; i < KVX_ETH_PARSER_NB; i++)
+		kobject_del(&ndev->hw->parser_f[i].kobj);
+	kobject_del(&ndev->netdev->dev.kobj);
 }
