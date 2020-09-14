@@ -752,6 +752,7 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg,
 				 struct kvx_eth_dt_f *dt, int idx);
+void kvx_eth_init_dispatch_table(struct kvx_eth_hw *hw);
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg, u32 rx_tag);
 void kvx_eth_dt_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_f *dt);
