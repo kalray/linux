@@ -11,7 +11,11 @@
 #define _ASM_KVX_FTRACE_H
 
 extern void *return_address(unsigned int level);
-
 #define ftrace_return_address(n) return_address(n)
+
+#ifdef CONFIG_FUNCTION_TRACER
+extern void __mcount(void);
+#define mcount __mcount
+#endif /* CONFIG_FUNCTION_TRACER */
 
 #endif /* _ASM_KVX_FTRACE_H */
