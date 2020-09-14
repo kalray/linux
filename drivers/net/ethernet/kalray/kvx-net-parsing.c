@@ -165,6 +165,7 @@ static int parser_add_ipv6_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
  * @parser_id: id of selected parser
  * @idx: current word index for parser RAM
  * @desc: rule description
+ * @rule_id: current rule index
  * @total_add_index: accumulation of rules setting an index in the selected
  *                   parser
  * @total_check_checksum: accumulation of rules setting a checksum offload in
@@ -174,72 +175,118 @@ static int parser_add_ipv6_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
  */
 static int parser_add_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
 		      unsigned int idx, union filter_desc *desc,
-		      u32 *total_add_index, u32 *total_check_checksum)
+		      unsigned int rule_id, u32 *total_add_index,
+		      u32 *total_check_checksum)
 {
 	int ret = -EINVAL;
+	u32 ptype;
+	int add_metadata_index, check_header_checksum;
+	struct kvx_eth_rule_f *rule_f;
 
+	if (parser_id > ARRAY_SIZE(hw->parser_f) ||
+	    rule_id > ARRAY_SIZE(hw->parser_f[parser_id].rules)) {
+		dev_err(hw->dev, "parser_id[%d] or rule_id[%d] overflow internal structures\n",
+			parser_id, rule_id);
+		return -EINVAL;
+	}
+
+	rule_f = &hw->parser_f[parser_id].rules[rule_id];
 	ret = parser_check(parser_id, idx);
 	if (ret < 0) {
 		dev_err(hw->dev, "Parser[%d] check failed\n", parser_id);
 		return ret;
 	}
-
-	switch ((*(u32 *)desc) & PTYPE_MASK) {
+	ptype = (*(u32 *)desc) & PTYPE_MASK;
+	switch (ptype) {
 	case PTYPE_MAC_VLAN:
+		add_metadata_index = desc->mac_vlan.add_metadata_index;
+		check_header_checksum = 0;
 		*total_add_index += desc->mac_vlan.add_metadata_index;
-		return write_ramline(hw, parser_id, idx,
+		ret = write_ramline(hw, parser_id, idx,
 				     &desc->mac_vlan.word[0],
 				     sizeof(desc->mac_vlan));
+		break;
 	case PTYPE_VXLAN:
+		add_metadata_index = desc->vxlan.add_metadata_index;
+		check_header_checksum = 0;
 		*total_add_index += desc->vxlan.add_metadata_index;
-		return write_ramline(hw, parser_id, idx,
+		ret = write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->vxlan.word[0],
 				     sizeof(desc->vxlan));
+		break;
 	case PTYPE_IP_V4:
+		add_metadata_index = desc->ipv4.add_metadata_index;
+		check_header_checksum = desc->ipv4.check_header_checksum;
 		*total_add_index += desc->ipv4.add_metadata_index;
 		*total_check_checksum += desc->ipv4.check_header_checksum;
-		return write_ramline(hw, parser_id, idx,
+		ret = write_ramline(hw, parser_id, idx,
 				     &desc->ipv4.word[0],
 				     sizeof(desc->ipv4));
+		break;
 	case PTYPE_IP_V6:
+		add_metadata_index = desc->ipv6.d0.add_metadata_index;
+		check_header_checksum = 0;
 		*total_add_index += desc->ipv6.d0.add_metadata_index;
-		return parser_add_ipv6_filter(hw, parser_id,
+		ret = parser_add_ipv6_filter(hw, parser_id,
 					      idx, &desc->ipv6);
+		break;
 	case PTYPE_UDP:
+		add_metadata_index = desc->udp.add_metadata_index;
+		check_header_checksum = desc->udp.check_header_checksum;
 		*total_add_index += desc->udp.add_metadata_index;
 		*total_check_checksum += desc->udp.check_header_checksum;
-		return write_ramline(hw, parser_id, idx,
+		ret = write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->udp.word[0],
 				     sizeof(desc->udp));
+		break;
 	case PTYPE_TCP:
+		add_metadata_index = desc->tcp.add_metadata_index;
+		check_header_checksum = desc->tcp.check_header_checksum;
 		*total_add_index += desc->tcp.add_metadata_index;
 		*total_check_checksum += desc->tcp.check_header_checksum;
-		return write_ramline(hw, parser_id, idx,
+		ret = write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->tcp.word[0],
 				     sizeof(desc->tcp));
+		break;
 	case PTYPE_CUSTOM:
+		add_metadata_index = desc->custom.add_metadata_index;
+		check_header_checksum = 0;
 		*total_add_index += desc->custom.add_metadata_index;
-		return write_ramline(hw, parser_id, idx,
+		ret = write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->custom.word[0],
 				     sizeof(desc->custom));
+		break;
 	case PTYPE_ROCE:
+		add_metadata_index = desc->roce.add_metadata_index;
+		check_header_checksum = desc->roce.check_icrc;
 		*total_add_index += desc->roce.add_metadata_index;
 		*total_check_checksum += desc->roce.check_icrc;
-		return write_ramline(hw, parser_id, idx,
+		ret = write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->roce.word[0],
 				     sizeof(desc->roce));
+		break;
 	case PTYPE_MPLS:
+		add_metadata_index = desc->mpls.add_metadata_index;
+		check_header_checksum = 0;
 		*total_add_index += desc->mpls.add_metadata_index;
-		return write_ramline(hw, parser_id, idx,
+		ret = write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->mpls.word[0],
 				     sizeof(desc->mpls));
+		break;
 	case PTYPE_SKIP:
-		return write_ramline(hw, parser_id, idx,
+		add_metadata_index = 0;
+		check_header_checksum = 0;
+		ret = write_ramline(hw, parser_id, idx,
 				     (u32 *)&desc->skip.word[0],
 				     sizeof(desc->skip));
-	default:
 		break;
+	default:
+		return -EINVAL;
 	}
+	rule_f->enable = true;
+	rule_f->type = ptype;
+	rule_f->add_metadata_index = add_metadata_index;
+	rule_f->check_header_checksum = check_header_checksum;
 	return ret;
 }
 
@@ -250,6 +297,7 @@ static int parser_add_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
  */
 int parser_disable(struct kvx_eth_hw *hw, int parser_id)
 {
+	int i;
 	u32 off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * parser_id;
 	u32 val = (u32)PARSER_DISABLED << PARSER_CTRL_DISPATCH_POLICY_SHIFT;
 	int ret = 0;
@@ -261,6 +309,13 @@ int parser_disable(struct kvx_eth_hw *hw, int parser_id)
 	if (unlikely(ret)) {
 		dev_err(hw->dev, "Disable parser[%d] timeout\n", parser_id);
 		return ret;
+	}
+	hw->parser_f[parser_id].enable = false;
+	for (i = 0; i < ARRAY_SIZE(hw->parser_f[parser_id].rules); ++i) {
+		hw->parser_f[parser_id].rules[i].enable = false;
+		hw->parser_f[parser_id].rules[i].type = 0;
+		hw->parser_f[parser_id].rules[i].add_metadata_index = 0;
+		hw->parser_f[parser_id].rules[i].check_header_checksum = 0;
 	}
 
 	return 0;
@@ -289,7 +344,7 @@ int parser_config(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 	for (rule = 0; rule < rules_len; ++rule) {
 		filter_desc = rules[rule];
 		word_index = parser_add_filter(hw, parser_id,
-				word_index, filter_desc,
+				word_index, filter_desc, rule,
 				&total_add_index, &total_check_checksum);
 	}
 	if (word_index < 0) {
@@ -311,6 +366,7 @@ int parser_config(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 			parser_id);
 		return -EBUSY;
 	}
+	hw->parser_f[parser_id].enable = true;
 
 	return 0;
 }
