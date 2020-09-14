@@ -190,6 +190,24 @@ struct kvx_eth_lb_f {
 	int id;
 };
 
+struct kvx_eth_rule_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	bool enable;
+	u8 type;
+	u8 add_metadata_index;
+	u8 check_header_checksum;
+};
+
+struct kvx_eth_parser_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	struct kvx_eth_rule_f rules[KVX_NET_LAYER_NB];
+	bool enable;
+};
+
 /**
  * struct kvx_eth_cl_f - Hardware PFC classes
  * @kobj: kobject for sysfs
@@ -561,6 +579,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_res res[KVX_ETH_NUM_RES];
 	struct kvx_eth_parsing parsing;
 	struct kvx_eth_lb_f lb_f[KVX_ETH_LANE_NB];
+	struct kvx_eth_parser_f parser_f[KVX_ETH_PARSER_NB];
 	struct kvx_eth_lut_f lut_f;
 	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
@@ -745,6 +764,7 @@ u32 kvx_eth_lb_has_header(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 u32 kvx_eth_lb_has_footer(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id);
 void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc);
 void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
