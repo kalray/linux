@@ -296,8 +296,6 @@ void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 	for (i = 0; i < RX_LB_DEFAULT_RULE_LANE_RR_TARGET_ARRAY_SIZE; ++i)
 		kvx_eth_writel(hw, 0, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(l, i));
-	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; ++i)
-		kvx_eth_writeq(hw, 0, RX_DISPATCH_TABLE_ENTRY(i));
 }
 
 void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc)
@@ -384,8 +382,8 @@ static void enable_default_dispatch_entry(struct kvx_eth_hw *hw,
 
 	set_bit(nbit, (unsigned long *)&mask);
 
-	dev_dbg(hw->dev, "%s dispatch_table_idx: %d rr_row: %d, rr_mask: 0x%x\n",
-		__func__, dispatch_table_idx, row, mask);
+	dev_dbg(hw->dev, "%s lane: %d dispatch_table_idx: %d rr_row: %d, rr_mask: 0x%x\n",
+		__func__, l, dispatch_table_idx, row, mask);
 	kvx_eth_writel(hw, mask, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(l, row));
 }
 
@@ -458,6 +456,9 @@ void kvx_eth_dt_f_cfg(struct kvx_eth_hw *h, struct kvx_eth_dt_f *dt)
 		((u64)dt->split_trigger <<
 		 RX_DISPATCH_TABLE_ENTRY_SPLIT_TRIGGER_SHIFT);
 	kvx_eth_writeq(h, val, RX_DISPATCH_TABLE_ENTRY(dt->id));
+	dev_dbg(h->dev, "%s dispatch_table_idx: %d rx_chan: %d\n", __func__,
+		dt->id, (val & RX_DISPATCH_TABLE_ENTRY_RX_CHAN_MASK) >>
+		RX_DISPATCH_TABLE_ENTRY_RX_CHAN_SHIFT);
 }
 
 void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
@@ -475,9 +476,7 @@ void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
 	enable_default_dispatch_entry(hw, cfg, idx);
 }
 
-void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
-				 struct kvx_eth_lane_cfg *cfg,
-				 u32 rx_tag)
+void kvx_eth_init_dispatch_table(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_dt_f *dt;
 	int i;
@@ -490,6 +489,14 @@ void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 		dt->vchan = hw->vchan;
 		kvx_eth_dt_f_cfg(hw, dt);
 	}
+}
+
+void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
+				 struct kvx_eth_lane_cfg *cfg,
+				 u32 rx_tag)
+{
+	struct kvx_eth_dt_f *dt;
+	int i;
 
 	/* Default policy for our cluster */
 	dt = &hw->dt_f[cfg->default_dispatch_entry + rx_tag];
