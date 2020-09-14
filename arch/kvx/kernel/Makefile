@@ -7,6 +7,13 @@
 # Copyright (C) 2019 Kalray Inc.
 #
 
+ifdef CONFIG_FUNCTION_TRACER
+CFLAGS_REMOVE_ftrace.o = $(CC_FLAGS_FTRACE)
+CFLAGS_REMOVE_insns.o = $(CC_FLAGS_FTRACE)
+endif
+
+CFLAGS_REMOVE_return_address.o = $(CC_FLAGS_FTRACE)
+
 extra-y	:= head.o vmlinux.lds
 
 obj-y	:= setup.o process.o traps.o common.o time.o prom.o \
@@ -23,3 +30,4 @@ obj-$(CONFIG_MODULES) += module.o
 obj-$(CONFIG_KGDB) += kgdb.o
 CFLAGS_module.o += -Wstrict-overflow -fstrict-overflow
 obj-$(CONFIG_L2_CACHE) += l2_cache.o
+obj-$(CONFIG_FUNCTION_TRACER) += mcount.o ftrace.o
