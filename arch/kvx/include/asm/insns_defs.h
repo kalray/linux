@@ -12,6 +12,7 @@
 
 #include <linux/bits.h>
 
+#ifndef __ASSEMBLY__
 static inline int check_signed_imm(long long imm, int bits)
 {
 	long long min, max;
@@ -23,6 +24,7 @@ static inline int check_signed_imm(long long imm, int bits)
 
 	return 0;
 }
+#endif /* __ASSEMBLY__ */
 
 #define BITMASK(bits)		(BIT_ULL(bits) - 1)
 
