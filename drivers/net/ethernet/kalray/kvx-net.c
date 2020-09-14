@@ -1176,7 +1176,7 @@ int kvx_eth_rtm_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *rtm_node;
 	struct kvx_eth_rtm_params *params = &dev->hw.rtm_params;
-	int rtm, i, ret = 0;
+	int rtm, ret = 0;
 
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
 		rtm_node = of_parse_phandle(pdev->dev.of_node,
@@ -1268,9 +1268,7 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 {
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct device_node *np = pdev->dev.of_node;
-	struct kvx_eth_dev *dev = KVX_DEV(ndev);
 	struct device_node *np_dma;
-	struct list_head *n;
 	int ret = 0;
 
 	dma_cfg->pdev = kvx_eth_check_dma(pdev, &np_dma);
@@ -1697,7 +1695,6 @@ tx_chan_failed:
 	kvx_eth_release_rx_res(netdev, 0);
 exit:
 	netdev_err(netdev, "Failed to create netdev\n");
-phylink_err:
 	phylink_destroy(ndev->phylink);
 	return NULL;
 }
@@ -1754,7 +1751,6 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	kvx_mac_set_addr(&dev->hw, &ndev->cfg);
 	kvx_eth_lb_set_default(&dev->hw, &ndev->cfg);
 	kvx_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
-	kvx_eth_lb_set_default(&dev->hw, &ndev->cfg);
 
 	kvx_eth_fill_dispatch_table(&dev->hw, &ndev->cfg,
 				    ndev->dma_cfg.rx_chan_id.start);
@@ -1885,6 +1881,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 		}
 	}
 
+	kvx_eth_init_dispatch_table(&dev->hw);
 	kvx_eth_tx_init(&dev->hw);
 	kvx_eth_phy_f_init(&dev->hw);
 	kvx_eth_hw_sysfs_init(&dev->hw);
