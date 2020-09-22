@@ -1439,6 +1439,54 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 		state->pause = MLO_PAUSE_RX | MLO_PAUSE_TX;
 }
 
+int kvx_eth_speed_to_nb_lanes(unsigned int speed, unsigned int *lane_speed)
+{
+	int nb_lanes;
+	unsigned int tmp_lane_speed;
+
+	switch (speed) {
+	case SPEED_100000:
+		nb_lanes = KVX_ETH_LANE_NB;
+		tmp_lane_speed = SPEED_25000;
+		break;
+	case SPEED_40000:
+		nb_lanes = KVX_ETH_LANE_NB;
+		tmp_lane_speed = SPEED_10000;
+		break;
+	case SPEED_50000:
+		nb_lanes = 2;
+		tmp_lane_speed = SPEED_25000;
+		break;
+	case SPEED_25000:
+	case SPEED_10000:
+		nb_lanes = 1;
+		tmp_lane_speed = speed;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (lane_speed != NULL)
+		*lane_speed = tmp_lane_speed;
+
+	return nb_lanes;
+}
+
+int speed_to_rtm_speed_index(unsigned int speed)
+{
+	switch (speed) {
+	case SPEED_100000:
+	case SPEED_50000:
+	case SPEED_25000:
+		return RTM_SPEED_25G;
+	case SPEED_40000:
+	case SPEED_10000:
+		return RTM_SPEED_10G;
+	default:
+		return -EINVAL;
+	}
+}
+
 int configure_rtm(struct kvx_eth_hw *hw, unsigned int rtm, unsigned int speed)
 {
 	int nb_lanes, lane;
@@ -1454,37 +1502,16 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int rtm, unsigned int speed)
 		return 0;
 	}
 
-	switch (speed) {
-	case SPEED_100000:
-		nb_lanes = KVX_ETH_LANE_NB;
-		lane_speed = SPEED_25000;
-		rtm_speed_idx = RTM_SPEED_25G;
-		break;
-	case SPEED_40000:
-		nb_lanes = KVX_ETH_LANE_NB;
-		lane_speed = SPEED_10000;
-		rtm_speed_idx = RTM_SPEED_10G;
-		break;
-	case SPEED_50000:
-		nb_lanes = 2;
-		lane_speed = SPEED_25000;
-		rtm_speed_idx = RTM_SPEED_25G;
-		break;
-	case SPEED_25000:
-		nb_lanes = 1;
-		lane_speed = speed;
-		rtm_speed_idx = RTM_SPEED_25G;
-		break;
-	case SPEED_10000:
-		nb_lanes = 1;
-		lane_speed = speed;
-		rtm_speed_idx = RTM_SPEED_10G;
-		break;
-	default:
+	nb_lanes = kvx_eth_speed_to_nb_lanes(speed, &lane_speed);
+	if (nb_lanes < 0) {
 		dev_err(hw->dev, "Unsupported speed %d\n", speed);
 		return -EINVAL;
 	}
-
+	rtm_speed_idx = speed_to_rtm_speed_index(speed);
+	if (rtm_speed_idx < 0) {
+		dev_err(hw->dev, "Speed %d not supported by retimer\n", speed);
+		return -EINVAL;
+	}
 	dev_dbg(hw->dev, "Setting retimer%d speed to %d\n", rtm, speed);
 
 	for (i = 0; i < nb_lanes; i++) {
