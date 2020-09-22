@@ -125,8 +125,6 @@ void kvx_eth_down(struct net_device *netdev)
  */
 static int kvx_eth_netdev_close(struct net_device *netdev)
 {
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-
 	kvx_eth_down(netdev);
 
 	return 0;
