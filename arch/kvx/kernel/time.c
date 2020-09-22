@@ -16,6 +16,7 @@
 #include <linux/clocksource.h>
 #include <linux/clk-provider.h>
 #include <linux/of_address.h>
+#include <linux/sched_clock.h>
 
 #include <asm/sfr_defs.h>
 
@@ -189,6 +190,11 @@ static struct clocksource kvx_dsu_clocksource = {
 	.flags = CLOCK_SOURCE_IS_CONTINUOUS,
 };
 
+static u64 notrace kvx_dsu_sched_read(void)
+{
+	return readq_relaxed(kvx_dsu_clocksource.archdata.regs);
+}
+
 static int __init kvx_setup_dsu_clock(struct device_node *np)
 {
 	int ret;
@@ -215,6 +221,7 @@ static int __init kvx_setup_dsu_clock(struct device_node *np)
 		return ret;
 	}
 
+	sched_clock_register(kvx_dsu_sched_read, 64, kvx_dsu_frequency);
 	return 0;
 }
 
