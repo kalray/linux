@@ -1298,7 +1298,9 @@ void kvx_eth_lt_lp_fsm(struct kvx_eth_hw *hw, int lane)
 		break;
 	case LT_STATE_WAIT_HOLD:
 		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_COEF_OFFSET);
-		if ((val & LT_OP_NORMAL_MASK) == 0) {
+		if ((val & LT_OP_NORMAL_MASK) == 0 &&
+				(val & LT_OP_INIT_MASK) == 0 &&
+				(val & LT_OP_PRESET_MASK) == 0) {
 			kvx_eth_lt_report_ld_status_not_updated(hw, lane);
 			hw->lt_state[lane] = LT_STATE_WAIT_RCV_READY;
 		}
