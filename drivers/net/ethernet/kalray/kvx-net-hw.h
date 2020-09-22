@@ -42,6 +42,10 @@
 	u32 regval = readl(hw->res[KVX_ETH_RES_##bl].base + off) & ~(mask); \
 	writel(((v) | (regval)), hw->res[KVX_ETH_RES_##bl].base + off); }
 
+#define for_each_cfg_lane(nb_lane, lane, cfg) \
+	for (nb_lane = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL), \
+		lane = cfg->id; lane < cfg->id + nb_lane; lane++)
+
 enum kvx_eth_io {
 	KVX_ETH0 = 0,
 	KVX_ETH1
@@ -855,5 +859,8 @@ int parser_disable(struct kvx_eth_hw *hw, int parser_id);
 /* STATS */
 void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
 			    struct kvx_eth_hw_stats *stats);
+
+/* HELPERS */
+int kvx_eth_speed_to_nb_lanes(unsigned int speed, unsigned int *lane_speed);
 
 #endif // KVX_NET_HW_H
