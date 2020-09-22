@@ -1323,14 +1323,13 @@ void kvx_eth_lt_lp_fsm(struct kvx_eth_hw *hw, int lane)
  * @hw: pointer to hw config
  * Return true if done, false otherwise
  */
-static inline bool kvx_eth_lt_fsm_all_done(struct kvx_eth_hw *hw)
+static inline bool kvx_eth_lt_fsm_all_done(struct kvx_eth_hw *hw,
+		struct kvx_eth_lane_cfg *cfg)
 {
-	int i;
+	int nb_lane, lane;
 
-	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
-		if (!is_lane_in_use(hw, i))
-			continue;
-		if (hw->lt_state[i] != LT_STATE_LD_DONE)
+	for_each_cfg_lane(nb_lane, lane, cfg) {
+		if (hw->lt_state[lane] != LT_STATE_LD_DONE)
 			return false;
 	}
 
@@ -1348,22 +1347,18 @@ static int kvx_eth_enable_link_training(struct kvx_eth_hw *hw,
 				 bool en)
 {
 	u32 lt_off, val;
-	int i;
+	int nb_lane, lane;
 
 	/* Indicate default state at the beginning */
-	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
-		if (!is_lane_in_use(hw, i))
-			continue;
-		lt_off = LT_OFFSET + i * LT_ELEM_SIZE;
+	for_each_cfg_lane(nb_lane, lane, cfg) {
+		lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
 		kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_STAT_OFFSET);
 		kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_COEF_OFFSET);
 	}
 
 	/* en/disable link training on all lanes */
-	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
-		if (!is_lane_in_use(hw, i))
-			continue;
-		lt_off = LT_OFFSET + i * LT_ELEM_SIZE;
+	for_each_cfg_lane(nb_lane, lane, cfg) {
+		lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
 		/* clear local device coefficient */
 		updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
 			     LT_KR_LD_COEF_UPDATE_MASK, 0);
@@ -1391,14 +1386,13 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg)
 {
 	u32 lt_off, m;
-	int i, ret = 0;
+	int ret = 0;
 	unsigned long t;
+	int nb_lane, lane;
 
 	/* Indicate local device ready on all lanes */
-	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
-		if (!is_lane_in_use(hw, i))
-			continue;
-		lt_off = LT_OFFSET + i * LT_ELEM_SIZE;
+	for_each_cfg_lane(nb_lane, lane, cfg) {
+		lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
 		m = LT_STAT_RECEIVER_READY;
 		updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET, m, m);
 		/* Mark all coef as hold */
@@ -1407,17 +1401,15 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 	}
 
 	/* Wait linking training frame lock on all lanes */
-	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
-		if (!is_lane_in_use(hw, i))
-			continue;
-		lt_off = LT_OFFSET + i * LT_ELEM_SIZE;
-		hw->lt_state[i] = LT_STATE_WAIT_RCV_READY;
+	for_each_cfg_lane(nb_lane, lane, cfg) {
+		lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
+		hw->lt_state[lane] = LT_STATE_WAIT_RCV_READY;
 		m = LT_KR_STATUS_FRAMELOCK_MASK;
 		ret = kvx_poll(kvx_mac_readl, lt_off + LT_KR_STATUS_OFFSET,
 			  m, m, LT_FRAME_LOCK_TIMEOUT_MS);
 		if (ret) {
 			dev_err(hw->dev, "Could not get link training frame lock on lane %d\n",
-					i);
+					lane);
 			return -EINVAL;
 		}
 	}
@@ -1425,14 +1417,11 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 	/* Run FSM for all lanes */
 	t = jiffies + msecs_to_jiffies(LT_FSM_TIMEOUT_MS);
 	do {
-		for (i = 0; i < KVX_ETH_LANE_NB; i++) {
-			if (!is_lane_in_use(hw, i))
-				continue;
-			kvx_eth_lt_lp_fsm(hw, i);
-		}
-	} while (!kvx_eth_lt_fsm_all_done(hw) && !time_after(jiffies, t));
+		for_each_cfg_lane(nb_lane, lane, cfg)
+			kvx_eth_lt_lp_fsm(hw, lane);
+	} while (!kvx_eth_lt_fsm_all_done(hw, cfg) && !time_after(jiffies, t));
 
-	if (!kvx_eth_lt_fsm_all_done(hw)) {
+	if (!kvx_eth_lt_fsm_all_done(hw, cfg)) {
 		dev_err(hw->dev, "Link training FSM timed out\n");
 		ret = -1;
 	}
