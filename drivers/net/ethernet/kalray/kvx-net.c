@@ -1439,19 +1439,18 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 		state->pause = MLO_PAUSE_RX | MLO_PAUSE_TX;
 }
 
-static int configure_rtm(struct kvx_eth_netdev *ndev, unsigned int rtm,
-		unsigned int speed)
+int configure_rtm(struct kvx_eth_hw *hw, unsigned int rtm, unsigned int speed)
 {
 	int nb_lanes, lane;
 	int i, rtm_speed_idx, lane_speed;
-	struct kvx_eth_rtm_params *params = &ndev->hw->rtm_params;
+	struct kvx_eth_rtm_params *params = &hw->rtm_params;
 
 	if (rtm > RTM_NB) {
-		netdev_err(ndev->netdev, "Unknown retimer id %d\n", rtm);
+		dev_err(hw->dev, "Unknown retimer id %d\n", rtm);
 		return -EINVAL;
 	}
 	if (!params->rtm[rtm]) {
-		netdev_warn(ndev->netdev, "No retimers to configure\n");
+		dev_warn(hw->dev, "No retimers to configure\n");
 		return 0;
 	}
 
@@ -1482,12 +1481,11 @@ static int configure_rtm(struct kvx_eth_netdev *ndev, unsigned int rtm,
 		rtm_speed_idx = RTM_SPEED_10G;
 		break;
 	default:
-		netdev_err(ndev->netdev, "Unsupported speed %d\n", speed);
+		dev_err(hw->dev, "Unsupported speed %d\n", speed);
 		return -EINVAL;
 	}
 
-	netdev_dbg(ndev->netdev, "Setting retimer%d speed to %d\n",
-			rtm, ndev->cfg.speed);
+	dev_dbg(hw->dev, "Setting retimer%d speed to %d\n", rtm, speed);
 
 	for (i = 0; i < nb_lanes; i++) {
 		lane = params->channels[i];
@@ -1504,39 +1502,13 @@ static int configure_rtm(struct kvx_eth_netdev *ndev, unsigned int rtm,
 static int kvx_eth_autoneg(struct kvx_eth_netdev *ndev)
 {
 	struct kvx_eth_dev *dev = KVX_DEV(ndev);
-	int i, ret = 0;
 
 	if (dev->hw.rxtx_crossed) {
 		netdev_err(ndev->netdev, "Autonegotiation is not supported with inverted lanes\n");
-		ret = -EINVAL;
-		goto exit;
+		return -EINVAL;
 	}
 
-	/* Before reconfiguring retimers, serdes must be disabled */
-	kvx_mac_phy_disable_serdes(ndev->hw);
-
-	if (dev->type->phy_init)
-		dev->type->phy_init(ndev->hw, SPEED_40000);
-
-	ret = kvx_eth_phy_serdes_init(ndev->hw, ndev->cfg.id, SPEED_40000);
-	if (ret)
-		netdev_err(ndev->netdev, "Failed to configure serdes\n");
-
-	for (i = 0; i < RTM_NB; i++) {
-		ret = configure_rtm(ndev, i, SPEED_40000);
-		if (ret) {
-			netdev_err(ndev->netdev, "Failed to configure retimer %i\n",
-				   i);
-			goto exit;
-		}
-	}
-
-	ret = kvx_mac_autoneg_cfg(ndev->hw, &ndev->cfg);
-	if (!ret)
-		ndev->cfg.speed = ndev->cfg.ln.speed;
-
-exit:
-	return ret;
+	return kvx_eth_an_execute(ndev->hw, &ndev->cfg);
 }
 
 static void kvx_phylink_mac_config(struct phylink_config *cfg,
@@ -1545,11 +1517,16 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 {
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_dev *dev = KVX_DEV(ndev);
 	bool update_serdes = false;
 	int an_enabled = state->an_enabled;
-	int i, ret = 0;
+	int ret = 0;
 	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
+
+	/* Check if cable unplugged */
+	if (ndev->cfg.transceiver.id == 0) {
+		netdev_dbg(ndev->netdev, "No cable plugged\n");
+		return;
+	}
 
 	if (state->interface == PHY_INTERFACE_MODE_SGMII) {
 		/*
@@ -1574,6 +1551,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		ndev->cfg.phy_mode = state->interface;
 	ndev->cfg.an_mode = an_mode;
 
+
 	if (ndev->cfg.speed != state->speed ||
 	    ndev->cfg.duplex != state->duplex)
 		update_serdes = true;
@@ -1590,45 +1568,15 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 
 	if (an_enabled) {
 		ret = kvx_eth_autoneg(ndev);
-		if (ret)
-			netdev_err(netdev, "Autonegotiation failed, using default speed %i Mb/s\n",
-					ndev->cfg.speed);
+		if (ret == 0)
+			return;
+
+		netdev_err(netdev, "Autonegotiation failed, using default speed %i Mb/s\n",
+				ndev->cfg.speed);
 		update_serdes = true;
 	}
 
-	if (update_serdes) {
-		if (dev->type->phy_init)
-			dev->type->phy_init(ndev->hw, ndev->cfg.speed);
-
-		ret = kvx_eth_phy_serdes_init(ndev->hw, ndev->cfg.id,
-					      ndev->cfg.speed);
-		if (ret) {
-			netdev_err(netdev, "Failed to configure serdes\n");
-			return;
-		}
-	}
-
-	for (i = 0; i < RTM_NB; i++) {
-		ret = configure_rtm(ndev, i, ndev->cfg.speed);
-		if (ret) {
-			netdev_err(netdev, "Failed to configure retimer %i\n",
-					i);
-			return;
-		}
-	}
-
-	/* Setup PHY + serdes */
-	if (dev->type->phy_cfg) {
-		ret = dev->type->phy_cfg(ndev->hw);
-		if (ret)
-			netdev_err(netdev, "Failed to configure PHY/MAC\n");
-	}
-
-	if (!ret) {
-		ret = kvx_eth_mac_cfg(ndev->hw, &ndev->cfg);
-		if (ret)
-			netdev_err(netdev, "Failed to configure MAC\n");
-	}
+	kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, update_serdes);
 }
 
 static void kvx_phylink_mac_an_restart(struct phylink_config *cfg)
