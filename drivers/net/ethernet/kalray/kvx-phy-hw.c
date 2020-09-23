@@ -361,18 +361,21 @@ void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 		(pll->tx_clk_div << MAC_PLL_10G_TX_CLK_DIV_SHIFT)     |
 		(pll->word_clk_div << MAC_PLL_10G_WORD_CLK_DIV_SHIFT)   |
 		(pll->init_cal_dis << MAC_PLL_10G_INIT_CAL_DIS_SHIFT);
+	DUMP_REG(hw, MAC, MAC_PLL_10G_OFFSET);
 	kvx_mac_writel(hw, val, MAC_PLL_10G_OFFSET);
 
 	v = (pll_ssc->ssc_en << MAC_PLL_10G_SSC_SSC_EN_SHIFT) |
 	    (pll_ssc->ssc_up_spread << MAC_PLL_10G_SSC_SSC_UP_SPREAD_SHIFT) |
 	    (pll_ssc->ssc_peak << MAC_PLL_10G_SSC_SSC_PEAK_SHIFT) |
 	    (pll_ssc->ssc_step_size << MAC_PLL_10G_SSC_SSC_STEP_SIZE_SHIFT);
+	DUMP_REG(hw, MAC, MAC_PLL_10G_SSC_OFFSET);
 	kvx_mac_writeq(hw, v, MAC_PLL_10G_SSC_OFFSET);
 
 	v = (pll_frac->frac_en << MAC_PLL_10G_FRAC_EN_SHIFT) |
 		(pll_frac->frac_quot << MAC_PLL_10G_FRAC_QUOT_SHIFT) |
 		(pll_frac->frac_den << MAC_PLL_10G_FRAC_DEN_SHIFT) |
 		(pll_frac->frac_rem << MAC_PLL_10G_FRAC_REM_SHIFT);
+	DUMP_REG(hw, MAC, MAC_PLL_10G_FRAC_OFFSET);
 	kvx_mac_writeq(hw, v, MAC_PLL_10G_FRAC_OFFSET);
 
 	v = (pll_bw->bw_threshold << MAC_PLL_10G_BW_THRESHOLD_SHIFT) |
@@ -382,6 +385,7 @@ void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 	  (pll_bw->core_clk_sel << MAC_PLL_10G_BW_CORE_CLK_SEL_SHIFT) |
 	  (pll_bw->bw_low << MAC_PLL_10G_BW_LOW_SHIFT) |
 	  (pll_bw->bw_high << MAC_PLL_10G_BW_HIGH_SHIFT);
+	DUMP_REG(hw, MAC, MAC_PLL_10G_BW_OFFSET);
 	kvx_mac_writeq(hw, v, MAC_PLL_10G_BW_OFFSET);
 
 	v =  (cdr->cdr_vco_config << MAC_SERDES_CDR_10G_VCO_CFG_SHIFT) |
@@ -398,6 +402,7 @@ void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 	(cdr->ref_ld_val << MAC_SERDES_CDR_10G_REF_LD_VAL_SHIFT) |
 	(cdr->cdr_ppm_max << MAC_SERDES_CDR_10G_CDR_PPM_MAX_SHIFT) |
 	(cdr->vco_ld_val << MAC_SERDES_CDR_10G_VCO_LD_VAL_SHIFT);
+	DUMP_REG(hw, MAC, MAC_SERDES_CDR_10G_OFFSET);
 	kvx_mac_writeq(hw, v, MAC_SERDES_CDR_10G_OFFSET);
 
 	val = (eq->eq_att_lvl << MAC_SERDES_EQ_10G_ATT_LVL_SHIFT) |
@@ -408,6 +413,7 @@ void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 		(eq->eq_vga2_gain << MAC_SERDES_EQ_10G_VGA2_GAIN_SHIFT) |
 		(eq->eq_dfe_tap1 << MAC_SERDES_EQ_10G_DFE_TAP1_SHIFT) |
 		(eq->delta_iq << MAC_SERDES_EQ_10G_DELTA_IQ_SHIFT);
+	DUMP_REG(hw, MAC, MAC_SERDES_EQ_10G_OFFSET);
 	kvx_mac_writel(hw, val, MAC_SERDES_EQ_10G_OFFSET);
 
 	val = (serdes->misc << MAC_SERDES_CTRL_10G_MISC_SHIFT) |
@@ -422,10 +428,12 @@ void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 		(serdes->iboost_lvl << MAC_SERDES_CTRL_10G_IBOOST_LVL_SHIFT) |
 		(serdes->align_wide_xfer_en <<
 		 MAC_SERDES_CTRL_10G_ALIGN_WIDE_XFER_EN_SHIFT);
+	DUMP_REG(hw, MAC, MAC_SERDES_CTRL_10G_OFFSET);
 	kvx_mac_writel(hw, val, MAC_SERDES_CTRL_10G_OFFSET);
 
 	val = (p->phy_pll.clk_div2_en << PHY_PLL_REF_CLK_DIV2_EN_SHIFT) |
 		(p->phy_pll.ref_range << PHY_PLL_REF_RANGE_SHIFT);
+	DUMP_REG(hw, PHYMAC, PHY_PLL_OFFSET);
 	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET,
 		    PHY_PLL_REF_CLK_DIV2_EN_MASK | PHY_PLL_REF_RANGE_MASK, val);
 }
