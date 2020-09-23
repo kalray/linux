@@ -434,6 +434,54 @@ struct link_capability {
 };
 
 /**
+ * enum lt_coef_requests - Possible values for link training link partner
+ * requests to tune coefficients
+ *
+ * @LT_COEF_REQ_INCREMENT: increment this coefficient
+ * @LT_COEF_REQ_DECREMENT: decrement this coefficient
+ */
+enum lt_coef_requests {
+	LT_COEF_REQ_INCREMENT = 1,
+	LT_COEF_REQ_DECREMENT = 2,
+};
+
+/**
+ * lt_coef_updates - Possible values for link training coefficient status, i.e.
+ * what the local device has done with requested coefficients form the link
+ * partner
+ *
+ * LT_COEF_UP_NOT_UPDATED: this coefficient has not been updated yet
+ * LT_COEF_UP_UPDATED: this coefficient has been updated
+ * LT_COEF_UP_MINIMUM: this coefficient can not be decremented anymore
+ * LT_COEF_UP_MAXIMUM: this coefficient can not be increment anymore
+ */
+enum lt_coef_updates {
+	LT_COEF_UP_NOT_UPDATED = 0,
+	LT_COEF_UP_UPDATED = 1,
+	LT_COEF_UP_MINIMUM = 2,
+	LT_COEF_UP_MAXIMUM = 3,
+};
+
+/**
+ * lt_ld_states - Link training finite state machine states
+ *
+ * LT_STATE_WAIT_COEFF_UPD: Wait for coefficient update request from link
+ *   partner
+ * LT_STATE_UPDATE_COEFF: Updating local coefficients from link partner request
+ * LT_STATE_WAIT_HOLD: Wait for link partner to acknowledge coefficient update
+ * LT_STATE_WAIT_RCV_READY: Wait for link partner link training completion
+ * LT_STATE_LD_DONE: Link training finished with sucess
+ *
+ */
+enum lt_ld_states {
+	LT_STATE_WAIT_COEFF_UPD,
+	LT_STATE_UPDATE_COEFF,
+	LT_STATE_WAIT_HOLD,
+	LT_STATE_WAIT_RCV_READY,
+	LT_STATE_LD_DONE,
+};
+
+/**
  * struct kvx_eth_lane_cfg - Lane configuration
  * @id: lane_id [0, 3]
  * @link: phy link state
@@ -566,6 +614,7 @@ struct kvx_eth_rtm_params {
  * @res: HW resource tuple {phy, phymac, mac, eth}
  * @tx_f: tx features for all tx fifos
  * @rtm_params: retimer relative parameters
+ * @lt_state: link training fsm status for lane
  * @rxtx_crossed: are rx lanes crossed with tx ones
  *                meaning rx4->tx0, rx3->tx1, etc.
  * @asn: device ASN
@@ -585,6 +634,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
 	struct kvx_eth_phy_f phy_f;
 	struct kvx_eth_rtm_params rtm_params;
+	enum lt_ld_states lt_state[KVX_ETH_LANE_NB];
 	bool rxtx_crossed;
 	u32 eth_id;
 	u64 mppa_id;
@@ -751,12 +801,14 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw);
 int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw);
 int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw);
-int kvx_mac_autoneg_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
 int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
+int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
+		struct kvx_eth_lane_cfg *cfg, bool update_serdes);
 
 /* LB */
 void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
