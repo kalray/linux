@@ -395,8 +395,8 @@ struct kvx_eth_tx_bert_param {
  * @tx: transceiver polarity
  */
 struct kvx_eth_polarities {
-	bool rx;
-	bool tx;
+	unsigned int rx;
+	unsigned int tx;
 };
 
 /**
@@ -790,7 +790,7 @@ void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_rx_bert_param *p);
 void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_tx_bert_param *p);
-void kvx_phy_set_polarities(struct kvx_eth_hw *hw);
+void kvx_phy_set_polarities(struct kvx_eth_hw *hw, bool clear);
 void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
 void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
