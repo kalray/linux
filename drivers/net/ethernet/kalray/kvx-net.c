@@ -1547,12 +1547,6 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	int ret = 0;
 	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
 
-	/* Check if cable unplugged */
-	if (ndev->cfg.transceiver.id == 0) {
-		netdev_dbg(ndev->netdev, "No cable plugged\n");
-		return;
-	}
-
 	if (state->interface == PHY_INTERFACE_MODE_SGMII) {
 		/*
 		 * Speed might be undetermined when autoneg is enabled
@@ -1570,6 +1564,15 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		 */
 		an_enabled = false;
 		update_serdes = true;
+	}
+	/* Check if a sfp/qsfp module is inserted */
+	else if (ndev->cfg.transceiver.id == 0) {
+		/*
+		 * exit immediatelly in order to avoid useless wait
+		 * for autoneg completion in this case.
+		 */
+		netdev_dbg(ndev->netdev, "No cable plugged\n");
+		return;
 	}
 
 	if (state->interface != PHY_INTERFACE_MODE_NA)
