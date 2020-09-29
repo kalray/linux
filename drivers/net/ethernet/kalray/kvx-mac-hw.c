@@ -1862,6 +1862,7 @@ void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	cfg->mac_f.hw = hw;
 	cfg->mac_f.loopback_mode = NO_LOOPBACK;
+	hw->phy_f.loopback_mode = cfg->mac_f.loopback_mode;
 	cfg->mac_f.tx_fcs_offload = true;
 }
 
