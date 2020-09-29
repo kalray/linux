@@ -618,8 +618,7 @@ int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw)
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw)
 {
 	kvx_mac_phy_serdes_cfg(hw);
-	kvx_phy_param_tuning(hw);
-	kvx_phy_set_polarities(hw);
+	kvx_eth_phy_param_cfg(hw, hw->phy_f.param);
 
 	return 0;
 }
