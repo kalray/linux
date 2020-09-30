@@ -47,18 +47,6 @@ static struct kvx_dma_desc *kvx_dma_next_desc(struct kvx_dma_chan *c)
 }
 
 /**
- * kvx_dma_is_chan_rx_eth() - Check if chan RX MEM2ETH
- * @c: Channel to be checked
- *
- * Return: != 0 if chan RX MEM2ETH
- */
-static int kvx_dma_is_chan_rx_eth(struct kvx_dma_chan *c)
-{
-	return (c->cfg.dir == KVX_DMA_DIR_TYPE_RX &&
-		c->cfg.trans_type == KVX_DMA_TYPE_MEM2ETH);
-}
-
-/**
  * kvx_dma_start_sg_mem2mem() - Push a memcpy transfer
  * @desc: the job descriptor to start
  *
@@ -66,15 +54,14 @@ static int kvx_dma_is_chan_rx_eth(struct kvx_dma_chan *c)
  */
 static int kvx_dma_start_sg_mem2mem(struct kvx_dma_desc *desc)
 {
-	struct kvx_dma_hw_job *hw_job;
-	int ret = 0;
 	size_t txd_size = 0;
 	u64 hw_job_id = 0;
+	int i, ret = 0;
 
-	list_for_each_entry(hw_job, &desc->txd_pending, node) {
-		ret |= kvx_dma_rdma_tx_push_mem2mem(desc->phy,
-						    &hw_job->txd, &hw_job_id);
-		txd_size += (size_t)hw_job->txd.len;
+	for (i = 0; i < desc->txd_nb; i++) {
+		ret |= kvx_dma_rdma_tx_push_mem2mem(desc->phy, &desc->txd[i],
+						    &hw_job_id);
+		txd_size += (size_t)desc->txd[i].len;
 	}
 
 	desc->last_job_id = hw_job_id;
@@ -93,15 +80,13 @@ static int kvx_dma_start_sg_mem2mem(struct kvx_dma_desc *desc)
  */
 static int kvx_dma_start_sg_eth_rx(struct kvx_dma_desc *desc)
 {
-	int ret = 0;
 	size_t txd_size = 0;
-	struct kvx_dma_hw_job *hw_job;
+	int i, ret = 0;
 
-	list_for_each_entry(hw_job, &desc->txd_pending, node) {
+	for (i = 0; i < desc->txd_nb; i++) {
 		ret |= kvx_dma_pkt_rx_queue_push_desc(desc->phy,
-						      hw_job->txd.src_dma_addr,
-						      hw_job->txd.len);
-		txd_size += (size_t)hw_job->txd.len;
+				desc->txd[i].src_dma_addr, desc->txd[i].len);
+		txd_size += (size_t)desc->txd[i].len;
 	}
 	desc->size = txd_size;
 	dev_dbg(desc->phy->dev, "%s desc->phy: 0x%lx desc: 0x%lx size:%d\n",
@@ -118,15 +103,14 @@ static int kvx_dma_start_sg_eth_rx(struct kvx_dma_desc *desc)
  */
 static int kvx_dma_start_sg_noc_tx(struct kvx_dma_desc *desc)
 {
-	int ret = 0;
 	size_t txd_size = 0;
 	u64 hw_job_id = 0;
-	struct kvx_dma_hw_job *hw_job;
+	int i, ret = 0;
 
-	list_for_each_entry(hw_job, &desc->txd_pending, node) {
-		ret |= kvx_dma_rdma_tx_push_mem2noc(desc->phy, &hw_job->txd,
+	for (i = 0; i < desc->txd_nb; i++) {
+		ret |= kvx_dma_rdma_tx_push_mem2noc(desc->phy, &desc->txd[i],
 						   &hw_job_id);
-		txd_size += (size_t)hw_job->txd.len;
+		txd_size += (size_t)desc->txd[i].len;
 	}
 	desc->last_job_id = hw_job_id;
 	desc->size = txd_size;
@@ -144,16 +128,18 @@ static int kvx_dma_start_sg_noc_tx(struct kvx_dma_desc *desc)
  */
 static int kvx_dma_start_sg_eth_tx(struct kvx_dma_desc *desc)
 {
-	int ret = 0;
 	size_t txd_size = 0;
 	u64 hw_job_id = 0;
-	struct kvx_dma_hw_job *hw_job;
+	int i, ret = 0;
 
-	list_for_each_entry(hw_job, &desc->txd_pending, node) {
-		ret |= kvx_dma_pkt_tx_push(desc->phy, &hw_job->txd,
-					  1, &hw_job_id);
-		txd_size += (size_t)hw_job->txd.len;
+	for (i = 0; i < desc->txd_nb - 1; i++) {
+		ret |= kvx_dma_pkt_tx_push(desc->phy, &desc->txd[i],
+					  0, &hw_job_id);
+		txd_size += (size_t)desc->txd[i].len;
 	}
+	ret |= kvx_dma_pkt_tx_push(desc->phy, &desc->txd[i],
+				   1, &hw_job_id);
+	txd_size += (size_t)desc->txd[i].len;
 	desc->last_job_id = hw_job_id;
 	desc->size = txd_size;
 	dev_dbg(desc->phy->dev, "%s desc->phy: 0x%lx desc: 0x%lx size:%d\n",
@@ -198,39 +184,6 @@ int kvx_dma_start_desc(struct kvx_dma_chan *c, struct kvx_dma_desc *desc)
 }
 
 /**
- * kvx_dma_get_hw_job() - Get or allocate new hw_job descriptor
- * @c: Used channel
- *
- * Must be under c->vc.lock
- *
- * Return: new hw_job pointer
- */
-static struct kvx_dma_hw_job *kvx_dma_get_hw_job(struct kvx_dma_chan *c)
-{
-	struct kvx_dma_hw_job *hw_job = kmem_cache_alloc(c->txd_cache,
-							 __GFP_ZERO);
-
-	if (hw_job)
-		INIT_LIST_HEAD(&hw_job->node);
-
-	return hw_job;
-}
-
-/**
- * kvx_dma_release_hw_job() - Release hw_job descriptor
- * @c: Used channel
- * @hw_job: hw_job to be released
- *
- * Must be under c->vc.lock
- */
-static void kvx_dma_release_hw_job(struct kvx_dma_chan *c,
-				   struct kvx_dma_hw_job *hw_job)
-{
-	list_del_init(&hw_job->node);
-	kmem_cache_free(c->txd_cache, hw_job);
-}
-
-/**
  * kvx_dma_complete() - Mark a HW transfer as ended in driver
  * @c: Current channel
  * @desc: descriptor to be marked as complete
@@ -238,7 +191,6 @@ static void kvx_dma_release_hw_job(struct kvx_dma_chan *c,
 static void kvx_dma_complete(struct kvx_dma_chan *c, struct kvx_dma_desc *desc)
 {
 	dev_dbg(c->dev->dma.dev, "Complete desc: 0x%lx\n", (uintptr_t)desc);
-	list_del_init(&desc->vd.node);
 	if (desc->vd.tx.callback_param) {
 		struct kvx_callback_param *p = desc->vd.tx.callback_param;
 
@@ -267,46 +219,18 @@ static void kvx_dma_check_complete(struct kvx_dma_dev *dev,
 {
 	struct kvx_dma_phy *phy = c->phy;
 	struct kvx_dma_desc *desc, *tmp_desc;
+	int ret;
 
 	if (!phy)
 		return;
-
 	list_for_each_entry_safe(desc, tmp_desc,
 				 &c->desc_running, vd.node) {
-		if (list_empty(&desc->vd.node))
-			break;
 		/* Assuming TX fifo is in static mode */
-		if (desc->last_job_id <= kvx_dma_get_comp_count(phy)) {
+		ret = kvx_dma_get_comp_count(phy);
+		if (desc->last_job_id <= ret) {
+			list_del_init(&desc->vd.node);
 			desc->len = desc->size;
 			kvx_dma_complete(c, desc);
-		}
-	}
-}
-
-/**
- * kvx_dma_task() - Starts all pending transfers
- * @arg: the device
- */
-void kvx_dma_task(unsigned long arg)
-{
-	struct kvx_dma_chan *c;
-	struct kvx_dma_dev *d = (struct kvx_dma_dev *)arg;
-	struct kvx_dma_desc *desc;
-	int ret = 0;
-
-	list_for_each_entry(c, &d->pending_chan, node) {
-		if (c->phy) {
-			spin_lock_irq(&c->vc.lock);
-			desc = kvx_dma_next_desc(c);
-			if (!desc) {
-				spin_unlock_irq(&c->vc.lock);
-				continue;
-			}
-			ret = kvx_dma_start_desc(c, desc);
-			if (!ret)
-				list_move_tail(&desc->vd.node,
-					       &c->desc_running);
-			spin_unlock_irq(&c->vc.lock);
 		}
 	}
 }
@@ -335,18 +259,28 @@ void kvx_dma_completion_task(unsigned long arg)
  */
 static void kvx_dma_issue_pending(struct dma_chan *chan)
 {
-	unsigned long flags;
 	struct kvx_dma_chan *c = to_kvx_dma_chan(chan);
 	struct kvx_dma_dev *dev = c->dev;
+	struct kvx_dma_desc *desc;
+	unsigned long flags;
+	int ret;
 
 	spin_lock_irqsave(&c->vc.lock, flags);
 	if (vchan_issue_pending(&c->vc)) {
-		spin_lock(&dev->lock);
-		if (list_empty(&c->node))
+		desc = kvx_dma_next_desc(c);
+		if (!desc)
+			goto exit;
+		ret = kvx_dma_start_desc(c, desc);
+		if (!ret)
+			list_move_tail(&desc->vd.node,
+				       &c->desc_running);
+		if (list_empty(&c->node)) {
+			spin_lock(&dev->lock);
 			list_add_tail(&c->node, &dev->pending_chan);
-		spin_unlock(&dev->lock);
-		tasklet_schedule(&dev->task);
+			spin_unlock(&dev->lock);
+		}
 	}
+exit:
 	spin_unlock_irqrestore(&c->vc.lock, flags);
 }
 
@@ -370,7 +304,6 @@ static enum dma_status kvx_dma_tx_status(struct dma_chan *chan,
 	struct kvx_dma_desc *desc;
 	size_t bytes = 0;
 
-	kvx_dma_check_complete(c->dev, c);
 	ret = dma_cookie_status(chan, cookie, txstate);
 	if (ret != DMA_COMPLETE) {
 		struct kvx_dma_dev *dev = c->dev;
@@ -473,7 +406,6 @@ struct kvx_dma_phy *kvx_dma_get_phy(struct kvx_dma_dev *dev,
 	if (phy != NULL) {
 		dev_dbg(d, "%s dir: %d hw_id: %d\n", __func__, dir, phy->hw_id);
 		phy->used = 1;
-		phy->comp_count = 0;
 		phy->rx_cache_id = c->cfg.rx_cache_id;
 	}
 out:
@@ -512,69 +444,32 @@ static int kvx_dma_slave_config(struct dma_chan *chan,
 }
 
 /**
- * kvx_dma_alloc_desc() - Allocates a transfer descriptor
- * @dev: Current device
- * @flags: Allocation additionnal flags
- *
- * Return: new descriptor if alloc went OK, else NULL
- */
-static struct kvx_dma_desc *kvx_dma_alloc_desc(struct kvx_dma_dev *dev,
-					       gfp_t flags)
-{
-	struct kvx_dma_desc *desc = kmem_cache_alloc(dev->desc_cache,
-						     flags | __GFP_ZERO);
-
-	if (desc)
-		INIT_LIST_HEAD(&desc->vd.node);
-
-	return desc;
-}
-
-/**
  * kvx_dma_alloc_chan_resources() - Allocates channel resources
  * @chan: Channel to configure
- *
- * Alloc hw_job cache and preallocates KVX_DMA_PREALLOC_DESC_NB descriptors)
  *
  * Return: O - OK -ENOMEM - Allocation failed
  */
 static int kvx_dma_alloc_chan_resources(struct dma_chan *chan)
 {
 	struct kvx_dma_chan *c = to_kvx_dma_chan(chan);
-	struct dma_device *dmadev = &c->dev->dma;
-	struct platform_device *pdev = container_of(dmadev->dev,
-						    struct platform_device,
-						    dev);
-	struct kvx_dma_dev *dev = platform_get_drvdata(pdev);
-	struct kvx_dma_desc *desc;
-	unsigned long flags;
-	int i;
 
 	INIT_LIST_HEAD(&c->desc_running);
 
+	spin_lock_init(&c->desc_cache_lock);
 	c->state = 0;
-	c->txd_cache = KMEM_CACHE(kvx_dma_hw_job,
-				  SLAB_PANIC | SLAB_HWCACHE_ALIGN);
-	if (!c->txd_cache)
+	c->desc_cache = KMEM_CACHE(kvx_dma_desc,
+				   SLAB_PANIC | SLAB_HWCACHE_ALIGN);
+	if (!c->desc_cache)
 		goto err_kmemcache;
-
-	for (i = 0 ; i < dev->dma_requests; ++i) {
-		desc = kvx_dma_alloc_desc(dev, GFP_KERNEL);
-		if (!desc)
-			goto err_mem;
-		spin_lock_irqsave(&c->vc.lock, flags);
-		list_add(&desc->vd.node, &c->desc_pool);
-		spin_unlock_irqrestore(&c->vc.lock, flags);
-	}
 
 	return 0;
 
-err_mem:
-	c->phy = NULL;
 err_kmemcache:
-	kmem_cache_destroy(c->txd_cache);
+	c->phy = NULL;
+	kmem_cache_destroy(c->desc_cache);
 	return -ENOMEM;
 }
+
 /**
  * kvx_dma_free_chan_resources() - Free channel resources
  * @chan: Current channel
@@ -588,6 +483,8 @@ static void kvx_dma_free_chan_resources(struct dma_chan *chan)
 	struct kvx_dma_dev *dev = c->dev;
 	unsigned long flags;
 
+	if (!list_empty(&c->desc_running))
+		dev_warn(dev->dma.dev, "Trying to free channel with pending descriptors\n");
 	spin_lock_irqsave(&dev->lock, flags);
 	list_del_init(&c->node);
 	spin_unlock_irqrestore(&dev->lock, flags);
@@ -595,40 +492,27 @@ static void kvx_dma_free_chan_resources(struct dma_chan *chan)
 	kvx_dma_release_phy(dev, c->phy);
 	c->phy = NULL;
 	vchan_free_chan_resources(vc);
-	kmem_cache_destroy(c->txd_cache);
+	kmem_cache_destroy(c->desc_cache);
 	clear_bit(KVX_DMA_HW_INIT_DONE, &c->state);
 }
 
 /**
  * kvx_dma_get_desc() - Gets or allocates new transfer descriptor
  * @c: Current channel
- * Prevents reallocation of new descriptor as kvx_dma_get_desc may be called in
- * interrupt context
  *
  * Return: new descriptor pointer or NULL
  */
 static struct kvx_dma_desc *kvx_dma_get_desc(struct kvx_dma_chan *c)
 {
-	struct virt_dma_desc *vd;
 	struct kvx_dma_desc *desc;
 	unsigned long flags;
 
-	spin_lock_irqsave(&c->vc.lock, flags);
-	vd = list_first_entry_or_null(&c->desc_pool,
-				      struct virt_dma_desc, node);
-	if (!vd) {
-		spin_unlock_irqrestore(&c->vc.lock, flags);
-		return NULL;
-	}
+	spin_lock_irqsave(&c->desc_cache_lock, flags);
+	desc = kmem_cache_alloc(c->desc_cache, __GFP_ZERO);
+	spin_unlock_irqrestore(&c->desc_cache_lock, flags);
+	if (desc)
+		INIT_LIST_HEAD(&desc->vd.node);
 
-	list_del_init(&vd->node);
-	desc = (struct kvx_dma_desc *)vd;
-	spin_unlock_irqrestore(&c->vc.lock, flags);
-	desc->last_job_id = 0;
-	desc->err = 0;
-	desc->size = 0;
-	desc->len = 0;
-	INIT_LIST_HEAD(&desc->txd_pending);
 	return desc;
 }
 
@@ -642,14 +526,14 @@ static void kvx_dma_release_desc(struct virt_dma_desc *vd)
 {
 	struct kvx_dma_chan *c = to_kvx_dma_chan(vd->tx.chan);
 	struct kvx_dma_desc *desc = container_of(vd, struct kvx_dma_desc, vd);
-	struct kvx_dma_hw_job *hw_job, *tmp;
 	unsigned long flags;
 
-	spin_lock_irqsave(&c->vc.lock, flags);
-	list_for_each_entry_safe(hw_job, tmp, &desc->txd_pending, node)
-		kvx_dma_release_hw_job(c, hw_job);
-	list_add(&vd->node, &c->desc_pool);
-	spin_unlock_irqrestore(&c->vc.lock, flags);
+	if (!desc)
+		return;
+	/* list_del is done in vchan_tx_desc_free */
+	spin_lock_irqsave(&c->desc_cache_lock, flags);
+	kmem_cache_free(c->desc_cache, desc);
+	spin_unlock_irqrestore(&c->desc_cache_lock, flags);
 }
 
 /**
@@ -751,8 +635,6 @@ struct dma_async_tx_descriptor *kvx_prep_dma_memcpy(
 	struct virt_dma_chan *vc = &c->vc;
 	struct kvx_dma_desc *desc;
 	struct kvx_dma_tx_job *txd;
-	struct kvx_dma_hw_job *hw_job;
-	unsigned long f;
 	int ret = 0;
 
 	if (!src || !dst) {
@@ -801,23 +683,15 @@ struct dma_async_tx_descriptor *kvx_prep_dma_memcpy(
 	/* Fill cfg and desc here no slave cfg method using memcpy */
 	desc->phy = c->phy;
 	desc->dir = DMA_MEM_TO_MEM;
+	desc->txd_nb = 1;
 
 	/* Map to mem2mem route */
 	if (kvx_dma_setup_route(c, desc)) {
 		dev_err(dev, "Can't setup mem2mem route\n");
 		goto err;
 	}
-	spin_lock_irqsave(&c->vc.lock, f);
-	hw_job = kvx_dma_get_hw_job(c);
-	if (!hw_job) {
-		dev_err(dev, "Failed to alloc hw_job\n");
-		spin_unlock_irqrestore(&c->vc.lock, f);
-		goto err;
-	}
-	hw_job->desc = desc;
-	list_add_tail(&hw_job->node, &desc->txd_pending);
-	spin_unlock_irqrestore(&c->vc.lock, f);
-	txd = &hw_job->txd;
+
+	txd = &desc->txd[0];
 	txd->src_dma_addr = src;
 	txd->dst_dma_addr = dst;
 	txd->len = len;
@@ -862,9 +736,7 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 	struct virt_dma_chan *vc = &c->vc;
 	struct kvx_dma_desc *desc;
 	struct kvx_dma_tx_job *txd;
-	struct kvx_dma_hw_job *hw_job;
 	struct scatterlist *sgent;
-	unsigned long flags;
 	enum kvx_dma_dir_type dir = c->cfg.dir;
 	enum kvx_dma_transfer_type type = c->cfg.trans_type;
 	int i = 0, ret = 0;
@@ -906,9 +778,9 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 
 	desc = kvx_dma_get_desc(c);
 	if (!desc) {
-		dev_err(dev, "Failed to alloc dma desc\n)");
+		dev_err(dev, "Failed to alloc dma desc\n");
 		return NULL;
-		}
+	}
 
 	if (!test_and_set_bit(KVX_DMA_HW_INIT_DONE, &c->state)) {
 		c->phy = kvx_dma_get_phy(d, c);
@@ -942,18 +814,9 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 			goto err;
 	}
 	desc->phy = c->phy;
+	desc->txd_nb = sg_len;
 	for_each_sg(sgl, sgent, sg_len, i) {
-		spin_lock_irqsave(&c->vc.lock, flags);
-		hw_job = kvx_dma_get_hw_job(c);
-		if (!hw_job) {
-			dev_err(dev, "Failed to alloc hw_job\n");
-			spin_unlock_irqrestore(&c->vc.lock, flags);
-			goto err;
-		}
-		hw_job->desc = desc;
-		list_add_tail(&hw_job->node, &desc->txd_pending);
-		spin_unlock_irqrestore(&c->vc.lock, flags);
-		txd = &hw_job->txd;
+		txd = &desc->txd[i];
 		txd->src_dma_addr = sg_dma_address(sgent);
 		txd->dst_dma_addr = 0;
 		txd->len = sg_dma_len(sgent);
@@ -999,7 +862,6 @@ struct kvx_dma_chan *kvx_dma_chan_init(struct kvx_dma_dev *dev)
 		return NULL;
 
 	c->dev = dev;
-	INIT_LIST_HEAD(&c->desc_pool);
 	INIT_LIST_HEAD(&c->node);
 	INIT_LIST_HEAD(&c->desc_running);
 	c->vc.desc_free = kvx_dma_release_desc;
@@ -1053,7 +915,6 @@ static int kvx_dma_allocate_phy(struct kvx_dma_dev *dev)
 			p->dir = j;
 			p->used = 0;
 			p->dev = dev->dma.dev;
-			p->comp_count = 0;
 			p->asn = dev->asn;
 			p->vchan = dev->vchan;
 			p->msi_cfg.ptr = (void *)&dev->completion_task;
@@ -1275,14 +1136,8 @@ static int kvx_dma_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	dev->desc_cache = KMEM_CACHE(kvx_dma_desc, SLAB_PANIC |
-				     SLAB_HWCACHE_ALIGN);
-	if (!dev->desc_cache)
-		return PTR_ERR(dev->desc_cache);
-
 	spin_lock_init(&dev->lock);
 	INIT_LIST_HEAD(&dev->pending_chan);
-	tasklet_init(&dev->task, kvx_dma_task, (unsigned long)dev);
 	tasklet_init(&dev->completion_task, kvx_dma_completion_task,
 		     (unsigned long)dev);
 	memset(&dev->jobq_list, 0, sizeof(dev->jobq_list));
@@ -1405,7 +1260,6 @@ static int kvx_dma_probe(struct platform_device *pdev)
 err_sysfs:
 	dma_async_device_unregister(dma);
 err_nodev:
-	kmem_cache_destroy(dev->desc_cache);
 	of_reserved_mem_device_release(&pdev->dev);
 err_msi:
 	kvx_dma_free_msi(pdev);
@@ -1423,16 +1277,12 @@ static void kvx_dma_free_channels(struct kvx_dma_dev *dev)
 {
 	struct kvx_dma_chan *c, *tmp_c;
 	struct dma_device *dmadev = &dev->dma;
-	struct kvx_dma_desc *desc, *tmp_desc;
 
 	list_for_each_entry_safe(c, tmp_c,
 				 &dmadev->channels, vc.chan.device_node) {
 		list_del_init(&c->vc.chan.device_node);
-		list_for_each_entry_safe(desc, tmp_desc,
-					 &c->desc_pool, vd.node) {
-			list_del_init(&desc->vd.node);
-			kmem_cache_free(dev->desc_cache, desc);
-		}
+		if (!list_empty(&c->desc_running))
+			dev_warn(dmadev->dev, "Trying to free channel with pending descriptors\n");
 	}
 }
 
@@ -1450,9 +1300,7 @@ static int kvx_dma_remove(struct platform_device *pdev)
 	kvx_dma_sysfs_remove(&dev->dma);
 	of_dma_controller_free(pdev->dev.of_node);
 	dma_async_device_unregister(&dev->dma);
-	tasklet_kill(&dev->task);
 	kvx_dma_free_channels(dev);
-	kmem_cache_destroy(dev->desc_cache);
 	kvx_dma_free_phy(dev);
 	of_reserved_mem_device_release(&pdev->dev);
 	platform_set_drvdata(pdev, NULL);
