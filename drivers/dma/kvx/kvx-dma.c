@@ -905,8 +905,10 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 	}
 
 	desc = kvx_dma_get_desc(c);
-	if (!desc)
+	if (!desc) {
+		dev_err(dev, "Failed to alloc dma desc\n)");
 		return NULL;
+		}
 
 	if (!test_and_set_bit(KVX_DMA_HW_INIT_DONE, &c->state)) {
 		c->phy = kvx_dma_get_phy(d, c);
