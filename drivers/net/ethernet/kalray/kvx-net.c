@@ -536,8 +536,7 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
 			qdesc->dma_addr = page_pool_get_dma_addr(p) +
 				KVX_RX_HEADROOM;
 		}
-		ret = kvx_dma_enqueue_rx_buffer(dma_cfg->pdev,
-					  dma_cfg->rx_chan_id.start + rxr->qidx,
+		ret = kvx_dma_enqueue_rx_buffer(rxr->rx_dma_chan,
 					  qdesc->dma_addr, KVX_MAX_RX_BUF_SIZE);
 		if (ret) {
 			netdev_err(netdev, "Failed to enqueue buffer in rx chan[%d]: %d\n",
@@ -659,7 +658,7 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 	int rx_count = 0;
 	int ret = 0;
 
-	while (!kvx_dma_get_rx_completed(dma_cfg->pdev, chan_id, &pkt)) {
+	while (!kvx_dma_get_rx_completed(dma_cfg->pdev, rxr->rx_dma_chan, &pkt)) {
 		work_done++;
 		rx_count++;
 
@@ -915,8 +914,9 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 			goto chan_failed;
 		}
 		memset(&r->config, 0, sizeof(r->config));
-		ret = kvx_dma_reserve_rx_chan(dma_cfg->pdev,
-					dma_cfg->rx_chan_id.start + r->qidx,
+		r->rx_dma_chan = kvx_dma_get_rx_phy(dma_cfg->pdev,
+					dma_cfg->rx_chan_id.start + r->qidx);
+		ret = kvx_dma_reserve_rx_chan(dma_cfg->pdev, r->rx_dma_chan,
 					(dma_cfg->rx_cache_id + r->qidx) %
 					RX_CACHE_NB, kvx_eth_dma_irq_rx, r);
 		if (ret)
@@ -949,8 +949,7 @@ void kvx_eth_release_rx_ring(struct kvx_eth_ring *r, int keep_dma_chan)
 
 	netif_napi_del(&r->napi);
 	if (!keep_dma_chan)
-		kvx_dma_release_rx_chan(dma_cfg->pdev, r->qidx +
-					dma_cfg->rx_chan_id.start);
+		kvx_dma_release_rx_chan(dma_cfg->pdev, r->rx_dma_chan);
 	kvx_eth_release_rx_pool(r);
 }
 
