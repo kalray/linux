@@ -653,7 +653,6 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 	struct net_device *netdev = rxr->netdev;
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
-	int chan_id = dma_cfg->rx_chan_id.start + rxr->qidx;
 	struct kvx_dma_pkt_full_desc pkt;
 	u32 rx_r = rxr->next_to_clean;
 	int work_done = 0;
