@@ -216,7 +216,7 @@ static int kvx_eth_map_skb(struct device *dev, struct kvx_eth_netdev_tx *tx)
 	sg_mark_end(&tx->sg[count - 1]);
 	tx->sg_len = count;
 	dev_dbg(dev, "%s tx->len=%d= %d - %d si->nr_frags: %d\n", __func__,
-		(int)tx->len, tx->skb->len, tx->skb->data_len, si->nr_frags);
+		(int)tx->len, (int)tx->len, tx->skb->len, si->nr_frags);
 	return 0;
 
 unwind:
@@ -247,14 +247,13 @@ static int kvx_eth_clean_tx_irq(struct kvx_eth_ring *txr, size_t desc_len)
 	int ret = 0;
 
 	tx = &txr->tx_buf[tx_r];
-	tx->len = desc_len;
 	if (unlikely(!tx->skb)) {
 		ret = -EINVAL;
 		netdev_err(netdev, "No skb in descriptor\n");
 		goto exit;
 	}
-	netdev_dbg(netdev, "Sent skb: 0x%llx len: %d/%d qidx: %d\n",
-		   (u64)tx->skb, (int)tx->len, tx->skb->len, txr->qidx);
+	netdev_dbg(netdev, "Sent skb[%d]: 0x%llx len: %d/%d qidx: %d\n",
+		   tx_r, (u64)tx->skb, (int)tx->len, tx->skb->len, txr->qidx);
 
 	/* consume_skb */
 	kvx_eth_unmap_skb(ndev->dev, tx);
@@ -464,8 +463,8 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 
 	tx->skb = skb;
 	tx->len = 0;
-	netdev_dbg(netdev, "%s Sending skb: 0x%llx len: %d data_len: %d\n",
-		   __func__, (u64)skb, skb->len, skb->data_len);
+	netdev_dbg(netdev, "%s Sending skb[%d]: 0x%llx len: %d data_len: %d\n",
+		   __func__, tx_w, (u64)skb, skb->len, skb->data_len);
 
 	/* prepare sg */
 	if (kvx_eth_map_skb(dev, tx)) {
@@ -487,9 +486,11 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 
 	/* submit and issue descriptor */
 	tx->cookie = dmaengine_submit(txd);
-	dma_async_issue_pending(txr->chan);
+	netdev_dbg(netdev, "Sending skb[%d]: 0x%llx len: %d/%d qidx: %d\n",
+		    tx_w, (u64)tx->skb, (int)tx->len, tx->skb->len, txr->qidx);
+	netdev_tx_sent_queue(get_txq(txr), tx->len);
 
-	netdev_tx_sent_queue(get_txq(txr), skb->len);
+	dma_async_issue_pending(txr->chan);
 
 	skb_orphan(skb);
 
