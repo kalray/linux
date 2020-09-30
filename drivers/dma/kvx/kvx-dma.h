@@ -32,13 +32,11 @@
  * struct kvx_dma_hw_job - HW transfer descriptor
  * @txd: actual job descriptor
  * @node: node for desc->txd_pending
- * @rnode: node for rhashtable
  * @desc: back pointer to kvx_dma_desc owner
  */
 struct kvx_dma_hw_job {
 	struct kvx_dma_tx_job txd;
 	struct list_head node;
-	struct rhash_head rnode;
 	struct kvx_dma_desc *desc;
 };
 
@@ -96,7 +94,6 @@ enum kvx_dma_state {
  * @desc_pool: Pool of transfer descriptor
  * @desc_running: Currently pushed in hw resources
  * @txd_cache: HW transfer descriptor cache
- * @rhtb: rhashtable of hw descriptor <-> desc
  * @phy: Pointer to Hw RX/TX phy
  * @node: For pending_chan list
  * @cfg: Chan config after slave_config
@@ -110,7 +107,6 @@ struct kvx_dma_chan {
 	struct list_head desc_pool;
 	struct list_head desc_running;
 	struct kmem_cache *txd_cache;
-	struct rhashtable rhtb;
 	/* protected by c->vc.lock */
 	struct kvx_dma_phy *phy;
 	/* protected by d->lock */
@@ -153,6 +149,7 @@ struct kvx_dma_fws {
  * @dma: dmaengine device
  * @dma_channels: Number of requested dma channels
  * @dma_requests: Max requests per dma channel (i.e. hw fifo max number of desc)
+ * @completion_task: Tasklet for completion handling
  * @task: Tasklet handling
  * @chan: Array of channels for device
  * @desc_cache: Cache of descriptors
@@ -179,6 +176,7 @@ struct kvx_dma_dev {
 	struct dma_node_id dma_tx_jobq_ids;
 	struct dma_node_id dma_tx_compq_ids;
 	struct dma_node_id dma_noc_route_ids;
+	struct tasklet_struct completion_task;
 	struct tasklet_struct task;
 	struct kvx_dma_chan **chan;
 	struct kmem_cache *desc_cache;

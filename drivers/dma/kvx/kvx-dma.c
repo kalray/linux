@@ -18,7 +18,6 @@
 #include <linux/init.h>
 #include <linux/iommu.h>
 #include <linux/mm.h>
-#include <linux/rhashtable.h>
 #include <linux/interrupt.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
@@ -199,17 +198,6 @@ int kvx_dma_start_desc(struct kvx_dma_chan *c, struct kvx_dma_desc *desc)
 }
 
 /**
- * rhashtable for hw_job src_dma_addr <-> kvx_dma_desc matching
- * Used in Ethernet RX case only, to allow faster lookup of descriptor
- * as soon as hw_job has completed
- */
-const static struct rhashtable_params rhtb_params = {
-	.key_len     = sizeof(u64),
-	.key_offset  = offsetof(struct kvx_dma_hw_job, txd.src_dma_addr),
-	.head_offset = offsetof(struct kvx_dma_hw_job, rnode),
-};
-
-/**
  * kvx_dma_get_hw_job() - Get or allocate new hw_job descriptor
  * @c: Used channel
  *
@@ -278,65 +266,25 @@ static void kvx_dma_check_complete(struct kvx_dma_dev *dev,
 				   struct kvx_dma_chan *c)
 {
 	struct kvx_dma_phy *phy = c->phy;
-	struct device *d = dev->dma.dev;
 	struct kvx_dma_desc *desc, *tmp_desc;
-	int ret = 0;
 
 	if (!phy)
 		return;
 
-	if (phy->dir == KVX_DMA_DIR_TYPE_RX &&
-	    c->cfg.trans_type == KVX_DMA_TYPE_MEM2ETH) {
-		struct kvx_dma_pkt_full_desc pkt;
-		struct kvx_dma_hw_job *hw_job;
-
-		do {
-			ret = kvx_dma_rx_get_comp_pkt(phy, &pkt);
-			if (ret < 0)
-				break;
-			/* Update the corresponding txd */
-			hw_job = rhashtable_lookup_fast(&c->rhtb, &pkt.base,
-							rhtb_params);
-			if (!hw_job) {
-				/* This happens if 2 channels push into the same
-				 * rx_cache. Completion queue may use one buffer
-				 * from another channel !
-				 */
-				dev_err(d, "%s Unable to lookup pkt (0x%llx)\n",
-					__func__, pkt.base);
-				break;
-			}
-			if (!hw_job->desc) {
-				dev_err(d, "%s desc == NULL\n", __func__);
-				break;
-			}
-			desc = hw_job->desc;
-			desc->len += pkt.byte;
-			rhashtable_remove_fast(&c->rhtb, &hw_job->rnode,
-					       rhtb_params);
-			kvx_dma_release_hw_job(c, hw_job);
-			if (list_empty(&desc->txd_pending)) {
-				dev_dbg(d, "%s desc: 0x%lx Complete\n",
-					__func__, (uintptr_t)desc);
-				kvx_dma_complete(c, desc);
-			}
-		} while (ret == 0);
-	} else {
-		list_for_each_entry_safe(desc, tmp_desc,
-					 &c->desc_running, vd.node) {
-			if (list_empty(&desc->vd.node))
-				break;
-			/* Assuming TX fifo is in static mode */
-			if (desc->last_job_id <= kvx_dma_get_comp_count(phy)) {
-				desc->len = desc->size;
-				kvx_dma_complete(c, desc);
-			}
+	list_for_each_entry_safe(desc, tmp_desc,
+				 &c->desc_running, vd.node) {
+		if (list_empty(&desc->vd.node))
+			break;
+		/* Assuming TX fifo is in static mode */
+		if (desc->last_job_id <= kvx_dma_get_comp_count(phy)) {
+			desc->len = desc->size;
+			kvx_dma_complete(c, desc);
 		}
 	}
 }
 
 /**
- * kvx_dma_task() - Starts all pending transfers and checks completion
+ * kvx_dma_task() - Starts all pending transfers
  * @arg: the device
  */
 void kvx_dma_task(unsigned long arg)
@@ -361,6 +309,17 @@ void kvx_dma_task(unsigned long arg)
 			spin_unlock_irq(&c->vc.lock);
 		}
 	}
+}
+
+/**
+ * kvx_dma_completion_task() - Handles completed descriptors
+ * @arg: the device
+ */
+void kvx_dma_completion_task(unsigned long arg)
+{
+	struct kvx_dma_chan *c;
+	struct kvx_dma_dev *d = (struct kvx_dma_dev *)arg;
+
 	list_for_each_entry(c, &d->pending_chan, node) {
 		spin_lock_irq(&c->vc.lock);
 		kvx_dma_check_complete(d, c);
@@ -385,8 +344,8 @@ static void kvx_dma_issue_pending(struct dma_chan *chan)
 		spin_lock(&dev->lock);
 		if (list_empty(&c->node))
 			list_add_tail(&c->node, &dev->pending_chan);
-		tasklet_schedule(&dev->task);
 		spin_unlock(&dev->lock);
+		tasklet_schedule(&dev->task);
 	}
 	spin_unlock_irqrestore(&c->vc.lock, flags);
 }
@@ -411,6 +370,7 @@ static enum dma_status kvx_dma_tx_status(struct dma_chan *chan,
 	struct kvx_dma_desc *desc;
 	size_t bytes = 0;
 
+	kvx_dma_check_complete(c->dev, c);
 	ret = dma_cookie_status(chan, cookie, txstate);
 	if (ret != DMA_COMPLETE) {
 		struct kvx_dma_dev *dev = c->dev;
@@ -588,7 +548,7 @@ static int kvx_dma_alloc_chan_resources(struct dma_chan *chan)
 	struct kvx_dma_dev *dev = platform_get_drvdata(pdev);
 	struct kvx_dma_desc *desc;
 	unsigned long flags;
-	int i, ret;
+	int i;
 
 	INIT_LIST_HEAD(&c->desc_running);
 
@@ -596,10 +556,6 @@ static int kvx_dma_alloc_chan_resources(struct dma_chan *chan)
 	c->txd_cache = KMEM_CACHE(kvx_dma_hw_job,
 				  SLAB_PANIC | SLAB_HWCACHE_ALIGN);
 	if (!c->txd_cache)
-		goto err_kmemcache;
-
-	ret = rhashtable_init(&c->rhtb, &rhtb_params);
-	if (ret < 0)
 		goto err_kmemcache;
 
 	for (i = 0 ; i < dev->dma_requests; ++i) {
@@ -615,7 +571,6 @@ static int kvx_dma_alloc_chan_resources(struct dma_chan *chan)
 
 err_mem:
 	c->phy = NULL;
-	rhashtable_destroy(&c->rhtb);
 err_kmemcache:
 	kmem_cache_destroy(c->txd_cache);
 	return -ENOMEM;
@@ -640,7 +595,6 @@ static void kvx_dma_free_chan_resources(struct dma_chan *chan)
 	kvx_dma_release_phy(dev, c->phy);
 	c->phy = NULL;
 	vchan_free_chan_resources(vc);
-	rhashtable_destroy(&c->rhtb);
 	kmem_cache_destroy(c->txd_cache);
 	clear_bit(KVX_DMA_HW_INIT_DONE, &c->state);
 }
@@ -1004,15 +958,6 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 		txd->nb = 1;
 		txd->comp_q_id = desc->phy->hw_id;
 		txd->route_id = desc->route_id;
-		if (kvx_dma_is_chan_rx_eth(c)) {
-			ret = rhashtable_lookup_insert_fast(&c->rhtb,
-							    &hw_job->rnode,
-							    rhtb_params);
-			if (ret) {
-				dev_err(dev, "Failed to insert hw_job in rhashtable\n");
-				goto err;
-			}
-		}
 		dev_dbg(dev, "%s txd.base: 0x%llx .len: %lld\n",
 			__func__, txd->src_dma_addr, txd->len);
 	}
@@ -1109,7 +1054,7 @@ static int kvx_dma_allocate_phy(struct kvx_dma_dev *dev)
 			p->comp_count = 0;
 			p->asn = dev->asn;
 			p->vchan = dev->vchan;
-			p->msi_cfg.ptr = (void *)&dev->task;
+			p->msi_cfg.ptr = (void *)&dev->completion_task;
 
 			if (kvx_dma_dbg_init(p, dev->dbg))
 				dev_warn(dev->dma.dev, "Failed to init debugfs\n");
@@ -1336,6 +1281,8 @@ static int kvx_dma_probe(struct platform_device *pdev)
 	spin_lock_init(&dev->lock);
 	INIT_LIST_HEAD(&dev->pending_chan);
 	tasklet_init(&dev->task, kvx_dma_task, (unsigned long)dev);
+	tasklet_init(&dev->completion_task, kvx_dma_completion_task,
+		     (unsigned long)dev);
 	memset(&dev->jobq_list, 0, sizeof(dev->jobq_list));
 
 	/* If using iommu disable global mode */
