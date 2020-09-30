@@ -133,7 +133,6 @@ struct msi_cfg {
  * @msi_data: MSI related data
  * @max_desc: Max fifo size (= dma_requests)
  * @size_log2: log2 channel fifo size
- * @comp_count: completion count (completion queue write pointer)
  * @q: Channel queue
  * @jobq: Job queue (for rx, only for eth usecase. Typically, 2 must be assigned
  *        to 1 rx_cache_id: 1 for soft rx buffer provisioning + 1 for HW refill
@@ -153,7 +152,6 @@ struct kvx_dma_phy {
 	struct msi_cfg msi_cfg;
 	u16 max_desc;
 	u16 size_log2;
-	u64 comp_count;
 	struct kvx_dma_hw_queue q;
 	struct kvx_dma_hw_queue compq;
 	struct kvx_dma_hw_queue *jobq;
