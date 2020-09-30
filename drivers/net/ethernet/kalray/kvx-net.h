@@ -59,6 +59,7 @@ struct kvx_eth_netdev_tx {
 struct kvx_eth_ring {
 	struct net_device *netdev;
 	struct dma_chan *chan;
+	void *rx_dma_chan;
 	struct kvx_dma_slave_cfg config;
 	union {
 		struct kvx_buf_pool pool;
