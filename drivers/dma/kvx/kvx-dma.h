@@ -26,27 +26,15 @@
 
 #define KVX_DMA_MAX_REQUESTS      (127)
 /* Max descriptors per sg list */
-#define KVX_DMA_MAX_TXD           (8)
-
-/**
- * struct kvx_dma_hw_job - HW transfer descriptor
- * @txd: actual job descriptor
- * @node: node for desc->txd_pending
- * @desc: back pointer to kvx_dma_desc owner
- */
-struct kvx_dma_hw_job {
-	struct kvx_dma_tx_job txd;
-	struct list_head node;
-	struct kvx_dma_desc *desc;
-};
+#define KVX_DMA_MAX_TXD           (4)
 
 /**
  * struct kvx_dma_desc - Transfer descriptor
- * @vd: Pointer to virt-dma descriptor
- * @txd: Pointer to  of HW transfer descriptors
- * @nb_txd: Number of transfer descriptors
+ * @vd: virt-dma descriptor
+ * @txd: Array of HW transfer descriptors
+ * @txd_nb: Number of transfer descriptors
  * @size: Total descriptor size including all sg elements (in bytes)
- * @len:  Actual descriptor size written by dma (in bytes)
+ * @len: Actual descriptor size written by dma (in bytes)
  * @phy: Pointer to hw phy (RX or TX)
  * @dir: Direction for descriptor
  * @route: Actual route for transfer desc
@@ -56,7 +44,8 @@ struct kvx_dma_hw_job {
  */
 struct kvx_dma_desc {
 	struct virt_dma_desc vd;
-	struct list_head txd_pending;
+	struct kvx_dma_tx_job txd[KVX_DMA_MAX_TXD];
+	int    txd_nb;
 	size_t size;
 	size_t len;
 	struct kvx_dma_phy *phy;
@@ -91,9 +80,9 @@ enum kvx_dma_state {
  * struct kvx_dma_chan
  * @vc: Pointer to virt-dma chan
  * @dev: Pointer to dma-noc device
- * @desc_pool: Pool of transfer descriptor
- * @desc_running: Currently pushed in hw resources
- * @txd_cache: HW transfer descriptor cache
+ * @desc_running: Currently pushed in hw
+ * @desc_cache_lock: spinlock on desc_cache
+ * @desc_cache: transfer descriptor cache
  * @phy: Pointer to Hw RX/TX phy
  * @node: For pending_chan list
  * @cfg: Chan config after slave_config
@@ -104,9 +93,9 @@ enum kvx_dma_state {
 struct kvx_dma_chan {
 	struct virt_dma_chan vc;
 	struct kvx_dma_dev *dev;
-	struct list_head desc_pool;
 	struct list_head desc_running;
-	struct kmem_cache *txd_cache;
+	spinlock_t desc_cache_lock;
+	struct kmem_cache *desc_cache;
 	/* protected by c->vc.lock */
 	struct kvx_dma_phy *phy;
 	/* protected by d->lock */
@@ -150,9 +139,7 @@ struct kvx_dma_fws {
  * @dma_channels: Number of requested dma channels
  * @dma_requests: Max requests per dma channel (i.e. hw fifo max number of desc)
  * @completion_task: Tasklet for completion handling
- * @task: Tasklet handling
  * @chan: Array of channels for device
- * @desc_cache: Cache of descriptors
  * @dma_pool: Used for queue allocations
  * @phy: RX/TX HW resources
  * @jobq_list: owns jobq list for allocator (under lock)
@@ -176,9 +163,7 @@ struct kvx_dma_dev {
 	struct dma_node_id dma_tx_compq_ids;
 	struct dma_node_id dma_noc_route_ids;
 	struct tasklet_struct completion_task;
-	struct tasklet_struct task;
 	struct kvx_dma_chan **chan;
-	struct kmem_cache *desc_cache;
 	struct gen_pool *dma_pool;
 	struct kvx_dma_phy *phy[KVX_DMA_DIR_TYPE_MAX];
 	struct kvx_dma_job_queue_list jobq_list;
