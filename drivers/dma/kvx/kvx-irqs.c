@@ -83,15 +83,14 @@ static irqreturn_t kvx_dma_irq_handler(int chirq, void *arg)
 	/* Update software counters to match hw ones */
 	u64 comp_count = kvx_dma_get_comp_count(phy);
 
-	/* Schedule a tasklet to complete descriptors and push new desc */
-	if (task)
-		tasklet_schedule(task);
-	if (phy->irq_handler) {
-		phy->comp_count = comp_count;
-		phy->irq_handler(phy->irq_data);
-	}
-
 	phy->comp_count = comp_count;
+
+	if (phy->irq_handler)
+		phy->irq_handler(phy->irq_data);
+	else if (task)
+		/* Schedule a tasklet to complete descriptors and push new desc */
+		tasklet_schedule(task);
+
 
 	return IRQ_HANDLED;
 }
