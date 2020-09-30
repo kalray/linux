@@ -77,7 +77,6 @@ int kvx_dma_reserve_rx_chan(struct platform_device *pdev, void *phy,
 	}
 
 	p->used = 1;
-	p->comp_count = 0;
 	p->rx_cache_id = rx_cache_id;
 	p->irq_handler = irq_callback;
 	p->irq_data = data;
