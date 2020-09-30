@@ -157,7 +157,6 @@ struct kvx_dma_fws {
  * @phy: RX/TX HW resources
  * @jobq_list: owns jobq list for allocator (under lock)
  * @lock: Lock on device/channel lists
- * @desc_cache: Descriptor cache
  * @pending_chan: Awaiting dma channels
  * @dbg: dbg fs
  * @err_irq: dma-noc error interrupt
