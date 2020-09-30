@@ -13,8 +13,10 @@
 
 #include "kvx-dma.h"
 
-static struct kvx_dma_phy *get_rx_phy(struct kvx_dma_dev *d, unsigned int id)
+void *kvx_dma_get_rx_phy(struct platform_device *pdev, unsigned int id)
 {
+	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
+
 	if (id >= KVX_DMA_RX_CHANNEL_NUMBER) {
 		dev_err(d->dma.dev, "No RX channel with id %d\n", id);
 		return NULL;
@@ -22,6 +24,7 @@ static struct kvx_dma_phy *get_rx_phy(struct kvx_dma_dev *d, unsigned int id)
 
 	return &d->phy[KVX_DMA_DIR_TYPE_RX][id];
 }
+EXPORT_SYMBOL_GPL(kvx_dma_get_rx_phy);
 
 int kvx_dma_get_max_nb_desc(struct platform_device *pdev)
 {
@@ -53,26 +56,18 @@ void kvx_dma_release_phy(struct kvx_dma_dev *dev, struct kvx_dma_phy *phy)
  * kvx_dma_reserve_rx_chan() - Reserve rx channel for MEM2ETH use only
  * Allocates and initialise all required hw RX fifos.
  *
- * @pdev: kvx-dma platform device
- * @id: channel id requested (assuming rx_chan_id == rx_compq_id)
  * @irq_callback: callback to called from irq handler (can be NULL)
  *
  * Return: 0 - OK, < 0 - Reserved failed
  */
-int kvx_dma_reserve_rx_chan(struct platform_device *pdev, unsigned int id,
+int kvx_dma_reserve_rx_chan(struct platform_device *pdev, void *phy,
 			    unsigned int rx_cache_id,
-			    void (*irq_callback)(void *data),
-			    void *data)
+			    void (*irq_callback)(void *data), void *data)
 {
 	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
-	struct device *dev = d->dma.dev;
-	struct kvx_dma_phy *p = get_rx_phy(d, id);
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
+	struct device *dev = p->dev;
 	int ret = 0;
-
-	if (!p || (p->hw_id != id)) {
-		dev_err(dev, "RX channel[%d] not found\n", id);
-		return -EINVAL;
-	}
 
 	spin_lock_irq(&d->lock);
 	if (p->used || kvx_dma_check_rx_q_enabled(p, rx_cache_id)) {
@@ -103,77 +98,57 @@ int kvx_dma_reserve_rx_chan(struct platform_device *pdev, unsigned int id,
 }
 EXPORT_SYMBOL_GPL(kvx_dma_reserve_rx_chan);
 
-
-int kvx_dma_release_rx_chan(struct platform_device *pdev, unsigned int id)
+int kvx_dma_release_rx_chan(struct platform_device *pdev, void *phy)
 {
 	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
-	struct kvx_dma_phy *p = get_rx_phy(d, id);
-
-	if (!p || !p->used)
-		return -EINVAL;
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
 
 	kvx_dma_release_phy(d, p);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(kvx_dma_release_rx_chan);
 
-int kvx_dma_enqueue_rx_buffer(struct platform_device *pdev, unsigned int id,
-			      u64 dma_addr, u64 len)
+int kvx_dma_enqueue_rx_buffer(void *phy, u64 dma_addr, u64 len)
 {
-	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
-	struct kvx_dma_phy *p = get_rx_phy(d, id);
-
-	if (!p || !p->used)
-		return -EINVAL;
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
 
 	return kvx_dma_pkt_rx_queue_push_desc(p, dma_addr, len);
 }
 EXPORT_SYMBOL_GPL(kvx_dma_enqueue_rx_buffer);
 
-int kvx_dma_get_rx_completed(struct platform_device *pdev, unsigned int id,
+int kvx_dma_get_rx_completed(struct platform_device *pdev, void *phy,
 			     struct kvx_dma_pkt_full_desc *pkt)
 {
 	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
-	struct kvx_dma_phy *p = get_rx_phy(d, id);
+	struct kvx_dma_phy *pp = (struct kvx_dma_phy *)phy;
 	int ret = 0;
 
-	if (!p || !p->used)
-		return -EINVAL;
-
-	ret = kvx_dma_rx_get_comp_pkt(p, pkt);
+	ret = kvx_dma_rx_get_comp_pkt(pp, pkt);
 	if (READ_ONCE(d->err_vec)) {
-		u64 comp_count = kvx_dma_get_comp_count(p);
+		u64 comp_count = kvx_dma_get_comp_count(pp);
 
-		dev_err(d->dma.dev, "%s phy[%d] completion counter: %lld buf %lx size:%d/%d\n",
-			__func__, p->hw_id, comp_count,
+		dev_err(pp->dev, "%s phy[%d] completion counter: %lld buf %lx size:%d/%d\n",
+			__func__, pp->hw_id, comp_count,
 			(uintptr_t)pkt->base, (u32)pkt->byte, (u32)pkt->size);
 		WRITE_ONCE(d->err_vec, 0);
-		kvx_dma_read_status(p);
+		kvx_dma_read_status(pp);
 	}
 
 	return ret;
 }
 EXPORT_SYMBOL_GPL(kvx_dma_get_rx_completed);
 
-void kvx_dma_enable_irq(struct platform_device *pdev, unsigned int id)
+void kvx_dma_enable_irq(void *phy)
 {
-	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
-	struct kvx_dma_phy *p = get_rx_phy(d, id);
-
-	if (!p)
-		return;
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
 
 	enable_irq(p->msi_cfg.irq);
 }
 EXPORT_SYMBOL_GPL(kvx_dma_enable_irq);
 
-void kvx_dma_disable_irq(struct platform_device *pdev, unsigned int id)
+void kvx_dma_disable_irq(void *phy)
 {
-	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
-	struct kvx_dma_phy *p = get_rx_phy(d, id);
-
-	if (!p)
-		return;
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
 
 	disable_irq_nosync(p->msi_cfg.irq);
 }
