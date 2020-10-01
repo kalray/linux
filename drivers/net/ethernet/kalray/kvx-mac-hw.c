@@ -1473,6 +1473,7 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 
 	kvx_phy_mac_10G_cfg(hw, LANE_RATE_10GBASE_KR, WIDTH_20BITS);
 	kvx_mac_phy_serdes_cfg(hw);
+	kvx_eth_mac_reset(hw, cfg->id);
 
 	return 0;
 }
