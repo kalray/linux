@@ -618,6 +618,9 @@ int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw)
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw)
 {
 	kvx_mac_phy_serdes_cfg(hw);
+
+	/* FTTB force refclk for 100G */
+	kvx_phy_refclk_cfg(hw, SPEED_100000);
 	kvx_eth_phy_param_cfg(hw, hw->phy_f.param);
 
 	return 0;
