@@ -35,10 +35,14 @@
 #define TX_POST_CURSOR_MASK          0x1f80UL
 #define POST_OVRD_EN_MASK            0x2000UL
 
-#define RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN 0x180A0
-#define LANE_TX2RX_SER_LB_EN_OVRD_EN_SHIFT  3
-#define LANE_TX2RX_SER_LB_EN_OVRD_VAL_SHIFT 2
-#define LANE_RX2TX_PAR_LB_EN_OVRD_EN_SHIFT  1
+#define REFCLK_OVRD_IN_1_OFFSET                0xC
+#define REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_MASK  0x0003UL
+#define REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_OVRD_EN_MASK  0x0004UL
+
+#define RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN       0x180A0
+#define LANE_TX2RX_SER_LB_EN_OVRD_EN_SHIFT     3
+#define LANE_TX2RX_SER_LB_EN_OVRD_VAL_SHIFT    2
+#define LANE_RX2TX_PAR_LB_EN_OVRD_EN_SHIFT     1
 
 #define LANE0_TX_LBERT_CTL_OFFSET         0x40C8
 #define LANE0_RX_LBERT_CTL_OFFSET         0x411C
@@ -198,15 +202,29 @@ void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
 	writew(val, hw->res[KVX_ETH_RES_PHY].base + reg);
 }
 
-void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p)
+/**
+ * kvx_phy_refclk_cfg() - Update I/O supply voltage (dep. on speed)
+ *
+ * @hw: hw description
+ * @speed: requested speed (> 16GHz per lane -> VPH must be 1.8V)
+ */
+void kvx_phy_refclk_cfg(struct kvx_eth_hw *hw, unsigned int speed)
 {
-	/* In case of phy loopback, RX serdes must be with the same polarity as
-	 * their TX counterparts
-	 */
-	bool clear = (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK);
+	u16 val = REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_OVRD_EN_MASK;
 
-	kvx_phy_param_tuning(hw);
-	kvx_phy_set_polarities(hw, clear);
+	switch (speed) {
+	case SPEED_25000:
+	case SPEED_100000:
+		val |= KVX_PHY_SUPLY_1_8V;
+		break;
+	default:
+		val |= KVX_PHY_SUPLY_1_5V;
+		break;
+	};
+
+	updatew_bits(hw, PHY, REFCLK_OVRD_IN_1_OFFSET,
+		     REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_MASK |
+		     REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_OVRD_EN_MASK, val);
 }
 
 void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable)
@@ -277,7 +295,7 @@ void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 	}
 }
 
-void kvx_phy_set_polarities(struct kvx_eth_hw *hw, bool clear)
+static void kvx_phy_set_polarities(struct kvx_eth_hw *hw, bool clear)
 {
 	u32 mask;
 	struct kvx_eth_polarities *pol;
@@ -304,6 +322,17 @@ void kvx_phy_set_polarities(struct kvx_eth_hw *hw, bool clear)
 		dev_dbg(hw->dev, "Lane [%d] polarity rx:%d/tx:%d done\n",
 			lane_id, pol->rx, pol->tx);
 	}
+}
+
+void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p)
+{
+	/* In case of phy loopback, RX serdes must be with the same polarity as
+	 * their TX counterparts
+	 */
+	bool clear = (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK);
+
+	kvx_phy_param_tuning(hw);
+	kvx_phy_set_polarities(hw, clear);
 }
 
 static struct pll_serdes_param pll_serdes_p[] = {
