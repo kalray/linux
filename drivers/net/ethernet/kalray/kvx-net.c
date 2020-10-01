@@ -1596,12 +1596,11 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 
 	if (an_enabled) {
 		ret = kvx_eth_autoneg(ndev);
-		if (ret == 0)
-			return;
-
-		netdev_err(netdev, "Autonegotiation failed, using default speed %i Mb/s\n",
+		if (ret != 0) {
+			netdev_err(netdev, "Autonegotiation failed, using default speed %i Mb/s\n",
 				ndev->cfg.speed);
-		update_serdes = true;
+			update_serdes = true;
+		}
 	}
 
 	kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, update_serdes);
