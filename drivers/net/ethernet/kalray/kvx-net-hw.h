@@ -42,6 +42,10 @@
 	u32 regval = readl(hw->res[KVX_ETH_RES_##bl].base + off) & ~(mask); \
 	writel(((v) | (regval)), hw->res[KVX_ETH_RES_##bl].base + off); }
 
+#define updatew_bits(hw, bl, off, mask, v) { \
+	u16 regval = readw(hw->res[KVX_ETH_RES_##bl].base + off) & ~(mask); \
+	writew(((v) | (regval)), hw->res[KVX_ETH_RES_##bl].base + off); }
+
 #define for_each_cfg_lane(nb_lane, lane, cfg) \
 	for (nb_lane = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL), \
 		lane = cfg->id; lane < cfg->id + nb_lane; lane++)
@@ -57,6 +61,11 @@ enum kvx_eth_resource {
 	KVX_ETH_RES_MAC,
 	KVX_ETH_RES_ETH,
 	KVX_ETH_NUM_RES
+};
+
+enum kvx_eth_phy_supply_voltage {
+	KVX_PHY_SUPLY_1_5V = 0x10,
+	KVX_PHY_SUPLY_1_8V = 0x11,
 };
 
 enum kvx_eth_loopback_mode {
@@ -790,7 +799,7 @@ void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_rx_bert_param *p);
 void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_tx_bert_param *p);
-void kvx_phy_set_polarities(struct kvx_eth_hw *hw, bool clear);
+void kvx_phy_refclk_cfg(struct kvx_eth_hw *hw, unsigned int speed);
 void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
 void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
