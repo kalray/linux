@@ -1598,9 +1598,6 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 	ret = 0;
 
 exit:
-	if (ret != 0)
-		kvx_eth_dump_an_regs(hw, cfg, 0);
-
 	updatel_bits(hw, MAC, LT_OFFSET + lane_id * LT_ELEM_SIZE +
 		  LT_KR_MODE_OFFSET, LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK, 0);
 	/* To end autonegotiation procedure we have to explicitely disable it
@@ -1608,9 +1605,12 @@ exit:
 	 */
 	mask = MAC_CTRL_AN_CTRL_EN_MASK;
 	updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
-	val = AN_KXAN_CTRL_ANEN_MASK | AN_KXAN_CTRL_ANRESTART_MASK;
-	updatel_bits(hw, MAC, an_off + AN_KXAN_CTRL_OFFSET, val, 0);
 
+	if (ret != 0) {
+		val = AN_KXAN_CTRL_ANEN_MASK | AN_KXAN_CTRL_ANRESTART_MASK;
+		updatel_bits(hw, MAC, an_off + AN_KXAN_CTRL_OFFSET, val, 0);
+		kvx_eth_dump_an_regs(hw, cfg, 0);
+	}
 	return ret;
 }
 
