@@ -32,6 +32,7 @@
 #define KVX_ETH_DEFAULT_RULE_DTABLE_IDX 256
 
 #define PFC_MAX_LEVEL 0x60000 /* 32 bits, must be 128 aligned */
+#define DEFAULT_PAUSE_QUANTA  0xFFFF
 
 #define DUMP_REG(hw, bl, off) { \
 	u32 v = readl(hw->res[KVX_ETH_RES_##bl].base + off); \
@@ -240,6 +241,7 @@ struct kvx_eth_cl_f {
 	unsigned int drop_level;
 	unsigned int alert_level;
 	unsigned int pfc_ena;
+	u16 quanta;
 	int lane_id;
 	int id;
 };

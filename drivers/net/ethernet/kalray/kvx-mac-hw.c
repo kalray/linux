@@ -39,6 +39,9 @@
 #define LT_COEF_P_1_MASK 0x30
 #define LT_COEF_P_1_SHIFT 0x4
 
+#define RX_FIFO_SECTION_FULL_THRES    1
+#define TX_FIFO_SECTION_FULL_THRES    16
+
 #define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
 #define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 
@@ -112,33 +115,32 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 	u32 val, off;
 
 	/* No MAC addr filtering */
-	val = (u32)BIT(EMAC_CMD_CFG_TX_EN_SHIFT)      |
-		BIT(EMAC_CMD_CFG_RX_EN_SHIFT)         |
-		BIT(EMAC_CMD_CFG_PROMIS_EN_SHIFT)     |
-		BIT(EMAC_CMD_CFG_CNTL_FRAME_EN_SHIFT) |
-		BIT(EMAC_CMD_CFG_SW_RESET_SHIFT) |
+	val = (u32)EMAC_CMD_CFG_TX_EN_MASK      |
+		EMAC_CMD_CFG_RX_EN_MASK         |
+		EMAC_CMD_CFG_CNTL_FRAME_EN_MASK |
+		EMAC_CMD_CFG_PROMIS_EN_MASK |
+		EMAC_CMD_CFG_SW_RESET_MASK      |
 		EMAC_CMD_CFG_TX_FIFO_RESET_MASK |
 		EMAC_CMD_CFG_TX_FLUSH_MASK;
 
-	if (cfg->mac_f.pfc_mode == MAC_PAUSE) {
-		val |= BIT(EMAC_CMD_CFG_PAUSE_PFC_COMP_SHIFT) |
-			BIT(EMAC_CMD_CFG_PAUSE_FWD_SHIFT);
-	} else if (cfg->mac_f.pfc_mode == MAC_PFC) {
-		val |= BIT(EMAC_CMD_CFG_PFC_MODE_SHIFT);
-	}
+	if (cfg->mac_f.pfc_mode == MAC_PAUSE)
+		val |= EMAC_CMD_CFG_PAUSE_PFC_COMP_MASK;
+	else if (cfg->mac_f.pfc_mode == MAC_PFC)
+		val |= EMAC_CMD_CFG_PFC_MODE_MASK;
 
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	kvx_mac_writel(hw, val, off + EMAC_CMD_CFG_OFFSET);
 
 	/* Disable MAC auto Xon/Xoff gen and store and forward mode */
-	kvx_mac_writel(hw, BIT(EMAC_RX_FIFO_SECTION_FULL_SHIFT),
-		       off + EMAC_RX_FIFO_SECTIONS_OFFSET);
+	val = RX_FIFO_SECTION_FULL_THRES << EMAC_RX_FIFO_SECTION_FULL_SHIFT;
+	updatel_bits(hw, MAC, off + EMAC_RX_FIFO_SECTIONS_OFFSET,
+		   EMAC_RX_FIFO_SECTION_FULL_MASK, val);
 	/* MAC Threshold for emitting pkt (low threshold -> low latency
 	 * but risk underflow -> bad tx transmission)
 	 */
+	val = TX_FIFO_SECTION_FULL_THRES << EMAC_TX_FIFO_SECTION_FULL_SHIFT;
 	updatel_bits(hw, MAC, off + EMAC_TX_FIFO_SECTIONS_OFFSET,
-		    EMAC_TX_FIFO_SECTION_FULL_MASK,
-		    BIT(4) << EMAC_TX_FIFO_SECTION_FULL_SHIFT);
+		    EMAC_TX_FIFO_SECTION_FULL_MASK, val);
 	val = kvx_mac_readl(hw, off + EMAC_CMD_CFG_OFFSET);
 	if (GETF(val, EMAC_CMD_CFG_SW_RESET)) {
 		dev_err(hw->dev, "EMAC Lane[%d] sw_reset != 0(0x%x)\n", cfg->id,
@@ -160,31 +162,28 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 	u32 off, val;
 
 	/* Preembtible MAC */
-	val = BIT(PMAC_CMD_CFG_TX_EN_SHIFT)       |
-		BIT(PMAC_CMD_CFG_RX_EN_SHIFT)     |
-		BIT(PMAC_CMD_CFG_PROMIS_EN_SHIFT) |
-		BIT(PMAC_CMD_CFG_TX_PAD_EN_SHIFT) |
-		BIT(PMAC_CMD_CFG_SW_RESET_SHIFT)  |
-		BIT(PMAC_CMD_CFG_CNTL_FRAME_EN_SHIFT);
+	val = PMAC_CMD_CFG_TX_EN_MASK       |
+		PMAC_CMD_CFG_RX_EN_MASK     |
+		PMAC_CMD_CFG_PROMIS_EN_MASK |
+		PMAC_CMD_CFG_TX_PAD_EN_MASK |
+		PMAC_CMD_CFG_SW_RESET_MASK  |
+		PMAC_CMD_CFG_CNTL_FRAME_EN_MASK;
 
-	if (cfg->mac_f.pfc_mode == MAC_PAUSE) {
-		val |= BIT(PMAC_CMD_CFG_PAUSE_FWD_SHIFT) |
-			BIT(PMAC_CMD_CFG_PAUSE_IGNORE_SHIFT);
-	} else if (cfg->mac_f.pfc_mode == MAC_PFC) {
-		val |= BIT(PMAC_CMD_CFG_PFC_MODE_SHIFT);
-	}
+	if (cfg->mac_f.pfc_mode == MAC_PFC)
+		val |= PMAC_CMD_CFG_PFC_MODE_MASK;
 
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	kvx_mac_writel(hw, val, off + PMAC_CMD_CFG_OFFSET);
 	/* Disable MAC auto Xon/Xoff gen and store and forward mode */
-	kvx_mac_writel(hw, BIT(PMAC_RX_FIFO_SECTION_FULL_SHIFT),
-		       off + PMAC_RX_FIFO_SECTIONS_OFFSET);
+	val = RX_FIFO_SECTION_FULL_THRES << PMAC_RX_FIFO_SECTION_FULL_SHIFT;
+	updatel_bits(hw, MAC, off + PMAC_RX_FIFO_SECTIONS_OFFSET,
+		     PMAC_RX_FIFO_SECTION_FULL_MASK, val);
 	/* MAC Threshold for emitting pkt (low threshold -> low latency
 	 * but risk underflow -> bad tx transmission)
 	 */
+	val = TX_FIFO_SECTION_FULL_THRES << PMAC_TX_FIFO_SECTION_FULL_SHIFT;
 	updatel_bits(hw, MAC, off + PMAC_TX_FIFO_SECTIONS_OFFSET,
-		    PMAC_TX_FIFO_SECTION_FULL_MASK,
-		    BIT(4) << PMAC_TX_FIFO_SECTION_FULL_SHIFT);
+		    PMAC_TX_FIFO_SECTION_FULL_MASK, val);
 
 	val = kvx_mac_readl(hw, off + PMAC_CMD_CFG_OFFSET);
 	if (GETF(val, PMAC_CMD_CFG_SW_RESET)) {
@@ -201,6 +200,7 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 
 void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
+	u32 val, off;
 	int i = 0;
 
 	if (kvx_mac_readl(hw, MAC_RESET_OFFSET))
@@ -213,12 +213,19 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	else
 		cfg->mac_f.pfc_mode = MAC_PFC_NONE;
 
-	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++)
+	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++) {
 		if (cfg->cl_f[i].pfc_ena) {
 			cfg->mac_f.pfc_mode = MAC_PFC;
 			break;
 		}
 
+		if ((i % 2) == 0) {
+			val = (u32)cfg->cl_f[i + 1].quanta << 16 |
+				cfg->cl_f[i].quanta;
+			off = EMAC_CL01_PAUSE_QUANTA_OFFSET + 4 * i;
+			kvx_mac_writel(hw, val, off);
+		}
+	}
 	kvx_eth_emac_init(hw, cfg);
 	kvx_eth_pmac_init(hw, cfg);
 }
