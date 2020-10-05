@@ -264,12 +264,14 @@ static struct attribute *tx_f_attrs[] = {
 SYSFS_TYPES(tx_f);
 
 DECLARE_SYSFS_ENTRY(cl_f);
+FIELD_RW_ENTRY(cl_f, quanta, 0, DEFAULT_PAUSE_QUANTA);
 FIELD_RW_ENTRY(cl_f, release_level, 0, RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
 FIELD_RW_ENTRY(cl_f, drop_level, 0, RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
 FIELD_RW_ENTRY(cl_f, alert_level, 0, RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
 FIELD_RW_ENTRY(cl_f, pfc_ena, 0, 1);
 
 static struct attribute *cl_f_attrs[] = {
+	&cl_f_quanta_attr.attr,
 	&cl_f_release_level_attr.attr,
 	&cl_f_drop_level_attr.attr,
 	&cl_f_alert_level_attr.attr,

@@ -141,6 +141,7 @@ void kvx_eth_pfc_f_set_default(struct kvx_eth_hw *hw,
 		cfg->cl_f[i].release_level = DEFAULT_PFC_RELEASE_LEVEL;
 		kvx_eth_writel(hw, cfg->cl_f[i].release_level, cl_offset +
 			      RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
+		cfg->cl_f[i].quanta = DEFAULT_PAUSE_QUANTA;
 	}
 }
 
