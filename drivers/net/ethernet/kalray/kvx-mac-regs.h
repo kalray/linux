@@ -176,6 +176,9 @@
 #define EMAC_TX_FIFO_SECTIONS_OFFSET               0x120
 #define EMAC_TX_FIFO_SECTION_FULL_SHIFT            0x0
 #define EMAC_TX_FIFO_SECTION_FULL_MASK             0x1FUL
+#define EMAC_CL01_PAUSE_QUANTA_OFFSET              0x154
+#define EMAC_CL01_QUANTA_THRESH_OFFSET             0x164
+#define EMAC_RX_PAUSE_STATUS_OFFSET                0x174
 
 /* PMAC */
 #define PMAC_CMD_CFG_OFFSET                        0x8
