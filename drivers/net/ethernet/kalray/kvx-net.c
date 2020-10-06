@@ -490,9 +490,8 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 		    tx_w, (u64)tx->skb, (int)tx->len, tx->skb->len, txr->qidx);
 	netdev_tx_sent_queue(get_txq(txr), tx->len);
 
+	skb_tx_timestamp(skb);
 	dma_async_issue_pending(txr->chan);
-
-	skb_orphan(skb);
 
 	tx_w++;
 	txr->next_to_use = (tx_w < txr->count) ? tx_w : 0;
@@ -501,7 +500,6 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 	if (unlikely(unused_tx == 0))
 		netif_tx_stop_queue(get_txq(txr));
 
-	skb_tx_timestamp(skb);
 	return NETDEV_TX_OK;
 
 busy:
