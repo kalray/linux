@@ -137,8 +137,7 @@ static int kvx_dma_start_sg_eth_tx(struct kvx_dma_desc *desc)
 					  0, &hw_job_id);
 		txd_size += (size_t)desc->txd[i].len;
 	}
-	ret |= kvx_dma_pkt_tx_push(desc->phy, &desc->txd[i],
-				   1, &hw_job_id);
+	ret |= kvx_dma_pkt_tx_push(desc->phy, &desc->txd[i], 1, &hw_job_id);
 	txd_size += (size_t)desc->txd[i].len;
 	desc->last_job_id = hw_job_id;
 	desc->size = txd_size;
