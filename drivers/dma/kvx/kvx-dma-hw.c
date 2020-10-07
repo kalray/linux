@@ -856,17 +856,18 @@ static void kvx_dma_status_queues(struct kvx_dma_phy *phy)
 			qbase = phy->base + KVX_DMA_TX_COMP_Q_OFFSET +
 				idx * KVX_DMA_TX_COMP_Q_ELEM_SIZE;
 			status = readq(qbase + KVX_DMA_TX_COMP_Q_STATUS_OFFSET);
-			dev_err(phy->dev, "Tx comp queue[%d]status: 0x%llx\n",
+			dev_err(phy->dev, "Tx comp queue[%d] status: 0x%llx\n",
 				idx, status);
 		}
 	} else {
 		status = readq(base + KVX_DMA_ERROR_RX_CHAN_STATUS_OFFSET);
 		if (status)
-			dev_err(phy->dev, "Rx chan in error: 0x%llx\n", status);
+			dev_err(phy->dev, "Rx chan[%d] in error: 0x%llx\n",
+				phy->hw_id, status);
 		status = readq(base + KVX_DMA_ERROR_RX_JOB_STATUS_OFFSET);
 		if (status)
-			dev_err(phy->dev, "Rx job queue in error: 0x%llx\n",
-				status);
+			dev_err(phy->dev, "Rx job queue[%d] in error: 0x%llx\n",
+				phy->hw_id, status);
 	}
 }
 
