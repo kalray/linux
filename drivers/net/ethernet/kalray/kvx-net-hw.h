@@ -792,12 +792,9 @@ void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
 
 /* PHY */
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
-int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, int lane_id,
-			    unsigned int speed);
 void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f);
 void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable);
 int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p);
-void kvx_phy_param_tuning(struct kvx_eth_hw *hw);
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p);
 void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_rx_bert_param *p);
@@ -814,10 +811,9 @@ void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
 void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
-int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw);
 int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
-int kvx_eth_phy_cfg(struct kvx_eth_hw *hw);
-int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw);
+int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
