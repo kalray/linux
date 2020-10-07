@@ -499,6 +499,7 @@ enum lt_ld_states {
 /**
  * struct kvx_eth_lane_cfg - Lane configuration
  * @id: lane_id [0, 3]
+ * @tx_fifo_id: tx fifo id [0, 9]
  * @link: phy link state
  * @speed: phy node speed
  * @duplex: duplex mode
@@ -515,7 +516,8 @@ enum lt_ld_states {
  * @default_dispatch_entry: default dispatch table entry used by current cluster
  */
 struct kvx_eth_lane_cfg {
-	int id;
+	u32 id;
+	u32 tx_fifo_id;
 	int link;
 	unsigned int speed;
 	unsigned int duplex;
