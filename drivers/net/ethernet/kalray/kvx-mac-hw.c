@@ -200,18 +200,26 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 
 void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
+	int tx_fifo_id = cfg->tx_fifo_id;
 	u32 val, off;
 	int i = 0;
 
 	if (kvx_mac_readl(hw, MAC_RESET_OFFSET))
 		return;
 
-	if (cfg->pfc_f.global_pfc_en)
+	if (cfg->pfc_f.global_pfc_en) {
 		cfg->mac_f.pfc_mode = MAC_PFC;
-	else if (cfg->pfc_f.global_pause_en)
+		hw->tx_f[tx_fifo_id].pfc_en = 1;
+		hw->tx_f[tx_fifo_id].pause_en = 0;
+	} else if (cfg->pfc_f.global_pause_en) {
 		cfg->mac_f.pfc_mode = MAC_PAUSE;
-	else
+		hw->tx_f[tx_fifo_id].pfc_en = 0;
+		hw->tx_f[tx_fifo_id].pause_en = 1;
+	} else {
 		cfg->mac_f.pfc_mode = MAC_PFC_NONE;
+		hw->tx_f[tx_fifo_id].pfc_en = 0;
+		hw->tx_f[tx_fifo_id].pause_en = 0;
+	}
 
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++) {
 		if (cfg->cl_f[i].pfc_ena) {
@@ -228,6 +236,7 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 	kvx_eth_emac_init(hw, cfg);
 	kvx_eth_pmac_init(hw, cfg);
+	kvx_eth_tx_f_cfg(hw, &hw->tx_f[tx_fifo_id]);
 }
 
 #define RESET_TIMEOUT_MS 50
@@ -1814,6 +1823,9 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	ret = kvx_eth_mac_reset(hw, cfg->id);
 	if (ret)
 		return ret;
+
+	kvx_eth_tx_f_cfg(hw, &hw->tx_f[cfg->id]);
+	kvx_eth_lb_f_cfg(hw, &hw->lb_f[cfg->id]);
 
 	ret = kvx_eth_emac_init(hw, cfg);
 	if (ret)
