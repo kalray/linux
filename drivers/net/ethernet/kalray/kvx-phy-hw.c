@@ -169,7 +169,7 @@ static int kvx_mac_phy_bert_init(struct kvx_eth_hw *hw)
 void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f)
 {
 	/* Serdes default config */
-	kvx_eth_phy_cfg(hw);
+	kvx_eth_phy_param_cfg(hw, phy_f->param);
 
 	if (phy_f->bert_en)
 		kvx_mac_phy_bert_init(hw);
@@ -253,24 +253,16 @@ void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable)
  *
  * @hw: hw description
  */
-void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
+static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 {
 	u16 mask = TX_MAIN_CURSOR_MASK | TX_MAIN_OVRD_EN_MASK | OVRD_IN_EN_MASK;
 	struct kvx_eth_phy_param *param = &hw->phy_f.param[0];
 	u16 v, reg, lane_id;
-	u32 off, val;
-	bool vlane = false;
-
-	val = readl(hw->res[KVX_ETH_RES_MAC].base + MAC_MODE_OFFSET);
-	if (GETF(val, MAC_MODE40_EN_IN) || GETF(val, MAC_PCS100_EN_IN))
-		vlane = true;
+	u32 off;
 
 	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
 		off = LANE0_DIG_ASIC_TX_OVRD_IN_2 +
 			lane_id * LANE_DIG_ASIC_TX_OVRD_IN_OFFSET;
-
-		if (!vlane)
-			param = &hw->phy_f.param[lane_id];
 
 		if (!param->en)
 			continue;
