@@ -29,7 +29,7 @@
 
 struct kvx_eth_type {
 	int (*phy_init)(struct kvx_eth_hw *hw, unsigned int speed);
-	int (*phy_cfg)(struct kvx_eth_hw *hw);
+	int (*phy_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 };
 
 /**
@@ -141,7 +141,8 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw);
 int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev);
 void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev);
 
-int configure_rtm(struct kvx_eth_hw *hw, unsigned int rtm, unsigned int speed);
+int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
+		  unsigned int rtm, unsigned int speed);
 
 #ifdef CONFIG_DCB
 void kvx_set_dcb_ops(struct net_device *netdev);

@@ -459,7 +459,7 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 	}
 
 	if (kvx_eth_tx_has_header(ndev->hw, ndev->cfg.tx_fifo_id))
-		skb = kvx_eth_tx_add_hdr(ndev, skb, txr->config.rx_tag);
+		skb = kvx_eth_tx_add_hdr(ndev, skb, ndev->cfg.tx_fifo_id);
 
 	tx->skb = skb;
 	tx->len = 0;
@@ -617,7 +617,8 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 	if (eop) {
 		kvx_eth_rx_hdr(ndev, rxr->skb);
 		rxr->skb->dev = rxr->napi.dev;
-		skb_record_rx_queue(rxr->skb, rxr->qidx);
+		skb_record_rx_queue(rxr->skb, ndev->dma_cfg.rx_chan_id.start +
+				    rxr->qidx);
 		rxr->skb->protocol = eth_type_trans(rxr->skb, netdev);
 	}
 
@@ -1424,6 +1425,10 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 		phylink_set(mask, 40000baseCR4_Full);
 		phylink_set(mask, 40000baseSR4_Full);
 		phylink_set(mask, 40000baseLR4_Full);
+		phylink_set(mask, 25000baseCR_Full);
+		phylink_set(mask, 25000baseSR_Full);
+		phylink_set(mask, 10000baseCR_Full);
+		phylink_set(mask, 10000baseSR_Full);
 	}
 
 	bitmap_or(supported, supported, mask, __ETHTOOL_LINK_MODE_MASK_NBITS);
@@ -1470,8 +1475,12 @@ int kvx_eth_speed_to_nb_lanes(unsigned int speed, unsigned int *lane_speed)
 		nb_lanes = 1;
 		tmp_lane_speed = speed;
 		break;
+	case SPEED_1000:
+		nb_lanes = 1;
+		tmp_lane_speed = speed;
+		break;
 	default:
-		return -EINVAL;
+		return 0;
 	}
 
 	if (lane_speed != NULL)
@@ -1495,11 +1504,12 @@ int speed_to_rtm_speed_index(unsigned int speed)
 	}
 }
 
-int configure_rtm(struct kvx_eth_hw *hw, unsigned int rtm, unsigned int speed)
+int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
+		  unsigned int rtm, unsigned int speed)
 {
-	int nb_lanes, lane;
-	int i, rtm_speed_idx, lane_speed;
 	struct kvx_eth_rtm_params *params = &hw->rtm_params;
+	int i, lane_speed, rtm_speed_idx;
+	int nb_lanes, lane;
 
 	if (rtm > RTM_NB) {
 		dev_err(hw->dev, "Unknown retimer id %d\n", rtm);
@@ -1522,7 +1532,7 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int rtm, unsigned int speed)
 	}
 	dev_dbg(hw->dev, "Setting retimer%d speed to %d\n", rtm, speed);
 
-	for (i = 0; i < nb_lanes; i++) {
+	for (i = lane_id; i < nb_lanes; i++) {
 		lane = params->channels[i];
 
 		ti_retimer_set_speed(params->rtm[rtm], lane, lane_speed);
@@ -1581,7 +1591,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		 * exit immediatelly in order to avoid useless wait
 		 * for autoneg completion in this case.
 		 */
-		netdev_dbg(ndev->netdev, "No cable plugged\n");
+		netdev_warn(ndev->netdev, "No cable detected\n");
 		return;
 	}
 
