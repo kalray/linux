@@ -458,7 +458,7 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 		return NETDEV_TX_OK;
 	}
 
-	if (kvx_eth_tx_has_header(ndev->hw, txr->config.rx_tag))
+	if (kvx_eth_tx_has_header(ndev->hw, ndev->cfg.tx_fifo_id))
 		skb = kvx_eth_tx_add_hdr(ndev, skb, txr->config.rx_tag);
 
 	tx->skb = skb;
@@ -1013,7 +1013,8 @@ int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	r->config.dir = KVX_DMA_DIR_TYPE_TX;
 	r->config.noc_route = noc_route_c2eth(ndev->hw->eth_id,
 					      kvx_cluster_id());
-	r->config.rx_tag = ndev->dma_cfg.tx_chan_id.start + r->qidx;
+	/* rx_tag must refer to tx_fifo_id*/
+	r->config.rx_tag = ndev->cfg.tx_fifo_id;
 	r->config.qos_id = 0;
 
 	/* Keep opened channel (only realloc tx_buf) */
@@ -1071,23 +1072,22 @@ static int kvx_eth_alloc_tx_res(struct net_device *netdev)
 	struct kvx_eth_ring *r;
 	int i, qidx, ret = 0;
 
+	tx_f = &ndev->hw->tx_f[ndev->cfg.tx_fifo_id];
+	tx_f->lane_id = ndev->cfg.id;
+	list_add_tail(&tx_f->node, &ndev->cfg.tx_fifo_list);
 	for (qidx = 0; qidx < ndev->dma_cfg.tx_chan_id.nb; qidx++) {
 		r = &ndev->tx_ring[qidx];
 		r->qidx = qidx;
-		tx_f = &ndev->hw->tx_f[ndev->dma_cfg.tx_chan_id.start + qidx];
-		tx_f->lane_id = ndev->cfg.id;
-		list_add_tail(&tx_f->node, &ndev->cfg.tx_fifo_list);
 
 		ret = kvx_eth_alloc_tx_ring(ndev, r);
-		if (ret) {
-			list_del_init(&tx_f->node);
+		if (ret)
 			goto alloc_failed;
-		}
 	}
 
 	return 0;
 
 alloc_failed:
+	list_del_init(&tx_f->node);
 	for (i = qidx - 1; i >= 0; i--)
 		kvx_eth_release_tx_ring(&ndev->tx_ring[i], 0);
 
@@ -1380,6 +1380,20 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 
 	if (of_property_read_u32(np, "kalray,lane", &ndev->cfg.id)) {
 		dev_err(ndev->dev, "Unable to get lane\n");
+		return -EINVAL;
+	}
+	if (ndev->cfg.id >= KVX_ETH_LANE_NB) {
+		dev_err(ndev->dev, "lane >= %d\n", KVX_ETH_LANE_NB);
+		return -EINVAL;
+	}
+
+	if (of_property_read_u32(np, "kalray,tx_fifo", &ndev->cfg.tx_fifo_id)) {
+		dev_dbg(ndev->dev, "Unable to get tx_fifo\n");
+		/* Same tx fifo id for netdevs, lane selected with tx headers */
+		ndev->cfg.tx_fifo_id = 0;
+	}
+	if (ndev->cfg.tx_fifo_id >= TX_FIFO_NB) {
+		dev_err(ndev->dev, "tx_fifo >= %d\n", TX_FIFO_NB);
 		return -EINVAL;
 	}
 
