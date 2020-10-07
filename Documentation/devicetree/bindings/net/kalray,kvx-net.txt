@@ -21,6 +21,7 @@ Required properties:
 - dmas: tx dma-noc channels
 - dma-names: as defined in bindings/dma/dma.txt
 - kalray,lane: Each device (eth0/eth1) has four lanes.
+- kalray,tx_fifo: Select ethernet tx fifo to be used [0, 9] per controler
   When link is not aggregated (SGMII/10Gb/25Gb) indicate the lane being used.
   When link is aggregated (40Gb/50Gb/100G) indicate the first lane being used.
 - kalray,dma-rx-cache-id: dma pool of RX buffers [0, 3]
@@ -68,6 +69,7 @@ Example:
 				dmas = <&dma_noc 1>;
 				dma-names = "tx";
 				kalray,lane = <0>;
+				kalray,tx_fifo = <0>;
 				kalray,dma-rx-cache-id = <0>;
 				kalray,dma-rx-channel-ids = <0 1>;
 				kalray,dma-rx-comp-queue-ids = <0 1>;
