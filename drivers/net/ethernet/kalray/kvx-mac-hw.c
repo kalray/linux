@@ -855,7 +855,7 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 			     PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
 		update_set_vendor_xpcs_vl(hw, lane_id, XPCS_RATE_25G);
 
-		if (hw->fec_en) {
+		if (cfg->fec) {
 			update_set_vendor_cl_intvl(hw, lane_id, mc);
 			update_ipg_len_compensation(hw, lane_id, mc);
 
@@ -913,7 +913,7 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 		break;
 	case SPEED_50000:
 		s = 2 * lane_id;
-		if (hw->fec_en) {
+		if (cfg->fec) {
 			mc = MARKER_COMP_25G;
 			update_set_vendor_cl_intvl(hw, s, mc);
 			update_set_vendor_cl_intvl(hw, s + 1, mc);
@@ -950,12 +950,9 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 		}
 		break;
 	case SPEED_100000:
+		/* For 100G we use 10G markers and threshold */
 		mc = MARKER_COMP_10G;
-		if (hw->fec_en)
-			mc = MARKER_COMP_25G;
 		thresh = 7;
-		if (hw->fec_en)
-			thresh = 9;
 		for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
 			reg = XPCS_OFFSET + XPCS_ELEM_SIZE * i;
 			kvx_mac_writel(hw, thresh, reg +
@@ -998,6 +995,9 @@ void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			 PCS_100G_SPEED_ABILITY_OFFSET);
 		DUMP_REG(hw, MAC, PCS_100G_OFFSET +
 			 PCS_100G_BASER_STATUS1_OFFSET);
+		DUMP_REG(hw, MAC, PCS_100G_OFFSET +
+			 PCS_100G_BASER_STATUS2_OFFSET);
+		DUMP_REG(hw, MAC, PCS_100G_VL_INTVL_OFFSET);
 		break;
 	case SPEED_40000:
 	case SPEED_25000:
@@ -1033,31 +1033,32 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		return 0;
 	}
 
-	if (hw->fec_en) {
+	if (cfg->fec) {
 		if (cfg->speed == SPEED_100000) {
 			ref = MAC_RS_FEC_STATUS_BLOCK_LOCK_MASK |
+				/* Only bit 0 is relevant in 100G */
 				BIT(MAC_RS_FEC_STATUS_ALIGNED_SHIFT);
 
 			ret = kvx_poll(kvx_mac_readl, MAC_RS_FEC_STATUS_OFFSET,
 				       ref, ref, MAC_SYNC_TIMEOUT_MS);
 			if (ret) {
-				dev_err(hw->dev, "Link 100G status timeout (rs fec)\n");
+				dev_err(hw->dev, "Link 100G status timeout (RS-FEC)\n");
 				return ret;
 			}
 		} else {
-			if (cfg->speed == SPEED_10000 ||
+			if (cfg->speed == SPEED_50000)
+				fec_mask = 0xF << (4 * cfg->id);
+			else if (cfg->speed == SPEED_40000)
+				fec_mask = FEC_MASK_40G;
+			else if (cfg->speed == SPEED_10000 ||
 			    cfg->speed == SPEED_25000)
 				set_bit(2 * cfg->id,
 					(unsigned long *)&fec_mask);
-			else if (cfg->speed == SPEED_40000)
-				fec_mask = FEC_MASK_40G;
-			else if (cfg->speed == SPEED_50000)
-				fec_mask = 0xF << (4 * cfg->id);
 
 			ret = kvx_poll(kvx_mac_readl, MAC_FEC_STATUS_OFFSET,
 				       fec_mask, fec_mask, MAC_SYNC_TIMEOUT_MS);
 			if (ret) {
-				dev_err(hw->dev, "Link %s status timeout (fec)\n",
+				dev_err(hw->dev, "Link %s status timeout (FEC)\n",
 					phy_speed_to_str(cfg->speed));
 				return ret;
 			}
@@ -1077,6 +1078,11 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	cfg->link = 1;
 
 	return 0;
+}
+
+int kvx_eth_mac_getfec(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	return cfg->fec;
 }
 
 static void kvx_eth_dump_an_regs(struct kvx_eth_hw *hw,
@@ -1116,7 +1122,10 @@ static void kvx_eth_dump_an_regs(struct kvx_eth_hw *hw,
 
 	val = kvx_mac_readl(hw, an_off + AN_KXAN_ABILITY_2_OFFSET);
 	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_TECHNOLOGY);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_FECABILITY);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_RS_FEC_REQ);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_BASER_FEC_REQ);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_ABILITY);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_REQ);
 
 	dev_dbg(hw->dev, "Remote KXAN_ABILITY\n");
 	val = kvx_mac_readl(hw, an_off + AN_KXAN_REM_ABILITY_0_OFFSET);
@@ -1132,7 +1141,10 @@ static void kvx_eth_dump_an_regs(struct kvx_eth_hw *hw,
 
 	val = kvx_mac_readl(hw, an_off + AN_KXAN_REM_ABILITY_2_OFFSET);
 	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_TECHNOLOGY);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_FECABILITY);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_RS_FEC_REQ);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_BASER_FEC_REQ);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_ABILITY);
+	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_REQ);
 
 	dev_dbg(hw->dev, "MAC CTRL\n");
 	val = kvx_mac_readl(hw, an_ctrl_off);
@@ -1241,6 +1253,10 @@ static int kvx_eth_an_get_common_speed(struct kvx_eth_hw *hw, int lane_id,
 	}
 
 	ln->fec = 0;
+	/* Be careful as for 100G links AN_BP_STATUS_BPETHSTATUSRSV_MASK won't
+	 * go up even if it should, this case is handled in mac_cfg to work even
+	 * with autonegociation off.
+	 */
 	if (val & AN_BP_STATUS_BPETHSTATUSRSV_MASK) {
 		dev_dbg(hw->dev, "Autoneg RS-FEC\n");
 		ln->fec = FEC_25G_RS_REQUESTED;
@@ -1543,8 +1559,7 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 			RATE_40GBASE_KR4 | RATE_40GBASE_CR4 |
 			RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S |
 			RATE_10GBASE_KR);
-	cfg->ln.speed = SPEED_40000;
-	cfg->lc.fec = 0;
+	cfg->lc.fec = FEC_25G_RS_REQUESTED;
 	cfg->lc.pause = 1;
 
 	/* disable AN */
@@ -1575,7 +1590,7 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 	kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_1_OFFSET);
 
 	/* Write FEC ability */
-	val = (cfg->lc.fec << AN_KXAN_ABILITY_2_FECABILITY_SHIFT);
+	val = (cfg->lc.fec << AN_KXAN_ABILITY_2_25G_RS_FEC_REQ_SHIFT);
 	kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_2_OFFSET);
 
 	/* Find number of cycles to wait 1 ms */
@@ -1629,7 +1644,11 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 		goto exit;
 	}
 
-	dev_info(hw->dev, "Negociated speed: %d Mbps\n", cfg->ln.speed);
+	/* Don't display FEC as it could be altered by mac config */
+	dev_dbg(hw->dev, "Negociated speed: %d%s\n",
+		(cfg->ln.speed > 1000) ? cfg->ln.speed : cfg->ln.speed / 1000,
+		(cfg->ln.speed > 1000) ? "Gbps" : "Mbps");
+
 	ret = 0;
 
 exit:
@@ -1788,6 +1807,7 @@ int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 	/* Apply negociated speed */
 	cfg->speed = cfg->ln.speed;
+	cfg->fec = cfg->ln.fec;
 
 	ret = kvx_eth_mac_pcs_pma_hcd_setup(hw, cfg, true);
 	if (ret)
@@ -1853,13 +1873,24 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	if (ret)
 		return ret;
 
-	if (hw->fec_en) {
+	/* For 100G links FEC can't be deduced from autoneg registers in MTIP
+	 * IP, but is mandatory according to 802.3. Force it.
+	 */
+	if (cfg->speed == SPEED_100000) {
+		/* RS FEC is mandatory for 100G */
+		dev_dbg(hw->dev, "Forcing 25G RS-FEC\n");
+		cfg->fec = FEC_25G_RS_REQUESTED;
+	}
+
+	if (cfg->fec) {
 		if (cfg->speed == SPEED_100000) {
+			/* Enable RS FEC */
 			kvx_mac_writel(hw, MAC_FEC91_ENA_IN_MASK,
 				       MAC_FEC91_CTRL_OFFSET);
 		} else if (cfg->speed == SPEED_50000) {
 			val = kvx_mac_readl(hw, MAC_FEC_CTRL_OFFSET);
 			val |= (3 << MAC_FEC_CTRL_FEC_EN_SHIFT) + (cfg->id * 2);
+			kvx_mac_writel(hw, val, MAC_FEC_CTRL_OFFSET);
 		} else if (cfg->speed == SPEED_40000) {
 			val = kvx_mac_readl(hw, MAC_FEC_CTRL_OFFSET);
 			val |= ((u32)0xF << MAC_FEC_CTRL_FEC_EN_SHIFT);
