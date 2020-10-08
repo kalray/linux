@@ -501,6 +501,7 @@ enum lt_ld_states {
  * @link: phy link state
  * @speed: phy node speed
  * @duplex: duplex mode
+ * @fec: fec mode
  * @phy_mode: phy interface mode
  * @an_mode: enable autonegociation
  * @lc: link capabilities
@@ -519,6 +520,7 @@ struct kvx_eth_lane_cfg {
 	int link;
 	unsigned int speed;
 	unsigned int duplex;
+	unsigned int fec;
 	phy_interface_t phy_mode;
 	unsigned int an_mode;
 	struct link_capability lc;
@@ -635,7 +637,6 @@ struct kvx_eth_rtm_params {
  * @asn: device ASN
  * @vchan: dma-noc vchan (MUST be different of the one used by l2-cache)
  * @max_frame_size: current mtu for mac
- * @fec_en: Forward Error Correction enabled
  * @rx_chan_error: rx dma channel used to generate RX_CHAN_CLOSED interrupt
  */
 struct kvx_eth_hw {
@@ -657,7 +658,6 @@ struct kvx_eth_hw {
 	u32 asn;
 	u32 vchan;
 	u32 max_frame_size;
-	u16 fec_en;
 	u32 rx_chan_error;
 };
 
@@ -813,6 +813,7 @@ int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_mac_getfec(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
