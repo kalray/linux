@@ -151,7 +151,7 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 
 	ndev->cfg.speed = SPEED_UNKNOWN;
 	ndev->cfg.duplex = DUPLEX_UNKNOWN;
-	ndev->hw->fec_en = 0;
+	ndev->cfg.fec = 0;
 	kvx_eth_mac_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_dt_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_lb_f_init(ndev->hw, &ndev->cfg);
@@ -1472,6 +1472,10 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 		phylink_set(mask, 10000baseCR_Full);
 		phylink_set(mask, 10000baseSR_Full);
 	}
+
+	phylink_set(mask, FEC_NONE);
+	phylink_set(mask, FEC_RS);
+	phylink_set(mask, FEC_BASER);
 
 	bitmap_or(supported, supported, mask, __ETHTOOL_LINK_MODE_MASK_NBITS);
 	bitmap_or(state->advertising, state->advertising, mask,
