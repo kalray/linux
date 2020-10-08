@@ -1204,6 +1204,35 @@ int kvx_eth_get_module_transceiver(struct net_device *netdev,
 	return 0;
 }
 
+int kvx_eth_get_fecparam(struct net_device *netdev,
+		struct ethtool_fecparam *param)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	/* No FEC if link is down */
+	if (!ndev->cfg.link)
+		return -EINVAL;
+
+	/* Not configurable for now */
+	param->fec = ETHTOOL_FEC_AUTO;
+
+	switch (kvx_eth_mac_getfec(ndev->hw, &ndev->cfg)) {
+	case FEC_25G_RS_REQUESTED:
+		param->active_fec = ETHTOOL_FEC_RS;
+		break;
+	case FEC_25G_BASE_R_REQUESTED:
+	case FEC_10G_FEC_REQUESTED:
+		param->active_fec = ETHTOOL_FEC_BASER;
+		break;
+	default:
+		param->active_fec = ETHTOOL_FEC_OFF;
+		break;
+	}
+
+	return 0;
+}
+
+
 static const struct ethtool_ops kvx_ethtool_ops = {
 	.get_drvinfo         = kvx_eth_get_drvinfo,
 	.get_ringparam       = kvx_eth_get_ringparam,
@@ -1220,6 +1249,7 @@ static const struct ethtool_ops kvx_ethtool_ops = {
 	.set_link_ksettings  = kvx_eth_set_link_ksettings,
 	.get_pauseparam      = kvx_eth_get_pauseparam,
 	.set_pauseparam      = kvx_eth_set_pauseparam,
+	.get_fecparam        = kvx_eth_get_fecparam,
 };
 
 void kvx_set_ethtool_ops(struct net_device *netdev)
