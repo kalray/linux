@@ -1013,8 +1013,7 @@ int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	r->config.dir = KVX_DMA_DIR_TYPE_TX;
 	r->config.noc_route = noc_route_c2eth(ndev->hw->eth_id,
 					      kvx_cluster_id());
-	/* rx_tag must refer to tx_fifo_id*/
-	r->config.rx_tag = ndev->cfg.tx_fifo_id;
+	r->config.rx_tag = ndev->dma_cfg.tx_chan_id.start + r->qidx;
 	r->config.qos_id = 0;
 
 	/* Keep opened channel (only realloc tx_buf) */
