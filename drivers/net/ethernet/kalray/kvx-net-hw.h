@@ -484,7 +484,6 @@ enum lt_coef_updates {
  *   partner
  * LT_STATE_UPDATE_COEFF: Updating local coefficients from link partner request
  * LT_STATE_WAIT_HOLD: Wait for link partner to acknowledge coefficient update
- * LT_STATE_WAIT_RCV_READY: Wait for link partner link training completion
  * LT_STATE_LD_DONE: Link training finished with sucess
  *
  */
@@ -492,7 +491,6 @@ enum lt_ld_states {
 	LT_STATE_WAIT_COEFF_UPD,
 	LT_STATE_UPDATE_COEFF,
 	LT_STATE_WAIT_HOLD,
-	LT_STATE_WAIT_RCV_READY,
 	LT_STATE_LD_DONE,
 };
 
