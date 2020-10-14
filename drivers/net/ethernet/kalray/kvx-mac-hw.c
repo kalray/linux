@@ -1322,19 +1322,22 @@ void kvx_eth_lt_report_ld_status_not_updated(struct kvx_eth_hw *hw, int lane)
  */
 void kvx_eth_lt_lp_fsm(struct kvx_eth_hw *hw, int lane)
 {
-	int val, lt_off;
+	unsigned int val, lt_off;
 
 	lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
 	switch (hw->lt_state[lane]) {
 	case LT_STATE_WAIT_COEFF_UPD:
 		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_COEF_OFFSET);
-		hw->lt_state[lane] = LT_STATE_WAIT_RCV_READY;
 		/* Check either coef update in normal operation, initialize
 		 * operation or preset operation
 		 */
 		if ((val & LT_OP_NORMAL_MASK) || (val & LT_OP_INIT_MASK) ||
 				(val & LT_OP_PRESET_MASK))
 			hw->lt_state[lane] = LT_STATE_UPDATE_COEFF;
+		/* Check if link partner finished link training */
+		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_STAT_OFFSET);
+		if (val & LT_STAT_RECEIVER_READY)
+			hw->lt_state[lane] = LT_STATE_LD_DONE;
 		break;
 	case LT_STATE_UPDATE_COEFF:
 		kvx_eth_lt_report_ld_status_updated(hw, lane);
@@ -1346,14 +1349,8 @@ void kvx_eth_lt_lp_fsm(struct kvx_eth_hw *hw, int lane)
 				(val & LT_OP_INIT_MASK) == 0 &&
 				(val & LT_OP_PRESET_MASK) == 0) {
 			kvx_eth_lt_report_ld_status_not_updated(hw, lane);
-			hw->lt_state[lane] = LT_STATE_WAIT_RCV_READY;
+			hw->lt_state[lane] = LT_STATE_WAIT_COEFF_UPD;
 		}
-		break;
-	case LT_STATE_WAIT_RCV_READY:
-		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_STAT_OFFSET);
-		hw->lt_state[lane] = LT_STATE_WAIT_COEFF_UPD;
-		if (val & LT_STAT_RECEIVER_READY)
-			hw->lt_state[lane] = LT_STATE_LD_DONE;
 		break;
 	case LT_STATE_LD_DONE:
 		break;
@@ -1449,7 +1446,7 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 	/* Wait linking training frame lock on all lanes */
 	for_each_cfg_lane(nb_lane, lane, cfg) {
 		lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
-		hw->lt_state[lane] = LT_STATE_WAIT_RCV_READY;
+		hw->lt_state[lane] = LT_STATE_WAIT_COEFF_UPD;
 		m = LT_KR_STATUS_FRAMELOCK_MASK;
 		ret = kvx_poll(kvx_mac_readl, lt_off + LT_KR_STATUS_OFFSET,
 			  m, m, LT_FRAME_LOCK_TIMEOUT_MS);
