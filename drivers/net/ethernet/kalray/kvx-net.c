@@ -1558,7 +1558,7 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 		return -EINVAL;
 	}
 	if (!params->rtm[rtm]) {
-		dev_warn(hw->dev, "No retimers to configure\n");
+		dev_dbg(hw->dev, "No retimers to configure\n");
 		return 0;
 	}
 
