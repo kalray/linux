@@ -37,10 +37,16 @@
 #include "kvx-mac-regs.h"
 
 #define KVX_RX_HEADROOM  (NET_IP_ALIGN + NET_SKB_PAD)
-#define KVX_SKB_PAD	(SKB_DATA_ALIGN(sizeof(struct skb_shared_info) + \
+#define KVX_SKB_PAD      (SKB_DATA_ALIGN(sizeof(struct skb_shared_info) + \
 					KVX_RX_HEADROOM))
-#define KVX_SKB_SIZE(len)	(SKB_DATA_ALIGN(len) + KVX_SKB_PAD)
-#define KVX_MAX_RX_BUF_SIZE	(PAGE_SIZE - KVX_SKB_PAD)
+#define KVX_SKB_SIZE(len)       (SKB_DATA_ALIGN(len) + KVX_SKB_PAD)
+#define KVX_MAX_RX_BUF_SIZE     (PAGE_SIZE - KVX_SKB_PAD)
+
+/* Min/max constraints on last segment for skbuff data */
+#define KVX_MIN_LAST_SEG_SIZE   32
+#define KVX_MAX_LAST_SEG_SIZE   256
+/* Max segment size sent to DMA */
+#define KVX_SEG_SIZE            1024
 
 #define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
 
@@ -179,6 +185,39 @@ static void kvx_eth_unmap_skb(struct device *dev,
 	}
 }
 
+/* kvx_eth_skb_split() - build dma segments within boundaries
+ *
+ * Return: number of segments actually built
+ */
+static int kvx_eth_skb_split(struct device *dev, struct scatterlist *sg,
+			     dma_addr_t dma_addr, size_t len)
+{
+	u8 *buf = (u8 *)dma_addr;
+	int i = 0, s, l = len;
+
+	do {
+		if (l > KVX_SEG_SIZE + KVX_MIN_LAST_SEG_SIZE)
+			s = KVX_SEG_SIZE;
+		else if (l > KVX_SEG_SIZE)
+			s = l + KVX_MAX_LAST_SEG_SIZE - KVX_SEG_SIZE;
+		else if (l > KVX_MAX_LAST_SEG_SIZE)
+			s = l - KVX_MAX_LAST_SEG_SIZE + KVX_MIN_LAST_SEG_SIZE;
+		else
+			s = l;
+
+		if (s < KVX_MIN_LAST_SEG_SIZE) {
+			dev_err(dev, "Segment size %d < %d\n", s, KVX_MIN_LAST_SEG_SIZE);
+			break;
+		}
+		sg_dma_address(&sg[i]) = (dma_addr_t)buf;
+		sg_dma_len(&sg[i]) = s;
+		l -= s;
+		buf += s;
+		i++;
+	} while (l > 0 && i <= MAX_SKB_FRAGS);
+	return i;
+}
+
 /* kvx_eth_map_skb() - Map skb (build sg with corresponding IOVA)
  * @dev: Current device (with dma settings)
  * @tx: Tx ring descriptor
@@ -189,28 +228,31 @@ static int kvx_eth_map_skb(struct device *dev, struct kvx_eth_netdev_tx *tx)
 {
 	const skb_frag_t *fp, *end;
 	const struct skb_shared_info *si;
-	int len, count = 1;
 	dma_addr_t handler;
+	int len, count;
 
 	sg_init_table(tx->sg, MAX_SKB_FRAGS + 1);
 	handler = dma_map_single(dev, tx->skb->data,
 				 skb_headlen(tx->skb), DMA_TO_DEVICE);
 	if (dma_mapping_error(dev, handler))
 		goto out_err;
-	sg_dma_address(&tx->sg[0]) = handler;
-	tx->len = sg_dma_len(&tx->sg[0]) = skb_headlen(tx->skb);
+
+	count = kvx_eth_skb_split(dev, tx->sg, handler, skb_headlen(tx->skb));
+	tx->len = skb_headlen(tx->skb);
 
 	si = skb_shinfo(tx->skb);
 	end = &si->frags[si->nr_frags];
-	for (fp = si->frags; fp < end; fp++, count++) {
-		handler = skb_frag_dma_map(dev, fp, 0, skb_frag_size(fp),
-					   DMA_TO_DEVICE);
+	for (fp = si->frags; fp < end; fp++) {
+		len = skb_frag_size(fp);
+		handler = skb_frag_dma_map(dev, fp, 0, len, DMA_TO_DEVICE);
 		if (dma_mapping_error(dev, handler))
 			goto unwind;
 
-		sg_dma_address(&tx->sg[count]) = handler;
-		len = skb_frag_size(fp);
-		sg_dma_len(&tx->sg[count]) = len;
+		count += kvx_eth_skb_split(dev, &tx->sg[count], handler, len);
+		if (count >= MAX_SKB_FRAGS + 1) {
+			dev_warn(dev, "Too many skb segments\n");
+			goto unwind;
+		}
 		tx->len += len;
 	}
 	sg_mark_end(&tx->sg[count - 1]);

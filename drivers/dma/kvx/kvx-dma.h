@@ -26,7 +26,7 @@
 
 #define KVX_DMA_MAX_REQUESTS      (127)
 /* Max descriptors per sg list */
-#define KVX_DMA_MAX_TXD           (4)
+#define KVX_DMA_MAX_TXD           (16)
 
 /**
  * struct kvx_dma_desc - Transfer descriptor
