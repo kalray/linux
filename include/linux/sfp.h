@@ -8,14 +8,30 @@ struct sfp_eeprom_base {
 	u8 phys_ext_id;
 	u8 connector;
 #if defined __BIG_ENDIAN_BITFIELD
-	u8 e10g_base_er:1;
-	u8 e10g_base_lrm:1;
-	u8 e10g_base_lr:1;
-	u8 e10g_base_sr:1;
-	u8 if_1x_sx:1;
-	u8 if_1x_lx:1;
-	u8 if_1x_copper_active:1;
-	u8 if_1x_copper_passive:1;
+	union {
+		/* sfp SFF-8472*/
+		struct {
+			u8 e10g_base_er:1;
+			u8 e10g_base_lrm:1;
+			u8 e10g_base_lr:1;
+			u8 e10g_base_sr:1;
+			u8 if_1x_sx:1;
+			u8 if_1x_lx:1;
+			u8 if_1x_copper_active:1;
+			u8 if_1x_copper_passive:1;
+		};
+		/* qsfp SFF-8636 */
+		struct {
+			u8 extended:1;
+			u8 e10g_base_lrm:1;
+			u8 e10g_base_lr:1;
+			u8 e10g_base_sr:1;
+			u8 e40g_base_cr4:1;
+			u8 e40g_base_sr4:1;
+			u8 e40g_base_lr4:1;
+			u8 e40g_base_active:1;
+		} qsfp;
+	};
 
 	u8 escon_mmf_1310_led:1;
 	u8 escon_smf_1310_laser:1;
@@ -80,15 +96,30 @@ struct sfp_eeprom_base {
 	u8 unallocated_10_1:1;
 	u8 fc_speed_100:1;
 #elif defined __LITTLE_ENDIAN_BITFIELD
-	u8 if_1x_copper_passive:1;
-	u8 if_1x_copper_active:1;
-	u8 if_1x_lx:1;
-	u8 if_1x_sx:1;
-	u8 e10g_base_sr:1;
-	u8 e10g_base_lr:1;
-	u8 e10g_base_lrm:1;
-	u8 e10g_base_er:1;
-
+	union {
+		/* sfp SFF-8472*/
+		struct {
+			u8 if_1x_copper_passive:1;
+			u8 if_1x_copper_active:1;
+			u8 if_1x_lx:1;
+			u8 if_1x_sx:1;
+			u8 e10g_base_sr:1;
+			u8 e10g_base_lr:1;
+			u8 e10g_base_lrm:1;
+			u8 e10g_base_er:1;
+		};
+		/* qsfp SFF-8636 */
+		struct {
+			u8 e40g_base_active:1;
+			u8 e40g_base_lr4:1;
+			u8 e40g_base_sr4:1;
+			u8 e40g_base_cr4:1;
+			u8 e10g_base_sr:1;
+			u8 e10g_base_lr:1;
+			u8 e10g_base_lrm:1;
+			u8 extended:1;
+		} qsfp;
+	};
 	u8 sonet_oc3_short_reach:1;
 	u8 sonet_oc3_smf_intermediate_reach:1;
 	u8 sonet_oc3_smf_long_reach:1;
