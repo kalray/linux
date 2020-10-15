@@ -50,6 +50,9 @@
 
 #define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
 
+#define KVX_TEST_BIT(name, bitmap)	test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, \
+				 bitmap)
+
 /* Device tree related entries */
 static const char *rtm_prop_name[RTM_NB] = {
 	[RTM_RX] = "kalray,rtmrx",
@@ -1453,32 +1456,86 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 {
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = { 0, };
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(mac_supported) = { 0, };
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(additional_prot) = { 0, };
 
 	kvx_eth_get_module_transceiver(netdev, &ndev->cfg.transceiver);
 
-	phylink_set(mask, Autoneg);
-	phylink_set(mask, FIBRE);
-	phylink_set(mask, Pause);
-	phylink_set(mask, Asym_Pause);
+	/*
+	 * Indicate all capabilities supported by the MAC
+	 * The type of media (fiber/copper/...) is dependant
+	 * on the module, the PCS encoding (R flag) is the same
+	 * so we must indicate that the MAC/PCS support them.
+	 */
+	phylink_set(mac_supported, Autoneg);
+	phylink_set(mac_supported, Pause);
+	phylink_set(mac_supported, Asym_Pause);
+	phylink_set_port_modes(mac_supported);
+	phylink_set(mac_supported, 10baseT_Half);
+	phylink_set(mac_supported, 10baseT_Full);
+	phylink_set(mac_supported, 100baseT_Half);
+	phylink_set(mac_supported, 100baseT_Full);
+	phylink_set(mac_supported, 1000baseT_Full);
+	phylink_set(mac_supported, 10000baseCR_Full);
+	phylink_set(mac_supported, 10000baseSR_Full);
+	phylink_set(mac_supported, 10000baseLR_Full);
+	phylink_set(mac_supported, 10000baseER_Full);
+	phylink_set(mac_supported, 25000baseCR_Full);
+	phylink_set(mac_supported, 25000baseSR_Full);
+	phylink_set(mac_supported, 40000baseCR4_Full);
+	phylink_set(mac_supported, 40000baseSR4_Full);
+	phylink_set(mac_supported, 40000baseLR4_Full);
+	phylink_set(mac_supported, 100000baseKR4_Full);
+	phylink_set(mac_supported, 100000baseCR4_Full);
+	phylink_set(mac_supported, 100000baseSR4_Full);
+	phylink_set(mac_supported, 100000baseLR4_ER4_Full);
 
-	if (state->interface != PHY_INTERFACE_MODE_SGMII) {
-		phylink_set(mask, 100000baseCR4_Full);
-		phylink_set(mask, 40000baseCR4_Full);
-		phylink_set(mask, 40000baseSR4_Full);
-		phylink_set(mask, 40000baseLR4_Full);
-		phylink_set(mask, 25000baseCR_Full);
-		phylink_set(mask, 25000baseSR_Full);
-		phylink_set(mask, 10000baseCR_Full);
-		phylink_set(mask, 10000baseSR_Full);
+	/*
+	 * Match media or module capabilities with MAC capabilities
+	 * The AND operation select only capabilities supported by both
+	 * the SFP/QSFP module and the MAC
+	 */
+	bitmap_and(supported, supported, mac_supported,
+		   __ETHTOOL_LINK_MODE_MASK_NBITS);
+	bitmap_and(state->advertising, state->advertising, mac_supported,
+		   __ETHTOOL_LINK_MODE_MASK_NBITS);
+
+	if (state->interface == PHY_INTERFACE_MODE_SGMII)
+		return;
+
+	phylink_set(additional_prot, FEC_NONE);
+	phylink_set(additional_prot, FEC_RS);
+	phylink_set(additional_prot, FEC_BASER);
+	/*
+	 * With sfp/qsfp, the match is too restrictive in some cases.
+	 * Handle those special cases separatelly
+	 */
+	if (ndev->cfg.transceiver.id == 0) {
+		/*
+		 * Some cable (e.g. splitters) do not have en eeprom
+		 * This is user responsability to choose a proper protocol
+		 */
+		bitmap_or(additional_prot, additional_prot, mac_supported,
+			 __ETHTOOL_LINK_MODE_MASK_NBITS);
+	} else if (ndev->cfg.transceiver.qsfp) {
+		/*
+		 * Some cable such as mellanox to not indicate their
+		 * full capabilities. As a workaround when a cable support
+		 * 25GBase assume a 100G Base is supported on qsfp cage
+		 * (cable designed for aggregated lane)
+		 */
+		if (KVX_TEST_BIT(25000baseCR_Full, supported))
+			phylink_set(additional_prot, 100000baseCR4_Full);
+		if (KVX_TEST_BIT(25000baseSR_Full, supported))
+			phylink_set(additional_prot, 100000baseSR4_Full);
 	}
 
-	phylink_set(mask, FEC_NONE);
-	phylink_set(mask, FEC_RS);
-	phylink_set(mask, FEC_BASER);
+	phylink_set(additional_prot, FEC_NONE);
+	phylink_set(additional_prot, FEC_RS);
+	phylink_set(additional_prot, FEC_BASER);
 
-	bitmap_or(supported, supported, mask, __ETHTOOL_LINK_MODE_MASK_NBITS);
-	bitmap_or(state->advertising, state->advertising, mask,
+	bitmap_or(supported, supported, additional_prot, __ETHTOOL_LINK_MODE_MASK_NBITS);
+	bitmap_or(state->advertising, state->advertising, additional_prot,
 		   __ETHTOOL_LINK_MODE_MASK_NBITS);
 }
 
