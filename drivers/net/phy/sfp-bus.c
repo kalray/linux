@@ -150,6 +150,8 @@ void sfp_parse_support(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 {
 	unsigned int br_min, br_nom, br_max;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(modes) = { 0, };
+	bool is_qsfp = sfp_is_qsfp_module(id);
+	u8 val = 0;
 
 	/* Decode the bitrate information to MBd */
 	br_min = br_nom = br_max = 0;
@@ -185,10 +187,23 @@ void sfp_parse_support(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 		phylink_set(modes, 10000baseLRM_Full);
 		__set_bit(PHY_INTERFACE_MODE_10GBASER, interfaces);
 	}
-	if (id->base.e10g_base_er) {
-		phylink_set(modes, 10000baseER_Full);
-		__set_bit(PHY_INTERFACE_MODE_10GBASER, interfaces);
+	if (is_qsfp) {
+		if (id->base.qsfp.e40g_base_cr4) {
+			phylink_set(modes, 40000baseCR4_Full);
+		}
+		if (id->base.qsfp.e40g_base_sr4) {
+			phylink_set(modes, 40000baseSR4_Full);
+		}
+		if (id->base.qsfp.e40g_base_lr4) {
+			phylink_set(modes, 40000baseLR4_Full);
+		}
+	} else {
+		if (id->base.e10g_base_er) {
+			phylink_set(modes, 10000baseER_Full);
+			__set_bit(PHY_INTERFACE_MODE_10GBASER, interfaces);
+		}
 	}
+
 	if (id->base.e1000_base_sx ||
 	    id->base.e1000_base_lx ||
 	    id->base.e1000_base_cx) {
@@ -201,7 +216,6 @@ void sfp_parse_support(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 		__set_bit(PHY_INTERFACE_MODE_1000BASEX, interfaces);
 		__set_bit(PHY_INTERFACE_MODE_SGMII, interfaces);
 	}
-
 	/* 1000Base-PX or 1000Base-BX10 */
 	if ((id->base.e_base_px || id->base.e_base_bx10) &&
 	    br_min <= 1300 && br_max >= 1200) {
@@ -251,7 +265,10 @@ void sfp_parse_support(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 		}
 	}
 
-	switch (id->base.extended_cc) {
+	val = id->base.extended_cc;
+	if (is_qsfp)
+		val = (id->ext.options & 0xFF);
+	switch (val) {
 	case SFF8024_ECC_UNSPEC:
 		break;
 	case SFF8024_ECC_100G_25GAUI_C2M_AOC:
