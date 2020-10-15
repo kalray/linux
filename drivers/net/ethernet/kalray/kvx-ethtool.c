@@ -1167,7 +1167,7 @@ static void kvx_eth_get_module_status(struct net_device *netdev, u8 *eeprom_id)
 int kvx_eth_get_module_transceiver(struct net_device *netdev,
 				   struct kvx_transceiver_type *transceiver)
 {
-	u8 data[ETH_MODULE_SFF_8636_MAX_LEN];
+	u8 data[ETH_MODULE_SFF_8636_MAX_LEN] = {0};
 	struct ethtool_eeprom ee = {
 		.cmd = ETHTOOL_GEEPROM,
 		.len = ETH_MODULE_SFF_8636_LEN,
@@ -1177,18 +1177,18 @@ int kvx_eth_get_module_transceiver(struct net_device *netdev,
 
 	if (netdev->sfp_bus)
 		sfp_get_module_eeprom(netdev->sfp_bus, &ee, data);
+
 	id = ee.data;
 	transceiver->id = id[SFP_PHYS_ID];
-
 	if (transceiver->id != 0) {
 		memcpy(transceiver->oui, &id[SFP_VENDOR_OUI], 3);
 		memcpy(transceiver->pn, &id[SFP_VENDOR_PN], 16);
-		netdev_dbg(netdev, "Cable oui: %02x:%02x:%02x pn: %s tech : 0x%x copper: %d\n",
+		netdev_dbg(netdev, "Cable oui: %02x:%02x:%02x pn: %s\n",
 			   transceiver->oui[0], transceiver->oui[1],
 			   transceiver->oui[2], transceiver->pn);
 	}
 
-	if (!sfp_is_qsfp_module((struct sfp_eeprom_id *)id)) {
+	if (sfp_is_qsfp_module((struct sfp_eeprom_id *)id)) {
 		tech = id[SFF8636_DEVICE_TECH_OFFSET] & SFF8636_TRANS_TECH_MASK;
 		transceiver->copper = (tech == SFF8636_TRANS_COPPER_LNR_EQUAL ||
 				       tech == SFF8636_TRANS_COPPER_NEAR_EQUAL    ||
@@ -1198,7 +1198,8 @@ int kvx_eth_get_module_transceiver(struct net_device *netdev,
 				       tech == SFF8636_TRANS_COPPER_PAS_UNEQUAL);
 		kvx_eth_get_module_status(netdev, id);
 		netdev_dbg(netdev, "Cable tech : 0x%x copper: %d\n",
-			   tech, transceiver->copper);
+		   tech, transceiver->copper);
+		transceiver->qsfp = 1;
 	}
 
 	return 0;
