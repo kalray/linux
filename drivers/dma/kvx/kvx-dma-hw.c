@@ -661,33 +661,30 @@ static int kvx_dma_get_job_queue(struct kvx_dma_phy *phy, u64 aligned_size,
 	if (phy->dir == KVX_DMA_DIR_TYPE_RX) {
 		idx = KVX_DMA_NB_RX_JOB_QUEUE_PER_CACHE * phy->rx_cache_id;
 		jobq = &jobq_list->rx[idx];
-		if (!atomic_fetch_inc(&jobq_list->rx_refcount[idx])) {
-			size = aligned_size * sizeof(struct kvx_dma_pkt_desc);
-			ret = kvx_dma_alloc_queue(phy, jobq, size,
+		if (atomic_fetch_inc(&jobq_list->rx_refcount[idx])) {
+			dev_dbg(phy->dev, "RX job_queue[%d] already allocated -> reusing it\n",
+				phy->hw_id);
+			goto exit;
+		}
+		size = aligned_size * sizeof(struct kvx_dma_pkt_desc);
+		ret = kvx_dma_alloc_queue(phy, jobq, size,
 					  KVX_DMA_RX_JOB_Q_OFFSET +
 					  idx * KVX_DMA_RX_JOB_Q_ELEM_SIZE);
-			if (ret) {
-				dev_err(phy->dev, "Unable to alloc RX job_queue[%d]\n",
-					phy->hw_id);
-				atomic_dec(&jobq_list->rx_refcount[idx]);
-				goto exit;
-			}
-		} else {
-			dev_dbg(phy->dev,
-				"RX job_queue[%d] already allocated -> reusing it\n",
+		if (ret) {
+			dev_err(phy->dev, "Unable to alloc RX job_queue[%d]\n",
 				phy->hw_id);
+			atomic_dec(&jobq_list->rx_refcount[idx]);
+			goto err;
 		}
 	} else {
-		size = aligned_size * sizeof(struct kvx_dma_tx_job_desc);
 		idx = phy->hw_id;
 		jobq = &jobq_list->tx[idx];
 		if (jobq->vaddr || jobq->size) {
-			dev_err(phy->dev,
-				"TX job_queue[%d] already allocated\n",
+			dev_dbg(phy->dev, "TX job_queue[%d] already allocated\n",
 				phy->hw_id);
-			ret = -EINVAL;
 			goto exit;
 		}
+		size = aligned_size * sizeof(struct kvx_dma_tx_job_desc);
 		ret = kvx_dma_alloc_queue(phy, jobq, size,
 					  KVX_DMA_TX_JOB_Q_OFFSET +
 					  idx * KVX_DMA_TX_JOB_Q_ELEM_SIZE);
@@ -695,12 +692,12 @@ static int kvx_dma_get_job_queue(struct kvx_dma_phy *phy, u64 aligned_size,
 			dev_err(phy->dev, "Unable to alloc TX job_queue[%d]\n",
 				phy->hw_id);
 			memset(jobq, 0, sizeof(*jobq));
-			goto exit;
+			goto err;
 		}
 	}
-	phy->jobq = jobq;
-
 exit:
+	phy->jobq = jobq;
+err:
 	return ret;
 }
 
