@@ -1425,11 +1425,18 @@ static int kvx_eth_enable_link_training(struct kvx_eth_hw *hw,
 		updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET,
 			     LT_KR_LD_STAT_STATUSREPORT_MASK, 0);
 		/* Enable and restart link training startup protocol */
-		if (en)
+		if (en) {
 			val = LT_KR_CTRL_RESTARTTRAINING_MASK |
 				LT_KR_CTRL_TRAININGEN_MASK;
-		else
+			updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET,
+				     LT_KR_STATUS_RECEIVERSTATUS_MASK,
+				     0);
+		} else {
 			val = 0;
+			updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET,
+				     LT_KR_STATUS_RECEIVERSTATUS_MASK,
+				     LT_KR_STATUS_RECEIVERSTATUS_MASK);
+		}
 		kvx_mac_writel(hw, val, lt_off + LT_KR_CTRL_OFFSET);
 	}
 
