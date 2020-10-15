@@ -31,12 +31,14 @@
  * @pn: Cable part number
  * @id: sff identifier
  * @copper: 1 if copper cable, else 0
+ * @qsfp: 1 cage is qsfp, else 0
  */
 struct kvx_transceiver_type {
 	u8 oui[3];
 	u8 pn[16];
 	u8 id;
 	u8 copper;
+	u8 qsfp;
 };
 
 int kvx_eth_get_module_transceiver(struct net_device *netdev,
