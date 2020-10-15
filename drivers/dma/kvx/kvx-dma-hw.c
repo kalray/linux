@@ -56,6 +56,7 @@ struct kvx_dma_pkt_desc {
  */
 #define KVX_DMA_ROUTE_ID_SHIFT     (16)
 #define KVX_DMA_PRGM_ID_SHIFT      (32)
+#define KVX_DMA_FENCE_BEFORE_SHIFT (40)
 #define KVX_DMA_FENCE_AFTER_SHIFT  (48)
 
 /**
@@ -1019,7 +1020,6 @@ int kvx_dma_rdma_tx_push_mem2mem(struct kvx_dma_phy *phy,
 	const u64 object_len = tx_job->len;
 	const u64 object_len_16_bytes = object_len >> 4;
 	const u64 object_len_1_bytes = object_len & 0xfULL;
-	const u64 fence_after = tx_job->fence_after;
 
 	struct kvx_dma_job_param p = {
 		.param = {
@@ -1028,7 +1028,9 @@ int kvx_dma_rdma_tx_push_mem2mem(struct kvx_dma_phy *phy,
 			tx_job->lstride-object_len,
 			tx_job->rstride-object_len, 0
 		},
-		.config = 0ULL | (fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
+		.config = 0ULL |
+			(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
+			(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
 			pgrm_id << KVX_DMA_PRGM_ID_SHIFT |
 			entry << KVX_DMA_ROUTE_ID_SHIFT  | comp_queue_id,
 	};
@@ -1063,7 +1065,6 @@ int kvx_dma_rdma_tx_push_mem2noc(struct kvx_dma_phy *phy,
 	const u64 object_len = tx_job->len;
 	const u64 object_len_16_bytes = object_len >> 4;
 	const u64 object_len_1_bytes = object_len & 0xfULL;
-	const u64 fence_after = tx_job->fence_after;
 
 	struct kvx_dma_job_param p = {
 		.param = {
@@ -1072,7 +1073,9 @@ int kvx_dma_rdma_tx_push_mem2noc(struct kvx_dma_phy *phy,
 			tx_job->lstride-object_len,
 			tx_job->rstride-object_len, 0,
 		},
-		.config = 0ULL | (fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
+		.config = 0ULL |
+			(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
+			(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
 			(pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
 			(noc_route_id << KVX_DMA_ROUTE_ID_SHIFT) |
 			comp_queue_id,
@@ -1104,7 +1107,10 @@ int kvx_dma_pkt_tx_push(struct kvx_dma_phy *phy, struct kvx_dma_tx_job *tx_job,
 			source, object_len, object_len >> 4,
 			object_len & 0xfULL, eot, 0, 0, 0,
 		},
-		.config = 0ULL | (pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
+		.config = 0ULL |
+			(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
+			(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
+			(pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
 			(noc_route_id << KVX_DMA_ROUTE_ID_SHIFT) |
 			comp_queue_id,
 	};
