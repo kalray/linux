@@ -822,6 +822,7 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 		txd->nb = 1;
 		txd->comp_q_id = desc->phy->hw_id;
 		txd->route_id = desc->route_id;
+		txd->fence_before = 1;
 		dev_dbg(dev, "%s txd.base: 0x%llx .len: %lld\n",
 			__func__, txd->src_dma_addr, txd->len);
 	}
