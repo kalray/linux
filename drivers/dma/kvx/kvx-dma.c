@@ -391,12 +391,7 @@ struct kvx_dma_phy *kvx_dma_get_phy(struct kvx_dma_dev *dev,
 		}
 		for (i = s; i < s + dev->dma_tx_jobq_ids.nb; ++i) {
 			p = &dev->phy[dir][i];
-			if (!p->used && p->hw_id == c->cfg.rx_tag) {
-				if (kvx_dma_check_tx_q_enabled(p)) {
-					dev_warn(d, "TX queue[%d] already in use\n",
-						p->hw_id);
-					continue;
-				}
+			if (p->hw_id == c->cfg.rx_tag) {
 				phy = p;
 				break;
 			}
@@ -792,18 +787,18 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 		ret = kvx_dma_allocate_queues(c->phy, &d->jobq_list,
 					      c->cfg.trans_type);
 		spin_unlock(&d->lock);
-		if (ret)
-			goto err_hw_init;
+		if (!ret) {
+			if (dir == KVX_DMA_DIR_TYPE_RX)
+				ret = kvx_dma_init_rx_queues(c->phy,
+							     c->cfg.trans_type);
+			else
+				ret = kvx_dma_init_tx_queues(c->phy);
 
-		if (dir == KVX_DMA_DIR_TYPE_RX)
-			ret = kvx_dma_init_rx_queues(c->phy, c->cfg.trans_type);
-		else
-			ret = kvx_dma_init_tx_queues(c->phy);
-
-		if (ret) {
-			dev_err(dev, "Unable to init queues\n");
-			kvx_dma_release_phy(d, c->phy);
-			goto err_hw_init;
+			if (ret) {
+				dev_err(dev, "Unable to init queues\n");
+				kvx_dma_release_phy(d, c->phy);
+				goto err_hw_init;
+			}
 		}
 	}
 
