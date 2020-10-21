@@ -1171,14 +1171,14 @@ int kvx_eth_get_module_transceiver(struct net_device *netdev,
 	struct ethtool_eeprom ee = {
 		.cmd = ETHTOOL_GEEPROM,
 		.len = ETH_MODULE_SFF_8636_LEN,
-		.offset = SFP_PAGE + 1,
+		.offset = 0,
 	};
 	u8 *id, tech;
 
 	if (netdev->sfp_bus)
 		sfp_get_module_eeprom(netdev->sfp_bus, &ee, data);
 
-	id = ee.data;
+	id = ee.data + SFP_PAGE + 1;
 	transceiver->id = id[SFP_PHYS_ID];
 	if (transceiver->id != 0) {
 		memcpy(transceiver->oui, &id[SFP_VENDOR_OUI], 3);

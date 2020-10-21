@@ -529,6 +529,14 @@ enum {
 	SFP_PAGE			= 0x7f,
 };
 
+/* SFF8436 registers */
+enum {
+	SFF8436_ID                           = 0x00,
+	SFF8436_STATUS                       = 0x01,
+	SFF8436_STATUS_DATA_NOT_READY        = BIT(0),
+	SFF8436_STATUS_FLAT_MEM              = BIT(2),
+};
+
 struct fwnode_handle;
 struct ethtool_eeprom;
 struct ethtool_modinfo;

@@ -1681,12 +1681,24 @@ static int sfp_page_select(struct sfp *sfp, u8 page_id)
 static int qsfp_read_eeprom_id(struct sfp *sfp, struct sfp_eeprom_id *id,
 			       bool report)
 {
+	u8 status[2];
 	int ret;
 
-	sfp_page_select(sfp, 0);
+	ret = sfp_read(sfp, false, SFF8436_STATUS, status, ARRAY_SIZE(status));
+	if (ret < 0) {
+		if (report)
+			dev_err(sfp->dev, "failed to read data EEPROM: %d\n", ret);
+		return -EINVAL;
+	}
+
+	if (status[1] & SFF8436_STATUS_DATA_NOT_READY)
+		return -EAGAIN;
+	if (!(status[1] & SFF8436_STATUS_FLAT_MEM))
+		sfp_page_select(sfp, 0);
 	ret = sfp_read(sfp, false, 128, id, sizeof(*id));
 	if (ret < 0) {
-		dev_err(sfp->dev, "failed to read EEPROM: %d\n", ret);
+		if (report)
+			dev_err(sfp->dev, "failed to read EEPROM: %d\n", ret);
 		return -EAGAIN;
 	}
 
