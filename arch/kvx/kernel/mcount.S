@@ -8,79 +8,174 @@
 
 .altmacro
 
-.macro save_ra_and_fp scratch_reg
-	get \scratch_reg = $ra
-	addd $r12 = $r12, -32
-	;;
-	copyd $r14 = $r12
-	sd 0[$r12] = $r14
-	;;
-	sd 8[$r12] = \scratch_reg
-	;;
-.endm
-
-.macro restore_ra_and_fp scratch_reg
-	copyd $r12 = $r14
-	;;
-	ld \scratch_reg = 8[$r12]
-	;;
-	ld $r14 = 0[$r12]
-	addd $r12 = $r12, 32
-	set $ra = \scratch_reg
-	;;
-.endm
-
 /*
- * As we need the address of the bundle that contains the call to
- * __mcount we need to check the parallel bit (bit 31) of the previous
- * instruction to be sure that it is not in the same bundle.
+ * !!! The call to __mcount is special and breaks the ABI !!!
+ * It is because with dynamic ftrace the call can be replaced by any
+ * tracer and GCC cannot assume which caller registers must be saved.
+ * It's because the call is being inserted in the prologue of functions
+ * that is out of GCC knowledge.
+ * We could make this known to GCC, but then we would hit the problem of not
+ * being able to easily decide which insns are emitted and how they are
+ * bundled. So we choose to save nothing when calling __mcount and we will
+ * save all caller registers once __mcount called.
+ *
+ * Our stack will be:
+ *	0  | $FP $RA $r15 -
+ *	32 | $r0 $r1 $r2 $r3
+ *	64 | $r4 $r5 $r6 $r7
+ *	96 | $r8 $r9 $r10 $r11
+ *	128| $r32 $r33 $r34 $r35
+ *	160| $r36 $r37 $r38 $r39
+ *	192| $r40 $r41 $r42 $r43
+ *	224| $r44 $r45 $r46 $r47
+ *	256| $r48 $r49 $r50 $r51
+ *	288| $r52 $r53 $r54 $r55
+ *	320| $r56 $r57 $r58 $r59
+ *	352| $r60 $r61 $r62 $r63
+ *	384| $r16 $r17
  */
-.macro mcount_size_adjustment addr_reg scratch_reg
-	LOCAL adj_mcount
 
-adj_mcount:
-	addd \addr_reg = \addr_reg, -KVX_INSN_SYLLABLE_WIDTH
+#define STACK_OFFSET_FP   0
+#define STACK_OFFSET_RA   (STACK_OFFSET_FP + 8)
+#define STACK_OFFSET_R15  (STACK_OFFSET_RA + 8)
+#define STACK_OFFSET_Q0   (STACK_OFFSET_FP + 32)
+#define STACK_OFFSET_Q4   (STACK_OFFSET_Q0 + 32)
+#define STACK_OFFSET_Q8   (STACK_OFFSET_Q4 + 32)
+#define STACK_OFFSET_Q32  (STACK_OFFSET_Q8 + 32)
+#define STACK_OFFSET_Q36  (STACK_OFFSET_Q32 + 32)
+#define STACK_OFFSET_Q40  (STACK_OFFSET_Q36 + 32)
+#define STACK_OFFSET_Q44  (STACK_OFFSET_Q40 + 32)
+#define STACK_OFFSET_Q48  (STACK_OFFSET_Q44 + 32)
+#define STACK_OFFSET_Q52  (STACK_OFFSET_Q48 + 32)
+#define STACK_OFFSET_Q56  (STACK_OFFSET_Q52 + 32)
+#define STACK_OFFSET_Q60  (STACK_OFFSET_Q56 + 32)
+#define STACK_OFFSET_P16  (STACK_OFFSET_Q60 + 32)
+#define STACK_SIZE        (STACK_OFFSET_P16 + 16)
+
+.macro save_all_context_but_P16
+	/*
+	 * r16 and r17 are already saved. r16 is already used to store the
+	 * address of the function tracer if any.
+	 * so !!! USE r17 as scratch register !!!
+	 */
+	get $r17 = $ra
+	sd STACK_OFFSET_FP[$r12] = $r14
 	;;
-	ld \scratch_reg = -KVX_INSN_SYLLABLE_WIDTH[\addr_reg]
+	sd STACK_OFFSET_RA[$r12] = $r17
 	;;
-	cb.wltz \scratch_reg, adj_mcount
+	sd STACK_OFFSET_R15[$r12] = $r15
+	;;
+	so STACK_OFFSET_Q0[$r12] = $r0r1r2r3
+	;;
+	so STACK_OFFSET_Q4[$r12] = $r4r5r6r7
+	;;
+	so STACK_OFFSET_Q8[$r12] = $r8r9r10r11
+	;;
+	so STACK_OFFSET_Q32[$r12] = $r32r33r34r35
+	;;
+	so STACK_OFFSET_Q36[$r12] = $r36r37r38r39
+	;;
+	so STACK_OFFSET_Q40[$r12] = $r40r41r42r43
+	;;
+	so STACK_OFFSET_Q44[$r12] = $r44r45r46r47
+	;;
+	so STACK_OFFSET_Q48[$r12] = $r48r49r50r51
+	;;
+	so STACK_OFFSET_Q52[$r12] = $r52r53r54r55
+	;;
+	so STACK_OFFSET_Q56[$r12] = $r56r57r58r59
+	;;
+	so STACK_OFFSET_Q60[$r12] = $r60r61r62r63
+	;;
+.endm
+
+.macro restore_all_context
+	ld $r15 = STACK_OFFSET_RA[$r12]
+	;;
+	ld $r14 = STACK_OFFSET_FP[$r12]
+	set $ra = $r15
+	;;
+	ld $r15 = STACK_OFFSET_R15[$r12]
+	;;
+	lq $r16r17 = STACK_OFFSET_P16[$r12]
+	;;
+	lo $r0r1r2r3 = STACK_OFFSET_Q0[$r12]
+	;;
+	lo $r4r5r6r7 = STACK_OFFSET_Q4[$r12]
+	;;
+	lo $r8r9r10r11 = STACK_OFFSET_Q8[$r12]
+	;;
+	lo $r32r33r34r35 = STACK_OFFSET_Q32[$r12]
+	;;
+	lo $r36r37r38r39 = STACK_OFFSET_Q36[$r12]
+	;;
+	lo $r40r41r42r43 = STACK_OFFSET_Q40[$r12]
+	;;
+	lo $r44r45r46r47 = STACK_OFFSET_Q44[$r12]
+	;;
+	lo $r48r49r50r51 = STACK_OFFSET_Q48[$r12]
+	;;
+	lo $r52r53r54r55 = STACK_OFFSET_Q52[$r12]
+	;;
+	lo $r56r57r58r59 = STACK_OFFSET_Q56[$r12]
+	;;
+	lo $r60r61r62r63 = STACK_OFFSET_Q60[$r12]
+	;;
+	addd $r12 = $r12, STACK_SIZE
 	;;
 .endm
 
 ENTRY(__mcount)
+	addd $r12 = $r12, -STACK_SIZE
+	;;
+	sq STACK_OFFSET_P16[$r12] = $r16r17
+	;;
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
 	/*
 	 * Check the function pointers ftrace_graph_return
 	 * (compare to ftrace_stub) and ftrace_graph_entry (compare to
 	 * ftrace_graph_entry_stub).  If either of those is not set to the
 	 * relevant stub function, call the arch-specific function
-	 * ftrace_graph_caller
+	 * ftrace_graph_caller.
 	 */
-	make $r32 = ftrace_graph_return
-	make $r33 = ftrace_graph_entry
+	make $r16 = ftrace_graph_return
+	make $r17 = ftrace_graph_entry
 	;;
-	ld $r32 = 0[$r32]
+	ld $r16 = 0[$r16]
 	;;
-	compd.eq $r32 = $r32, ftrace_stub
-	ld $r33 = 0[$r33]
+	compd.eq $r16 = $r16, ftrace_stub
+	ld $r17 = 0[$r17]
 	;;
-	cb.deqz $r32? ftrace_graph_caller
-	compd.eq $r33 = $r33, ftrace_graph_entry_stub
+	/*
+	 * If ftrace_graph_return is not equal to ftrace_stub ($r16 == 0) then
+	 * jump to ftrace_graph_caller. Otherwise compare ftrace_graph_entry.
+	 */
+	cb.deqz $r16? ftrace_graph_caller
+	compd.eq $r17 = $r17, ftrace_graph_entry_stub
 	;;
-	cb.dnez $r33? ftrace_graph_end
+	/*
+	 * If ftrace_graph_entry is equal to ftrace_graph_entry_stub ($r17 == 1)
+	 * then jump to ftrace_graph_end. If not we continue.
+	 */
+	cb.dnez $r17? ftrace_graph_end
 	;;
 ftrace_graph_caller:
-	addd $r0 = $r14, 0x8 /* a pointer to the frompc */
+	save_all_context_but_P16
+	;;
+	ld $r16 = 0[$r12]
+	;;
+	addd $r0 = $r16, 0x8 /* a pointer to the frompc */
 	get $r1 = $ra /* selfpc */
-	copyd $r2 = $r14 /* FP of the function that called __mcount */
+	copyd $r2 = $r16 /* FP of the function that called __mcount */
 	;;
-	mcount_size_adjustment $r1 $r32
-	;;
-	save_ra_and_fp $r32
+	/* get the address of the bundle */
+	addd $r1 = $r1, -KVX_INSN_SYLLABLE_WIDTH
 	;;
 	call prepare_ftrace_return
 	;;
-	restore_ra_and_fp $r32
+	restore_all_context
+	;;
+	ret
 	;;
 ftrace_graph_end:
 #endif
@@ -91,38 +186,44 @@ ftrace_graph_end:
 	 * function normally calls __mcount_internal
 	 * - the first argument is the "frompc" ($r0)
 	 * - the second argument is the "selfpc" ($ra - mcount size adjustement)
-	 * As we don't use any callee registers we don't need to save them.
+	 * As we don't use any callee saved registers we don't need to save
+	 * them.
 	 */
-	make $r32 = ftrace_trace_function
-	get $r1 = $ra
+	make $r16 = ftrace_trace_function
 	;;
-	ld $r32 = 0[$r32]
-	;;
-	/* keep value in $r32 (the function we may call if set) */
-	compd.eq $r33 = $r32, ftrace_stub
+	ld $r16 = 0[$r16]
 	;;
 	/*
-	 * If it is, there is nothing to do, so return immediately otherwise
-	 * call the function in $r32 with correct parameters.
+	 * NOTE: keep value in $r16 (the function we may call if set). See
+	 *       comment in save_all_context_but_P16.
 	 */
-	cb.deqz $r33? 1f
+	compd.eq $r17 = $r16, ftrace_stub
 	;;
-
+	/*
+	 * If ftrace_trace_function is equal to ftrace_stub ($r17 == 1), there
+	 * is nothing to do, so return immediately otherwise call the function
+	 * in $r16 with correct parameters.
+	 */
+	cb.deqz $r17? 1f
+	;;
+	/* Only need to restore P16 */
+	lq $r16r17 = STACK_OFFSET_P16[$r12]
+	;;
+	addd $r12 = $r12, STACK_SIZE
+	;;
 	ret
 	;;
 
 1:
-	mcount_size_adjustment $r1 $r33
+	save_all_context_but_P16
 	;;
-	/*
-	 * $r0 and $r1 are now set to frompc and selfpc, save RA and FP
-	 * before calling the function.
-	 */
-	save_ra_and_fp $r33
+	get $r1 = $ra
 	;;
-	icall $r32
+	addd $r1 = $r1, -KVX_INSN_SYLLABLE_WIDTH
 	;;
-	restore_ra_and_fp $r33
+	icall $r16
+	;;
+	restore_all_context
 	;;
 	ret
 	;;
