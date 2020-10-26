@@ -62,6 +62,34 @@ static const char *rtm_prop_name[RTM_NB] = {
 
 static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *ring, int count);
 
+enum kvx_eth_speed_units_idx {
+	KVX_ETH_UNITS_GBPS,
+	KVX_ETH_UNITS_MBPS,
+	KVX_ETH_UNITS_NB,
+};
+
+char *kvx_eth_speed_units[KVX_ETH_UNITS_NB] = {
+	[KVX_ETH_UNITS_GBPS] = "Gbps",
+	[KVX_ETH_UNITS_MBPS] = "Mbps",
+};
+
+/* kvx_eth_get_formated_speed() - Convert int speed to a displayable format
+ * @speed: the speed to parse in mbps
+ * @speed_fmt: formatted speed value
+ * @unit: matching unit string
+ */
+void kvx_eth_get_formated_speed(int speed, int *speed_fmt,
+		char **unit)
+{
+	if (speed > 1000) {
+		*speed_fmt = speed / 1000;
+		*unit = kvx_eth_speed_units[KVX_ETH_UNITS_GBPS];
+	} else {
+		*speed_fmt = speed;
+		*unit = kvx_eth_speed_units[KVX_ETH_UNITS_MBPS];
+	}
+}
+
 /* kvx_eth_desc_unused() - Gets the number of remaining unused buffers in ring
  * @r: Current ring
  *
@@ -1669,6 +1697,8 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	int an_enabled = state->an_enabled;
 	int ret = 0;
 	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
+	int speed_fmt;
+	char *unit;
 
 	if (state->interface == PHY_INTERFACE_MODE_SGMII) {
 		/*
@@ -1719,11 +1749,17 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 
 	if (an_enabled) {
 		ret = kvx_eth_autoneg(ndev);
-		if (ret != 0) {
-			netdev_err(netdev, "Autonegotiation failed, using default speed %i Mb/s\n",
-				ndev->cfg.speed);
-			update_serdes = true;
-		}
+		/* If AN is successful MAC/PHY are already configured on
+		 * correct mode as link training requires to be performed at
+		 * nominal speed
+		 */
+		if (ret == 0)
+			return;
+
+		kvx_eth_get_formated_speed(ndev->cfg.speed, &speed_fmt, &unit);
+		netdev_err(netdev, "Autonegotiation failed, using default speed %i%s\n",
+				speed_fmt, unit);
+		update_serdes = true;
 	}
 
 	kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, update_serdes);
