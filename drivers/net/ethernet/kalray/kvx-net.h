@@ -140,6 +140,7 @@ void kvx_set_ethtool_ops(struct net_device *netdev);
 int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw);
 int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev);
 void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev);
+void kvx_eth_get_formated_speed(int speed, int *speed_fmt, char **unit);
 
 int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 		  unsigned int rtm, unsigned int speed);
