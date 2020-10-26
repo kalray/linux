@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0
+
+config KVX_SOCINFO
+	tristate "KVX socinfo driver"
+	default y
+	depends on KVX
+	select NVMEM
+	select KVX_OTP_NV
+	select SOC_BUS
+	help
+	  Exposes KVX soc information in sysfs by reading informations
+	  from various sources (nvmem, registers, etc).
