@@ -1560,6 +1560,8 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 	int lane_id = cfg->id;
 	u32 nonce, mask;
 	u32 reg_clk = 100; /* MHz*/
+	int speed_fmt;
+	char *unit;
 
 	/* Force abilities */
 	cfg->lc.rate = (RATE_100GBASE_KR4 | RATE_100GBASE_CR4 |
@@ -1652,9 +1654,8 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 	}
 
 	/* Don't display FEC as it could be altered by mac config */
-	dev_dbg(hw->dev, "Negociated speed: %d%s\n",
-		(cfg->ln.speed > 1000) ? cfg->ln.speed : cfg->ln.speed / 1000,
-		(cfg->ln.speed > 1000) ? "Gbps" : "Mbps");
+	kvx_eth_get_formated_speed(cfg->ln.speed, &speed_fmt, &unit);
+	dev_dbg(hw->dev, "Negociated speed: %d%s\n", speed_fmt, unit);
 
 	ret = 0;
 
