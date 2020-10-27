@@ -96,8 +96,20 @@ static void rx_ber_param_update(void *data)
 void phy_param_update(void *data)
 {
 	struct kvx_eth_phy_param *p = (struct kvx_eth_phy_param *)data;
+	u32 off_main = LANE0_DIG_ASIC_TX_OVRD_IN_2 +
+		p->lane_id * LANE_DIG_ASIC_TX_OVRD_IN_OFFSET;
+	u32 off_prepost = LANE0_DIG_ASIC_TX_OVRD_IN_3 +
+		p->lane_id * LANE_DIG_ASIC_TX_OVRD_IN_OFFSET;
+	u32 val = readl(p->hw->res[KVX_ETH_RES_PHYMAC].base +
+			PHY_LANE_RX_SERDES_STATUS_OFFSET);
+	u16 v;
 
-	kvx_mac_phy_rx_adapt(p);
+	p->fom = GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
+	v = readw(p->hw->res[KVX_ETH_RES_PHY].base + off_main);
+	p->swing = GETF(v, TX_MAIN_CURSOR);
+	v = readw(p->hw->res[KVX_ETH_RES_PHY].base + off_prepost);
+	p->pre = GETF(v, TX_PRE_CURSOR);
+	p->post = GETF(v, TX_POST_CURSOR);
 }
 
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
@@ -325,6 +337,10 @@ void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p)
 
 	kvx_phy_param_tuning(hw);
 	kvx_phy_set_polarities(hw, clear);
+	if (p->trig_rx_adapt) {
+		kvx_mac_phy_rx_adapt(p);
+		p->trig_rx_adapt = false;
+	}
 }
 
 static struct pll_serdes_param pll_serdes_p[] = {
