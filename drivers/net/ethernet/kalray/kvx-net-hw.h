@@ -350,6 +350,7 @@ struct kvx_eth_mac_f {
  * @swing: DC swing
  * @en: true if parameters have actually been set
  * @fom: launch FOM process and return its value
+ * @trig_rx_adapt: trigger rx adaptation process (reset to 0 after write)
  * @lane_id: lane id
  */
 struct kvx_eth_phy_param {
@@ -357,6 +358,7 @@ struct kvx_eth_phy_param {
 	u32 post;
 	u32 swing;
 	u32 fom;
+	bool trig_rx_adapt;
 	bool en;
 	int lane_id;
 	struct kobject kobj;
