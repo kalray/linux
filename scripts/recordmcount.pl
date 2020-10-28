@@ -365,6 +365,10 @@ if ($arch eq "x86_64") {
 } elsif ($arch eq "csky") {
     $mcount_regex = "^\\s*([0-9a-fA-F]+):\\s*R_CKCORE_PCREL_JSR_IMM26BY2\\s+_mcount\$";
     $alignment = 2;
+} elsif ($arch eq "kvx") {
+    $mcount_regex = "^\\s*([0-9a-fA-F]+):\\s*R_KVX_(PCREL27|S64_LO10)\\s+__mcount\$";
+    $type = ".quad";
+    $alignment = 8;
 } else {
     die "Arch $arch is not supported with CONFIG_FTRACE_MCOUNT_RECORD";
 }
