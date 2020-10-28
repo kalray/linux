@@ -30,6 +30,13 @@ static inline int check_signed_imm(long long imm, int bits)
 
 #define KVX_INSN_SYLLABLE_WIDTH 4
 
+#define IS_INSN(__insn, __mnemo) \
+	((__insn & KVX_INSN_ ## __mnemo ## _MASK_0) == \
+	 KVX_INSN_ ## __mnemo ## _OPCODE_0)
+
+#define INSN_SIZE(__insn) \
+	(KVX_INSN_ ## __insn ## _SIZE * KVX_INSN_SYLLABLE_WIDTH)
+
 /* Values for general registers */
 #define KVX_REG_R0	0
 #define KVX_REG_R1	1
@@ -102,6 +109,60 @@ static inline int check_signed_imm(long long imm, int bits)
 /* Value for bitfield parallel */
 #define KVX_INSN_PARALLEL_EOB	0x0
 #define KVX_INSN_PARALLEL_NONE	0x1
+
+#define KVX_INSN_PARALLEL(__insn)       (((__insn) >> 31) & 0x1)
+
+#define KVX_INSN_MAKE_IMM64_SIZE 3
+#define KVX_INSN_MAKE_IMM64_W64_CHECK(__val) \
+	(check_signed_imm(__val, 64))
+#define KVX_INSN_MAKE_IMM64_MASK_0 0xff030000
+#define KVX_INSN_MAKE_IMM64_OPCODE_0 0xe0000000
+#define KVX_INSN_MAKE_IMM64_SYLLABLE_0(__rw, __w64) \
+	(KVX_INSN_MAKE_IMM64_OPCODE_0 | (((__rw) & 0x3f) << 18) | (((__w64) & 0x3ff) << 6))
+#define KVX_INSN_MAKE_IMM64_MASK_1 0xe0000000
+#define KVX_INSN_MAKE_IMM64_OPCODE_1 0x80000000
+#define KVX_INSN_MAKE_IMM64_SYLLABLE_1(__w64) \
+	(KVX_INSN_MAKE_IMM64_OPCODE_1 | (((__w64) >> 10) & 0x7ffffff))
+#define KVX_INSN_MAKE_IMM64_SYLLABLE_2(__p, __w64) \
+	(((__p) << 31) | (((__w64) >> 37) & 0x7ffffff))
+#define KVX_INSN_MAKE_IMM64(__buf, __p, __rw, __w64) \
+do { \
+	(__buf)[0] = KVX_INSN_MAKE_IMM64_SYLLABLE_0(__rw, __w64); \
+	(__buf)[1] = KVX_INSN_MAKE_IMM64_SYLLABLE_1(__w64); \
+	(__buf)[2] = KVX_INSN_MAKE_IMM64_SYLLABLE_2(__p, __w64); \
+} while (0)
+
+#define KVX_INSN_ICALL_SIZE 1
+#define KVX_INSN_ICALL_MASK_0 0x7ffc0000
+#define KVX_INSN_ICALL_OPCODE_0 0xfdc0000
+#define KVX_INSN_ICALL_SYLLABLE_0(__p, __rz) \
+	(KVX_INSN_ICALL_OPCODE_0 | ((__p) << 31) | ((__rz) & 0x3f))
+#define KVX_INSN_ICALL(__buf, __p, __rz) \
+do { \
+	(__buf)[0] = KVX_INSN_ICALL_SYLLABLE_0(__p, __rz); \
+} while (0)
+
+#define KVX_INSN_IGOTO_SIZE 1
+#define KVX_INSN_IGOTO_MASK_0 0x7ffc0000
+#define KVX_INSN_IGOTO_OPCODE_0 0xfd80000
+#define KVX_INSN_IGOTO_SYLLABLE_0(__p, __rz) \
+	(KVX_INSN_IGOTO_OPCODE_0 | ((__p) << 31) | ((__rz) & 0x3f))
+#define KVX_INSN_IGOTO(__buf, __p, __rz) \
+do { \
+	(__buf)[0] = KVX_INSN_IGOTO_SYLLABLE_0(__p, __rz); \
+} while (0)
+
+#define KVX_INSN_CALL_SIZE 1
+#define KVX_INSN_CALL_PCREL27_CHECK(__val) \
+	(((__val) & BITMASK(2)) || check_signed_imm((__val) >> 2, 27))
+#define KVX_INSN_CALL_MASK_0 0x78000000
+#define KVX_INSN_CALL_OPCODE_0 0x18000000
+#define KVX_INSN_CALL_SYLLABLE_0(__p, __pcrel27) \
+	(KVX_INSN_CALL_OPCODE_0 | ((__p) << 31) | (((__pcrel27) >> 2) & 0x7ffffff))
+#define KVX_INSN_CALL(__buf, __p, __pcrel27) \
+do { \
+	(__buf)[0] = KVX_INSN_CALL_SYLLABLE_0(__p, __pcrel27); \
+} while (0)
 
 #define KVX_INSN_GOTO_SIZE 1
 #define KVX_INSN_GOTO_PCREL27_CHECK(__val) \
