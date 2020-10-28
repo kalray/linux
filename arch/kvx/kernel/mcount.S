@@ -128,6 +128,15 @@
 .endm
 
 ENTRY(__mcount)
+#ifdef CONFIG_DYNAMIC_FTRACE
+	/*
+	 * With dynamic ftrace mcount() is only used during boot and then all
+	 * references to it will be patched out never to return. ftrace_caller
+	 * is used.
+	 */
+	ret
+	;;
+#endif
 	addd $r12 = $r12, -STACK_SIZE
 	;;
 	sq STACK_OFFSET_P16[$r12] = $r16r17
@@ -164,6 +173,7 @@ ENTRY(__mcount)
 ftrace_graph_caller:
 	save_all_context_but_P16
 	;;
+GLOBAL(ftrace_graph_call)
 	ld $r16 = 0[$r12]
 	;;
 	addd $r0 = $r16, 0x8 /* a pointer to the frompc */
@@ -180,7 +190,7 @@ ftrace_graph_caller:
 	ret
 	;;
 ftrace_graph_end:
-#endif
+#endif /* CONFIG_FUNCTION_GRAPH_TRACER */
 	/*
 	 * Check if function pointer ftrace_trace_function is set to
 	 * ftrace_stub.
@@ -258,7 +268,49 @@ ENTRY(return_to_handler)
 ENDPROC(return_to_handler)
 #endif
 
+#ifdef CONFIG_DYNAMIC_FTRACE
+ENTRY(ftrace_caller)
+	addd $r12 = $r12, -STACK_SIZE
+	;;
+	sq STACK_OFFSET_P16[$r12] = $r16r17
+	;;
+	save_all_context_but_P16
+	;;
+	copyd $r0 = $r32
+	get $r1 = $ra
+	;;
+	addd $r1 = $r1, -KVX_INSN_SYLLABLE_WIDTH
+	;;
+GLOBAL(ftrace_call)
+	/*
+	 * To work with module we need to use far call. So prepare the
+	 * space for them:
+	 *  - make: 3 syllables
+	 *  - icall/igoto: 1 syllable
+	 *
+	 * We are using igoto in ftrace_enable_ftrace_graph_caller(). This is
+	 * because this path is a tweak to enable function graph tracer with
+	 * dynamic ftrace. We need to jump to ftrace_graph_call without updating
+	 * RA and FP. Once in ftrace_graph_call we will return to the correct
+	 * address from the classical path of the function graph tracer.
+	 */
+	nop
+	;;
+	nop
+	;;
+	nop
+	;;
+	nop
+	;;
+	restore_all_context
+	;;
+	ret
+	;;
+ENDPROC(ftrace_caller)
+#endif // CONFIG_DYNAMIC_FTRACE
+
 ENTRY(ftrace_stub)
 	ret
 	;;
 ENDPROC(ftrace_stub)
+
