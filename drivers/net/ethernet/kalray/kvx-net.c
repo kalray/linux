@@ -1187,9 +1187,9 @@ static int kvx_eth_get_queue_nb(struct platform_device *pdev,
 		dev_err(&pdev->dev, "Unable to get dma-tx-channel-ids\n");
 		return -EINVAL;
 	}
-	if (txq->start + txq->nb > TX_FIFO_NB) {
-		dev_err(&pdev->dev, "TX channels (%d) limited by TX fifo number (%d)\n",
-			txq->start + txq->nb, TX_FIFO_NB);
+	if (txq->nb > 1) {
+		dev_err(&pdev->dev, "TX channels nb (%d) is limited to 1\n",
+			txq->nb);
 		return -EINVAL;
 	}
 
@@ -1460,11 +1460,8 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 		return -EINVAL;
 	}
 
-	if (of_property_read_u32(np, "kalray,tx_fifo", &ndev->cfg.tx_fifo_id)) {
-		dev_dbg(ndev->dev, "Unable to get tx_fifo\n");
-		/* Same tx fifo id for netdevs, lane selected with tx headers */
-		ndev->cfg.tx_fifo_id = 0;
-	}
+	/* Always the case (means that netdev can share tx dma jobq) */
+	ndev->cfg.tx_fifo_id = dma_cfg->tx_chan_id.start;
 	if (ndev->cfg.tx_fifo_id >= TX_FIFO_NB) {
 		dev_err(ndev->dev, "tx_fifo >= %d\n", TX_FIFO_NB);
 		return -EINVAL;
