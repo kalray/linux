@@ -1276,44 +1276,57 @@ static int kvx_eth_an_get_common_speed(struct kvx_eth_hw *hw, int lane_id,
  */
 void kvx_eth_lt_report_ld_status_updated(struct kvx_eth_hw *hw, int lane)
 {
-	int val, lt_off, coef, status = 0, mask = 0;
+	u32 val, lt_off, coef, sts = 0, mask = 0;
+	int ret = 0;
 
 	lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
 	val = kvx_mac_readl(hw, lt_off + LT_KR_LP_COEF_OFFSET);
 
 	if ((val & LT_OP_INIT_MASK) | (val & LT_OP_PRESET_MASK)) {
 		/* Mark all as updated */
-		status = (LT_COEF_UP_UPDATED << LT_COEF_M_1_SHIFT) |
+		sts = (LT_COEF_UP_UPDATED << LT_COEF_M_1_SHIFT) |
 			(LT_COEF_UP_UPDATED << LT_COEF_0_SHIFT) |
 			(LT_COEF_UP_UPDATED << LT_COEF_P_1_SHIFT);
 		mask |= LT_COEF_M_1_MASK | LT_COEF_0_MASK | LT_COEF_P_1_MASK;
 
-		updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET, mask,
-				status);
+		updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET, mask, sts);
 	} else if (val & LT_OP_NORMAL_MASK) {
 		/* Normal operation */
-		/* Cheat by telling the LP we can't do more */
 		coef = (val & LT_COEF_M_1_MASK) >> LT_COEF_M_1_SHIFT;
-		if (coef == LT_COEF_REQ_INCREMENT)
-			status |= LT_COEF_UP_MAXIMUM << LT_COEF_M_1_SHIFT;
-		else if (coef == LT_COEF_REQ_DECREMENT)
-			status |= LT_COEF_UP_MINIMUM << LT_COEF_M_1_SHIFT;
+		ret = kvx_phy_tx_coef_op(hw, lane, coef, TX_EQ_PRE);
+		if (!ret) {
+			sts |= LT_COEF_UP_UPDATED << LT_COEF_M_1_SHIFT;
+		} else {
+			if (coef == LT_COEF_REQ_INCREMENT)
+				sts |= LT_COEF_UP_MAXIMUM << LT_COEF_M_1_SHIFT;
+			else if (coef == LT_COEF_REQ_DECREMENT)
+				sts |= LT_COEF_UP_MINIMUM << LT_COEF_M_1_SHIFT;
+		}
 
 		coef = (val & LT_COEF_0_MASK) >> LT_COEF_0_SHIFT;
-		if (coef == LT_COEF_REQ_INCREMENT)
-			status |= LT_COEF_UP_MAXIMUM << LT_COEF_0_SHIFT;
-		else if (coef == LT_COEF_REQ_DECREMENT)
-			status |= LT_COEF_UP_MINIMUM << LT_COEF_0_SHIFT;
+		ret = kvx_phy_tx_coef_op(hw, lane, coef, TX_EQ_MAIN);
+		if (!ret) {
+			sts |= LT_COEF_UP_UPDATED << LT_COEF_0_SHIFT;
+		} else {
+			if (coef == LT_COEF_REQ_INCREMENT)
+				sts |= LT_COEF_UP_MAXIMUM << LT_COEF_0_SHIFT;
+			else if (coef == LT_COEF_REQ_DECREMENT)
+				sts |= LT_COEF_UP_MINIMUM << LT_COEF_0_SHIFT;
+		}
 
 		coef = (val & LT_COEF_P_1_MASK) >> LT_COEF_P_1_SHIFT;
-		if (coef == LT_COEF_REQ_INCREMENT)
-			status |= LT_COEF_UP_MAXIMUM << LT_COEF_P_1_SHIFT;
-		else if (coef == LT_COEF_REQ_DECREMENT)
-			status |= LT_COEF_UP_MINIMUM << LT_COEF_P_1_SHIFT;
+		ret = kvx_phy_tx_coef_op(hw, lane, coef, TX_EQ_MAIN);
+		if (!ret) {
+			sts |= LT_COEF_UP_UPDATED << LT_COEF_P_1_SHIFT;
+		} else {
+			if (coef == LT_COEF_REQ_INCREMENT)
+				sts |= LT_COEF_UP_MAXIMUM << LT_COEF_P_1_SHIFT;
+			else if (coef == LT_COEF_REQ_DECREMENT)
+				sts |= LT_COEF_UP_MINIMUM << LT_COEF_P_1_SHIFT;
+		}
 
 		mask |= LT_COEF_M_1_MASK | LT_COEF_0_MASK | LT_COEF_P_1_MASK;
-		updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET, mask,
-				status);
+		updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET, mask, sts);
 	}
 }
 
@@ -1489,6 +1502,9 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 
 	if (!kvx_eth_lt_fsm_all_done(hw, cfg)) {
 		dev_err(hw->dev, "Link training FSM timed out\n");
+		for_each_cfg_lane(nb_lane, lane, cfg)
+			dev_err(hw->dev, "lane[%d] LT state: %d\n", lane,
+				hw->lt_state[lane]);
 		ret = -1;
 	}
 
