@@ -93,6 +93,12 @@ struct kvx_eth_res {
 	void __iomem *base;
 };
 
+enum tx_coef {
+	TX_EQ_MAIN = 0,
+	TX_EQ_PRE,
+	TX_EQ_POST,
+};
+
 enum kvx_eth_rtm {
 	RTM_RX = 0,
 	RTM_TX,
@@ -795,6 +801,8 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
 void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f);
 void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable);
 int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p);
+int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
+		     enum lt_coef_requests op, enum tx_coef param);
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p);
 void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_rx_bert_param *p);
