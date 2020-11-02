@@ -34,6 +34,9 @@
 #define TX_POST_CURSOR_SHIFT         7
 #define TX_POST_CURSOR_MASK          0x1f80UL
 #define POST_OVRD_EN_MASK            0x2000UL
+#define MAX_TX_MAIN                  24
+#define MAX_TX_PRE                   24
+#define MAX_TX_POST                  24
 
 #define REFCLK_OVRD_IN_1_OFFSET                0xC
 #define REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_MASK  0x0003UL
@@ -258,6 +261,141 @@ void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable)
 }
 
 /**
+ * kvx_eth_get_tx_coef_delta() - Computes delta to apply on tx param
+ *
+ * Using alternate algorithm (assuming only one param change request at a time),
+ * to maintain signal amplitude (specified in DWC phy spec - Alternate TX
+ * Coefficient Update Algorithm for 10GBASE-KR)
+ * Applies on [5:0] range, including [1:0] range for fractionnal pre/post coef
+ */
+static void kvx_eth_get_tx_coef_delta(enum lt_coef_requests op,
+			enum tx_coef param, struct ti_rtm_params *delta)
+{
+	memset(delta, 0, sizeof(*delta));
+
+	switch (param) {
+	case TX_EQ_MAIN:
+		if (op == LT_COEF_REQ_INCREMENT)
+			delta->main = 4;
+		if (op == LT_COEF_REQ_DECREMENT)
+			delta->main = -4;
+	break;
+	case TX_EQ_PRE:
+		if (op == LT_COEF_REQ_INCREMENT) {
+			delta->pre = -2;
+			delta->main = 2;
+		}
+		if (op == LT_COEF_REQ_DECREMENT) {
+			delta->pre = 2;
+			delta->main = -2;
+		}
+	break;
+	case TX_EQ_POST:
+		if (op == LT_COEF_REQ_INCREMENT) {
+			delta->post = -2;
+			delta->main = 2;
+		}
+		if (op == LT_COEF_REQ_DECREMENT) {
+			delta->post = 2;
+			delta->main = -2;
+		}
+	break;
+	default:
+	break;
+	}
+}
+
+static int kvx_eth_check_tx_coef_sat(enum lt_coef_requests op,
+			enum tx_coef param, struct ti_rtm_params *cur)
+{
+	switch (param) {
+	case TX_EQ_MAIN:
+		if (op == LT_COEF_REQ_INCREMENT && cur->main > MAX_TX_MAIN)
+			return -EPERM;
+		if (op == LT_COEF_REQ_DECREMENT && cur->main < 0)
+			return -EPERM;
+	break;
+	case TX_EQ_PRE:
+		if (op == LT_COEF_REQ_INCREMENT && cur->pre > MAX_TX_PRE)
+			return -EPERM;
+		if (op == LT_COEF_REQ_DECREMENT && cur->pre < 0)
+			return -EPERM;
+	break;
+	case TX_EQ_POST:
+		if (op == LT_COEF_REQ_INCREMENT && cur->post > MAX_TX_POST)
+			return -EPERM;
+		if (op == LT_COEF_REQ_DECREMENT && cur->post < 0)
+			return -EPERM;
+	break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int kvx_eth_rtm_tx_coef(struct kvx_eth_hw *hw, int lane_id,
+		     enum lt_coef_requests op, enum tx_coef param)
+{
+	return -EINVAL;
+}
+
+/**
+ * kvx_phy_tx_coef_op() - increment/decrement tx param
+ *
+ * pre[5:2] -> integer  (from 0 to 6), pre[0:1]: fractionnal(0, 0.25, 0.5, 0.75)
+ * post[5:2] -> integer (from 0 to 8), pre[0:1]: fractionnal(0, 0.25, 0.5, 0.75)
+ * main[5:0] -> integer  (from 0 to 24)
+ */
+int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
+		     enum lt_coef_requests op, enum tx_coef param)
+{
+	u32 off_main = LANE0_DIG_ASIC_TX_OVRD_IN_2 +
+		lane_id * LANE_DIG_ASIC_TX_OVRD_IN_OFFSET;
+	u32 off_prepost = LANE0_DIG_ASIC_TX_OVRD_IN_3 +
+		lane_id * LANE_DIG_ASIC_TX_OVRD_IN_OFFSET;
+	struct ti_rtm_params delta, cur;
+	u16 v, mask;
+	int ret;
+
+	kvx_eth_get_tx_coef_delta(op, param, &delta);
+
+	if (hw->rtm_params.rtm[RTM_TX])
+		return kvx_eth_rtm_tx_coef(hw, lane_id, op, param);
+
+	/* Fallback if no retimers */
+	v = readw(hw->res[KVX_ETH_RES_PHY].base + off_main);
+	cur.main = GETF(v, TX_MAIN_CURSOR);
+	v = readw(hw->res[KVX_ETH_RES_PHY].base + off_prepost);
+	cur.pre = GETF(v, TX_PRE_CURSOR);
+	cur.post = GETF(v, TX_POST_CURSOR);
+
+	cur.main += delta.main;
+	cur.pre += delta.pre;
+	cur.post += delta.post;
+
+	ret = kvx_eth_check_tx_coef_sat(op, param, &cur);
+	if (ret)
+		return ret;
+	mask = PRE_OVRD_EN_MASK | TX_PRE_CURSOR_MASK |
+		POST_OVRD_EN_MASK | TX_POST_CURSOR_MASK;
+	v = ((u32)cur.pre << TX_PRE_CURSOR_SHIFT) |
+		((u32)cur.post << TX_POST_CURSOR_SHIFT);
+	v |= (PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK);
+	updatew_bits(hw, PHY, off_prepost, mask, v);
+
+	mask = TX_MAIN_CURSOR_MASK | TX_MAIN_OVRD_EN_MASK | OVRD_IN_EN_MASK;
+	v = (u32)cur.main << TX_MAIN_CURSOR_SHIFT;
+	v |= OVRD_IN_EN_MASK | TX_MAIN_OVRD_EN_MASK;
+	updatew_bits(hw, PHY, off_main, mask, v);
+
+	dev_dbg(hw->dev, "lane[%d] PRE/POST/MAIN: %d/%d/%d\n",
+		 lane_id, cur.pre, cur.post, cur.main);
+
+	return 0;
+}
+
+/**
  * kvx_phy_param_tuning() - Set all lanes phy parameters
  *
  * Based on MAC lane configuration (takes into account virtual lane, and
@@ -267,9 +405,8 @@ void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable)
  */
 static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 {
-	u16 mask = TX_MAIN_CURSOR_MASK | TX_MAIN_OVRD_EN_MASK | OVRD_IN_EN_MASK;
 	struct kvx_eth_phy_param *param = &hw->phy_f.param[0];
-	u16 v, reg, lane_id;
+	u16 v, reg, lane_id, mask;
 	u32 off;
 
 	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
@@ -279,6 +416,8 @@ static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 		if (!param->en)
 			continue;
 
+		mask = TX_MAIN_CURSOR_MASK | TX_MAIN_OVRD_EN_MASK |
+			OVRD_IN_EN_MASK;
 		v = (u16) param->swing << TX_MAIN_CURSOR_SHIFT;
 		v |= OVRD_IN_EN_MASK | TX_MAIN_OVRD_EN_MASK;
 		reg = readw(hw->res[KVX_ETH_RES_PHY].base + off) & ~(mask);
