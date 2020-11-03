@@ -495,11 +495,20 @@ enum lt_coef_updates {
  * LT_STATE_LD_DONE: Link training finished with sucess
  *
  */
+enum lt_lp_states {
+	LT_LP_STATE_WAIT_COEFF_UPD,
+	LT_LP_STATE_UPDATE_COEFF,
+	LT_LP_STATE_WAIT_HOLD,
+	LT_LP_STATE_DONE,
+};
+
 enum lt_ld_states {
-	LT_STATE_WAIT_COEFF_UPD,
-	LT_STATE_UPDATE_COEFF,
-	LT_STATE_WAIT_HOLD,
-	LT_STATE_LD_DONE,
+	LT_LD_STATE_INIT_QUERY,
+	LT_LD_STATE_WAIT_UPDATE,
+	LT_LD_STATE_WAIT_ACK,
+	LT_LD_STATE_PROCESS_UPDATE,
+	LT_LD_STATE_PREPARE_DONE,
+	LT_LD_STATE_DONE,
 };
 
 /**
@@ -634,12 +643,35 @@ struct kvx_eth_rtm_params {
 };
 
 /**
+ * struct lt_saturate - Keep in memory if we already reached a maximum or minimum
+ * value for link training FSM, this is useful to know if we reached the end of
+ * link training or if we can still do better
+ */
+struct lt_saturate {
+	bool pre;
+	bool post;
+	bool swing;
+};
+
+/**
+ * struct lt_status - Handle link training FSM values
+ * @ld_state: Current local device FSM state
+ * @lp_state: Current link partner FSM state
+ * @saturate: Coefficients saturated or not
+ */
+struct lt_status {
+	enum lt_ld_states ld_state;
+	enum lt_lp_states lp_state;
+	struct lt_saturate saturate;
+};
+
+/**
  * struct kvx_eth_hw - HW adapter
  * @dev: device
  * @res: HW resource tuple {phy, phymac, mac, eth}
  * @tx_f: tx features for all tx fifos
  * @rtm_params: retimer relative parameters
- * @lt_state: link training fsm status for lane
+ * @lt_status: link training fsm status structure
  * @rxtx_crossed: are rx lanes crossed with tx ones
  *                meaning rx4->tx0, rx3->tx1, etc.
  * @asn: device ASN
@@ -658,7 +690,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
 	struct kvx_eth_phy_f phy_f;
 	struct kvx_eth_rtm_params rtm_params;
-	enum lt_ld_states lt_state[KVX_ETH_LANE_NB];
+	struct lt_status lt_status[KVX_ETH_LANE_NB];
 	bool rxtx_crossed;
 	u32 eth_id;
 	u64 mppa_id;
