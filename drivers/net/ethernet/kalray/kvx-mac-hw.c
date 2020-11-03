@@ -1345,7 +1345,7 @@ void kvx_eth_lt_report_ld_status_not_updated(struct kvx_eth_hw *hw, int lane)
 }
 
 /**
- * kvx_eth_lt_lp_fsm() - Link training finite state machine
+ * kvx_eth_lt_lp_fsm() - Link training finite state machine for link partner
  * @hw: pointer to hw config
  * @lane: lane to update
  */
@@ -1354,38 +1354,159 @@ void kvx_eth_lt_lp_fsm(struct kvx_eth_hw *hw, int lane)
 	unsigned int val, lt_off;
 
 	lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
-	switch (hw->lt_state[lane]) {
-	case LT_STATE_WAIT_COEFF_UPD:
+	switch (hw->lt_status[lane].lp_state) {
+	case LT_LP_STATE_WAIT_COEFF_UPD:
 		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_COEF_OFFSET);
 		/* Check either coef update in normal operation, initialize
 		 * operation or preset operation
 		 */
 		if ((val & LT_OP_NORMAL_MASK) || (val & LT_OP_INIT_MASK) ||
 				(val & LT_OP_PRESET_MASK))
-			hw->lt_state[lane] = LT_STATE_UPDATE_COEFF;
+			hw->lt_status[lane].lp_state = LT_LP_STATE_UPDATE_COEFF;
 		/* Check if link partner finished link training */
 		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_STAT_OFFSET);
 		if (val & LT_STAT_RECEIVER_READY)
-			hw->lt_state[lane] = LT_STATE_LD_DONE;
+			hw->lt_status[lane].lp_state = LT_LP_STATE_DONE;
 		break;
-	case LT_STATE_UPDATE_COEFF:
+	case LT_LP_STATE_UPDATE_COEFF:
 		kvx_eth_lt_report_ld_status_updated(hw, lane);
-		hw->lt_state[lane] = LT_STATE_WAIT_HOLD;
+		hw->lt_status[lane].lp_state = LT_LP_STATE_WAIT_HOLD;
 		break;
-	case LT_STATE_WAIT_HOLD:
+	case LT_LP_STATE_WAIT_HOLD:
 		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_COEF_OFFSET);
 		if ((val & LT_OP_NORMAL_MASK) == 0 &&
 				(val & LT_OP_INIT_MASK) == 0 &&
 				(val & LT_OP_PRESET_MASK) == 0) {
 			kvx_eth_lt_report_ld_status_not_updated(hw, lane);
-			hw->lt_state[lane] = LT_STATE_WAIT_COEFF_UPD;
+			hw->lt_status[lane].lp_state = LT_LP_STATE_WAIT_COEFF_UPD;
 		}
 		break;
-	case LT_STATE_LD_DONE:
+	case LT_LP_STATE_DONE:
 		break;
 	default:
 		/* This can not happen */
 		dev_warn_ratelimited(hw->dev, "Link training FSM error: Unknown state\n");
+		break;
+	}
+}
+
+/**
+ * kvx_eth_lt_ld_fsm() - Link training finite state machine for local device
+ * @hw: pointer to hw config
+ * @lane: lane to update
+ */
+void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
+{
+	unsigned int val, lt_off, off, mask;
+	int pre, post, swing;
+
+	lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
+
+	switch (hw->lt_status[lane].ld_state) {
+	case LT_LD_STATE_INIT_QUERY:
+		/* Send INIT query */
+		updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
+			     LT_OP_INIT_MASK, LT_OP_INIT_MASK);
+		/* Wait for updated from LP */
+		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_STAT_OFFSET);
+		mask = LT_COEF_M_1_MASK | LT_COEF_0_MASK | LT_COEF_P_1_MASK;
+		if ((val & mask) != 0) {
+			updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
+				     LT_OP_INIT_MASK, 0);
+			if (hw->rtm_params.rtm[RTM_RX]) {
+				/* Can't do adaptation with retimers, tell the
+				 * link partner everything is fine as retimers
+				 * handle signal quality by themselves
+				 */
+				hw->lt_status[lane].ld_state = LT_LD_STATE_PREPARE_DONE;
+			} else {
+				/* Normal link training */
+				hw->lt_status[lane].ld_state = LT_LD_STATE_WAIT_ACK;
+			}
+		}
+		break;
+	case LT_LD_STATE_WAIT_UPDATE:
+		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_STAT_OFFSET);
+		mask = LT_COEF_M_1_MASK | LT_COEF_0_MASK | LT_COEF_P_1_MASK;
+		if ((val & mask) != 0) {
+			pre = GETF(val, LT_COEF_M_1);
+			post = GETF(val, LT_COEF_P_1);
+			swing = GETF(val, LT_COEF_0);
+			if ((pre == LT_COEF_UP_MAXIMUM) ||
+					(pre == LT_COEF_UP_MINIMUM))
+				hw->lt_status[lane].saturate.pre = true;
+			post = GETF(val, LT_COEF_P_1);
+			if ((post == LT_COEF_UP_MAXIMUM) ||
+					(post == LT_COEF_UP_MINIMUM))
+				hw->lt_status[lane].saturate.post = true;
+			swing = GETF(val, LT_COEF_0);
+			if ((swing == LT_COEF_UP_MAXIMUM) ||
+					(swing == LT_COEF_UP_MINIMUM))
+				hw->lt_status[lane].saturate.swing = true;
+
+			/* Mark as hold */
+			updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
+				      LT_COEF_M_1_MASK | LT_COEF_P_1_MASK |
+				      LT_COEF_0_MASK,
+				      0);
+			hw->lt_status[lane].ld_state = LT_LD_STATE_WAIT_ACK;
+		}
+		break;
+	case LT_LD_STATE_WAIT_ACK:
+		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_STAT_OFFSET);
+		mask = LT_COEF_M_1_MASK | LT_COEF_0_MASK | LT_COEF_P_1_MASK;
+		if ((val & mask) == 0) {
+			/* Request adaptation */
+			off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane;
+			updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
+				     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK,
+				     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK);
+			hw->lt_status[lane].ld_state = LT_LD_STATE_PROCESS_UPDATE;
+		}
+		break;
+	case LT_LD_STATE_PROCESS_UPDATE:
+		/* Wait for the end of adaptation */
+		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane;
+		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+		if (GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK) == 0)
+			return;
+
+		/* Deassert request */
+		updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
+			     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK, 0);
+
+		/* Check coefficients for LP to update */
+		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+		pre  = GETF(val, PHY_LANE_RX_SERDES_STATUS_TXPRE_DIR);
+		post = GETF(val, PHY_LANE_RX_SERDES_STATUS_TXPOST_DIR);
+		swing = GETF(val, PHY_LANE_RX_SERDES_STATUS_TXMAIN_DIR);
+
+		hw->lt_status[lane].ld_state = LT_LD_STATE_WAIT_UPDATE;
+		/* If 3 HOLD parameters, link training is done */
+		if ((pre == 0 || hw->lt_status[lane].saturate.pre) &&
+				(post == 0 || hw->lt_status[lane].saturate.post) &&
+				(swing == 0 || hw->lt_status[lane].saturate.swing)) {
+			hw->lt_status[lane].ld_state = LT_LD_STATE_PREPARE_DONE;
+			return;
+		}
+		/* Send request to LP */
+		val = pre << LT_COEF_M_1_SHIFT | post << LT_COEF_P_1_SHIFT |
+			swing << LT_COEF_0_SHIFT;
+		updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
+			     LT_COEF_M_1_MASK | LT_COEF_P_1_MASK | LT_COEF_0_MASK,
+			     val);
+		break;
+	case LT_LD_STATE_PREPARE_DONE:
+		/* Send completed to remote */
+		updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET,
+			     LT_STAT_RECEIVER_READY,
+			     LT_STAT_RECEIVER_READY);
+		updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET,
+			     LT_KR_STATUS_RECEIVERSTATUS_MASK,
+			     LT_KR_STATUS_RECEIVERSTATUS_MASK);
+		hw->lt_status[lane].ld_state = LT_LD_STATE_DONE;
+		break;
+	case LT_LD_STATE_DONE:
 		break;
 	}
 }
@@ -1401,7 +1522,8 @@ static inline bool kvx_eth_lt_fsm_all_done(struct kvx_eth_hw *hw,
 	int nb_lane, lane;
 
 	for_each_cfg_lane(nb_lane, lane, cfg) {
-		if (hw->lt_state[lane] != LT_STATE_LD_DONE)
+		if (hw->lt_status[lane].ld_state != LT_LD_STATE_DONE ||
+				hw->lt_status[lane].lp_state != LT_LP_STATE_DONE)
 			return false;
 	}
 
@@ -1469,11 +1591,16 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 	unsigned long t;
 	int nb_lane, lane;
 
+	/* Reset FSM values */
+	for_each_cfg_lane(nb_lane, lane, cfg) {
+		hw->lt_status[lane].saturate.pre = false;
+		hw->lt_status[lane].saturate.post = false;
+		hw->lt_status[lane].saturate.swing = false;
+	}
+
 	/* Indicate local device ready on all lanes */
 	for_each_cfg_lane(nb_lane, lane, cfg) {
 		lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
-		m = LT_STAT_RECEIVER_READY;
-		updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET, m, m);
 		/* Mark all coef as hold */
 		updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
 			     LT_KR_LD_COEF_UPDATE_MASK, 0);
@@ -1482,7 +1609,8 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 	/* Wait linking training frame lock on all lanes */
 	for_each_cfg_lane(nb_lane, lane, cfg) {
 		lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
-		hw->lt_state[lane] = LT_STATE_WAIT_COEFF_UPD;
+		hw->lt_status[lane].ld_state = LT_LD_STATE_INIT_QUERY;
+		hw->lt_status[lane].lp_state = LT_LP_STATE_WAIT_COEFF_UPD;
 		m = LT_KR_STATUS_FRAMELOCK_MASK;
 		ret = kvx_poll(kvx_mac_readl, lt_off + LT_KR_STATUS_OFFSET,
 			  m, m, LT_FRAME_LOCK_TIMEOUT_MS);
@@ -1496,15 +1624,23 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 	/* Run FSM for all lanes */
 	t = jiffies + msecs_to_jiffies(LT_FSM_TIMEOUT_MS);
 	do {
-		for_each_cfg_lane(nb_lane, lane, cfg)
+		for_each_cfg_lane(nb_lane, lane, cfg) {
+			kvx_eth_lt_ld_fsm(hw, lane);
 			kvx_eth_lt_lp_fsm(hw, lane);
+		}
 	} while (!kvx_eth_lt_fsm_all_done(hw, cfg) && !time_after(jiffies, t));
 
 	if (!kvx_eth_lt_fsm_all_done(hw, cfg)) {
-		dev_err(hw->dev, "Link training FSM timed out\n");
-		for_each_cfg_lane(nb_lane, lane, cfg)
-			dev_err(hw->dev, "lane[%d] LT state: %d\n", lane,
-				hw->lt_state[lane]);
+		for_each_cfg_lane(nb_lane, lane, cfg) {
+			if (hw->lt_status[lane].lp_state != LT_LP_STATE_DONE) {
+				dev_err(hw->dev, "Link partner FSM did not end correctly on lane %d\n",
+						lane);
+			}
+			if (hw->lt_status[lane].ld_state != LT_LD_STATE_DONE) {
+				dev_err(hw->dev, "Local device FSM did not end correctly on lane %d\n",
+						lane);
+			}
+		}
 		ret = -1;
 	}
 
@@ -1839,9 +1975,7 @@ int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 	ret = kvx_eth_lt_execute(hw, cfg);
 	if (ret)
-		dev_err(hw->dev, "Link training workaround failed\n");
-	else
-		dev_info(hw->dev, "Link training workaround ok\n");
+		dev_err(hw->dev, "Link training failed\n");
 
 	ret = kvx_eth_an_good_status_wait(hw, cfg);
 
