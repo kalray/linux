@@ -1,12 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * This file is subject to the terms and conditions of the GNU General Public
- * License.  See the file "COPYING" in the main directory of this archive
- * for more details.
- *
  * Copyright 2010 Tilera Corporation. All Rights Reserved.
  * Copyright 2015 Regents of the University of California
  * Copyright 2017 SiFive
- * Copyright (C) 2018 Kalray Inc.
+ * Copyright (C) 2018-2020 Kalray Inc.
+ * Authors:
+ *	Marius Gligor
+ *	Clement Leger
  *
  * Partially copied from arch/riscv/kernel/ptrace.c
  *

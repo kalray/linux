@@ -2,6 +2,7 @@
  * Copyright (C) 2009 Arnd Bergmann <arnd@arndb.de>
  * Copyright (C) 2012 Regents of the University of California
  * Copyright (C) 2018 Kalray
+ * Author: Clement Leger
  *
  *   This program is free software; you can redistribute it and/or
  *   modify it under the terms of the GNU General Public License
