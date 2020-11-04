@@ -3,6 +3,8 @@
  * Designware SPI core controller driver (refer pxa2xx_spi.c)
  *
  * Copyright (c) 2009, Intel Corporation.
+ * Copyright (c) 2020, Kalray Inc.
+ * Author: Clement Leger
  */
 
 #include <linux/bitfield.h>
