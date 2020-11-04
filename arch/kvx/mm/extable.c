@@ -1,9 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2009 Sunplus Core Technology Co., Ltd.
  *  Lennox Wu <lennox.wu@sunplusct.com>
  *  Chen Liqin <liqin.chen@sunplusct.com>
  * Copyright (C) 2013 Regents of the University of California
- * Copyright (C) 2018 Kalray
+ * Copyright (C) 2018-2020 Kalray
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

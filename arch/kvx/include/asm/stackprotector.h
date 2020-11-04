@@ -1,4 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Copyright (C) 2018-2020 Kalray Inc.
+ * Author: Yann Sionneau
+ */
+
 /*
  * GCC stack protector support.
  *
