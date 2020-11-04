@@ -19,6 +19,8 @@
  * bundled. So we choose to save nothing when calling __mcount and we will
  * save all caller registers once __mcount called.
  *
+ * Another specificity is that parameter is passed in $r32 instead of $r0.
+ *
  * Our stack will be:
  *	0  | $FP $RA $r15 -
  *	32 | $r0 $r1 $r2 $r3
@@ -217,6 +219,7 @@ ftrace_graph_end:
 1:
 	save_all_context_but_P16
 	;;
+	copyd $r0 = $r32
 	get $r1 = $ra
 	;;
 	addd $r1 = $r1, -KVX_INSN_SYLLABLE_WIDTH
