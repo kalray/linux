@@ -405,16 +405,17 @@ int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
  */
 static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 {
-	struct kvx_eth_phy_param *param = &hw->phy_f.param[0];
+	struct kvx_eth_phy_param *param;
 	u16 v, reg, lane_id, mask;
 	u32 off;
 
 	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
-		off = LANE0_DIG_ASIC_TX_OVRD_IN_2 +
-			lane_id * LANE_DIG_ASIC_TX_OVRD_IN_OFFSET;
-
+		param = &hw->phy_f.param[lane_id];
 		if (!param->en)
 			continue;
+
+		off = LANE0_DIG_ASIC_TX_OVRD_IN_2 +
+			lane_id * LANE_DIG_ASIC_TX_OVRD_IN_OFFSET;
 
 		mask = TX_MAIN_CURSOR_MASK | TX_MAIN_OVRD_EN_MASK |
 			OVRD_IN_EN_MASK;
