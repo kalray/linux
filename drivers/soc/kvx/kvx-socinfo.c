@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2019 NXP.
+ * Copyright (C) 2020 Kalray Inc., 
+ * Author: Clement Leger
  */
 
 #include <linux/io.h>

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2020 Kalray Inc.
+ * Author: Clement Leger
  */
 
 #ifndef _ASM_KVX_VERMAGIC_H
