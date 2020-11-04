@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Copyright (C) 2018-2020 Kalray Inc.
+ */
+
 #ifndef _ASM_KVX_SFR_DEFS_H
 #define _ASM_KVX_SFR_DEFS_H
 
