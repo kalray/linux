@@ -196,6 +196,7 @@ irqreturn_t kvx_dma_err_irq_handler(int irq, void *data);
 /* RX queues */
 int kvx_dma_pkt_rx_queue_push_desc(struct kvx_dma_phy *phy, u64 pkt_paddr,
 				   u64 pkt_len);
+void kvx_dma_pkt_rx_queue_flush(struct kvx_dma_phy *phy);
 
 /* Get completion count */
 u64 kvx_dma_get_comp_count(struct kvx_dma_phy *phy);
