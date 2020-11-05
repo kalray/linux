@@ -28,6 +28,7 @@
 #include <net/checksum.h>
 #include <linux/dma/kvx-dma-api.h>
 #include <linux/ti-retimer.h>
+#include <linux/rtnetlink.h>
 #include <linux/hash.h>
 
 #include "kvx-net.h"
@@ -141,10 +142,10 @@ static int kvx_eth_netdev_open(struct net_device *netdev)
 	return 0;
 }
 
-/* kvx_eth_down() - Interface down
+/* kvx_eth_netdev_stop() - Stop all netdev queues
  * @netdev: Current netdev
  */
-void kvx_eth_down(struct net_device *netdev)
+static int kvx_eth_netdev_stop(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	int i;
@@ -153,18 +154,19 @@ void kvx_eth_down(struct net_device *netdev)
 	for (i = 0; i < ndev->dma_cfg.rx_chan_id.nb; i++)
 		napi_disable(&ndev->rx_ring[i].napi);
 
-	phylink_stop(ndev->phylink);
-	phylink_disconnect_phy(ndev->phylink);
+	return 0;
 }
 
-/* kvx_eth_netdev_close() - Close ops
+/* kvx_eth_down() - Interface down
  * @netdev: Current netdev
  */
-static int kvx_eth_netdev_close(struct net_device *netdev)
+void kvx_eth_down(struct net_device *netdev)
 {
-	kvx_eth_down(netdev);
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	return 0;
+	kvx_eth_netdev_stop(netdev);
+	phylink_stop(ndev->phylink);
+	phylink_disconnect_phy(ndev->phylink);
 }
 
 /* kvx_eth_init_netdev() - Init netdev generic settings
@@ -888,7 +890,7 @@ kvx_eth_get_phys_port_id(struct net_device *dev, struct netdev_phys_item_id *id)
 
 static const struct net_device_ops kvx_eth_netdev_ops = {
 	.ndo_open               = kvx_eth_netdev_open,
-	.ndo_stop               = kvx_eth_netdev_close,
+	.ndo_stop               = kvx_eth_netdev_stop,
 	.ndo_start_xmit         = kvx_eth_netdev_start_xmit,
 	.ndo_get_stats64        = kvx_eth_netdev_get_stats64,
 	.ndo_validate_addr      = eth_validate_addr,
@@ -952,6 +954,22 @@ static int kvx_eth_alloc_rx_pool(struct kvx_eth_netdev *ndev,
 
 static void kvx_eth_release_rx_pool(struct kvx_eth_ring *r)
 {
+	u32 unused_desc = kvx_eth_desc_unused(r);
+	u32 rx_r = r->next_to_clean;
+	struct kvx_qdesc *qdesc;
+
+	kvx_dma_flush_rx_queue(r->rx_dma_chan);
+	while (--unused_desc) {
+		qdesc = &r->pool.qdesc[rx_r];
+
+		if (rx_r == r->next_to_use)
+			break;
+		if (qdesc)
+			page_pool_release_page(r->pool.pagepool,
+					       (struct page *)(qdesc->va));
+		++rx_r;
+		rx_r = (rx_r < r->count) ? rx_r : 0;
+	}
 	page_pool_destroy(r->pool.pagepool);
 	kfree(r->pool.qdesc);
 }
@@ -1012,6 +1030,8 @@ exit:
 }
 
 /* kvx_eth_release_rx_ring() - Release RX ring
+ *
+ * Flush dma rx job queue and release all pending buffers previously allocated
  * @r: Rx ring to be release
  * @keep_dma_chan: do not release dma channel
  */
@@ -1021,9 +1041,9 @@ void kvx_eth_release_rx_ring(struct kvx_eth_ring *r, int keep_dma_chan)
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 
 	netif_napi_del(&r->napi);
+	kvx_eth_release_rx_pool(r);
 	if (!keep_dma_chan)
 		kvx_dma_release_rx_chan(dma_cfg->pdev, r->rx_dma_chan);
-	kvx_eth_release_rx_pool(r);
 }
 
 /* kvx_eth_alloc_rx_res() - Allocate RX resources
@@ -1894,12 +1914,11 @@ exit:
  */
 static int kvx_eth_free_netdev(struct kvx_eth_netdev *ndev)
 {
-	list_del(&ndev->node);
 	kvx_eth_release_tx_res(ndev->netdev, 0);
 	kvx_eth_release_rx_res(ndev->netdev, 0);
 	phylink_destroy(ndev->phylink);
-	unregister_netdev(ndev->netdev);
-	free_netdev(ndev->netdev);
+	list_del(&ndev->node);
+
 	return 0;
 }
 
@@ -1976,6 +1995,8 @@ static int kvx_netdev_remove(struct platform_device *pdev)
 		if (params->rtm[rtm])
 			put_device(&params->rtm[rtm]->dev);
 	}
+	if (netif_running(ndev->netdev))
+		kvx_eth_netdev_stop(ndev->netdev);
 	kvx_eth_free_netdev(ndev);
 	dmaengine_put();
 
@@ -2088,6 +2109,12 @@ err:
  */
 static int kvx_eth_remove(struct platform_device *pdev)
 {
+	struct kvx_eth_dev *dev = platform_get_drvdata(pdev);
+	struct kvx_eth_netdev *ndev;
+
+	list_for_each_entry(ndev, &dev->list, node)
+		unregister_netdev(ndev->netdev);
+
 	platform_set_drvdata(pdev, NULL);
 	return 0;
 }

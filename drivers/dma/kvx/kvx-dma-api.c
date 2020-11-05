@@ -115,6 +115,14 @@ int kvx_dma_enqueue_rx_buffer(void *phy, u64 dma_addr, u64 len)
 }
 EXPORT_SYMBOL_GPL(kvx_dma_enqueue_rx_buffer);
 
+void kvx_dma_flush_rx_queue(void *phy)
+{
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
+
+	kvx_dma_pkt_rx_queue_flush(phy);
+}
+EXPORT_SYMBOL_GPL(kvx_dma_flush_rx_queue);
+
 int kvx_dma_get_rx_completed(struct platform_device *pdev, void *phy,
 			     struct kvx_dma_pkt_full_desc *pkt)
 {

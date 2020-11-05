@@ -30,6 +30,7 @@ int kvx_dma_reserve_rx_chan(struct platform_device *pdev, void *phy,
 			    void (*irq_callback)(void *data), void *data);
 int kvx_dma_release_rx_chan(struct platform_device *pdev, void *phy);
 int kvx_dma_enqueue_rx_buffer(void *phy, u64 dma_addr, u64 len);
+void kvx_dma_flush_rx_queue(void *phy);
 int kvx_dma_get_rx_completed(struct platform_device *pdev, void *phy,
 			     struct kvx_dma_pkt_full_desc *pkt);
 void kvx_dma_enable_irq(void *phy);
