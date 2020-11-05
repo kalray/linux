@@ -404,6 +404,20 @@ int kvx_dma_pkt_rx_queue_push_desc(struct kvx_dma_phy *phy,
 }
 
 /**
+ * kvx_dma_pkt_rx_dequeue() - Increments RX jobq read pointer to valid_wp
+ *
+ * Invalidates all pending descriptors
+ * @phy: Current phy
+ */
+void kvx_dma_pkt_rx_queue_flush(struct kvx_dma_phy *phy)
+{
+	u64 wp = kvx_dma_jobq_readq(phy, KVX_DMA_RX_JOB_Q_VALID_WP_OFFSET);
+
+	kvx_dma_jobq_writeq(phy, wp, KVX_DMA_RX_JOB_Q_RP_OFFSET);
+	kvx_dma_jobq_writeq(phy, wp, KVX_DMA_RX_JOB_Q_WP_OFFSET);
+}
+
+/**
  * kvx_dma_rx_get_comp_pkt() - Reads completed pkt descriptor.
  * @phy: Current phy
  * @pkt: pointer to buffer descriptor
