@@ -591,8 +591,4 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 	kobject_put(&ndev->hw->lut_f.kobj);
 	kobject_del(&ndev->hw->phy_f.kobj);
 	kobject_put(&ndev->hw->phy_f.kobj);
-
-	for (i = 0; i < KVX_ETH_PARSER_NB; i++)
-		kobject_del(&ndev->hw->parser_f[i].kobj);
-	kobject_del(&ndev->netdev->dev.kobj);
 }
