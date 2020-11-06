@@ -73,29 +73,6 @@ static int kvx_dma_start_sg_mem2mem(struct kvx_dma_desc *desc)
 }
 
 /**
- * kvx_dma_start_sg_eth_rx() - Push a eth RX job queue descriptor
- * @desc: the job descriptor to start
- *
- * Return: 0 - OK -EBUSY if job fifo is full
- */
-static int kvx_dma_start_sg_eth_rx(struct kvx_dma_desc *desc)
-{
-	size_t txd_size = 0;
-	int i, ret = 0;
-
-	for (i = 0; i < desc->txd_nb; i++) {
-		ret |= kvx_dma_pkt_rx_queue_push_desc(desc->phy,
-				desc->txd[i].src_dma_addr, desc->txd[i].len);
-		txd_size += (size_t)desc->txd[i].len;
-	}
-	desc->size = txd_size;
-	dev_dbg(desc->phy->dev, "%s desc->phy: 0x%lx desc: 0x%lx size:%d\n",
-		 __func__, (uintptr_t)desc->phy, (uintptr_t)desc,
-		 (u32)desc->size);
-	return ret;
-}
-
-/**
  * kvx_dma_start_sg_noc_tx() - Push a noc TX job descriptor
  * @desc: the job descriptor to start
  *
@@ -169,31 +146,24 @@ out:
  * @desc: the job descriptor to start
  *
  * This function is a wrapper calling the proper sg_start functions depending
- * on channel transfer type
+ * on channel transfer type. All checks on descriptor type and direction have
+ * been done earlier
  *
- * Return: 0 - OK -EPERM if channel type does not match with direction
+ * Return: 0 - OK, else < 0 (if transfer type or dir is not supported)
  */
 int kvx_dma_start_desc(struct kvx_dma_chan *c, struct kvx_dma_desc *desc)
 {
-	int ret = 0;
-	struct kvx_dma_dev *dev = c->dev;
 	enum kvx_dma_transfer_type type = c->cfg.trans_type;
+	int ret = -EINVAL;
 
-	if (type == KVX_DMA_TYPE_MEM2MEM)
+	if (type == KVX_DMA_TYPE_MEM2MEM) {
 		ret = kvx_dma_start_sg_mem2mem(desc);
-	else if (type == KVX_DMA_TYPE_MEM2ETH) {
+	} else if (type == KVX_DMA_TYPE_MEM2ETH) {
 		if (desc->dir == DMA_MEM_TO_DEV)
 			ret = kvx_dma_start_sg_eth_tx(desc);
-		else if (desc->dir == DMA_DEV_TO_MEM)
-			ret = kvx_dma_start_sg_eth_rx(desc);
 	} else if (type == KVX_DMA_TYPE_MEM2NOC) {
 		if (desc->dir == DMA_MEM_TO_DEV)
 			ret = kvx_dma_start_sg_noc_tx(desc);
-		else if (desc->dir == DMA_DEV_TO_MEM)
-			dev_dbg(dev->dma.dev, "Nothing to do for noc RX\n");
-	} else {
-		dev_err(dev->dma.dev, "Direction not supported!\n");
-		ret = -EPERM;
 	}
 
 	return ret;
@@ -762,8 +732,7 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 	}
 
 	if (direction != DMA_DEV_TO_MEM && direction != DMA_MEM_TO_DEV) {
-		dev_err(dev, "Invalid DMA direction %d!\n",
-			direction);
+		dev_err(dev, "Invalid DMA direction %d!\n", direction);
 		return NULL;
 	}
 
@@ -773,19 +742,17 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 		return NULL;
 	}
 
+	if (dir == KVX_DMA_DIR_TYPE_RX && type == KVX_DMA_TYPE_MEM2ETH) {
+		dev_err(dev, "RX flow not supported by DMA engine\n");
+		return NULL;
+	}
+
 	if (dir == KVX_DMA_DIR_TYPE_RX) {
-		if (sg_len > 1 && (type == KVX_DMA_TYPE_MEM2NOC ||
-				   type == KVX_DMA_TYPE_MEM2ETH)) {
+		if (sg_len > 1 && type == KVX_DMA_TYPE_MEM2NOC) {
 			/* sg_len limited to 1 for RX eth/noc 1 desc == 1 hw_job
 			 * Rx completion can not be handled else
 			 */
 			dev_err(dev, "SG len > 1 NOT supported\n");
-			return NULL;
-		}
-		if (type == KVX_DMA_TYPE_MEM2ETH &&
-		    c->cfg.rx_cache_id >= KVX_DMA_RX_JOB_CACHE_NUMBER) {
-			dev_err(dev, "Config failed rx_cache_id %d >= %d\n)",
-			   c->cfg.rx_cache_id, KVX_DMA_RX_JOB_CACHE_NUMBER);
 			return NULL;
 		}
 	}
@@ -1038,8 +1005,7 @@ static int kvx_dma_parse_dt(struct platform_device *pdev,
 		dev->dma_fws.ids.nb = KVX_DMA_TX_PGRM_TABLE_NUMBER;
 	}
 	if (of_property_read_u32_array(np, "kalray,dma-ucode-reg",
-				(u32 *) &dev->dma_fws.pgrm_mem, 2)
-				!= 0) {
+				(u32 *) &dev->dma_fws.pgrm_mem, 2) != 0) {
 		dev_warn(&pdev->dev, "Property kalray,dma-ucode-reg not found\n");
 		dev->dma_fws.pgrm_mem.start = 0;
 		dev->dma_fws.pgrm_mem.size = KVX_DMA_TX_PGRM_MEM_NUMBER;
@@ -1069,8 +1035,7 @@ static int kvx_dma_parse_dt(struct platform_device *pdev,
 		dev->dma_noc_route_ids.nb = KVX_DMA_NOC_ROUTE_TABLE_NUMBER;
 	}
 
-	if (of_property_read_u32(np, "kalray,dma-noc-vchan",
-				 &dev->vchan) != 0) {
+	if (of_property_read_u32(np, "kalray,dma-noc-vchan", &dev->vchan)) {
 		dev_err(&pdev->dev, "kalray,dma-noc-vchan is missing\n");
 		return -EINVAL;
 	}
