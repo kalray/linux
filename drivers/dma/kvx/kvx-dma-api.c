@@ -48,7 +48,7 @@ void kvx_dma_release_phy(struct kvx_dma_dev *dev, struct kvx_dma_phy *phy)
 		phy->dir, phy->hw_id);
 	spin_lock(&dev->lock);
 	kvx_dma_release_queues(phy, &dev->jobq_list);
-	phy->used = 0;
+	refcount_set(&phy->used, 0);
 	spin_unlock(&dev->lock);
 }
 
@@ -70,13 +70,14 @@ int kvx_dma_reserve_rx_chan(struct platform_device *pdev, void *phy,
 	int ret = 0;
 
 	spin_lock_irq(&d->lock);
-	if (p->used || kvx_dma_check_rx_q_enabled(p, rx_cache_id)) {
+	if (refcount_read(&p->used) ||
+	    kvx_dma_check_rx_q_enabled(p, rx_cache_id)) {
 		spin_unlock(&d->lock);
 		dev_err(dev, "RX channel[%d] already in use\n", p->hw_id);
 		return -EINVAL;
 	}
 
-	p->used = 1;
+	refcount_set(&p->used, 1);
 	p->rx_cache_id = rx_cache_id;
 	p->irq_handler = irq_callback;
 	p->irq_data = data;
