@@ -69,13 +69,12 @@ struct kvx_dma_pkt_desc {
 #define KVX_DMA_TX_MON_OUTSTANDING_FIFO_LEVEL_OFFSET          0x30
 #define KVX_DMA_TX_MON_QUEUES_OUTSTANDING_FIFO_LEVEL_OFFSET   0x40
 
+#define JOB_ACQUIRE_TIMEOUT_IN_US 2000
+
 /**
  * Rx job queues
  */
 #define KVX_DMA_NB_RX_JOB_QUEUE_PER_CACHE (2)
-
-/* UC related */
-#define KVX_DMA_UC_NB_PARAMS 8
 
 /**
  * kvx_dma_alloc_queue() - Allocate and init kvx_dma_hw_queue
@@ -476,6 +475,7 @@ int kvx_dma_tx_job_queue_init(struct kvx_dma_phy *phy)
 		return -ENOMEM;
 	}
 
+	jobq->batched_wp = 0;
 	kvx_dma_jobq_writeq_relaxed(phy, jobq->paddr,
 			KVX_DMA_TX_JOB_Q_SA_OFFSET);
 	kvx_dma_jobq_writeq_relaxed(phy, phy->size_log2,
@@ -753,11 +753,12 @@ int kvx_dma_allocate_queues(struct kvx_dma_phy *phy,
 			    struct kvx_dma_job_queue_list *jobq_list,
 			    enum kvx_dma_transfer_type trans_type)
 {
-	u64 size, aligned_size;
 	int ret = 0;
+	u64 size;
 
 	phy->size_log2 = ilog2(phy->max_desc);
-	aligned_size = (1 << phy->size_log2);
+	phy->fifo_size = (1 << phy->size_log2);
+	phy->fifo_size_mask = phy->fifo_size - 1;
 
 	if (phy->dir == KVX_DMA_DIR_TYPE_RX) {
 		u64 q_offset = 0;
@@ -767,7 +768,7 @@ int kvx_dma_allocate_queues(struct kvx_dma_phy *phy,
 			phy->hw_id * KVX_DMA_RX_CHAN_ELEM_SIZE;
 		/* Alloc RX job queue for ethernet mode (dynamic mode) */
 		if (trans_type == KVX_DMA_TYPE_MEM2ETH) {
-			size = aligned_size * sizeof(unsigned long long);
+			size = phy->fifo_size * sizeof(unsigned long long);
 			ret = kvx_dma_alloc_queue(phy, &phy->q, size, q_offset);
 			if (ret) {
 				dev_err(phy->dev,
@@ -776,12 +777,11 @@ int kvx_dma_allocate_queues(struct kvx_dma_phy *phy,
 				goto err;
 			}
 
-			ret = kvx_dma_get_job_queue(phy, aligned_size,
-						    jobq_list);
+			ret = kvx_dma_get_job_queue(phy, phy->fifo_size, jobq_list);
 			if (ret)
 				goto err;
 			/* Allocate RX completion queue ONLY for MEM2ETH */
-			size = aligned_size *
+			size = phy->fifo_size *
 				sizeof(struct kvx_dma_pkt_full_desc);
 			ret = kvx_dma_alloc_queue(phy,
 						  &phy->compq, size, (~0ULL));
@@ -798,7 +798,7 @@ int kvx_dma_allocate_queues(struct kvx_dma_phy *phy,
 		}
 	} else {
 		/* TX job queue */
-		ret = kvx_dma_get_job_queue(phy, aligned_size, jobq_list);
+		ret = kvx_dma_get_job_queue(phy, phy->fifo_size, jobq_list);
 		if (ret)
 			goto err;
 
@@ -955,11 +955,6 @@ u64 kvx_dma_get_comp_count(struct kvx_dma_phy *phy)
 	return comp_count;
 }
 
-struct kvx_dma_job_param {
-	u64 param[KVX_DMA_UC_NB_PARAMS];
-	u64 config;
-};
-
 /**
  * kvx_dma_push_job_fast() - Perform a DMA job push at low level
  * @phy: phy pointer to physical description
@@ -971,7 +966,7 @@ struct kvx_dma_job_param {
  * Return: 0 - OK -EBUSY if fifo is full
  */
 static int kvx_dma_push_job_fast(struct kvx_dma_phy *phy,
-					const struct kvx_dma_job_param *p,
+					const struct kvx_dma_tx_job_desc *p,
 					u64 *hw_job_id)
 {
 	u64 *fifo_addr = phy->jobq->vaddr;
@@ -1032,7 +1027,7 @@ int kvx_dma_rdma_tx_push_mem2mem(struct kvx_dma_phy *phy,
 	const u64 object_len_16_bytes = object_len >> 4;
 	const u64 object_len_1_bytes = object_len & 0xfULL;
 
-	struct kvx_dma_job_param p = {
+	struct kvx_dma_tx_job_desc p = {
 		.param = {
 			source, dest, object_len_16_bytes,
 			object_len_1_bytes, tx_job->nb,
@@ -1077,7 +1072,7 @@ int kvx_dma_rdma_tx_push_mem2noc(struct kvx_dma_phy *phy,
 	const u64 object_len_16_bytes = object_len >> 4;
 	const u64 object_len_1_bytes = object_len & 0xfULL;
 
-	struct kvx_dma_job_param p = {
+	struct kvx_dma_tx_job_desc p = {
 		.param = {
 			source, offset, object_len_16_bytes,
 			object_len_1_bytes, tx_job->nb,
@@ -1093,6 +1088,94 @@ int kvx_dma_rdma_tx_push_mem2noc(struct kvx_dma_phy *phy,
 	};
 
 	return kvx_dma_push_job_fast(phy, &p, hw_job_id);
+}
+
+/**
+ * @brief Acquire N jobs to be pushed on a Tx job queue. Thread safe.
+ * This function must NOT be used with other kvx_dma_pkt_tx_push* functions.
+ *
+ * @phy: phy pointer to physical description
+ * @nb_jobs: The number of jobs to get
+ * @ticket: Acquired job ticket to be used for writing and submitting jobs in the Tx job queue
+ * @return 0 on success, else -EINVAL.
+ */
+int kvx_dma_pkt_tx_acquire_jobs(struct kvx_dma_phy *phy, u64 nb_jobs,
+				u64 *ticket)
+{
+	u64 rp, current_value, next_value;
+	int ret = 0;
+
+	if (nb_jobs > phy->fifo_size) {
+		dev_err(phy->dev, "Unable to acquire %lld jobs TX job queue[%d]\n",
+			 nb_jobs, phy->hw_id);
+		return -EINVAL;
+	}
+
+	current_value = __builtin_kvx_aladdd(&phy->jobq->batched_wp, nb_jobs);
+	next_value = current_value + nb_jobs;
+
+	ret = readq_poll_timeout_atomic(phy->jobq->base +
+					KVX_DMA_TX_JOB_Q_RP_OFFSET,
+			   rp, (next_value < rp + phy->fifo_size), 0,
+			   JOB_ACQUIRE_TIMEOUT_IN_US);
+	if (ret)
+		return ret;
+
+	*ticket = current_value;
+	return 0;
+}
+
+/**
+ * kvx_dma_pkt_tx_write_job() - Write a Tx job desc in a TX job queue. Thread safe.
+ * This function must NOT be used with other kvx_dma_pkt_tx_push* functions.
+ *
+ * @phy: phy pointer to physical description
+ * @ticket: current ticket_id (reserved in kvx_dma_pkt_tx_acquire_jobs)
+ * @tx_job: Generic transfer job description
+ * @eot: End of packet marker
+ */
+void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
+				      struct kvx_dma_tx_job *tx_job, u64 eot)
+{
+	const u32 idx = ticket & phy->fifo_size_mask;
+	struct kvx_dma_tx_job_desc *tx_jobq =
+		(struct kvx_dma_tx_job_desc *)phy->jobq->vaddr;
+	struct kvx_dma_tx_job_desc *job = &tx_jobq[idx];
+	const u64 object_len = tx_job->len;
+
+	/* Adds new TX job descriptor at ticket position in TX jobq */
+	job->param[0] = tx_job->src_dma_addr;
+	job->param[1] = object_len;
+	job->param[2] = object_len >> 4;
+	job->param[3] = object_len & 0xf;
+	job->param[4] = eot;
+	job->config = 0ULL |
+		(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
+		(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
+		(mem2eth_ucode.pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
+		(tx_job->route_id << KVX_DMA_ROUTE_ID_SHIFT) |
+		tx_job->comp_q_id;
+}
+
+/**
+ * kvx_dma_pkt_tx_submit_jobs() - Submit N jobs already written. Thread safe.
+ * This function must NOT be used with other kvx_dma_pkt_tx_push* functions.
+ *
+ * @phy: phy pointer to physical description
+ * @t: The first job ticket of the batch of jobs to be pushed
+ * @nb_jobs: The number of jobs to submit. Note that jobs must have been written in the Tx job queue already.
+ */
+int kvx_dma_pkt_tx_submit_jobs(struct kvx_dma_phy *phy, u64 t, u64 nb_jobs)
+{
+	u64 wp;
+	int ret = readq_poll_timeout_atomic(phy->jobq->base +
+				KVX_DMA_TX_JOB_Q_VALID_WP_OFFSET,
+				wp, (wp == t), 0, JOB_ACQUIRE_TIMEOUT_IN_US);
+	if (ret)
+		return ret;
+	kvx_dma_jobq_writeq(phy, t + nb_jobs, KVX_DMA_TX_JOB_Q_VALID_WP_OFFSET);
+
+	return 0;
 }
 
 /**
@@ -1113,7 +1196,7 @@ int kvx_dma_pkt_tx_push(struct kvx_dma_phy *phy, struct kvx_dma_tx_job *tx_job,
 	const u64 source = tx_job->src_dma_addr;
 	const u64 object_len = tx_job->len;
 
-	struct kvx_dma_job_param p = {
+	struct kvx_dma_tx_job_desc p = {
 		.param = {
 			source, object_len, object_len >> 4,
 			object_len & 0xfULL, eot, 0, 0, 0,
