@@ -22,6 +22,9 @@
 #define KVX_DMA_ASN_GLOBAL (31)
 #define KVX_DMA_IT_VECTOR_MASK (0x7FFF0FFFULL)
 
+/* UC related */
+#define KVX_DMA_UC_NB_PARAMS 8
+
 enum dma_error_bit {
 	RX_CLOSED_CHAN_ERROR  = 0,
 	RX_WRITE_POINTER_ERROR,
@@ -90,12 +93,14 @@ struct kvx_dma_tx_job {
  * @vaddr: virtual addr
  * @paddr: dma address of the queue buffer
  * @size: total aligned size of the queue buffer
+ * @batched_wp: current wp pointer (used for batched jobs)
  */
 struct kvx_dma_hw_queue {
 	void __iomem *base;
 	void *vaddr;
 	dma_addr_t paddr;
 	size_t size;
+	u64 batched_wp;
 };
 
 /**
@@ -143,6 +148,8 @@ struct msi_cfg {
  * @rx_cache_id: rx cache associated to rx job queue [0, 3]
  * @asn: device specific asn for iommu / hw
  * @vchan: device specific vchan for hw
+ * @fifo_size: aligned size of fifo (nb of elements)
+ * @fifo_size_mask: mask on size to avoid modulo
  * @irq_handler: External callback
  * @irq_data: Callback data
  */
@@ -161,6 +168,8 @@ struct kvx_dma_phy {
 	int rx_cache_id;
 	u32 asn;
 	u32 vchan;
+	u32 fifo_size;
+	u32 fifo_size_mask;
 	void (*irq_handler)(void *data);
 	void *irq_data;
 };
@@ -179,14 +188,10 @@ struct kvx_dma_tx_comp {
  * struct kvx_dma_tx_job_desc - DMA tx job queue descriptor
  */
 struct kvx_dma_tx_job_desc {
-	u64 parameter[8];
-	u16 noc_route_id;
-	u8 pgrm_id;
-	u8 fence_before;
-	u8 fence_after;
-	u8 reserved0;
-	u64 reserved1;
-};
+	u64 param[KVX_DMA_UC_NB_PARAMS];
+	u64 config;
+	u64 reserved;
+} __packed;
 
 int is_asn_global(u32 asn);
 int kvx_dma_request_irq(struct kvx_dma_phy *phy);
@@ -214,6 +219,10 @@ int kvx_dma_rdma_tx_push_mem2mem(struct kvx_dma_phy *phy,
 int kvx_dma_rdma_tx_push_mem2noc(struct kvx_dma_phy *phy,
 				 struct kvx_dma_tx_job *tx_job,
 				 u64 *hw_job_id);
+int kvx_dma_pkt_tx_acquire_jobs(struct kvx_dma_phy *phy, u64 nb_jobs, u64 *t);
+void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
+				      struct kvx_dma_tx_job *tx_job, u64 eot);
+int kvx_dma_pkt_tx_submit_jobs(struct kvx_dma_phy *phy, u64 t, u64 nb_job);
 int kvx_dma_pkt_tx_push(struct kvx_dma_phy *phy,
 			struct kvx_dma_tx_job *tx_job, u64 eot,
 			u64 *hw_job_id);
