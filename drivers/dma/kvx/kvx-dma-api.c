@@ -120,7 +120,7 @@ void kvx_dma_flush_rx_queue(void *phy)
 {
 	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
 
-	kvx_dma_pkt_rx_queue_flush(phy);
+	kvx_dma_pkt_rx_queue_flush(p);
 }
 EXPORT_SYMBOL_GPL(kvx_dma_flush_rx_queue);
 

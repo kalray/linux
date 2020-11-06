@@ -372,27 +372,24 @@ int kvx_dma_pkt_rx_job_queue_init(struct kvx_dma_phy *phy)
 int kvx_dma_pkt_rx_queue_push_desc(struct kvx_dma_phy *phy,
 			       u64 pkt_paddr, u64 pkt_len)
 {
-	u64 *fifo_addr = phy->jobq->vaddr;
-	const u32 job_fifo_size = 1U << (phy->size_log2);
-	const u32 job_queue_size_mask = job_fifo_size - 1;
+	struct kvx_dma_pkt_desc *fifo_addr =
+		(struct kvx_dma_pkt_desc *)phy->jobq->vaddr;
 	u64 ticket, read_p;
-	int32_t write_offset;
-	u32 w;
+	u32 idx;
 
 	ticket = kvx_dma_jobq_readq(phy, KVX_DMA_RX_JOB_Q_WP_OFFSET);
 	read_p = kvx_dma_jobq_readq(phy, KVX_DMA_RX_JOB_Q_RP_OFFSET);
-	if (ticket >= (read_p + job_fifo_size)) {
+	if (ticket >= (read_p + phy->fifo_size)) {
 		dev_warn(phy->dev, "RX job queue[%d] full\n",
 			 KVX_DMA_NB_RX_JOB_QUEUE_PER_CACHE * phy->rx_cache_id);
 		return -EBUSY;
 	}
 
 	ticket = kvx_dma_jobq_readq(phy, KVX_DMA_RX_JOB_Q_LOAD_INCR_WP_OFFSET);
-	w = ticket & job_queue_size_mask;
-	write_offset = w * (sizeof(struct kvx_dma_pkt_desc)/sizeof(u64));
+	idx = ticket & phy->fifo_size_mask;
 
-	fifo_addr[write_offset + 0] = pkt_paddr;
-	fifo_addr[write_offset + 1] = pkt_len;
+	fifo_addr[idx].base = pkt_paddr;
+	fifo_addr[idx].size = pkt_len;
 
 	dev_dbg(phy->dev, "%s pkt_paddr: 0x%llx len: %lld jobq_queue_id: %d ticket: %lld\n",
 		__func__, pkt_paddr, pkt_len,
@@ -424,31 +421,27 @@ void kvx_dma_pkt_rx_queue_flush(struct kvx_dma_phy *phy)
  * Completed descriptor is at read_pointer offset in completion queue,
  * increments read_pointer. Not blocking.
  *
- * Return: 0 - OK, -EINVAL: if fifo full or no completion
+ * Return: 0 - OK, -EAGAIN: if no completion
  */
 int kvx_dma_rx_get_comp_pkt(struct kvx_dma_phy *phy,
 			     struct kvx_dma_pkt_full_desc *pkt)
 {
-	u64 fifo_size = (1ULL << phy->size_log2);
-	const u64 size_mask = fifo_size - 1;
-	int read_ptr = 0;
-	u64 *desc = (u64 *)phy->compq.vaddr;
 	u64 rx_comp_count = kvx_dma_q_readq(phy,
 					    KVX_DMA_RX_CHAN_COMP_Q_WP_OFFSET);
 	u64 ticket = kvx_dma_q_readq(phy, KVX_DMA_RX_CHAN_COMP_Q_RP_OFFSET);
+	struct kvx_dma_pkt_full_desc *fifo =
+		(struct kvx_dma_pkt_full_desc *)phy->compq.vaddr;
+	int idx;
 
 	/* No job completed */
 	if (ticket >= rx_comp_count)
-		return -EINVAL;
+		return -EAGAIN;
 
 	ticket = kvx_dma_q_readq(phy,
 				 KVX_DMA_RX_CHAN_COMP_Q_LOAD_INCR_RP_OFFSET);
 
-	read_ptr = (ticket & size_mask) << 2;
-	pkt->base = desc[read_ptr + 0];
-	pkt->size = desc[read_ptr + 1];
-	pkt->byte = desc[read_ptr + 2];
-	pkt->notif = desc[read_ptr + 3];
+	idx = ticket & phy->fifo_size_mask;
+	memcpy(pkt, &fifo[idx], sizeof(*pkt));
 	rmb(); /* Read update */
 	kvx_dma_q_writeq(phy, ticket + 1,
 			 KVX_DMA_RX_CHAN_COMP_Q_VALID_RP_OFFSET);
