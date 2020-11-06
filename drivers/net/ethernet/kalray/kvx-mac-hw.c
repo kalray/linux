@@ -533,7 +533,7 @@ static int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw,
 			     mask, val);
 		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
 	}
-	kvx_eth_phy_reset(hw, cfg, 0);
+	kvx_eth_phy_reset(hw, cfg, 1);
 	/* Waits for the ack signals be low */
 	mask = (serdes_mask << PHY_SERDES_STATUS_RX_ACK_SHIFT) |
 		(serdes_mask << PHY_SERDES_STATUS_TX_ACK_SHIFT);
