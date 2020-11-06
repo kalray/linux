@@ -577,6 +577,10 @@ int kvx_dma_init_rx_queues(struct kvx_dma_phy *phy,
 {
 	int ret = 0;
 
+	if (refcount_read(&phy->used) > 1) {
+		dev_err(phy->dev, "Can not re-init RX queues\n");
+		return -EINVAL;
+	}
 	kvx_dma_stop_queues(phy);
 	if (trans_type == KVX_DMA_TYPE_MEM2ETH) {
 		ret = kvx_dma_pkt_rx_job_queue_init(phy);
@@ -599,6 +603,9 @@ int kvx_dma_init_tx_queues(struct kvx_dma_phy *phy)
 {
 	int ret = 0;
 
+	/* Init done only once (as tx fifo may be used by multiple chan) */
+	if (refcount_read(&phy->used) > 1)
+		return ret;
 	kvx_dma_stop_queues(phy);
 	ret = kvx_dma_tx_job_queue_init(phy);
 	if (!ret)
@@ -655,7 +662,6 @@ int kvx_dma_check_tx_q_enabled(struct kvx_dma_phy *phy)
 /**
  * kvx_dma_get_job_queue() - Get a new job depending on phy->dir
  * @phy: Current phy
- * @aligned_size: aligned fifo size (see phy->size_log2)
  * @jobq_list: jobq list
  *
  * Default proposal is to assign 2 rx_job_queue to 1 cache: 1 for driver
@@ -664,12 +670,11 @@ int kvx_dma_check_tx_q_enabled(struct kvx_dma_phy *phy)
  *
  * Return: new rx_jobq allocated (if needed) in rx_jobq for phy->rx_cache_id
  */
-static int kvx_dma_get_job_queue(struct kvx_dma_phy *phy, u64 aligned_size,
+static int kvx_dma_get_job_queue(struct kvx_dma_phy *phy,
 				struct kvx_dma_job_queue_list *jobq_list)
 {
 	struct kvx_dma_hw_queue *jobq = NULL;
-	int idx = 0;
-	int ret = 0;
+	int idx, ret = 0;
 	u64 size;
 
 	if (phy->dir == KVX_DMA_DIR_TYPE_RX) {
@@ -680,7 +685,7 @@ static int kvx_dma_get_job_queue(struct kvx_dma_phy *phy, u64 aligned_size,
 				phy->hw_id);
 			goto exit;
 		}
-		size = aligned_size * sizeof(struct kvx_dma_pkt_desc);
+		size = phy->fifo_size * sizeof(struct kvx_dma_pkt_desc);
 		ret = kvx_dma_alloc_queue(phy, jobq, size,
 					  KVX_DMA_RX_JOB_Q_OFFSET +
 					  idx * KVX_DMA_RX_JOB_Q_ELEM_SIZE);
@@ -698,7 +703,7 @@ static int kvx_dma_get_job_queue(struct kvx_dma_phy *phy, u64 aligned_size,
 				phy->hw_id);
 			goto exit;
 		}
-		size = aligned_size * sizeof(struct kvx_dma_tx_job_desc);
+		size = phy->fifo_size * sizeof(struct kvx_dma_tx_job_desc);
 		ret = kvx_dma_alloc_queue(phy, jobq, size,
 					  KVX_DMA_TX_JOB_Q_OFFSET +
 					  idx * KVX_DMA_TX_JOB_Q_ELEM_SIZE);
@@ -777,7 +782,7 @@ int kvx_dma_allocate_queues(struct kvx_dma_phy *phy,
 				goto err;
 			}
 
-			ret = kvx_dma_get_job_queue(phy, phy->fifo_size, jobq_list);
+			ret = kvx_dma_get_job_queue(phy, jobq_list);
 			if (ret)
 				goto err;
 			/* Allocate RX completion queue ONLY for MEM2ETH */
@@ -798,7 +803,7 @@ int kvx_dma_allocate_queues(struct kvx_dma_phy *phy,
 		}
 	} else {
 		/* TX job queue */
-		ret = kvx_dma_get_job_queue(phy, phy->fifo_size, jobq_list);
+		ret = kvx_dma_get_job_queue(phy, jobq_list);
 		if (ret)
 			goto err;
 
@@ -969,35 +974,29 @@ static int kvx_dma_push_job_fast(struct kvx_dma_phy *phy,
 					const struct kvx_dma_tx_job_desc *p,
 					u64 *hw_job_id)
 {
-	u64 *fifo_addr = phy->jobq->vaddr;
 	u64 cur_read_count, write_count, write_count_next;
-	int32_t write, job_queue_size_mask, write_offset;
-	int i;
+	struct kvx_dma_tx_job_desc *tx_jobq =
+		(struct kvx_dma_tx_job_desc *)phy->jobq->vaddr;
+	u32 idx;
 
 	cur_read_count = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_RP_OFFSET);
 	write_count = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_WP_OFFSET);
-	if (write_count >= cur_read_count + phy->max_desc) {
+	if (write_count >= cur_read_count + phy->fifo_size) {
 		dev_warn(phy->dev, "TX job queue[%d] full\n", phy->hw_id);
 		return -EBUSY;
 	}
 
 	write_count = kvx_dma_jobq_readq(phy,
 					 KVX_DMA_TX_JOB_Q_LOAD_INCR_WP_OFFSET);
-	job_queue_size_mask = (1 << phy->size_log2) - 1;
-	write = write_count & job_queue_size_mask;
-	write_offset = write *
-		(sizeof(struct kvx_dma_tx_job_desc) / sizeof(u64));
+	idx = write_count & phy->fifo_size_mask;
 
-	for (i = 0; i < KVX_DMA_UC_NB_PARAMS; ++i)
-		fifo_addr[write_offset + i] = p->param[i];
-	fifo_addr[write_offset + KVX_DMA_UC_NB_PARAMS] = p->config;
-
+	tx_jobq[idx] = *p;
 	write_count_next = write_count + 1;
 	kvx_dma_jobq_writeq(phy, write_count_next,
 			    KVX_DMA_TX_JOB_Q_VALID_WP_OFFSET);
 
 	dev_dbg(phy->dev, "Job queue[%d] pushed job[%d] write_count:%lld\n",
-		phy->hw_id, write, write_count);
+		phy->hw_id, idx, write_count);
 
 	*hw_job_id = write_count_next;
 	return 0;
