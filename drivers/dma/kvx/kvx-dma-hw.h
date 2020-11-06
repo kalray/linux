@@ -10,7 +10,7 @@
 #ifndef KVX_DMA_HW_H
 #define KVX_DMA_HW_H
 
-#include <linux/atomic.h>
+#include <linux/refcount.h>
 #include <linux/dma/kvx-dma.h>
 #include <linux/dma/kvx-dma-api.h>
 
@@ -143,7 +143,7 @@ struct msi_cfg {
  *        to 1 rx_cache_id: 1 for soft rx buffer provisioning + 1 for HW refill
  * @compq: Completion queue
  * @dir: Direction
- * @used: Corresponding HW queue actually used (!= 0)
+ * @used: Refcounter for RX/TX fifo (for RX limited to 1),
  * @hw_id: default: -1, [0, 63] if assigned
  * @rx_cache_id: rx cache associated to rx job queue [0, 3]
  * @asn: device specific asn for iommu / hw
@@ -163,7 +163,7 @@ struct kvx_dma_phy {
 	struct kvx_dma_hw_queue compq;
 	struct kvx_dma_hw_queue *jobq;
 	enum kvx_dma_dir_type dir;
-	int used;
+	refcount_t used;
 	int hw_id;
 	int rx_cache_id;
 	u32 asn;
