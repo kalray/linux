@@ -29,6 +29,7 @@
 #include "pcie-kvx-nwl.h"
 #include "pcie-kvx-phycore.h"
 
+#define ASN_DEFAULT			0
 #define PHYCORE_REGMAP_NAME		"kalray,phycore-dev"
 #define INVALID_NFURC			0xFFFFFFFF
 #define NB_CORE_CTRL			8
@@ -640,7 +641,7 @@ static int pcie_asn_init(struct nwl_pcie *pcie)
 	rc_offset = RC_X16_ASN_OFFSET;
 	rc_offset += sizeof(u32) * num_to_index[pcie->ctrl_num];
 
-	ret = regmap_write(pcie->mst_asn_regmap, rc_offset, pcie->ctrl_num);
+	ret = regmap_write(pcie->mst_asn_regmap, rc_offset, ASN_DEFAULT);
 	if (ret) {
 		dev_err(pcie->dev, "regmap_write ASN failed, err = %d\n", ret);
 		return ret;
