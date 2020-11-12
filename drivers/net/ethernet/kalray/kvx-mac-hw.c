@@ -1185,6 +1185,7 @@ static int kvx_eth_an_get_common_speed(struct kvx_eth_hw *hw, int lane_id,
 	/* Gets autonegotiation rate and fec */
 	ln->rate = 0;
 	ln->speed = SPEED_UNKNOWN;
+	ln->fec = 0;
 	if (val & AN_BP_STATUS_TECHNOLOGY_A0_MASK) {
 		dev_dbg(hw->dev, "Negotiated 1G KX rate\n");
 		ln->rate |= RATE_1GBASE_KX;
@@ -1252,7 +1253,6 @@ static int kvx_eth_an_get_common_speed(struct kvx_eth_hw *hw, int lane_id,
 		ln->speed = SPEED_50000;
 	}
 
-	ln->fec = 0;
 	/* Be careful as for 100G links AN_BP_STATUS_BPETHSTATUSRSV_MASK won't
 	 * go up even if it should, this case is handled in mac_cfg to work even
 	 * with autonegociation off.
@@ -2106,6 +2106,7 @@ void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 		return;
 	}
 
+	cfg->fec = 0;
 	hw->phy_f.loopback_mode = mac_f->loopback_mode;
 	kvx_mac_phy_serdes_cfg(hw, cfg);
 	kvx_eth_mac_cfg(hw, cfg);
