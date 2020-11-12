@@ -10,7 +10,8 @@ Optional properties:
 - cell-index: ethernet hw index, used for packet routing
 - kalray,rtmrx: phandle to RX retimer
 - kalray,rtmtx: phandle to TX retimer
-- kalray,rtm-channels: retimer channels connected to this interface
+- kalray,rtmrx-channels: retimer rx channels connected to this interface
+- kalray,rtmtx-channels: retimer tx channels connected to this interface
 - kalray,rxtx-crossed: RX/TX lanes crossed
 - kalray,rx_chan_error: rx dma channel used to generate RX_CHAN_CLOSED interrupt
 
@@ -49,7 +50,8 @@ Example:
 	eth0: ethernet@10050000 {
 		kalray,rtmrx = <&rtmrx>;
 		kalray,rtmtx = <&rtmtx>;
-		kalray,rtm-channels = <0 1 2 3>;
+		kalray,rtmrx-channels = <0 1 2 3>;
+		kalray,rtmtx-channels = <0 1 2 3>;
 		kalray,rxtx-crossed = <1>;
 		kalray,dma-rx-chan-error = <63>;
 		kalray,rx-phy-polarities = <0 0 0 0>;
