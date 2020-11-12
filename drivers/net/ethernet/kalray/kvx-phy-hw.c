@@ -360,7 +360,7 @@ int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
 
 	kvx_eth_get_tx_coef_delta(op, param, &delta);
 
-	if (hw->rtm_params.rtm[RTM_TX])
+	if (hw->rtm_params[RTM_TX].rtm)
 		return kvx_eth_rtm_tx_coef(hw, lane_id, op, param);
 
 	/* Fallback if no retimers */
