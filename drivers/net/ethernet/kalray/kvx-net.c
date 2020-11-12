@@ -1769,6 +1769,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		ndev->cfg.speed = state->speed;
 	if (state->duplex != DUPLEX_UNKNOWN)
 		ndev->cfg.duplex = state->duplex;
+	ndev->cfg.fec = 0;
 
 	if (!(ndev->cfg.pfc_f.global_pause_en && pause)) {
 		ndev->cfg.pfc_f.global_pause_en = pause;
