@@ -638,7 +638,7 @@ struct kvx_buf_pool {
  * @channels: channels plugged to this interface
  */
 struct kvx_eth_rtm_params {
-	struct i2c_client *rtm[RTM_NB];
+	struct i2c_client *rtm;
 	int channels[KVX_ETH_LANE_NB];
 };
 
@@ -689,7 +689,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
 	struct kvx_eth_phy_f phy_f;
-	struct kvx_eth_rtm_params rtm_params;
+	struct kvx_eth_rtm_params rtm_params[RTM_NB];
 	struct lt_status lt_status[KVX_ETH_LANE_NB];
 	bool rxtx_crossed;
 	u32 eth_id;

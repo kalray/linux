@@ -1413,7 +1413,7 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 		if ((val & mask) != 0) {
 			updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
 				     LT_OP_INIT_MASK, 0);
-			if (hw->rtm_params.rtm[RTM_RX]) {
+			if (hw->rtm_params[RTM_RX].rtm) {
 				/* Can't do adaptation with retimers, tell the
 				 * link partner everything is fine as retimers
 				 * handle signal quality by themselves
