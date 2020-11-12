@@ -357,8 +357,14 @@ static int parse_dt(struct ti_rtm_dev *rtm)
 	}
 	ret = devm_gpio_request(dev, rtm->en_smb_gpio,
 				"I2C slave enable");
-	if (ret) {
-		dev_err(dev, "Failed requesting slave enable gpio\n");
+	/* If en-smb gpio is already requested, it means it's common for
+	 * several retimers. We delegate responsabilities to the first retimer
+	 * that claimed the gpio
+	 */
+	if (ret == -EBUSY) {
+		dev_dbg(dev, "Shared en-smb gpio %d\n", rtm->en_smb_gpio);
+	} else if (ret) {
+		dev_err(dev, "Failed requesting slave enable gpio %d\n", ret);
 		return ret;
 	}
 
