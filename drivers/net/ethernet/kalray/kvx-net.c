@@ -60,6 +60,11 @@ static const char *rtm_prop_name[RTM_NB] = {
 	[RTM_TX] = "kalray,rtmtx",
 };
 
+static const char *rtm_channels_prop_name[RTM_NB] = {
+	[RTM_RX] = "kalray,rtmrx-channels",
+	[RTM_TX] = "kalray,rtmtx-channels",
+};
+
 
 static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *ring, int count);
 
@@ -1266,8 +1271,7 @@ int kvx_eth_rtm_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *rtm_node;
-	struct kvx_eth_rtm_params *params = &dev->hw.rtm_params;
-	int rtm, ret = 0;
+	int rtm, ret;
 
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
 		rtm_node = of_parse_phandle(pdev->dev.of_node,
@@ -1280,26 +1284,33 @@ int kvx_eth_rtm_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 					rtm_prop_name[rtm]);
 			return 0;
 		}
-		dev->hw.rtm_params.rtm[rtm] =
-			of_find_i2c_device_by_node(rtm_node);
-		if (!dev->hw.rtm_params.rtm[rtm])
+		dev->hw.rtm_params[rtm].rtm = of_find_i2c_device_by_node(rtm_node);
+		if (!dev->hw.rtm_params[rtm].rtm)
 			return -EPROBE_DEFER;
 	}
 
-	ret = of_property_count_u32_elems(np, "kalray,rtm-channels");
-	if (ret < 0) {
-		dev_err(&pdev->dev, "Unable to get rtm-channels\n");
-		return -EINVAL;
-	} else if (ret != KVX_ETH_LANE_NB) {
-		dev_err(&pdev->dev, "Incorrect channels number (got %d, want %d)\n",
-				ret, KVX_ETH_LANE_NB);
-		return -EINVAL;
-	}
-	ret = of_property_read_u32_array(np, "kalray,rtm-channels",
-			params->channels, KVX_ETH_LANE_NB);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to request rtm-channels\n");
-		return ret;
+	for (rtm = 0; rtm < RTM_NB; rtm++) {
+		ret = of_property_count_u32_elems(np,
+				rtm_channels_prop_name[rtm]);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "Unable to get %s\n",
+					rtm_channels_prop_name[rtm]);
+			return -EINVAL;
+		} else if (ret != KVX_ETH_LANE_NB) {
+			dev_err(&pdev->dev, "Incorrect channels number for %s (got %d, want %d)\n",
+					rtm_channels_prop_name[rtm], ret,
+					KVX_ETH_LANE_NB);
+			return -EINVAL;
+		}
+		ret = of_property_read_u32_array(np,
+				rtm_channels_prop_name[rtm],
+				dev->hw.rtm_params[rtm].channels,
+				KVX_ETH_LANE_NB);
+		if (ret) {
+			dev_err(&pdev->dev, "Failed to request %s\n",
+					rtm_channels_prop_name[rtm]);
+			return ret;
+		}
 	}
 
 	return 0;
@@ -1655,7 +1666,7 @@ int speed_to_rtm_speed_index(unsigned int speed)
 int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 		  unsigned int rtm, unsigned int speed)
 {
-	struct kvx_eth_rtm_params *params = &hw->rtm_params;
+	struct kvx_eth_rtm_params *params = &hw->rtm_params[rtm];
 	int i, lane_speed, rtm_speed_idx;
 	int nb_lanes, lane;
 
@@ -1663,7 +1674,7 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 		dev_err(hw->dev, "Unknown retimer id %d\n", rtm);
 		return -EINVAL;
 	}
-	if (!params->rtm[rtm]) {
+	if (!params->rtm) {
 		dev_dbg(hw->dev, "No retimers to configure\n");
 		return 0;
 	}
@@ -1683,7 +1694,7 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 	for (i = lane_id; i < nb_lanes; i++) {
 		lane = params->channels[i];
 
-		ti_retimer_set_speed(params->rtm[rtm], lane, lane_speed);
+		ti_retimer_set_speed(params->rtm, lane, lane_speed);
 	}
 
 	return 0;
@@ -1987,13 +1998,12 @@ err:
 static int kvx_netdev_remove(struct platform_device *pdev)
 {
 	struct kvx_eth_netdev *ndev = platform_get_drvdata(pdev);
-	struct kvx_eth_rtm_params *params = &ndev->hw->rtm_params;
 	int rtm;
 
 	kvx_eth_netdev_sysfs_uninit(ndev);
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
-		if (params->rtm[rtm])
-			put_device(&params->rtm[rtm]->dev);
+		if (ndev->hw->rtm_params[rtm].rtm)
+			put_device(&ndev->hw->rtm_params[rtm].rtm->dev);
 	}
 	if (netif_running(ndev->netdev))
 		kvx_eth_netdev_stop(ndev->netdev);
