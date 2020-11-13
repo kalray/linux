@@ -93,7 +93,7 @@ struct kvx_eth_res {
 	void __iomem *base;
 };
 
-enum tx_coef {
+enum tx_coef_type {
 	TX_EQ_MAIN = 0,
 	TX_EQ_PRE,
 	TX_EQ_POST,
@@ -653,6 +653,12 @@ struct lt_saturate {
 	bool swing;
 };
 
+struct tx_coefs {
+	u8 pre;
+	u8 post;
+	u8 main;
+};
+
 /**
  * struct lt_status - Handle link training FSM values
  * @ld_state: Current local device FSM state
@@ -834,7 +840,7 @@ void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f);
 void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable);
 int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p);
 int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
-		     enum lt_coef_requests op, enum tx_coef param);
+		     enum lt_coef_requests op, enum tx_coef_type param);
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p);
 void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_rx_bert_param *p);
