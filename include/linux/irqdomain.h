@@ -407,6 +407,10 @@ extern void irq_domain_associate_many(struct irq_domain *domain,
 extern unsigned int irq_create_mapping_affinity(struct irq_domain *host,
 				      irq_hw_number_t hwirq,
 				      const struct irq_affinity_desc *affinity);
+
+extern void irq_update_hwirq_mapping(struct irq_data *irq_data,
+			      irq_hw_number_t new_hwirq);
+
 extern unsigned int irq_create_fwspec_mapping(struct irq_fwspec *fwspec);
 extern void irq_dispose_mapping(unsigned int virq);
 
