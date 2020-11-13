@@ -633,6 +633,7 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 				  struct kvx_eth_lane_cfg *cfg)
 {
 	int ret = kvx_eth_phy_serdes_init(hw, cfg->id, cfg->speed);
+	int lane, nb_lanes;
 
 	if (ret)
 		return ret;
@@ -646,6 +647,11 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 
 	kvx_mac_phy_disable_serdes(hw, cfg);
 	kvx_mac_phy_enable_serdes(hw, cfg, PSTATE_P0);
+
+	/* Update parameters with reset values */
+	for_each_cfg_lane(nb_lanes, lane, cfg)
+		if (hw->phy_f.param[lane].update)
+			hw->phy_f.param[lane].update(&hw->phy_f.param[lane]);
 
 	dump_phy_status(hw);
 
