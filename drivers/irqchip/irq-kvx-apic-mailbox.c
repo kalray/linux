@@ -31,6 +31,16 @@
 #define MAILBOXES_BITS_PER_PAGE (8 * MAILBOXES_BIT_SIZE)
 
 /**
+ * struct mb_data - per mailbox data
+ * @cpu: CPU on which the mailbox is routed
+ * @parent_irq: Parent IRQ on the GIC
+ */
+struct mb_data {
+	unsigned int cpu;
+	unsigned int parent_irq;
+};
+
+/**
  * struct kvx_apic_mailbox - kvx apic mailbox
  * @base: base address of the controller
  * @device_domain: IRQ device domain for mailboxes
@@ -39,6 +49,8 @@
  * @mb_count: Count of mailboxes we are handling
  * @available: bitmap of availables bits in mailboxes
  * @mailboxes_lock: lock for irq migration
+ * @mask_lock: lock for irq masking
+ * @mb_data: data associated to each mailbox
  */
 struct kvx_apic_mailbox {
 	void __iomem *base;
@@ -52,6 +64,17 @@ struct kvx_apic_mailbox {
 	DECLARE_BITMAP(available, MAILBOXES_MAX_BIT_COUNT);
 	spinlock_t mailboxes_lock;
 	raw_spinlock_t mask_lock;
+	struct mb_data mb_data[MAILBOXES_MAX_COUNT];
+};
+
+/**
+ * struct kvx_irq_data - per irq data
+ * @old_hwirq: Old hwirq after affinity setting
+ * @mb: Mailbox structure
+ */
+struct kvx_irq_data {
+	int old_hwirq;
+	struct kvx_apic_mailbox *mb;
 };
 
 static void kvx_mailbox_get_from_hwirq(unsigned int hw_irq,
@@ -77,7 +100,8 @@ static phys_addr_t kvx_mailbox_get_phys_addr(struct kvx_apic_mailbox *mb,
 static void kvx_mailbox_msi_compose_msg(struct irq_data *data,
 					struct msi_msg *msg)
 {
-	struct kvx_apic_mailbox *mb = irq_data_get_irq_chip_data(data);
+	struct kvx_irq_data *kd = irq_data_get_irq_chip_data(data);
+	struct kvx_apic_mailbox *mb = kd->mb;
 	unsigned int mb_num, mb_bit;
 	phys_addr_t mb_addr;
 
@@ -94,7 +118,8 @@ static void kvx_mailbox_msi_compose_msg(struct irq_data *data,
 static void kvx_mailbox_set_irq_enable(struct irq_data *data,
 				     bool enabled)
 {
-	struct kvx_apic_mailbox *mb = irq_data_get_irq_chip_data(data);
+	struct kvx_irq_data *kd = irq_data_get_irq_chip_data(data);
+	struct kvx_apic_mailbox *mb = kd->mb;
 	unsigned int mb_num, mb_bit;
 	void __iomem *mb_addr;
 	u64 mask_value, mb_value;
@@ -140,19 +165,165 @@ static void kvx_mailbox_unmask(struct irq_data *data)
 	kvx_mailbox_set_irq_enable(data, true);
 }
 
-static int kvx_set_affinity(struct irq_data *d,
-			    const struct cpumask *mask_val,
+static void kvx_mailbox_set_cpu(struct kvx_apic_mailbox *mb, int mb_id,
+			       int new_cpu)
+{
+	irq_set_affinity(mb->mb_data[mb_id].parent_irq, cpumask_of(new_cpu));
+	mb->mb_data[mb_id].cpu = new_cpu;
+}
+
+static void kvx_mailbox_free_bit(struct kvx_apic_mailbox *mb, int hw_irq)
+{
+	unsigned int mb_num, mb_bit;
+
+	kvx_mailbox_get_from_hwirq(hw_irq, &mb_num, &mb_bit);
+	bitmap_clear(mb->available, hw_irq, 1);
+
+	/* If there is no more IRQ on this mailbox, reset it to CPU 0 */
+	if (mb->available[mb_num] == 0)
+		kvx_mailbox_set_cpu(mb, mb_num, 0);
+}
+
+static int kvx_mailbox_get_mailbox_for_cpu(struct kvx_apic_mailbox *mb,
+				    int new_cpu, unsigned int *new_mb)
+{
+	int i;
+
+	/*
+	 * First, try to find a mailbox already routed to the requested CPU
+	 * and with free bits
+	 */
+	for (i = 0; i < mb->mb_count; i++) {
+		if (mb->mb_data[i].cpu == new_cpu
+		    && mb->available[i] != -1ULL) {
+			*new_mb = i;
+			return 0;
+		}
+	}
+
+	/*
+	 * If we are here, this means we did not found a mailbox already
+	 * allocated and routed to the required cpu so find a free one and
+	 * set its affinity
+	 */
+	for (i = 0; i < mb->mb_count; i++) {
+		if (mb->available[i] == 0) {
+			kvx_mailbox_set_cpu(mb, i, new_cpu);
+			*new_mb = i;
+			return 0;
+		}
+	}
+
+	return -ENODEV;
+}
+
+static int kvx_mailbox_set_affinity(struct irq_data *data,
+			    const struct cpumask *cpumask,
 			    bool force)
 {
-	return -EINVAL;
+	unsigned int hw_irq = irqd_to_hwirq(data), new_hwirq, new_mb;
+	struct kvx_irq_data *kd = irq_data_get_irq_chip_data(data);
+	struct kvx_apic_mailbox *mb = kd->mb;
+	unsigned int new_cpu, mb_num, mb_bit;
+	u64 mb_addr;
+	int err;
+
+	if (force)
+		new_cpu = cpumask_first(cpumask);
+	else
+		new_cpu = cpumask_first_and(cpumask, cpu_online_mask);
+
+	if (new_cpu >= nr_cpu_ids)
+		return -EINVAL;
+
+	kvx_mailbox_get_from_hwirq(hw_irq, &mb_num, &mb_bit);
+
+	spin_lock(&mb->mailboxes_lock);
+
+	/* Mailbox is already routed on the requested CPU */
+	if (mb->mb_data[mb_num].cpu == new_cpu) {
+		spin_unlock(&mb->mailboxes_lock);
+		return IRQ_SET_MASK_OK;
+	}
+
+	err = kvx_mailbox_get_mailbox_for_cpu(mb, new_cpu, &new_mb);
+	if (err) {
+		spin_unlock(&mb->mailboxes_lock);
+		return err;
+	}
+
+	/*
+	 * Allocate a new bit in the new mailbox. Note that this can't fail
+	 * since we are under locking and the allocated mailbox contains
+	 * free bits.
+	 */
+	new_hwirq = bitmap_find_next_zero_area(mb->available,
+			mb->mb_count * MAILBOXES_BIT_SIZE,
+			new_mb * MAILBOXES_BIT_SIZE,
+			1, 0);
+
+	WARN_ON(new_hwirq > new_mb * MAILBOXES_BIT_SIZE + MAILBOXES_BIT_SIZE);
+
+	/*
+	 * Mask the current mailbox (we are under desc lock so state can't be
+	 * messed)
+	 */
+	kvx_mailbox_mask(data);
+
+	/* Reserve IRQ in mailbox bit mask */
+	bitmap_set(mb->available, new_hwirq, 1);
+
+	spin_unlock(&mb->mailboxes_lock);
+
+	kvx_mailbox_get_from_hwirq(new_hwirq, &mb_num, &mb_bit);
+
+	mb_addr = (u64) kvx_mailbox_get_phys_addr(mb, mb_num);
+	err = iommu_dma_prepare_msi(irq_data_get_msi_desc(data), mb_addr);
+	if (err) {
+		spin_unlock(&mb->mailboxes_lock);
+		return err;
+	}
+
+	/*
+	 * Update IRQ association now. We can potentially receive a spurious IRQ on
+	 * the old mailbox but that's ok since it will be triggered on the new
+	 * hwirq once write_msg will be called.
+	 * After write_msg is called, we are sure that there can't be any interrupt
+	 * on the old descriptor and the old mailbox will be freed in the
+	 * write_msg_done callback
+	 */
+	irq_update_hwirq_mapping(data, new_hwirq);
+
+	/* We are already called under the desc lock so the modification are atomic */
+	if (!irqd_irq_masked(data))
+		kvx_mailbox_unmask(data);
+
+	irq_data_update_effective_affinity(data, cpumask_of(new_cpu));
+
+	return IRQ_SET_MASK_OK;
+}
+
+static void kvx_mailbox_msi_write_msg_done(struct irq_data *data)
+{
+	struct kvx_irq_data *kd = irq_data_get_irq_chip_data(data);
+
+	/*
+	 * Now that the new msi msg has been written, we can disable safely
+	 * the old IRQ to make it available for future use.
+	 */
+	if (kd->old_hwirq >= 0) {
+		kvx_mailbox_free_bit(kd->mb, kd->old_hwirq);
+		kd->old_hwirq = -1;
+	}
 }
 
 struct irq_chip kvx_apic_mailbox_irq_chip = {
 	.name = "kvx apic mailbox",
 	.irq_compose_msi_msg = kvx_mailbox_msi_compose_msg,
+	.irq_write_msi_msg_done = kvx_mailbox_msi_write_msg_done,
 	.irq_mask = kvx_mailbox_mask,
 	.irq_unmask = kvx_mailbox_unmask,
-	.irq_set_affinity = kvx_set_affinity,
+	.irq_set_affinity = kvx_mailbox_set_affinity,
 };
 
 static int kvx_mailbox_allocate_bits(struct kvx_apic_mailbox *mb, int num_req)
@@ -194,6 +365,8 @@ static int kvx_apic_mailbox_msi_alloc(struct irq_domain *domain,
 	int i, err;
 	int hwirq = 0;
 	u64 mb_addr;
+	struct irq_data *d;
+	struct kvx_irq_data *kd;
 	struct kvx_apic_mailbox *mb = domain->host_data;
 	struct msi_alloc_info *msi_info = (struct msi_alloc_info *)args;
 	struct msi_desc *desc = msi_info->desc;
@@ -211,31 +384,57 @@ static int kvx_apic_mailbox_msi_alloc(struct irq_domain *domain,
 	mb_addr = (u64) kvx_mailbox_get_phys_addr(mb, mb_num);
 	err = iommu_dma_prepare_msi(desc, mb_addr);
 	if (err) {
-		spin_lock(&mb->mailboxes_lock);
-		bitmap_clear(mb->available, hwirq, nr_irqs);
-		spin_unlock(&mb->mailboxes_lock);
-		return err;
+		goto free_mb_bits;
 	}
 	for (i = 0; i < nr_irqs; i++) {
+		kd = kmalloc(sizeof(*kd), GFP_KERNEL);
+		if (!kd) {
+			err = -ENOMEM;
+			goto free_irq_data;
+		}
+
+		kd->old_hwirq = -1;
+		kd->mb = mb;
 		irq_domain_set_info(domain, virq + i, hwirq + i,
 				    &kvx_apic_mailbox_irq_chip,
-				    domain->host_data, handle_simple_irq,
+				    kd, handle_simple_irq,
 				    NULL, NULL);
 	}
 
 	return 0;
+
+free_irq_data:
+	for (i--; i >= 0; i--) {
+		d = irq_domain_get_irq_data(domain, virq + i);
+		kd = irq_data_get_irq_chip_data(d);
+		kfree(kd);
+	}
+
+free_mb_bits:
+	spin_lock(&mb->mailboxes_lock);
+	bitmap_clear(mb->available, hwirq, nr_irqs);
+	spin_unlock(&mb->mailboxes_lock);
+
+	return err;
 }
 
 static void kvx_apic_mailbox_msi_free(struct irq_domain *domain,
 				      unsigned int virq,
 				      unsigned int nr_irqs)
 {
-	struct irq_data *d = irq_domain_get_irq_data(domain, virq);
+	int i;
+	struct irq_data *d;
+	struct kvx_irq_data *kd;
 	struct kvx_apic_mailbox *mb = domain->host_data;
 
 	spin_lock(&mb->mailboxes_lock);
 
-	bitmap_clear(mb->available, d->hwirq, nr_irqs);
+	for (i = 0; i < nr_irqs; i++) {
+		d = irq_domain_get_irq_data(domain, virq + i);
+		kd = irq_data_get_irq_chip_data(d);
+		kfree(kd);
+		kvx_mailbox_free_bit(mb, d->hwirq);
+	}
 
 	spin_unlock(&mb->mailboxes_lock);
 }
@@ -251,7 +450,7 @@ static struct irq_chip kvx_msi_irq_chip = {
 
 static void kvx_apic_mailbox_handle_irq(struct irq_desc *desc)
 {
-	struct irq_data *data = &desc->irq_data;
+	struct irq_data *data = irq_desc_get_irq_data(desc);
 	struct kvx_apic_mailbox *mb = irq_desc_get_handler_data(desc);
 	void __iomem *mb_addr = kvx_mailbox_get_addr(mb, irqd_to_hwirq(data));
 	unsigned int irqn, cascade_irq, bit;
@@ -281,7 +480,6 @@ static void kvx_apic_mailbox_handle_irq(struct irq_desc *desc)
 	for_each_set_bit(bit, (unsigned long *) &mb_value, BITS_PER_LONG) {
 		irqn = bit + mb_hwirq;
 		cascade_irq = irq_find_mapping(mb->device_domain, irqn);
-
 		generic_handle_irq(cascade_irq);
 	}
 }
@@ -376,6 +574,7 @@ kvx_init_apic_mailbox(struct device_node *node,
 			ret = -EINVAL;
 			goto err_irq_domain_msi_create;
 		}
+		mb->mb_data[i].parent_irq = parent_irq;
 
 		irq_set_chained_handler_and_data(parent_irq,
 						 kvx_apic_mailbox_handle_irq,
