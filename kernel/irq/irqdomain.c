@@ -552,6 +552,19 @@ static void irq_domain_set_mapping(struct irq_domain *domain,
 	mutex_unlock(&domain->revmap_mutex);
 }
 
+void irq_update_hwirq_mapping(struct irq_data *irq_data,
+			      irq_hw_number_t new_hwirq)
+{
+	mutex_lock(&irq_domain_mutex);
+
+	irq_domain_clear_mapping(irq_data->domain, irq_data->hwirq);
+
+	irq_data->hwirq = new_hwirq;
+	irq_domain_set_mapping(irq_data->domain, new_hwirq, irq_data);
+
+	mutex_unlock(&irq_domain_mutex);
+}
+
 static void irq_domain_disassociate(struct irq_domain *domain, unsigned int irq)
 {
 	struct irq_data *irq_data = irq_get_irq_data(irq);
