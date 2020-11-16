@@ -1601,8 +1601,7 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	kvx_eth_wait_link_up(ndev->hw, &ndev->cfg);
-	state->link = ndev->cfg.link;
+	state->link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
 	state->speed = ndev->cfg.speed;
 	state->duplex = ndev->cfg.duplex;
 	kvx_eth_mac_pcs_status(ndev->hw, &ndev->cfg);
