@@ -1025,7 +1025,6 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	u32 fec_mask = 0;
 	int ret = 0;
 
-	cfg->link = 0;
 	if (cfg->speed <= SPEED_1000) {
 		reg = MAC_1G_OFFSET + MAC_1G_ELEM_SIZE * cfg->id;
 		ret = kvx_poll(kvx_mac_readl, reg + MAC_1G_STATUS_OFFSET,
@@ -1035,7 +1034,6 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			dev_err(hw->dev, "Link up 1G failed\n");
 			return ret;
 		}
-		cfg->link = 1;
 		return 0;
 	}
 
@@ -1081,9 +1079,24 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		kvx_eth_mac_pcs_status(hw, cfg);
 		return ret;
 	}
-	cfg->link = 1;
 
 	return 0;
+}
+
+int kvx_eth_mac_getlink(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	u32 v = kvx_mac_readl(hw, MAC_SYNC_STATUS_OFFSET);
+
+	if (cfg->speed <= SPEED_1000) {
+		v = kvx_mac_readl(hw, MAC_1G_OFFSET +
+				  MAC_1G_ELEM_SIZE * cfg->id +
+				  MAC_1G_STATUS_OFFSET);
+		v &= MAC_1G_STATUS_LINK_STATUS_MASK;
+	} else {
+		v &= BIT(MAC_SYNC_STATUS_LINK_STATUS_SHIFT + cfg->id);
+	}
+
+	return !!v;
 }
 
 int kvx_eth_mac_getfec(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
