@@ -8,6 +8,7 @@
 
 #include <linux/irqchip/irq-kvx-apic-gic.h>
 #include <linux/of_address.h>
+#include <linux/cpuhotplug.h>
 #include <linux/interrupt.h>
 #include <linux/irqdomain.h>
 #include <linux/spinlock.h>
@@ -69,6 +70,8 @@ struct kvx_apic_gic {
 	/* Input interrupt status */
 	struct gic_in_irq_line input_irq[KVX_GIC_INPUT_IT_COUNT];
 };
+
+static int gic_parent_irq;
 
 /**
  * Enable/Disable an output irq line
@@ -251,6 +254,20 @@ apic_gic_init(struct kvx_apic_gic *gic)
 	}
 }
 
+static int kvx_gic_starting_cpu(unsigned int cpu)
+{
+	enable_percpu_irq(gic_parent_irq, IRQ_TYPE_NONE);
+
+	return 0;
+}
+
+static int kvx_gic_dying_cpu(unsigned int cpu)
+{
+	disable_percpu_irq(gic_parent_irq);
+
+	return 0;
+}
+
 static int __init
 kvx_init_apic_gic(struct device_node *node, struct device_node *parent)
 {
@@ -304,6 +321,16 @@ kvx_init_apic_gic(struct device_node *node, struct device_node *parent)
 
 	irq_set_chained_handler_and_data(irq, kvx_apic_gic_handle_irq,
 								gic);
+
+	gic_parent_irq = irq;
+	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
+				"kvx/gic:online",
+				kvx_gic_starting_cpu,
+				kvx_gic_dying_cpu);
+	if (ret < 0) {
+		pr_err("Failed to setup hotplug state");
+		return ret;
+	}
 
 	pr_info("Initialized interrupt controller with %d interrupts\n",
 							gic->input_nr_irqs);
