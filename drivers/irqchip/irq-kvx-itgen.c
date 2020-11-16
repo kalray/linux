@@ -73,6 +73,7 @@ static struct irq_chip itgen_irq_chip = {
 	.name =			"kvx-itgen",
 	.irq_mask =		kvx_itgen_mask,
 	.irq_unmask =		kvx_itgen_unmask,
+	.irq_set_affinity =	irq_chip_set_affinity_parent,
 };
 
 #define ITGEN_UNSUPPORTED_TYPES (IRQ_TYPE_LEVEL_LOW | IRQ_TYPE_EDGE_FALLING)
