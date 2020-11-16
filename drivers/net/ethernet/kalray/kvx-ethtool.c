@@ -1211,7 +1211,7 @@ int kvx_eth_get_fecparam(struct net_device *netdev,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
 	/* No FEC if link is down */
-	if (!ndev->cfg.link)
+	if (!kvx_eth_mac_getlink(ndev->hw, &ndev->cfg))
 		return -EINVAL;
 
 	/* Not configurable for now */

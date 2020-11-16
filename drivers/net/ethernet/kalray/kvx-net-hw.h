@@ -515,7 +515,6 @@ enum lt_ld_states {
  * struct kvx_eth_lane_cfg - Lane configuration
  * @id: lane_id [0, 3]
  * @tx_fifo_id: tx fifo id [0, 9]
- * @link: phy link state
  * @speed: phy node speed
  * @duplex: duplex mode
  * @fec: fec mode
@@ -534,7 +533,6 @@ enum lt_ld_states {
 struct kvx_eth_lane_cfg {
 	u32 id;
 	u32 tx_fifo_id;
-	int link;
 	unsigned int speed;
 	unsigned int duplex;
 	unsigned int fec;
@@ -866,6 +864,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
 int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_mac_getlink(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
 int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 		struct kvx_eth_lane_cfg *cfg, bool update_serdes);
