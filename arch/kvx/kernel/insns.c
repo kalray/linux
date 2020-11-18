@@ -139,5 +139,6 @@ int kvx_insns_write(u32 *insns, unsigned long insns_len, u32 *addr)
 
 int kvx_insns_read(u32 *insns, unsigned long insns_len, u32 *addr)
 {
+	l1_inval_dcache_range((unsigned long)addr, insns_len);
 	return copy_from_kernel_nofault(insns, addr, insns_len);
 }
