@@ -508,6 +508,6 @@ void __set_fixmap(enum fixed_addresses idx,
 	} else {
 		/* Remove the fixmap */
 		pte_clear(&init_mm, addr, pte);
-		local_flush_tlb_kernel_range(addr, addr + PAGE_SIZE);
 	}
+	local_flush_tlb_kernel_range(addr, addr + PAGE_SIZE);
 }
