@@ -361,7 +361,7 @@ static int kvx_pm_starting_cpu(unsigned int cpu)
 
 	memset(cpuc->events, 0, pm_num * sizeof(struct perf_event *));
 
-	enable_percpu_irq(kvx_pm_irq, 0);
+	enable_percpu_irq(kvx_pm_irq, IRQ_TYPE_NONE);
 	return 0;
 }
 

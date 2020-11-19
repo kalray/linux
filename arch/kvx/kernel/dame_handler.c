@@ -61,7 +61,7 @@ irqreturn_t dame_irq_handler(int irq, void *dev_id)
 
 static int kvx_dame_starting_cpu(unsigned int cpu)
 {
-	enable_percpu_irq(kvx_dame_irq, 0);
+	enable_percpu_irq(kvx_dame_irq, IRQ_TYPE_NONE);
 
 	return 0;
 }
