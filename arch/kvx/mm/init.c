@@ -182,6 +182,8 @@ static void __init setup_bootmem(void)
 	memblock_allow_resize();
 	memblock_dump_all();
 	setup_memblock_nodes();
+
+	memblocks_present();
 }
 
 static void * __init alloc_page_table(void)
@@ -461,6 +463,7 @@ static void remap_kernel_segment(pgd_t *pgdp, void *va_start, void *va_end,
 void __init setup_arch_memory(void)
 {
 	setup_bootmem();
+	sparse_init();
 	zone_sizes_init();
 }
 
