@@ -143,6 +143,12 @@ config KVX_PAGE_OFFSET
 	hex "kernel virtual address of memory base"
 	default 0xFFFFFF8000000000
 
+config ARCH_SPARSEMEM_ENABLE
+	def_bool y
+
+config ARCH_SELECT_MEMORY_MODEL
+	def_bool ARCH_SPARSEMEM_ENABLE
+
 config STACK_MAX_DEPTH_TO_PRINT
 	int "Maximum depth of stack to print"
 	range 1 128
