@@ -148,6 +148,7 @@ typedef struct page *pgtable_t;
 
 #define virt_addr_valid(vaddr)	(pfn_valid(virt_to_pfn(vaddr)))
 
+#ifdef CONFIG_FLATMEM
 static inline bool pfn_valid(unsigned long pfn)
 {
 	/* avoid <linux/mm.h> include hell */
@@ -156,6 +157,7 @@ static inline bool pfn_valid(unsigned long pfn)
 	return ((pfn >= ARCH_PFN_OFFSET) &&
 		(pfn < (ARCH_PFN_OFFSET + max_mapnr)));
 }
+#endif
 
 extern void clear_page(void *to);
 extern void copy_page(void *to, void *from);
