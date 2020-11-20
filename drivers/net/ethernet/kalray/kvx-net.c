@@ -113,6 +113,34 @@ static struct netdev_queue *get_txq(const struct kvx_eth_ring *ring)
 	return netdev_get_tx_queue(ring->netdev, ring->qidx);
 }
 
+static void kvx_eth_poll_link(struct timer_list *t)
+{
+	struct kvx_eth_netdev *ndev = container_of(t, struct kvx_eth_netdev,
+						   link_poll);
+	bool link_los = kvx_eth_pmac_linklos(ndev->hw, &ndev->cfg);
+	bool link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
+
+	if (ndev->hw->phy_f.bert_en)
+		return;
+#if 1
+	if (link != netif_carrier_ok(ndev->netdev) || link_los == link) {
+		netdev_dbg(ndev->netdev, "%s link: %d link_los: %d carrier: %d\n",
+		   __func__, link, !link_los, netif_carrier_ok(ndev->netdev));
+		/* Reschedule mac config (consider link down) */
+		phylink_mac_change(ndev->phylink, !link_los);
+#else
+	if (!link || !netif_carrier_ok(ndev->netdev)) {
+		/* Reschedule mac config (consider link down) */
+		if (netif_carrier_ok(ndev->netdev))
+			phylink_mac_change(ndev->phylink, true);
+		else
+			phylink_mac_change(ndev->phylink, link);
+#endif
+	}
+ 
+	mod_timer(t, jiffies + msecs_to_jiffies(2000));
+}
+
 /* kvx_eth_up() - Interface up
  * @netdev: Current netdev
  */
@@ -1601,14 +1629,15 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	kvx_eth_wait_link_up(ndev->hw, &ndev->cfg);
-	state->link = ndev->cfg.link;
+	state->link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
 	state->speed = ndev->cfg.speed;
 	state->duplex = ndev->cfg.duplex;
 	kvx_eth_mac_pcs_status(ndev->hw, &ndev->cfg);
 	state->pause = 0;
 	if (ndev->cfg.pfc_f.global_pause_en)
 		state->pause = MLO_PAUSE_RX | MLO_PAUSE_TX;
+	netdev_dbg(netdev, "%s link: %d state->speed: %d ndev->speed: %d\n",
+		   __func__, state->link, state->speed, ndev->cfg.speed);
 }
 
 int kvx_eth_speed_to_nb_lanes(unsigned int speed, unsigned int *lane_speed)
@@ -1721,12 +1750,14 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 {
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	bool update_serdes = false;
 	int an_enabled = state->an_enabled;
-	int ret = 0;
 	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
-	int speed_fmt;
+	int speed_fmt, ret = 0;
+	bool update_serdes = true;
 	char *unit;
+
+	netdev_info(ndev->netdev, "%s state->speed: %d ndev->speed: %d\n",
+		   __func__, state->speed, ndev->cfg.speed);
 
 	if (state->interface == PHY_INTERFACE_MODE_SGMII) {
 		/*
@@ -1792,6 +1823,10 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	}
 
 	kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, update_serdes);
+	/* Force re-assess link state */
+	//kvx_eth_wait_link_up(ndev->hw, &ndev->cfg);
+	//link = (kvx_eth_mac_getlink(ndev->hw, &ndev->cfg) ? true : false);
+	mod_timer(&ndev->link_poll, jiffies + msecs_to_jiffies(1000));
 }
 
 static void kvx_phylink_mac_an_restart(struct phylink_config *cfg)
@@ -1799,11 +1834,15 @@ static void kvx_phylink_mac_an_restart(struct phylink_config *cfg)
 	pr_debug("%s\n", __func__);
 }
 
-static void kvx_phylink_mac_link_down(struct phylink_config *cfg,
+static void kvx_phylink_mac_link_down(struct phylink_config *config,
 				      unsigned int mode,
 				      phy_interface_t interface)
 {
-	pr_debug("%s\n", __func__);
+	struct net_device *netdev = to_net_dev(config->dev);
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	mod_timer(&ndev->link_poll, jiffies + msecs_to_jiffies(1000));
+	pr_debug("%s carrier: %d\n", __func__, netif_carrier_ok(netdev));
 }
 
 static void kvx_phylink_mac_link_up(struct phylink_config *config,
@@ -1811,7 +1850,9 @@ static void kvx_phylink_mac_link_up(struct phylink_config *config,
 				    phy_interface_t interface, int speed,
 				    int duplex, bool tx_pause, bool rx_pause)
 {
-	pr_debug("%s\n", __func__);
+	struct net_device *netdev = to_net_dev(config->dev);
+
+	pr_debug("%s carrier: %d\n", __func__, netif_carrier_ok(netdev));
 }
 
 const static struct phylink_mac_ops kvx_phylink_ops = {
@@ -1861,7 +1902,9 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	ndev->cfg.hw = ndev->hw;
 	ndev->phylink_cfg.dev = &netdev->dev;
 	ndev->phylink_cfg.type = PHYLINK_NETDEV;
+	ndev->phylink_cfg.pcs_poll = true;
 	INIT_LIST_HEAD(&ndev->cfg.tx_fifo_list);
+	timer_setup(&ndev->link_poll, kvx_eth_poll_link, 0);
 
 	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
 	if (phy_mode < 0) {
@@ -1926,6 +1969,7 @@ exit:
  */
 static int kvx_eth_free_netdev(struct kvx_eth_netdev *ndev)
 {
+	del_timer_sync(&ndev->link_poll);
 	kvx_eth_release_tx_res(ndev->netdev, 0);
 	kvx_eth_release_rx_res(ndev->netdev, 0);
 	phylink_destroy(ndev->phylink);
