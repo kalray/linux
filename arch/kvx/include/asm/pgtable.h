@@ -280,10 +280,7 @@ static inline pte_t pfn_pte(unsigned long pfn, pgprot_t prot)
 /* Builds a page table entry by combining a page descriptor and a group of
  * access rights.
  */
-static inline pte_t mk_pte(struct page *page, pgprot_t prot)
-{
-	return pfn_pte(page_to_pfn(page), prot);
-}
+#define mk_pte(page, prot)	(pfn_pte(page_to_pfn(page), prot))
 
 /* Modifies page access rights */
 static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
