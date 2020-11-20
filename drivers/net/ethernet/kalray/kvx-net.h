@@ -13,6 +13,7 @@
 #include <linux/skbuff.h>
 #include <linux/phy.h>
 #include <linux/phylink.h>
+#include <linux/timer.h>
 
 #include <linux/dma/kvx-dma.h>
 #include "kvx-net-hw.h"
@@ -109,6 +110,7 @@ extern const union roce_filter_desc roce_filter_default;
  * @rx_buffer_len: RX buffer length
  * @tx_ring: TX buffer ring
  * @stats: hardware statistics
+ * @link_poll: link check timer
  */
 struct kvx_eth_netdev {
 	struct net_device *netdev;
@@ -124,6 +126,7 @@ struct kvx_eth_netdev {
 	u16    rx_buffer_len;
 	struct kvx_eth_ring tx_ring[TX_FIFO_NB];
 	struct kvx_eth_hw_stats stats;
+	struct timer_list link_poll;
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
