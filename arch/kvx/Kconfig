@@ -143,8 +143,14 @@ config KVX_PAGE_OFFSET
 	hex "kernel virtual address of memory base"
 	default 0xFFFFFF8000000000
 
+config ARCH_FLATMEM_ENABLE
+	def_bool y
+
 config ARCH_SPARSEMEM_ENABLE
 	def_bool y
+
+config ARCH_SPARSEMEM_DEFAULT
+	def_bool ARCH_SPARSEMEM_ENABLE
 
 config ARCH_SELECT_MEMORY_MODEL
 	def_bool ARCH_SPARSEMEM_ENABLE
