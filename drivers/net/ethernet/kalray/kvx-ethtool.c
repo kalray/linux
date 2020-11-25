@@ -342,7 +342,7 @@ static int fill_tcp_filter(struct kvx_eth_netdev *ndev,
 	return 0;
 }
 
-static int fill_udp_filter(struct kvx_eth_netdev *ndev,
+static union udp_filter_desc *fill_udp_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt)
 {
 	union udp_filter_desc *filter = (union udp_filter_desc *) flt;
@@ -364,7 +364,7 @@ static int fill_udp_filter(struct kvx_eth_netdev *ndev,
 			netdev_err(ndev->netdev, "Min port must be lower than max port (%d > %d)\n",
 					filter->src_min_port,
 					filter->src_max_port);
-			return ret;
+			return NULL;
 		}
 		filter->src_ctrl = KVX_ETH_ADDR_MATCH_EQUAL;
 		if (filter->src_min_port != filter->src_max_port) {
@@ -380,7 +380,7 @@ static int fill_udp_filter(struct kvx_eth_netdev *ndev,
 			netdev_err(ndev->netdev, "Min port must be lower than max port (%d > %d)\n",
 					filter->dst_min_port,
 					filter->dst_max_port);
-			return ret;
+			return NULL;
 		}
 		filter->dst_ctrl = KVX_ETH_ADDR_MATCH_EQUAL;
 		if (filter->dst_min_port != filter->dst_max_port) {
@@ -398,7 +398,7 @@ static int fill_udp_filter(struct kvx_eth_netdev *ndev,
 			filter->dst_hash_mask = 0xffff;
 	}
 
-	return 0;
+	return filter;
 }
 
 static void fill_ipv4_filter(struct kvx_eth_netdev *ndev,
@@ -714,6 +714,7 @@ static int kvx_eth_fill_parser(struct kvx_eth_netdev *ndev,
 	struct kvx_eth_hw *hw = ndev->hw;
 	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
 	union filter_desc **flt = hw->parsing.parsers[parser_index].filters;
+	union udp_filter_desc *udp_filter;
 	int nb_layers = KVX_NET_LAYER_2;
 	enum kvx_roce_version roce_version;
 
@@ -729,11 +730,15 @@ static int kvx_eth_fill_parser(struct kvx_eth_netdev *ndev,
 	case UDP_V4_FLOW:
 		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IP);
 		fill_ipv4_filter(ndev, fs, flt[nb_layers++], IPPROTO_UDP);
-		if (fill_udp_filter(ndev, fs, flt[nb_layers++]))
+		udp_filter = fill_udp_filter(ndev, fs, flt[nb_layers++]);
+		if (!udp_filter)
 			return -EINVAL;
-		if (is_roce_filter(ndev, fs, &roce_version))
+		if (is_roce_filter(ndev, fs, &roce_version)) {
 			fill_roce_filter(ndev, fs, flt[nb_layers++],
 					roce_version);
+			// disable udp filter checksum for ROCEv2 parser
+			udp_filter->check_header_checksum = 0;
+		}
 		break;
 	case TCP_V6_FLOW:
 		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IPV6);
@@ -744,11 +749,15 @@ static int kvx_eth_fill_parser(struct kvx_eth_netdev *ndev,
 	case UDP_V6_FLOW:
 		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IPV6);
 		fill_ipv6_filter(ndev, fs, flt[nb_layers++], IPPROTO_UDP);
-		if (fill_udp_filter(ndev, fs, flt[nb_layers++]))
+		udp_filter = fill_udp_filter(ndev, fs, flt[nb_layers++]);
+		if (!udp_filter)
 			return -EINVAL;
-		if (is_roce_filter(ndev, fs, &roce_version))
+		if (is_roce_filter(ndev, fs, &roce_version)) {
 			fill_roce_filter(ndev, fs, flt[nb_layers++],
 					roce_version);
+			// disable udp filter checksum for ROCEv2 parser
+			udp_filter->check_header_checksum = 0;
+		}
 		break;
 	/* ip layer */
 	case IP_USER_FLOW:
