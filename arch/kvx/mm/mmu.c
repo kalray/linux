@@ -123,12 +123,6 @@ void kvx_mmu_jtlb_add_entry(unsigned long address, pte_t *ptep,
 	pte_val = pte_val(*ptep);
 
 	pfn = (phys_addr_t)pte_pfn(*ptep);
-	if (!pfn_valid(pfn))
-		/* Not sure if it is normal. In doubt we panic and we will
-		 * debug.
-		 */
-		panic("%s: pfn %lx is not valid\n",
-		      __func__, (unsigned long)pfn);
 
 	asn &= MM_CTXT_ASN_MASK;
 
