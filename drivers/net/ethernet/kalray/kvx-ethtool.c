@@ -286,7 +286,7 @@ static inline bool traffic_type_is_supported(enum kvx_traffic_types tt)
 static int fill_tcp_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt)
 {
-	union tcp_filter_desc *filter = (union tcp_filter_desc *) flt;
+	union tcp_filter_desc *filter = &flt->tcp;
 	struct ethtool_tcpip4_spec *l4_val  = &fs->h_u.tcp_ip4_spec;
 	struct ethtool_tcpip4_spec *l4_mask = &fs->m_u.tcp_ip4_spec;
 	u16 src_port = ntohs(l4_val->psrc);
@@ -345,7 +345,7 @@ static int fill_tcp_filter(struct kvx_eth_netdev *ndev,
 static union udp_filter_desc *fill_udp_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt)
 {
-	union udp_filter_desc *filter = (union udp_filter_desc *) flt;
+	union udp_filter_desc *filter = &flt->udp;
 	struct ethtool_tcpip4_spec *l4_val  = &fs->h_u.udp_ip4_spec;
 	struct ethtool_tcpip4_spec *l4_mask = &fs->m_u.udp_ip4_spec;
 	u16 src_port = ntohs(l4_val->psrc);
@@ -405,7 +405,7 @@ static void fill_ipv4_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		int ptype_ovrd)
 {
-	union ipv4_filter_desc *filter = (union ipv4_filter_desc *) flt;
+	union ipv4_filter_desc *filter = &flt->ipv4;
 	struct ethtool_usrip4_spec *l3_val  = &fs->h_u.usr_ip4_spec;
 	struct ethtool_usrip4_spec *l3_mask  = &fs->m_u.usr_ip4_spec;
 	u8 ptype_rule = l3_val->proto;
@@ -458,7 +458,7 @@ static void fill_ipv6_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		int ptype_ovrd)
 {
-	struct ipv6_filter_desc *filter = (struct ipv6_filter_desc *) flt;
+	struct ipv6_filter_desc *filter = &flt->ipv6;
 	struct ethtool_usrip6_spec *l3_val  = &fs->h_u.usr_ip6_spec;
 	struct ethtool_usrip6_spec *l3_mask  = &fs->m_u.usr_ip6_spec;
 	u8 ptype_rule = l3_val->l4_proto;
@@ -546,7 +546,7 @@ static void fill_roce_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		enum kvx_roce_version roce_version)
 {
-	union roce_filter_desc *filter = (union roce_filter_desc *) flt;
+	union roce_filter_desc *filter = &flt->roce;
 	u32 qpair = be64_to_cpu(*((__be64 *)fs->h_ext.data));
 	u32 qpair_mask = be64_to_cpu(*((__be64 *)fs->m_ext.data));
 
@@ -568,7 +568,7 @@ static void fill_eth_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		int etype_ovrd)
 {
-	union mac_filter_desc *filter = (union mac_filter_desc *) flt;
+	union mac_filter_desc *filter = &flt->mac_vlan;
 	struct ethhdr *eth_val = &fs->h_u.ether_spec;
 	struct ethhdr *eth_mask = &fs->m_u.ether_spec;
 	u16 etype_rule = ntohs(eth_val->h_proto);
