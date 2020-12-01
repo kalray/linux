@@ -120,24 +120,17 @@ static void kvx_eth_poll_link(struct timer_list *t)
 	bool link_los = kvx_eth_pmac_linklos(ndev->hw, &ndev->cfg);
 	bool link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
 
-	if (ndev->hw->phy_f.bert_en)
+	/* No link checks for BERT and SGMII modes (handled @phy/mac level) */
+	if (ndev->hw->phy_f.bert_en || ndev->cfg.speed == SPEED_1000)
 		return;
-#if 1
+
 	if (link != netif_carrier_ok(ndev->netdev) || link_los == link) {
 		netdev_dbg(ndev->netdev, "%s link: %d link_los: %d carrier: %d\n",
 		   __func__, link, !link_los, netif_carrier_ok(ndev->netdev));
 		/* Reschedule mac config (consider link down) */
 		phylink_mac_change(ndev->phylink, !link_los);
-#else
-	if (!link || !netif_carrier_ok(ndev->netdev)) {
-		/* Reschedule mac config (consider link down) */
-		if (netif_carrier_ok(ndev->netdev))
-			phylink_mac_change(ndev->phylink, true);
-		else
-			phylink_mac_change(ndev->phylink, link);
-#endif
 	}
- 
+
 	mod_timer(t, jiffies + msecs_to_jiffies(2000));
 }
 
@@ -1756,7 +1749,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	bool update_serdes = true;
 	char *unit;
 
-	netdev_info(ndev->netdev, "%s state->speed: %d ndev->speed: %d\n",
+	netdev_dbg(ndev->netdev, "%s state->speed: %d ndev->speed: %d\n",
 		   __func__, state->speed, ndev->cfg.speed);
 
 	if (state->interface == PHY_INTERFACE_MODE_SGMII) {
