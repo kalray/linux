@@ -165,7 +165,7 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 }
 
 bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
-                         struct kvx_eth_lane_cfg *cfg)
+			  struct kvx_eth_lane_cfg *cfg)
 {
 	u32 v, off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 
@@ -648,6 +648,7 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 {
 	int ret, lane, nb_lanes;
 
+	/* Disable serdes for *previous* config */
 	kvx_mac_phy_disable_serdes(hw, cfg);
 	ret = kvx_eth_phy_serdes_init(hw, cfg->id, cfg->speed);
 	if (ret)
@@ -655,7 +656,11 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	dev_dbg(hw->dev, "serdes_mask: 0x%lx serdes_pll_master: 0x%lx avail: 0x%lx\n",
 		hw->pll_cfg.serdes_mask, hw->pll_cfg.serdes_pll_master,
 		hw->pll_cfg.avail);
-
+	/* Relaunch full serdes cycle with *new* config:
+	 * Full cycle (disable/enable) is needed to get serdes in appropriate
+	 * state (typically for MDIO operations in SGMII mode)
+	 */
+	kvx_mac_phy_disable_serdes(hw, cfg);
 	/* Enable CR interface */
 	kvx_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
 
