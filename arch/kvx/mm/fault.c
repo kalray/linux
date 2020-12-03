@@ -34,23 +34,31 @@ static int handle_vmalloc_fault(uint64_t ea)
 	 */
 	unsigned long addr = ea & PAGE_MASK;
 	pgd_t *pgd_k, *pgd;
+	p4d_t *p4d_k, *p4d;
+	pud_t *pud_k, *pud;
 	pmd_t *pmd_k, *pmd;
 	pte_t *pte_k;
 
 	pgd = pgd_offset(current->active_mm, ea);
 	pgd_k = pgd_offset_k(ea);
-	if (!pgd_present(*pgd_k)) {
-		pr_err("%s: PGD entry not found for swapper", __func__);
+	if (!pgd_present(*pgd_k))
 		return 1;
-	}
 	set_pgd(pgd, *pgd_k);
 
-	pmd = pmd_offset((pud_t *)pgd, ea);
-	pmd_k = pmd_offset((pud_t *)pgd_k, ea);
-	if (!pmd_present(*pmd_k)) {
-		pr_err("%s: PMD entry not found for swapper", __func__);
+	p4d = p4d_offset(pgd, ea);
+	p4d_k = p4d_offset(pgd_k, ea);
+	if (!p4d_present(*p4d_k))
 		return 1;
-	}
+
+	pud = pud_offset(p4d, ea);
+	pud_k = pud_offset(p4d_k, ea);
+	if (!pud_present(*pud_k))
+		return 1;
+
+	pmd = pmd_offset(pud, ea);
+	pmd_k = pmd_offset(pud_k, ea);
+	if (!pmd_present(*pmd_k))
+		return 1;
 
 	/* Some other architectures set pmd to synchronize them but
 	 * as we just synchronized the pgd we don't see how they can
