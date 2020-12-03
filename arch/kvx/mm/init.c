@@ -211,10 +211,10 @@ void __init early_fixmap_init(void)
 	 */
 	vaddr = __fix_to_virt(__end_of_fixed_addresses - 1);
 	pgd = pgd_offset_pgd(swapper_pg_dir, vaddr);
+	set_pgd(pgd, __pgd(__pa_symbol(fixmap_pmd)));
+
 	p4d = p4d_offset(pgd, vaddr);
 	pud = pud_offset(p4d, vaddr);
-	set_pud(pud, __pud(__pa_symbol(fixmap_pmd)));
-
 	pmd = pmd_offset(pud, vaddr);
 	set_pmd(pmd, __pmd(__pa_symbol(fixmap_pte)));
 }
