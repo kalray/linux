@@ -133,15 +133,40 @@ static void kvx_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 	iommu_dma_compose_msi_msg(irq_data_get_msi_desc(data), msg);
 }
 
+static int pci_msi_set_affinity(struct irq_data *data,
+			    const struct cpumask *cpumask,
+			    bool force)
+{
+	struct kvx_irq_data *kvx_irq_data = irq_data_get_irq_chip_data(data);
+	int ret, new_cpu;
+
+	if (force)
+		new_cpu = cpumask_first(cpumask);
+	else
+		new_cpu = cpumask_first_and(cpumask, cpu_online_mask);
+
+	if (new_cpu >= nr_cpu_ids)
+		return -EINVAL;
+
+	ret = irq_set_affinity(kvx_irq_data->parent_irq, cpumask_of(new_cpu));
+	if (ret)
+		return ret;
+
+	irq_data_update_effective_affinity(data, cpumask_of(new_cpu));
+
+	return IRQ_SET_MASK_OK;
+}
+
+
 static struct irq_chip kvx_msi_irq_chip = {
 	.name = "Kalray MSI",
 	.irq_compose_msi_msg = kvx_compose_msi_msg,
+	.irq_set_affinity = pci_msi_set_affinity,
 };
 
 static void kvx_pcimsi_handler(struct irq_desc *desc)
 {
-	struct kvx_msi_ctrl *ctrl =
-		(struct kvx_msi_ctrl *)irq_desc_get_handler_data(desc);
+	struct kvx_msi_ctrl *ctrl = irq_desc_get_handler_data(desc);
 	unsigned int parent_irq = irq_desc_get_irq(desc);
 	unsigned int child_irq;
 
@@ -244,7 +269,6 @@ static struct irq_chip kvx_core_msi_irq_chip = {
 	.irq_disable = pci_msi_mask_irq,
 	.irq_mask = pci_msi_mask_irq,
 	.irq_unmask = pci_msi_unmask_irq,
-	.irq_set_affinity = irq_chip_set_affinity_parent,
 };
 
 static struct msi_domain_info kvx_msi_domain_info = {
