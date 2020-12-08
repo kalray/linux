@@ -224,7 +224,12 @@ static int dwc2_lowlevel_hw_init(struct dwc2_hsotg *hsotg)
 	}
 
 	if (!hsotg->phy) {
-		hsotg->uphy = devm_usb_get_phy(hsotg->dev, USB_PHY_TYPE_USB2);
+		if (hsotg->dev->of_node)
+			i = of_property_match_string(hsotg->dev->of_node, "phy-names", "usb2-phy");
+		if (hsotg->dev->of_node && i >= 0)
+			hsotg->uphy = devm_usb_get_phy_by_phandle(hsotg->dev, "phys", i);
+		else
+			hsotg->uphy = devm_usb_get_phy(hsotg->dev, USB_PHY_TYPE_USB2);
 		if (IS_ERR(hsotg->uphy)) {
 			ret = PTR_ERR(hsotg->uphy);
 			switch (ret) {
