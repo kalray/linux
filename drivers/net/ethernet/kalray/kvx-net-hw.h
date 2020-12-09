@@ -439,7 +439,6 @@ struct kvx_eth_phy_f {
 	struct kvx_eth_tx_bert_param tx_ber[KVX_ETH_LANE_NB];
 	struct kvx_eth_polarities polarities[KVX_ETH_LANE_NB];
 	bool reg_avail;
-	bool bert_en;
 };
 
 /**
@@ -840,6 +839,7 @@ int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p);
 int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
 		     enum lt_coef_requests op, enum tx_coef_type param);
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p);
+bool kvx_eth_phy_is_bert_en(struct kvx_eth_hw *hw);
 void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_rx_bert_param *p);
 void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
