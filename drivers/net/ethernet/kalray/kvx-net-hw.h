@@ -365,7 +365,7 @@ struct kvx_eth_phy_param {
 	u32 swing;
 	u32 fom;
 	bool trig_rx_adapt;
-	bool en;
+	bool ovrd_en;
 	int lane_id;
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
