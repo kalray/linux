@@ -111,7 +111,7 @@ FIELD_RW_ENTRY(phy_param, pre, 0, 32);
 FIELD_RW_ENTRY(phy_param, post, 0, 32);
 FIELD_RW_ENTRY(phy_param, swing, 0, 32);
 FIELD_RW_ENTRY(phy_param, trig_rx_adapt, 0, 1);
-FIELD_RW_ENTRY(phy_param, en, 0, 1);
+FIELD_RW_ENTRY(phy_param, ovrd_en, 0, 1);
 FIELD_R_ENTRY(phy_param, fom, 0, U8_MAX);
 
 static struct attribute *phy_param_attrs[] = {
@@ -120,7 +120,7 @@ static struct attribute *phy_param_attrs[] = {
 	&phy_param_swing_attr.attr,
 	&phy_param_fom_attr.attr,
 	&phy_param_trig_rx_adapt_attr.attr,
-	&phy_param_en_attr.attr,
+	&phy_param_ovrd_en_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(phy_param);
