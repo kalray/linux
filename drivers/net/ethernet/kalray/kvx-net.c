@@ -130,19 +130,44 @@ static void kvx_eth_poll_link(struct timer_list *t)
 		/* Reschedule mac config (consider link down) */
 		phylink_mac_change(ndev->phylink, !link_los);
 	}
+}
 
-	mod_timer(t, jiffies + msecs_to_jiffies(2000));
+/* kvx_eth_netdev_init() - Init netdev (called once)
+ * @netdev: Current netdev
+ */
+static int kvx_eth_netdev_init(struct net_device *netdev)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	int ret = phylink_of_phy_connect(ndev->phylink, ndev->dev->of_node, 0);
+
+	if (ret) {
+		netdev_err(netdev, "Unable to get phy (%i)\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+/* kvx_eth_netdev_uninit() - Stop all netdev queues
+ * @netdev: Current netdev
+ */
+static void kvx_eth_netdev_uninit(struct net_device *netdev)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	phylink_disconnect_phy(ndev->phylink);
 }
 
 /* kvx_eth_up() - Interface up
  * @netdev: Current netdev
  */
-void kvx_eth_up(struct net_device *netdev)
+static void kvx_eth_up(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_ring *r;
-	int i, ret;
+	int i;
 
+	phylink_start(ndev->phylink);
 	for (i = 0; i < ndev->dma_cfg.rx_chan_id.nb; i++) {
 		r = &ndev->rx_ring[i];
 		kvx_eth_alloc_rx_buffers(r, kvx_eth_desc_unused(r));
@@ -150,13 +175,9 @@ void kvx_eth_up(struct net_device *netdev)
 	}
 
 	netif_tx_start_all_queues(netdev);
-	ret = phylink_of_phy_connect(ndev->phylink, ndev->dev->of_node, 0);
-	if (ret) {
-		netdev_err(netdev, "Unable to get phy (%i)\n", ret);
-		return;
-	}
 
-	phylink_start(ndev->phylink);
+	mod_timer(&ndev->link_poll, jiffies +
+		  msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
 }
 
 /* kvx_eth_netdev_open() - Open ops
@@ -168,31 +189,30 @@ static int kvx_eth_netdev_open(struct net_device *netdev)
 	return 0;
 }
 
+/* kvx_eth_down() - Interface down
+ * @netdev: Current netdev
+ */
+static void kvx_eth_down(struct net_device *netdev)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	int i;
+
+	del_timer_sync(&ndev->link_poll);
+	phylink_stop(ndev->phylink);
+
+	netif_tx_stop_all_queues(netdev);
+	for (i = 0; i < ndev->dma_cfg.rx_chan_id.nb; i++)
+		napi_disable(&ndev->rx_ring[i].napi);
+}
+
 /* kvx_eth_netdev_stop() - Stop all netdev queues
  * @netdev: Current netdev
  */
 static int kvx_eth_netdev_stop(struct net_device *netdev)
 {
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	int i;
-
-	netif_tx_stop_all_queues(netdev);
-	for (i = 0; i < ndev->dma_cfg.rx_chan_id.nb; i++)
-		napi_disable(&ndev->rx_ring[i].napi);
+	kvx_eth_down(netdev);
 
 	return 0;
-}
-
-/* kvx_eth_down() - Interface down
- * @netdev: Current netdev
- */
-void kvx_eth_down(struct net_device *netdev)
-{
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-
-	kvx_eth_netdev_stop(netdev);
-	phylink_stop(ndev->phylink);
-	phylink_disconnect_phy(ndev->phylink);
 }
 
 /* kvx_eth_init_netdev() - Init netdev generic settings
@@ -915,6 +935,8 @@ kvx_eth_get_phys_port_id(struct net_device *dev, struct netdev_phys_item_id *id)
 }
 
 static const struct net_device_ops kvx_eth_netdev_ops = {
+	.ndo_init               = kvx_eth_netdev_init,
+	.ndo_uninit             = kvx_eth_netdev_uninit,
 	.ndo_open               = kvx_eth_netdev_open,
 	.ndo_stop               = kvx_eth_netdev_stop,
 	.ndo_start_xmit         = kvx_eth_netdev_start_xmit,
@@ -1622,7 +1644,10 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	state->link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
+	if (ndev->hw->phy_f.bert_en)
+		state->link = false;
+	else
+		state->link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
 	state->speed = ndev->cfg.speed;
 	state->duplex = ndev->cfg.duplex;
 	kvx_eth_mac_pcs_status(ndev->hw, &ndev->cfg);
