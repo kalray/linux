@@ -75,15 +75,12 @@ static u32 kvx_mac_readl(struct kvx_eth_hw *hw, u64 off)
 	return val;
 }
 
-static u32 kvx_mac_get_serdes_mask(struct kvx_eth_lane_cfg *cfg)
+static u32 get_serdes_mask(int first_lane, int lane_nb)
 {
-	unsigned int lane_speed;
-	int nb_lanes = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
-
-	if (nb_lanes <= 0)
+	if (lane_nb <= 0)
 		return 0;
 
-	return GENMASK(cfg->id + nb_lanes - 1, cfg->id);
+	return GENMASK(first_lane + lane_nb - 1, first_lane);
 }
 
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int max_frame_len)
@@ -167,14 +164,22 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 			  struct kvx_eth_lane_cfg *cfg)
 {
-	u32 v, off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
+	u32 off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
+	u32 pcs_link, phy_los;
+	bool ret;
 
-	v = kvx_mac_readl(hw, off + PMAC_STATUS_OFFSET);
-	dev_dbg(hw->dev, "Lane[%d] PMAC status: 0x%x PHY_LOS: %ld RX_LINT: %ld\n",
-		cfg->id, v, GETF(v, PMAC_STATUS_PHY_LOS),
-		GETF(v, PMAC_STATUS_RX_LINT_FAULT));
+	phy_los = kvx_mac_readl(hw, off + PMAC_STATUS_OFFSET);
+	phy_los &= PMAC_STATUS_PHY_LOS_MASK;
+	if (cfg->speed == SPEED_100000) {
+		pcs_link = kvx_mac_readl(hw, PCS_100G_STATUS1_OFFSET);
+		pcs_link &= PCS_100G_STATUS1_PCS_RECEIVE_LINK_MASK;
+	} else if (cfg->speed != SPEED_1000) {
+		pcs_link = kvx_mac_readl(hw, XPCS_STATUS1_OFFSET);
+		pcs_link &= XPCS_STATUS1_PCS_RECEIVE_LINK_MASK;
+	}
+	ret = (phy_los || !pcs_link);
 
-	return !!(v & PMAC_STATUS_PHY_LOS_MASK);
+	return ret;
 }
 
 /**
@@ -263,21 +268,28 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	kvx_eth_tx_f_cfg(hw, &hw->tx_f[tx_fifo_id]);
 }
 
+bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
+{
+	u32 v;
+
+	if (!readl(hw->res[KVX_ETH_RES_MAC].base + MAC_RESET_OFFSET)) {
+		v = readl(hw->res[KVX_ETH_RES_MAC].base + MAC_MODE_OFFSET);
+		return !!(v & (MAC_PCS100_EN_IN_MASK | MAC_MODE40_EN_IN_MASK));
+	}
+	return false;
+}
+
 #define RESET_TIMEOUT_MS 50
-static void kvx_eth_phy_reset(struct kvx_eth_hw *hw,
-			      struct kvx_eth_lane_cfg *cfg, int phy_reset)
+static void kvx_eth_phy_reset(struct kvx_eth_hw *hw, u32 serdes_mask,
+			      int phy_reset)
 {
 	u32 val = kvx_phy_readl(hw, PHY_RESET_OFFSET);
-	int lane, nb_lanes;
 
-	dev_dbg(hw->dev, "Phy Reset RX/TX serdes (0x%x)\n", val);
 	if (phy_reset || val)
 		val |= BIT(PHY_RST_SHIFT);
 
-	for_each_cfg_lane(nb_lanes, lane, cfg) {
-		val |= BIT(lane + PHY_RESET_SERDES_RX_SHIFT) |
-			BIT(lane + PHY_RESET_SERDES_TX_SHIFT);
-	}
+	val |= (serdes_mask << PHY_RESET_SERDES_RX_SHIFT) |
+		(serdes_mask << PHY_RESET_SERDES_TX_SHIFT);
 	kvx_phy_writel(hw, val, PHY_RESET_OFFSET);
 
 	kvx_poll(kvx_phy_readl, PHY_RESET_OFFSET, val, val, RESET_TIMEOUT_MS);
@@ -320,19 +332,37 @@ int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
  */
 static void kvx_eth_phy_pll(struct kvx_eth_hw *hw, enum pll_id pll, u32 r10G_en)
 {
-	u32 val = kvx_phy_readl(hw, PHY_PLL_OFFSET);
+	u32 mask, val;
 
 	if (pll == PLL_A) {
-		val &= ~(PHY_PLL_PLLA_RATE_10G_EN_MASK |
+		mask = (PHY_PLL_PLLA_RATE_10G_EN_MASK |
 			 PHY_PLL_PLLA_FORCE_EN_MASK);
-		val |= (r10G_en << PHY_PLL_PLLA_RATE_10G_EN_SHIFT) |
+		val = (r10G_en << PHY_PLL_PLLA_RATE_10G_EN_SHIFT) |
 			PHY_PLL_PLLA_FORCE_EN_MASK;
+		if (!r10G_en)
+			hw->pll_cfg.rate_plla = SPEED_1000;
+		else
+			hw->pll_cfg.rate_plla = SPEED_10000;
 	} else {
-		val |= PHY_PLL_PLLB_FORCE_EN_MASK;
+		mask = PHY_PLL_PLLB_FORCE_EN_MASK;
+		val = mask;
 	}
-	kvx_phy_writel(hw, val, PHY_PLL_OFFSET);
+	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET, mask, val);
+	clear_bit(pll, &hw->pll_cfg.avail);
 }
 
+
+static void kvx_eth_phy_release_pll(struct kvx_eth_hw *hw, enum pll_id pll)
+{
+	u32 mask;
+
+	if (pll == PLL_A)
+		mask = PHY_PLL_PLLA_FORCE_EN_MASK;
+	else
+		mask = PHY_PLL_PLLB_FORCE_EN_MASK;
+	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET, mask, 0);
+	set_bit(pll, &hw->pll_cfg.avail);
+}
 /**
  * kvx_eth_phy_serdes() - Sets sw pll/serdes configuration
  * @hw: hardware description
@@ -349,30 +379,25 @@ static int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, unsigned int lane_id,
 				   unsigned int speed)
 {
 	struct pll_cfg *pll = &hw->pll_cfg;
-	u32 mask;
 
 	switch (speed) {
 	case SPEED_10:
 	case SPEED_100:
 	case SPEED_1000:
-		if (test_and_clear_bit(PLL_A, &pll->avail)) {
-			pll->rate_plla = SPEED_1000;
+		if (test_and_clear_bit(PLL_A, &pll->avail))
 			kvx_eth_phy_pll(hw, PLL_A, 0);
-		} else {
+		else
 			if (pll->rate_plla != SPEED_1000)
 				return -EINVAL;
-		}
 		clear_bit(lane_id, &pll->serdes_pll_master);
 		set_bit(lane_id, &pll->serdes_mask);
 		break;
 	case SPEED_10000:
-		if (test_and_clear_bit(PLL_A, &pll->avail)) {
-			pll->rate_plla = SPEED_10000;
+		if (test_and_clear_bit(PLL_A, &pll->avail))
 			kvx_eth_phy_pll(hw, PLL_A, 1);
-		} else {
+		else
 			if (pll->rate_plla != SPEED_10000)
 				return -EINVAL;
-		}
 		if (test_and_clear_bit(PLL_B, &pll->avail))
 			kvx_eth_phy_pll(hw, PLL_B, 0);
 		clear_bit(lane_id, &pll->serdes_pll_master);
@@ -389,10 +414,8 @@ static int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, unsigned int lane_id,
 			dev_err(hw->dev, "Failed to set serdes for 40G\n");
 			return -EINVAL;
 		}
-		clear_bit(PLL_A, &pll->avail);
 		pll->rate_plla = SPEED_10000;
 		kvx_eth_phy_pll(hw, PLL_A, 1);
-		clear_bit(PLL_B, &pll->avail);
 		kvx_eth_phy_pll(hw, PLL_B, 0);
 		pll->serdes_pll_master = 0;
 		pll->serdes_mask = 0xF;
@@ -415,13 +438,8 @@ static int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, unsigned int lane_id,
 			return -EINVAL;
 		}
 
-		set_bit(PLL_A, &pll->avail);
-		clear_bit(PLL_B, &pll->avail);
-		mask = (PHY_PLL_PLLA_RATE_10G_EN_MASK |
-			 PHY_PLL_PLLA_FORCE_EN_MASK |
-			 PHY_PLL_PLLB_FORCE_EN_MASK);
-		updatel_bits(hw, PHYMAC,  PHY_PLL_OFFSET,
-			     mask, PHY_PLL_PLLB_FORCE_EN_MASK);
+		kvx_eth_phy_release_pll(hw, PLL_A);
+		kvx_eth_phy_pll(hw, PLL_B, 0);
 		pll->serdes_pll_master = 0xF;
 		pll->serdes_mask = 0xF;
 		break;
@@ -501,13 +519,12 @@ static inline bool is_lane_in_use(struct kvx_eth_hw *hw, int lane_id)
 /**
  * kvx_mac_phy_disable_serdes() - Change serdes state to P1
  */
-static int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw,
-			       struct kvx_eth_lane_cfg *cfg)
+int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb,
+			       bool phy_reset_all)
 {
-	u32 serdes_mask = kvx_mac_get_serdes_mask(cfg);
+	u32 serdes_mask = get_serdes_mask(lane, lane_nb);
 	struct pll_cfg *pll = &hw->pll_cfg;
-	u32 val, mask, reg;
-	int lane, nb_lanes;
+	u32 i, val, mask, reg;
 
 	/* Select the MAC PLL ref clock */
 	if (pll->rate_plla == SPEED_1000 && !test_bit(PLL_A, &pll->avail) &&
@@ -516,17 +533,20 @@ static int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw,
 	else
 		kvx_phy_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
 	/* Configure serdes PLL master + power down pll */
-	mask = (serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_EN_SHIFT) |
-		PHY_SERDES_PLL_CFG_TX_PLL_SEL_MASK;
-	val = pll->serdes_pll_master << PHY_SERDES_PLL_CFG_TX_PLL_SEL_SHIFT;
-	updatel_bits(hw, PHYMAC, PHY_SERDES_PLL_CFG_OFFSET, mask, val);
+	mask = (serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_EN_SHIFT |
+		serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_SEL_SHIFT);
+	updatel_bits(hw, PHYMAC, PHY_SERDES_PLL_CFG_OFFSET, mask, 0);
 
 	/*
-	 * Enable serdes, pstate: 3: off, 2, 1, 0: running
+	 * Enable serdes, pstate:
+	 *   3: off (sig detector powered up and the rest of RX is down)
+	 *   2: analog front-end (AFE) + voltage regulators are up, RX VCO in reset
+	 *   1: voltage-controlled oscillator (VCO) is in continuous calibration mode, output receive clocks are not available
+	 *   0: running
 	 * Do not set pstate in running mode during PLL serdes boot
 	 */
-	for_each_cfg_lane(nb_lanes, lane, cfg) {
-		reg = PHY_LANE_OFFSET + lane * PHY_LANE_ELEM_SIZE;
+	for (i = lane; i < lane + lane_nb; i++) {
+		reg = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
 		mask = (PHY_LANE_RX_SERDES_CFG_DISABLE_MASK |
 			PHY_LANE_RX_SERDES_CFG_PSTATE_MASK |
 			PHY_LANE_RX_SERDES_CFG_LPD_MASK |
@@ -546,7 +566,7 @@ static int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw,
 			     mask, val);
 		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
 	}
-	kvx_eth_phy_reset(hw, cfg, 1);
+	kvx_eth_phy_reset(hw, serdes_mask, phy_reset_all);
 	/* Waits for the ack signals be low */
 	mask = (serdes_mask << PHY_SERDES_STATUS_RX_ACK_SHIFT) |
 		(serdes_mask << PHY_SERDES_STATUS_TX_ACK_SHIFT);
@@ -569,31 +589,38 @@ static int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw,
 /**
  * kvx_mac_phy_enable_serdes() - Change serdes state to P0 based on pll config
  */
-static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw,
-				     struct kvx_eth_lane_cfg *cfg,
-				     enum serdes_pstate pstate)
+static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
+				     int lane_nb, enum serdes_pstate pstate)
 {
-	u32 serdes_mask = kvx_mac_get_serdes_mask(cfg);
-	struct pll_cfg *pll = &hw->pll_cfg;
-	u32 val, mask, reg;
-	int lane, nb_lanes;
+	u32 serdes_mask = get_serdes_mask(lane, lane_nb);
+	u32 serdes_master_mask = serdes_mask & hw->pll_cfg.serdes_pll_master;
+	u32 i, val, mask, reg;
 
-	dev_dbg(hw->dev, "%s serdes_mask: 0x%lx serdes_pll_master: 0x%lx\n",
-		__func__, pll->serdes_mask, pll->serdes_pll_master);
+	dev_dbg(hw->dev, "%s lane[%d->%d] serdes_mask: 0x%x serdes_pll_master: 0x%x\n",
+		__func__, lane, lane + lane_nb,
+		serdes_mask, serdes_master_mask);
+
+	/* Enable CR interface */
+	kvx_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
+
 	/* Assert tx_clk_rdy */
 	val = serdes_mask << PHY_SERDES_CTRL_TX_CLK_RDY_SHIFT;
 	updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET, val, val);
 
 	/* Enables serdes */
+	mask = (serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_EN_SHIFT) |
+		(serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_SEL_SHIFT);
 	val = (serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_EN_SHIFT) |
-		(pll->serdes_pll_master << PHY_SERDES_PLL_CFG_TX_PLL_SEL_SHIFT);
-	mask = PHY_SERDES_PLL_CFG_TX_PLL_EN_MASK | PHY_SERDES_PLL_CFG_TX_PLL_SEL_MASK;
+		(serdes_master_mask << PHY_SERDES_PLL_CFG_TX_PLL_SEL_SHIFT);
 	updatel_bits(hw, PHYMAC, PHY_SERDES_PLL_CFG_OFFSET, mask, val);
 
-	for_each_cfg_lane(nb_lanes, lane, cfg) {
-		reg = PHY_LANE_OFFSET + lane * PHY_LANE_ELEM_SIZE;
+	dev_dbg(hw->dev, "%s PLL_CFG: 0x%x\n", __func__,
+		kvx_phy_readl(hw, PHY_SERDES_PLL_CFG_OFFSET));
+
+	for (i = lane; i < lane + lane_nb; i++) {
+		reg = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
 		mask = (PHY_LANE_RX_SERDES_CFG_DISABLE_MASK |
-			 PHY_LANE_RX_SERDES_CFG_PSTATE_MASK);
+			PHY_LANE_RX_SERDES_CFG_PSTATE_MASK);
 		val = ((u32)pstate << PHY_LANE_RX_SERDES_CFG_PSTATE_SHIFT);
 		updatel_bits(hw, PHYMAC, reg + PHY_LANE_RX_SERDES_CFG_OFFSET,
 			     mask, val);
@@ -646,10 +673,12 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw,
 static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 				  struct kvx_eth_lane_cfg *cfg)
 {
-	int ret, lane, nb_lanes;
+	int i, ret, lane_speed;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 
 	/* Disable serdes for *previous* config */
-	kvx_mac_phy_disable_serdes(hw, cfg);
+	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb, aggregated_lanes);
 	ret = kvx_eth_phy_serdes_init(hw, cfg->id, cfg->speed);
 	if (ret)
 		return ret;
@@ -660,16 +689,13 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	 * Full cycle (disable/enable) is needed to get serdes in appropriate
 	 * state (typically for MDIO operations in SGMII mode)
 	 */
-	kvx_mac_phy_disable_serdes(hw, cfg);
-	/* Enable CR interface */
-	kvx_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
-
-	kvx_mac_phy_enable_serdes(hw, cfg, PSTATE_P0);
+	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb, aggregated_lanes);
+	kvx_mac_phy_enable_serdes(hw, cfg->id, lane_nb, PSTATE_P0);
 
 	/* Update parameters with reset values */
-	for_each_cfg_lane(nb_lanes, lane, cfg)
-		if (hw->phy_f.param[lane].update)
-			hw->phy_f.param[lane].update(&hw->phy_f.param[lane]);
+	for (i = cfg->id; i < cfg->id + lane_nb; i++)
+		if (hw->phy_f.param[i].update)
+			hw->phy_f.param[i].update(&hw->phy_f.param[i]);
 
 	dump_phy_status(hw);
 
@@ -697,11 +723,10 @@ int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 static int kvx_eth_mac_reset(struct kvx_eth_hw *hw, int lane_id)
 {
 	u32 mask, val = kvx_mac_readl(hw, MAC_RESET_OFFSET);
-	u32 mac_mode = kvx_mac_readl(hw, MAC_MODE_OFFSET);
+	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	int ret = 0;
 
-	mac_mode &= (MAC_PCS100_EN_IN_MASK | MAC_MODE40_EN_IN_MASK);
-	if (val || mac_mode) {
+	if (val || aggregated_lanes) {
 		/* Initial state: MAC under reset */
 		kvx_mac_writel(hw, (~0U), MAC_RESET_CLEAR_OFFSET);
 	} else {
@@ -919,9 +944,10 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 				       XPCS_VENDOR_TXLANE_THRESH_OFFSET);
 			update_set_vendor_cl_intvl(hw, i, mc);
 		}
-		/* Lane 0 */
-		reg = XPCS_OFFSET;
-		kvx_mac_writel(hw, 0, reg + XPCS_VENDOR_PCS_MODE_OFFSET);
+		for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
+			reg = XPCS_OFFSET + XPCS_ELEM_SIZE * i;
+			kvx_mac_writel(hw, 0, reg + XPCS_VENDOR_PCS_MODE_OFFSET);
+		}
 
 		/* All lanes */
 		for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
@@ -1122,6 +1148,42 @@ int kvx_eth_mac_getlink(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 int kvx_eth_mac_getfec(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	return cfg->fec;
+}
+
+static int kvx_eth_mac_setup_fec(struct kvx_eth_hw *hw,
+			       struct kvx_eth_lane_cfg *cfg)
+{
+	u32 v;
+
+	switch (cfg->speed) {
+	case SPEED_100000:
+		v = (cfg->fec ? MAC_FEC91_ENA_IN_MASK : 0);
+		/* Enable RS FEC */
+		updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET,
+			     MAC_FEC91_ENA_IN_MASK, v);
+		break;
+	case SPEED_50000:
+		v = (3 << MAC_FEC_CTRL_FEC_EN_SHIFT) + (cfg->id * 2);
+		v = (cfg->fec ? v : 0);
+		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET,
+			     MAC_FEC_CTRL_FEC_EN_MASK, v);
+		break;
+	case SPEED_40000:
+		v = (cfg->fec ? 0xF : 0);
+		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET,
+			     MAC_FEC_CTRL_FEC_EN_MASK, v);
+		break;
+	case SPEED_25000:
+	case SPEED_10000:
+		v = (u32)BIT(MAC_FEC_CTRL_FEC_EN_SHIFT + cfg->id);
+		v = (cfg->fec ? v : 0);
+		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET,
+			     MAC_FEC_CTRL_FEC_EN_MASK, v);
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
 }
 
 static void kvx_eth_dump_an_regs(struct kvx_eth_hw *hw,
@@ -1702,10 +1764,12 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 		struct kvx_eth_lane_cfg *cfg)
 {
-	int ret, i;
+	int i, ret, lane_speed;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 
 	/* Before reconfiguring retimers, serdes must be disabled */
-	kvx_mac_phy_disable_serdes(hw, cfg);
+	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb, aggregated_lanes);
 
 	ret = kvx_eth_phy_serdes_init(hw, cfg->id, SPEED_10000);
 	if (ret) {
@@ -1890,7 +1954,7 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 	}
 
 	/* Setup PHY + serdes */
-	if (dev->type->phy_cfg) {
+	if (dev->type->phy_cfg && update_serdes) {
 		ret = dev->type->phy_cfg(hw, cfg);
 		if (ret) {
 			dev_err(hw->dev, "Failed to configure PHY/MAC\n");
@@ -1983,6 +2047,9 @@ static int kvx_eth_an_good_status_wait(struct kvx_eth_hw *hw,
  */
 int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
+	int lane_speed;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	int ret;
 
 	ret = kvx_eth_mac_pcs_pma_autoneg_setup(hw, cfg);
@@ -1993,6 +2060,8 @@ int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	if (ret)
 		return ret;
 
+	/* Before changing speed, disable serdes with previous config */
+	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb, aggregated_lanes);
 	/* Apply negociated speed */
 	cfg->speed = cfg->ln.speed;
 	cfg->fec = cfg->ln.fec;
@@ -2015,10 +2084,10 @@ int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
  */
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	u32 serdes_mask = kvx_mac_get_serdes_mask(cfg);
+	int i, ret, lane_speed;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
 	u32 off, mask, val = 0;
-	int lane, nb_lanes;
-	int ret = 0;
 
 	if (cfg->speed == SPEED_40000)
 		val = MAC_MODE40_EN_IN_MASK;
@@ -2068,25 +2137,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		cfg->fec = FEC_25G_RS_REQUESTED;
 	}
 
-	if (cfg->fec) {
-		if (cfg->speed == SPEED_100000) {
-			/* Enable RS FEC */
-			kvx_mac_writel(hw, MAC_FEC91_ENA_IN_MASK,
-				       MAC_FEC91_CTRL_OFFSET);
-		} else if (cfg->speed == SPEED_50000) {
-			val = kvx_mac_readl(hw, MAC_FEC_CTRL_OFFSET);
-			val |= (3 << MAC_FEC_CTRL_FEC_EN_SHIFT) + (cfg->id * 2);
-			kvx_mac_writel(hw, val, MAC_FEC_CTRL_OFFSET);
-		} else if (cfg->speed == SPEED_40000) {
-			val = kvx_mac_readl(hw, MAC_FEC_CTRL_OFFSET);
-			val |= ((u32)0xF << MAC_FEC_CTRL_FEC_EN_SHIFT);
-			kvx_mac_writel(hw, val, MAC_FEC_CTRL_OFFSET);
-		} else {
-			val = kvx_mac_readl(hw, MAC_FEC_CTRL_OFFSET);
-			val |= (u32)BIT(MAC_FEC_CTRL_FEC_EN_SHIFT + cfg->id);
-			kvx_mac_writel(hw, val, MAC_FEC_CTRL_OFFSET);
-		}
-	}
+	kvx_eth_mac_setup_fec(hw, cfg);
 
 	/* config MAC PCS */
 	ret = kvx_eth_mac_pcs_cfg(hw, cfg);
@@ -2099,14 +2150,14 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	if (ret)
 		dev_err(hw->dev, "Signal detection timeout.\n");
 
-	for_each_cfg_lane(nb_lanes, lane, cfg) {
-		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane;
+	for (i = cfg->id; i < cfg->id + lane_nb; i++) {
+		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
 		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
 		val |= BIT(PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_SHIFT);
 		kvx_phy_writel(hw, val, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
 		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 		dev_dbg(hw->dev, "PHY_LANE_RX_SERDES_STATUS[%d] (data_en): 0x%x\n",
-			lane, val);
+			i, val);
 	}
 
 	return 0;
