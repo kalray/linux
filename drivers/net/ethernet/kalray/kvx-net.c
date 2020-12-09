@@ -121,7 +121,7 @@ static void kvx_eth_poll_link(struct timer_list *t)
 	bool link_los, link;
 
 	/* No link checks for BERT and SGMII modes (handled @phy/mac level) */
-	if (ndev->hw->phy_f.bert_en || ndev->cfg.speed == SPEED_1000 ||
+	if (kvx_eth_phy_is_bert_en(ndev->hw) || ndev->cfg.speed == SPEED_1000 ||
 	    ndev->cfg.transceiver.id == 0)
 		goto exit;
 	link_los = kvx_eth_pmac_linklos(ndev->hw, &ndev->cfg);
@@ -1657,7 +1657,7 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	if (ndev->hw->phy_f.bert_en)
+	if (kvx_eth_phy_is_bert_en(ndev->hw))
 		state->link = false;
 	else
 		state->link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
@@ -1817,7 +1817,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		return;
 	}
 
-	if (ndev->hw->phy_f.bert_en) {
+	if (kvx_eth_phy_is_bert_en(ndev->hw)) {
 		netdev_warn(ndev->netdev, "Trying to reconfigure mac while BERT is enabled\n");
 		return;
 	}
@@ -1840,7 +1840,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		kvx_eth_pfc_f_cfg(ndev->hw, &ndev->cfg.pfc_f);
 	}
 
-	if (an_enabled && !ndev->hw->phy_f.bert_en) {
+	if (an_enabled) {
 		ret = kvx_eth_autoneg(ndev);
 		/* If AN is successful MAC/PHY are already configured on
 		 * correct mode as link training requires to be performed at
