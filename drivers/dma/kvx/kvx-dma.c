@@ -333,6 +333,8 @@ static int kvx_dma_get_phy_nb(enum kvx_dma_dir_type dir)
 
 /**
  * kvx_dma_get_phy() - Get a phy from channel
+ *
+ * One TX phy (physical channel) can be accessed per multiple channels !
  * @dev: Current device
  * @c: Channel requesting hw fifo
  *
@@ -521,80 +523,76 @@ static void kvx_dma_release_desc(struct virt_dma_desc *vd)
 }
 
 /**
- * kvx_dma_get_route_id() - Returns route_id index in noc_route table
+ * kvx_dma_get_route_id() - Returns route_id in noc_route table
  * @dev: kvx device for global param
- * @phy: the phy to get route table from
  * @route: the route to look for
- * @route_id: returned route identifier if found
+ * @route_id: returned route identifier
  *
  * Must be called under lock
  *
  * Return: 0 - OK -EAGAIN - failed to add route
  */
-int kvx_dma_get_route_id(struct kvx_dma_dev *dev, struct kvx_dma_phy *phy,
-			 u64 *route, u64 *route_id)
+static int kvx_dma_get_route_id(struct kvx_dma_dev *dev, u64 route,
+				u16 *route_id)
 {
-	int i, idx = -1;
+	int i;
 	int s = dev->dma_noc_route_ids.start;
 	u64 rt = 0;
 
 	for (i = s; i < s + dev->dma_noc_route_ids.nb; ++i) {
-		rt = readq(phy->base + KVX_DMA_NOC_RT_OFFSET +
+		rt = readq(dev->iobase + KVX_DMA_NOC_RT_OFFSET +
 			   i * KVX_DMA_NOC_RT_ELEM_SIZE);
-		if ((rt & KVX_DMA_NOC_RT_VALID_MASK) != 0) {
-			if (*route == rt) {
-				idx = i;
-				break;
-			}
-		} else {
-			idx = i;
+		/* Return if route exists or write this route in a new entry */
+		if ((rt & KVX_DMA_NOC_RT_VALID_MASK) == 0) {
+			writeq(route, dev->iobase + KVX_DMA_NOC_RT_OFFSET +
+			       i * KVX_DMA_NOC_RT_ELEM_SIZE);
+			break;
+		} else if (route == rt) {
 			break;
 		}
 	}
-	if ((i >= KVX_DMA_NOC_ROUTE_TABLE_NUMBER) || (idx == -1)) {
-		dev_err(phy->dev, "Noc route table full\n");
+	if (i >= KVX_DMA_NOC_ROUTE_TABLE_NUMBER) {
+		dev_err(dev->dma.dev, "Noc route table full\n");
 		return -EAGAIN;
 	}
 
-	writeq(*route, phy->base + KVX_DMA_NOC_RT_OFFSET +
-	       idx * KVX_DMA_NOC_RT_ELEM_SIZE);
-	*route_id = idx;
+	*route_id = i;
 	return 0;
 }
 
 /**
- * kvx_dma_setup_route() - Set up route for desc based on config params
+ * kvx_dma_setup_route() - Sets chan route_id based on noc route
  * @c: channel with configuration
- * @desc: the descriptor containing the route
  *
  * Adds route to dma noc_route table
  *
  * Return: 0 - OK -EAGAIN - failed to add route
  */
-int kvx_dma_setup_route(struct kvx_dma_chan *c, struct kvx_dma_desc *desc)
+static int kvx_dma_setup_route(struct kvx_dma_chan *c)
 {
-	int ret = 0;
 	struct kvx_dma_dev *dev = c->dev;
 	struct kvx_dma_slave_cfg *cfg = &c->cfg;
 	int global = is_asn_global(c->phy->asn);
+	u64 route = cfg->noc_route;
+	int ret = 0;
 
-	desc->route = cfg->noc_route;
-	desc->route |=
-	((u64)(cfg->rx_tag & 0x3FU)     << KVX_DMA_NOC_RT_RX_TAG_SHIFT) |
-	((u64)(cfg->qos_id & 0xFU)      << KVX_DMA_NOC_RT_QOS_ID_SHIFT) |
-	((u64)(global & 0x1U)           << KVX_DMA_NOC_RT_GLOBAL_SHIFT) |
-	((u64)(c->phy->asn & KVX_DMA_ASN_MASK) << KVX_DMA_NOC_RT_ASN_SHIFT) |
-	((u64)(c->phy->vchan & 0x1)     << KVX_DMA_NOC_RT_VCHAN_SHIFT)  |
-	((u64)(1)                       << KVX_DMA_NOC_RT_VALID_SHIFT);
+	route |= ((u64)(cfg->rx_tag & 0x3FU) << KVX_DMA_NOC_RT_RX_TAG_SHIFT) |
+		((u64)(cfg->qos_id & 0xFU)   << KVX_DMA_NOC_RT_QOS_ID_SHIFT) |
+		((u64)(global & 0x1U)        << KVX_DMA_NOC_RT_GLOBAL_SHIFT) |
+		((u64)(c->phy->asn & KVX_DMA_ASN_MASK) <<
+		 KVX_DMA_NOC_RT_ASN_SHIFT) |
+		((u64)(c->phy->vchan & 0x1)  << KVX_DMA_NOC_RT_VCHAN_SHIFT)  |
+		((u64)(1)                    << KVX_DMA_NOC_RT_VALID_SHIFT);
 	spin_lock(&dev->lock);
-	ret = kvx_dma_get_route_id(dev, c->phy, &desc->route, &desc->route_id);
+	ret = kvx_dma_get_route_id(dev, route, &c->cfg.route_id);
 	spin_unlock(&dev->lock);
 	if (ret) {
 		dev_err(dev->dma.dev, "Unable to get route_id\n");
 		return ret;
 	}
-	dev_dbg(dev->dma.dev, "route: 0x%llx rx_tag: 0x%x global: %d asn: %d vchan: %d\n",
-		desc->route, cfg->rx_tag, global, c->phy->asn, c->phy->vchan);
+	dev_dbg(dev->dma.dev, "chan[%d] route[%d]: 0x%llx rx_tag: 0x%x global: %d asn: %d vchan: %d\n",
+		 c->phy->hw_id, c->cfg.route_id, route, cfg->rx_tag,
+		 global, c->phy->asn, c->phy->vchan);
 
 	return 0;
 }
@@ -633,6 +631,9 @@ struct dma_async_tx_descriptor *kvx_prep_dma_memcpy(
 	desc = kvx_dma_get_desc(c);
 	if (!desc)
 		return NULL;
+	/* Fill cfg and desc here no slave cfg method using memcpy */
+	desc->dir = DMA_MEM_TO_MEM;
+	desc->txd_nb = 1;
 
 	if (!test_and_set_bit(KVX_DMA_HW_INIT_DONE, &c->state)) {
 		c->cfg.dir = KVX_DMA_DIR_TYPE_TX;
@@ -662,18 +663,14 @@ struct dma_async_tx_descriptor *kvx_prep_dma_memcpy(
 			kvx_dma_release_phy(d, c->phy);
 			goto err_hw_init;
 		}
+		/* Map to mem2mem route */
+		if (kvx_dma_setup_route(c)) {
+			dev_err(dev, "Can't setup mem2mem route\n");
+			goto err;
+		}
 	}
 
-	/* Fill cfg and desc here no slave cfg method using memcpy */
 	desc->phy = c->phy;
-	desc->dir = DMA_MEM_TO_MEM;
-	desc->txd_nb = 1;
-
-	/* Map to mem2mem route */
-	if (kvx_dma_setup_route(c, desc)) {
-		dev_err(dev, "Can't setup mem2mem route\n");
-		goto err;
-	}
 
 	txd = &desc->txd[0];
 	txd->src_dma_addr = src;
@@ -686,7 +683,7 @@ struct dma_async_tx_descriptor *kvx_prep_dma_memcpy(
 	txd->rstride = 0; /* Linear transfer for memcpy */
 	/* Assuming phy.hw_id == compq hw_id */
 	txd->comp_q_id = desc->phy->hw_id;
-	txd->route_id = desc->route_id;
+	txd->route_id = c->cfg.route_id;
 
 	return vchan_tx_prep(vc, &desc->vd, flags);
 
@@ -762,6 +759,7 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 		dev_err(dev, "Failed to alloc dma desc\n");
 		return NULL;
 	}
+	desc->dir = direction;
 
 	if (!test_and_set_bit(KVX_DMA_HW_INIT_DONE, &c->state)) {
 		c->phy = kvx_dma_get_phy(d, c);
@@ -787,13 +785,12 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 				goto err_hw_init;
 			}
 		}
+		if (desc->dir == DMA_MEM_TO_DEV) {
+			if (kvx_dma_setup_route(c))
+				goto err;
+		}
 	}
 
-	desc->dir = direction;
-	if (desc->dir == DMA_MEM_TO_DEV) {
-		if (kvx_dma_setup_route(c, desc))
-			goto err;
-	}
 	desc->phy = c->phy;
 	desc->txd_nb = sg_len;
 	for_each_sg(sgl, sgent, sg_len, i) {
@@ -803,7 +800,7 @@ static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
 		txd->len = sg_dma_len(sgent);
 		txd->nb = 1;
 		txd->comp_q_id = desc->phy->hw_id;
-		txd->route_id = desc->route_id;
+		txd->route_id = c->cfg.route_id;
 		txd->fence_before = 1;
 		dev_dbg(dev, "%s txd.base: 0x%llx .len: %lld\n",
 			__func__, txd->src_dma_addr, txd->len);
