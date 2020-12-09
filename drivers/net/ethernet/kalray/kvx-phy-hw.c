@@ -12,67 +12,7 @@
 #include "kvx-phy-regs.h"
 #include "kvx-mac-regs.h"
 
-#define LANE0_DIG_ASIC_TX_OVRD_IN_2  0x400C
-#define LANE0_DIG_ASIC_TX_OVRD_IN_3  0x4010
-#define DIG_ASIC_TX_OVRD_IN_3_OFFSET 0x10
-
-#define LANE1_DIG_ASIC_TX_OVRD_IN_2  0x440C
-#define LANE1_DIG_ASIC_TX_OVRD_IN_3  0x4410
-#define LANE2_DIG_ASIC_TX_OVRD_IN_2  0x480C
-#define LANE2_DIG_ASIC_TX_OVRD_IN_3  0x4810
-#define LANE3_DIG_ASIC_TX_OVRD_IN_2  0x4C0C
-#define LANE3_DIG_ASIC_TX_OVRD_IN_3  0x4C10
-
-#define LANE1_DIG_ASIC_TX_ASIC_IN_1  0x4458
-#define LANE1_DIG_ASIC_TX_ASIC_IN_2  0x445C
-#define MAIN_CURSOR_SHIFT            8
-#define MAIN_CURSOR_MASK             0x3f00
-#define PRE_CURSOR_SHIFT             0
-#define PRE_CURSOR_MASK              0x3f
-#define POST_CURSOR_SHIFT            6
-#define POST_CURSOR_MASK             0xfc0
-
-#define OVRD_IN_EN_MASK              0x100UL
-#define MAIN_OVRD_EN_MASK         0x8000UL
-#define MAIN_OVRD_CURSOR_SHIFT    9
-#define MAIN_OVRD_CURSOR_MASK     0x7e00UL
-#define PRE_OVRD_CURSOR_SHIFT     0
-#define PRE_OVRD_CURSOR_MASK      0x3fUL
-#define PRE_OVRD_EN_MASK             0x40UL
-#define POST_OVRD_CURSOR_SHIFT    7
-#define POST_OVRD_CURSOR_MASK     0x1f80UL
-#define POST_OVRD_EN_MASK            0x2000UL
-#define MAX_TX_MAIN                  24
-#define MAX_TX_PRE                   24
-#define MAX_TX_POST                  24
-
-#define REFCLK_OVRD_IN_1_OFFSET                0xC
-#define REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_MASK  0x0003UL
-#define REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_OVRD_EN_MASK  0x0004UL
-
-#define RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN       0x180A0
-#define LANE_TX2RX_SER_LB_EN_OVRD_EN_SHIFT     3
-#define LANE_TX2RX_SER_LB_EN_OVRD_VAL_SHIFT    2
-#define LANE_RX2TX_PAR_LB_EN_OVRD_EN_SHIFT     1
-
-#define LANE0_TX_LBERT_CTL_OFFSET         0x40C8
-#define LANE0_RX_LBERT_CTL_OFFSET         0x411C
-#define LANE0_RX_LBERT_ERR_OFFSET         0x4120
-#define LANE_OFFSET                       0x400
-#define LANE0_TX_LBERT_CTL_MODE_SHIFT     0
-#define LANE0_TX_LBERT_CTL_MODE_MASK      0x000FUL
-#define LANE0_TX_LBERT_CTL_TRIG_ERR_SHIFT 4
-#define LANE0_TX_LBERT_CTL_TRIG_ERR_MASK  0x0010UL
-#define LANE0_TX_LBERT_CTL_PAT0_SHIFT     5
-#define LANE0_TX_LBERT_CTL_PAT0_MASK      0x7FE0UL
-#define LANE0_RX_LBERT_CTL_MODE_SHIFT     0
-#define LANE0_RX_LBERT_CTL_MODE_MASK      0x000FUL
-#define LANE0_RX_LBERT_CTL_SYNC_SHIFT     4
-#define LANE0_RX_LBERT_CTL_SYNC_MASK      0x0010UL
-#define LANE0_RX_LBERT_ERR_COUNT_SHIFT    0
-#define LANE0_RX_LBERT_ERR_COUNT_MASK     0x7FFFUL
-#define LANE0_RX_LBERT_ERR_OV14_SHIFT     15
-#define LANE0_RX_LBERT_ERR_OV14_MASK      0x8000UL
+#define REG_DBG(dev, val, f) dev_info(dev, #f": 0x%lx\n", GETF(val, f))
 
 static void tx_ber_param_update(void *data)
 {
@@ -139,11 +79,9 @@ static void kvx_phy_get_tx_coef(struct kvx_eth_hw *hw, int lane_id,
 void phy_param_update(void *data)
 {
 	struct kvx_eth_phy_param *p = (struct kvx_eth_phy_param *)data;
-	u32 val = readl(p->hw->res[KVX_ETH_RES_PHYMAC].base +
-			PHY_LANE_RX_SERDES_STATUS_OFFSET);
 	struct tx_coefs coef;
 
-	p->fom = GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
+	/* fom is (already) updated after rx_adapt procedure */
 	kvx_phy_get_tx_coef(p->hw, p->lane_id, &coef);
 	p->swing = coef.main;
 	p->pre   = coef.pre;
@@ -215,11 +153,79 @@ static int kvx_mac_phy_bert_init(struct kvx_eth_hw *hw)
 
 	return 0;
 }
+/**
+ * kvx_phy_param_tuning() - Set all lanes phy parameters
+ *
+ * Based on MAC lane configuration (takes into account virtual lane, and
+ * set all physical lane with lane 0 parameters)
+ *
+ * @hw: hw description
+ */
+static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
+{
+	struct kvx_eth_phy_param *param;
+	u16 v, lane_id, mask;
+	u32 off;
+
+	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
+		param = &hw->phy_f.param[lane_id];
+		mask = MAIN_OVRD_CURSOR_MASK | MAIN_OVRD_EN_MASK;
+		v = (u16) param->swing << MAIN_OVRD_CURSOR_SHIFT;
+		if (param->ovrd_en)
+			v |= MAIN_OVRD_EN_MASK;
+		off = LANE0_DIG_ASIC_TX_OVRD_IN_2 + lane_id * LANE_OFFSET;
+		updatew_bits(hw, PHY, off, mask, v);
+
+		mask = PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK |
+			PRE_OVRD_CURSOR_MASK | POST_OVRD_CURSOR_MASK;
+		v = ((u16) param->pre << PRE_OVRD_CURSOR_SHIFT) |
+			((u16) param->post << POST_OVRD_CURSOR_SHIFT);
+		if (param->ovrd_en)
+			v |= PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK;
+		off = LANE0_DIG_ASIC_TX_OVRD_IN_3 + lane_id * LANE_OFFSET;
+		updatew_bits(hw, PHY, off, mask, v);
+
+		dev_dbg(hw->dev, "Lane [%d] param tuning (pre:%d, post:%d, swing:%d) done\n",
+			lane_id, param->pre, param->post, param->swing);
+	}
+}
+
+static void kvx_phy_set_polarities(struct kvx_eth_hw *hw)
+{
+	struct kvx_eth_polarities *pol;
+	struct kvx_eth_polarities clear_pol = {.rx = 0, .tx = 0};
+	u32 v, lane_id;
+	u32 off, mask;
+	/* In case of phy loopback, RX serdes must be with the same polarity as
+	 * their TX counterparts
+	 */
+	bool clear = (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK);
+
+	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
+		pol = &hw->phy_f.polarities[lane_id];
+		if (clear)
+			pol = &clear_pol;
+
+		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
+		mask = PHY_LANE_RX_SERDES_CFG_INVERT_MASK;
+		v = (u32) pol->rx << PHY_LANE_RX_SERDES_CFG_INVERT_SHIFT;
+		updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
+			     mask, v);
+
+		mask = PHY_LANE_TX_SERDES_CFG_INVERT_MASK;
+		v = (u32) pol->tx << PHY_LANE_TX_SERDES_CFG_INVERT_SHIFT;
+		updatel_bits(hw, PHYMAC, off + PHY_LANE_TX_SERDES_CFG_OFFSET,
+			     mask, v);
+
+		dev_dbg(hw->dev, "Lane [%d] polarity rx:%d/tx:%d done\n",
+			lane_id, pol->rx, pol->tx);
+	}
+}
 
 void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f)
 {
-	/* Serdes default config */
-	kvx_eth_phy_param_cfg(hw, phy_f->param);
+	kvx_phy_param_tuning(hw);
+	kvx_phy_set_polarities(hw);
 
 	if (phy_f->bert_en)
 		kvx_mac_phy_bert_init(hw);
@@ -423,81 +429,10 @@ int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
 	return 0;
 }
 
-/**
- * kvx_phy_param_tuning() - Set all lanes phy parameters
- *
- * Based on MAC lane configuration (takes into account virtual lane, and
- * set all physical lane with lane 0 parameters)
- *
- * @hw: hw description
- */
-static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
-{
-	struct kvx_eth_phy_param *param;
-	u16 v, lane_id, mask;
-	u32 off;
-
-	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
-		param = &hw->phy_f.param[lane_id];
-		mask = MAIN_OVRD_CURSOR_MASK | MAIN_OVRD_EN_MASK;
-		v = (u16) param->swing << MAIN_OVRD_CURSOR_SHIFT;
-		if (param->ovrd_en)
-			v |= MAIN_OVRD_EN_MASK;
-		off = LANE0_DIG_ASIC_TX_OVRD_IN_2 + lane_id * LANE_OFFSET;
-		updatew_bits(hw, PHY, off, mask, v);
-
-		mask = PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK |
-			PRE_OVRD_CURSOR_MASK | POST_OVRD_CURSOR_MASK;
-		v = ((u16) param->pre << PRE_OVRD_CURSOR_SHIFT) |
-			((u16) param->post << POST_OVRD_CURSOR_SHIFT);
-		if (param->ovrd_en)
-			v |= PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK;
-		off = LANE0_DIG_ASIC_TX_OVRD_IN_3 + lane_id * LANE_OFFSET;
-		updatew_bits(hw, PHY, off, mask, v);
-
-		dev_dbg(hw->dev, "Lane [%d] param tuning (pre:%d, post:%d, swing:%d) done\n",
-			lane_id, param->pre, param->post, param->swing);
-	}
-}
-
-static void kvx_phy_set_polarities(struct kvx_eth_hw *hw, bool clear)
-{
-	u32 mask;
-	struct kvx_eth_polarities *pol;
-	struct kvx_eth_polarities clear_pol = {.rx = 0, .tx = 0};
-	u32 v, lane_id;
-	u32 off;
-
-	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
-		pol = &hw->phy_f.polarities[lane_id];
-		if (clear)
-			pol = &clear_pol;
-
-		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
-		mask = PHY_LANE_RX_SERDES_CFG_INVERT_MASK;
-		v = (u32) pol->rx << PHY_LANE_RX_SERDES_CFG_INVERT_SHIFT;
-		updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
-			     mask, v);
-
-		mask = PHY_LANE_TX_SERDES_CFG_INVERT_MASK;
-		v = (u32) pol->tx << PHY_LANE_TX_SERDES_CFG_INVERT_SHIFT;
-		updatel_bits(hw, PHYMAC, off + PHY_LANE_TX_SERDES_CFG_OFFSET,
-			     mask, v);
-
-		dev_dbg(hw->dev, "Lane [%d] polarity rx:%d/tx:%d done\n",
-			lane_id, pol->rx, pol->tx);
-	}
-}
-
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p)
 {
-	/* In case of phy loopback, RX serdes must be with the same polarity as
-	 * their TX counterparts
-	 */
-	bool clear = (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK);
-
 	kvx_phy_param_tuning(hw);
-	kvx_phy_set_polarities(hw, clear);
+	kvx_phy_set_polarities(hw);
 	if (p->trig_rx_adapt) {
 		kvx_mac_phy_rx_adapt(p);
 		p->trig_rx_adapt = false;

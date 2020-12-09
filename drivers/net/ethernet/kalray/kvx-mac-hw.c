@@ -16,6 +16,7 @@
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
 #include "kvx-mac-regs.h"
+#include "kvx-phy-hw.h"
 #include "kvx-phy-regs.h"
 
 #define MAC_LOOPBACK_LATENCY  4
@@ -465,35 +466,34 @@ static void dump_phy_status(struct kvx_eth_hw *hw)
 	dev_dbg(hw->dev, "phy PLL: 0x%x\n", val);
 }
 
-int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p)
+int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 {
-	struct kvx_eth_hw *hw = p->hw;
-	int i = p->lane_id;
-	u32 val, off;
+	struct kvx_eth_phy_param *p = &hw->phy_f.param[lane_id];
+	unsigned long t;
+	u32 off, val;
 	int ret = 0;
+	u16 v;
 
-	if (!test_bit(i, &hw->pll_cfg.serdes_mask)) {
-		dev_err(hw->dev, "Serdes not enabled for lane %d\n", i);
-		return -EINVAL;
-	}
+	off = RAWLANE0_DIG_PCS_XF_ADAPT_CONT_OVRD_IN + LANE_OFFSET * lane_id;
+	v = PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_MASK |
+		PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK;
+	updatew_bits(hw, PHY, off, v, v);
+	off = RAWLANE0_DIG_PCS_XF_RX_ADAPT_ACK + LANE_OFFSET * lane_id;
+	t = jiffies + msecs_to_jiffies(SERDES_ACK_TIMEOUT_MS);
+	do {
+		if (time_after(jiffies, t)) {
+			dev_err(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
+			ret = -ETIMEDOUT;
+			break;
+		}
+		v = readw(hw->res[KVX_ETH_RES_PHY].base + off);
+	} while (!(v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK));
 
-	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
-	updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
-		     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK,
-		     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK);
-	ret = kvx_poll(kvx_phy_readl,
-		       off + PHY_LANE_RX_SERDES_STATUS_OFFSET,
-		       PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK_MASK,
-		       PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK_MASK,
-		       SIGDET_TIMEOUT_MS);
-
+	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
 	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 	p->fom = GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
-	dev_dbg(hw->dev, "lane[%d] FOM = %d\n", i, p->fom);
 
 	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
-	dev_dbg(hw->dev, "PHY_LANE_RX_SERDES_STATUS[%d] (adapt): 0x%x\n",
-		i, val);
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_TXPRE_DIR);
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_TXPOST_DIR);
@@ -501,9 +501,36 @@ int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p)
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_PPM_DRIFT);
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_PPM_DRIFT_VLD);
 
-	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
-	updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
-		     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK, 0);
+	off = RAWLANE0_DIG_PCS_XF_ADAPT_CONT_OVRD_IN + LANE_OFFSET * lane_id;
+	v = PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK;
+	updatew_bits(hw, PHY, off, v, 0);
+
+	/* Expect ACK == 0*/
+	off = RAWLANE0_DIG_PCS_XF_RX_ADAPT_ACK + LANE_OFFSET * lane_id;
+	t = jiffies + msecs_to_jiffies(SERDES_ACK_TIMEOUT_MS);
+	do {
+		if (time_after(jiffies, t)) {
+			dev_err(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
+			ret = -ETIMEDOUT;
+			break;
+		}
+		v = readw(hw->res[KVX_ETH_RES_PHY].base + off);
+	} while (v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK);
+
+	return ret;
+}
+
+int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p)
+{
+	int ret = 0;
+
+	if (!test_bit(p->lane_id, &p->hw->pll_cfg.serdes_mask)) {
+		dev_err(p->hw->dev, "Serdes not enabled for lane %d\n",
+			p->lane_id);
+		return -EINVAL;
+	}
+
+	ret = kvx_phy_rx_adapt(p->hw, p->lane_id);
 
 	return ret;
 }
@@ -695,10 +722,14 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	kvx_mac_phy_enable_serdes(hw, cfg->id, lane_nb, PSTATE_P0);
 
 	/* Update parameters with reset values */
-	for (i = cfg->id; i < cfg->id + lane_nb; i++)
+	for (i = cfg->id; i < cfg->id + lane_nb; i++) {
+		/* Process rx adaptation once to avoid bad result on BERT */
+		if (hw->phy_f.param[i].fom == 0)
+			kvx_phy_rx_adapt(hw, i);
 		/* Update parameters with reset values (except if overriden) */
 		if (hw->phy_f.param[i].update && !hw->phy_f.param[i].ovrd_en)
 			hw->phy_f.param[i].update(&hw->phy_f.param[i]);
+	}
 
 	dump_phy_status(hw);
 
