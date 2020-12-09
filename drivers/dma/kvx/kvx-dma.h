@@ -37,8 +37,6 @@
  * @len: Actual descriptor size written by dma (in bytes)
  * @phy: Pointer to hw phy (RX or TX)
  * @dir: Direction for descriptor
- * @route: Actual route for transfer desc
- * @route_id: Route id in route table
  * @last_job_id: Last hw job id (monotonic counter)
  * @err: HW error status
  */
@@ -50,8 +48,6 @@ struct kvx_dma_desc {
 	size_t len;
 	struct kvx_dma_phy *phy;
 	enum dma_transfer_direction dir;
-	u64 route;
-	u64 route_id;
 	u64 last_job_id;
 	u64 err;
 };
