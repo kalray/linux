@@ -289,6 +289,7 @@
 #define XPCS_CTRL2_PCS_TYPE_SHIFT                  0x0
 #define XPCS_CTRL2_PCS_TYPE_MASK                   0x7UL
 #define XPCS_STATUS1_OFFSET                        0x4
+#define XPCS_STATUS1_PCS_RECEIVE_LINK_MASK         0x4
 #define XPCS_STATUS2_OFFSET                        0x20
 #define XPCS_SPEED_ABILITY_OFFSET                  0x10
 #define XPCS_VENDOR_VL0_0_OFFSET                   0x720
