@@ -29,6 +29,7 @@ enum kvx_dma_transfer_type {
  * @cfg: Dma engine channel config
  * @dir: RX / TX
  * @trans_type: Transfer type for dma-noc
+ * @route_id: Transfer route id in hw tx route table (assuming 1 route per chan)
  * @noc_route: Transfer route
  * @qos_id: qos
  * @rx_cache_id: Rx cache associated to rx job queue [0, 3]
@@ -38,6 +39,7 @@ struct kvx_dma_slave_cfg {
 	enum kvx_dma_dir_type dir;
 	enum kvx_dma_transfer_type trans_type;
 	u64 noc_route;
+	u16 route_id;
 	u8  rx_tag;
 	u8  qos_id;
 	u8  rx_cache_id;
