@@ -99,9 +99,7 @@ static struct attribute *mac_f_attrs[] = {
 SYSFS_TYPES(mac_f);
 
 DECLARE_SYSFS_ENTRY(phy_f);
-FIELD_RW_ENTRY(phy_f, bert_en, 0, 1);
 static struct attribute *phy_f_attrs[] = {
-	&phy_f_bert_en_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(phy_f);
