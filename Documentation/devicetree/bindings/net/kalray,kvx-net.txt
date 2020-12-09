@@ -29,6 +29,9 @@ Required properties:
 - kalray,dma-rx-comp-queue-ids: start index of RX completion queue followed by number
 - kalray,phy-param: phy parameters for Tx equalization, as follow:
   <tx pre-amp, tx post-amp, tx swing>
+- kalray,phy-param1: phy parameters for lane 1 in aggregated mode (40G/100G)
+- kalray,phy-param2: phy parameters for lane 2 in aggregated mode (40G/100G)
+- kalray,phy-param3: phy parameters for lane 3 in aggregated mode (40G/100G)
 - kalray,rx-phy-polarities: Indexed by lane, 1 to invert rx lane polarity, 0
   otherwise.
 - kalray,tx-phy-polarities: Indexed by lane, 1 to invert tx lane polarity, 0

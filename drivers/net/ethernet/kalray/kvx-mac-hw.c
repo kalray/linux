@@ -42,6 +42,8 @@
 #define RX_FIFO_SECTION_FULL_THRES    1
 #define TX_FIFO_SECTION_FULL_THRES    16
 
+#define PCS_STATUS1_PCS_RECEIVE_LINK_MASK  0x4
+
 #define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
 #define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 
@@ -694,7 +696,8 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 
 	/* Update parameters with reset values */
 	for (i = cfg->id; i < cfg->id + lane_nb; i++)
-		if (hw->phy_f.param[i].update)
+		/* Update parameters with reset values (except if overriden) */
+		if (hw->phy_f.param[i].update && !hw->phy_f.param[i].ovrd_en)
 			hw->phy_f.param[i].update(&hw->phy_f.param[i]);
 
 	dump_phy_status(hw);
