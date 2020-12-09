@@ -1113,6 +1113,9 @@ int kvx_dma_pkt_tx_acquire_jobs(struct kvx_dma_phy *phy, u64 nb_jobs,
 	if (ret)
 		return ret;
 
+	dev_dbg(phy->dev, "%s queue[%d] ticket: %lld nb_jobs: %lld rp: %lld\n",
+		 __func__, phy->hw_id, *ticket, nb_jobs, rp);
+
 	*ticket = current_value;
 	return 0;
 }
