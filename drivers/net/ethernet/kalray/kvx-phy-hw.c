@@ -31,7 +31,6 @@ static void rx_ber_param_update(void *data)
 	u32 reg = LANE0_RX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
 	u16 v, val = readw(p->hw->res[KVX_ETH_RES_PHY].base + reg);
 
-	p->sync = GETF(val, LANE0_RX_LBERT_CTL_SYNC);
 	p->rx_mode = GETF(val, LANE0_RX_LBERT_CTL_MODE);
 
 	reg = LANE0_RX_LBERT_ERR_OFFSET + p->lane_id * LANE_OFFSET;
@@ -88,6 +87,19 @@ void phy_param_update(void *data)
 	p->post  = coef.post;
 }
 
+bool kvx_eth_phy_is_bert_en(struct kvx_eth_hw *hw)
+{
+	int i;
+
+	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
+		if (hw->phy_f.rx_ber[i].rx_mode != BERT_DISABLED ||
+		    hw->phy_f.tx_ber[i].tx_mode != BERT_DISABLED)
+			return true;
+	}
+
+	return false;
+}
+
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_rx_bert_param *rx_ber;
@@ -116,48 +128,10 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 	}
 }
 
-static int kvx_mac_phy_bert_init(struct kvx_eth_hw *hw)
-{
-	struct pll_cfg *pll = &hw->pll_cfg;
-	u32 val, mask, reg;
-	int i;
-
-	for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
-		if (!test_bit(i, &pll->serdes_mask))
-			continue;
-
-		reg = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
-		if (hw->phy_f.rx_ber[i].rx_mode != BERT_DISABLED) {
-			mask = (PHY_LANE_RX_SERDES_CFG_DISABLE_MASK |
-				PHY_LANE_RX_SERDES_CFG_LPD_MASK |
-				PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK |
-				PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_MASK);
-			val = PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_MASK;
-			updatel_bits(hw, PHYMAC, reg +
-				     PHY_LANE_RX_SERDES_CFG_OFFSET, mask, val);
-			DUMP_REG(hw, PHYMAC,
-				 reg + PHY_LANE_RX_SERDES_CFG_OFFSET);
-		}
-
-		if (hw->phy_f.tx_ber[i].tx_mode != BERT_DISABLED) {
-			mask = (PHY_LANE_TX_SERDES_CFG_DISABLE_MASK |
-				PHY_LANE_TX_SERDES_CFG_LPD_MASK |
-				PHY_LANE_TX_SERDES_CFG_DETRX_REQ_MASK);
-			val = 0;
-			updatel_bits(hw, PHYMAC, reg +
-				     PHY_LANE_TX_SERDES_CFG_OFFSET, mask, val);
-			DUMP_REG(hw, PHYMAC,
-				 reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
-		}
-	}
-
-	return 0;
-}
 /**
  * kvx_phy_param_tuning() - Set all lanes phy parameters
  *
- * Based on MAC lane configuration (takes into account virtual lane, and
- * set all physical lane with lane 0 parameters)
+ * Phy/serdes must be set prior to setting parameters (pre/post/swing)
  *
  * @hw: hw description
  */
@@ -226,36 +200,70 @@ void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f)
 {
 	kvx_phy_param_tuning(hw);
 	kvx_phy_set_polarities(hw);
-
-	if (phy_f->bert_en)
-		kvx_mac_phy_bert_init(hw);
 }
 
 void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_tx_bert_param *p)
 {
 	u32 reg = LANE0_TX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
-	u16 val = (p->tx_mode << LANE0_TX_LBERT_CTL_MODE_SHIFT) |
-		(p->trig_err << LANE0_TX_LBERT_CTL_TRIG_ERR_SHIFT) |
-		(p->pat0 << LANE0_TX_LBERT_CTL_PAT0_SHIFT);
+	u16 mask, val;
 
-	writew(val, hw->res[KVX_ETH_RES_PHY].base + reg);
+	if (p->tx_mode == BERT_DISABLED) {
+		writew(0, hw->res[KVX_ETH_RES_PHY].base + reg);
+		return;
+	}
+
+	val = readw(hw->res[KVX_ETH_RES_PHY].base + reg);
+	if ((GETF(val, LANE0_TX_LBERT_CTL_MODE) != p->tx_mode) ||
+	    (GETF(val, LANE0_TX_LBERT_CTL_PAT0) != p->pat0)) {
+		mask = (LANE0_TX_LBERT_CTL_MODE_MASK |
+			LANE0_TX_LBERT_CTL_PAT0_MASK);
+		/* Write it twice (recommended by spec as volatile reg) */
+		updatew_bits(hw, PHY, reg, mask, 0);
+		updatew_bits(hw, PHY, reg, mask, 0);
+		val = ((u16)p->tx_mode << LANE0_TX_LBERT_CTL_MODE_SHIFT) |
+			((u16)p->pat0 << LANE0_TX_LBERT_CTL_PAT0_SHIFT);
+		/* Write it twice (recommended) */
+		updatew_bits(hw, PHY, reg, mask, val);
+		updatew_bits(hw, PHY, reg, mask, val);
+	}
+	val = ((u16)(p->trig_err) << LANE0_TX_LBERT_CTL_TRIG_ERR_SHIFT);
+	updatew_bits(hw, PHY, reg, LANE0_TX_LBERT_CTL_TRIG_ERR_MASK, val);
 }
 
 void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_rx_bert_param *p)
 {
-	u16 val = (p->rx_mode << LANE0_RX_LBERT_CTL_MODE_SHIFT) |
-		(p->sync << LANE0_RX_LBERT_CTL_SYNC_SHIFT);
-	u32 reg;
+	u32 reg = LANE0_RX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
+	u16 mask, val;
 
-	if (p->err_cnt == 0) {
-		reg = LANE0_RX_LBERT_ERR_OFFSET + p->lane_id * LANE_OFFSET;
+	if (p->rx_mode == BERT_DISABLED) {
 		writew(0, hw->res[KVX_ETH_RES_PHY].base + reg);
+		return;
 	}
 
-	reg = LANE0_RX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
+	val = readw(hw->res[KVX_ETH_RES_PHY].base + reg);
+	if (GETF(val, LANE0_RX_LBERT_CTL_MODE) != p->rx_mode) {
+		/* Write it twice (recommended) */
+		writew(0, hw->res[KVX_ETH_RES_PHY].base + reg);
+		writew(0, hw->res[KVX_ETH_RES_PHY].base + reg);
+		mask = ((u16) p->rx_mode) << LANE0_RX_LBERT_CTL_MODE_SHIFT;
+		updatew_bits(hw, PHY, reg, LANE0_RX_LBERT_CTL_MODE_MASK, mask);
+		updatew_bits(hw, PHY, reg, LANE0_RX_LBERT_CTL_MODE_MASK, mask);
+	}
+
+	/* Write sync */
+	val = readw(hw->res[KVX_ETH_RES_PHY].base + reg);
+	val &= ~LANE0_RX_LBERT_CTL_SYNC_MASK;
+	val |= ((u16)p->sync) << LANE0_RX_LBERT_CTL_SYNC_SHIFT;
 	writew(val, hw->res[KVX_ETH_RES_PHY].base + reg);
+	val &= ~LANE0_RX_LBERT_CTL_SYNC_MASK;
+	writew(val, hw->res[KVX_ETH_RES_PHY].base + reg);
+	val |= ((u16)p->sync) << LANE0_RX_LBERT_CTL_SYNC_SHIFT;
+	writew(val, hw->res[KVX_ETH_RES_PHY].base + reg);
+	val &= ~LANE0_RX_LBERT_CTL_SYNC_MASK;
+	writew(val, hw->res[KVX_ETH_RES_PHY].base + reg);
+	p->sync = 0;
 }
 
 /**
