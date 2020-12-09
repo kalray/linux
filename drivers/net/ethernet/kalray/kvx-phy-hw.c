@@ -104,17 +104,36 @@ static void rx_ber_param_update(void *data)
 		p->err_cnt *= 128;
 }
 
+/* Reads actual values or overridden ones if enabled */
 static void kvx_phy_get_tx_coef(struct kvx_eth_hw *hw, int lane_id,
 	    struct tx_coefs *coef)
 {
-	u32 off_main = LANE1_DIG_ASIC_TX_ASIC_IN_1 + lane_id * LANE_OFFSET;
-	u32 off_prepost = LANE1_DIG_ASIC_TX_ASIC_IN_2 + lane_id * LANE_OFFSET;
-	u16 v = readw(hw->res[KVX_ETH_RES_PHY].base + off_main);
+	u32 reg_main = LANE1_DIG_ASIC_TX_ASIC_IN_1 + lane_id * LANE_OFFSET;
+	u32 reg_prepost = LANE1_DIG_ASIC_TX_ASIC_IN_2 + lane_id * LANE_OFFSET;
+	u32 reg_ovrdm = LANE0_DIG_ASIC_TX_OVRD_IN_2 + lane_id * LANE_OFFSET;
+	u32 reg_ovrdp = LANE0_DIG_ASIC_TX_OVRD_IN_3 + lane_id * LANE_OFFSET;
+	u16 v = readw(hw->res[KVX_ETH_RES_PHY].base + reg_ovrdm);
 
-	coef->main = GETF(v, MAIN_CURSOR);
-	v = readw(hw->res[KVX_ETH_RES_PHY].base + off_prepost);
-	coef->pre = GETF(v, PRE_CURSOR);
-	coef->post = GETF(v, POST_CURSOR);
+	if (v & MAIN_OVRD_EN_MASK) {
+		coef->main = GETF(v, MAIN_OVRD_CURSOR);
+	} else {
+		v = readw(hw->res[KVX_ETH_RES_PHY].base + reg_main);
+		coef->main = GETF(v, MAIN_CURSOR);
+	}
+	v = readw(hw->res[KVX_ETH_RES_PHY].base + reg_ovrdp);
+	if (v & POST_OVRD_EN_MASK) {
+		coef->post = GETF(v, POST_OVRD_CURSOR);
+	} else {
+		v = readw(hw->res[KVX_ETH_RES_PHY].base + reg_prepost);
+		coef->post = GETF(v, POST_CURSOR);
+	}
+	v = readw(hw->res[KVX_ETH_RES_PHY].base + reg_ovrdp);
+	if (v & PRE_OVRD_EN_MASK) {
+		coef->pre = GETF(v, PRE_OVRD_CURSOR);
+	} else {
+		v = readw(hw->res[KVX_ETH_RES_PHY].base + reg_prepost);
+		coef->pre = GETF(v, PRE_CURSOR);
+	}
 }
 
 void phy_param_update(void *data)
@@ -147,7 +166,7 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 		p->hw = hw;
 		p->lane_id = i;
 		p->update = phy_param_update;
-		p->en = false;
+		p->ovrd_en = false;
 		rx_ber->hw = hw;
 		rx_ber->lane_id = i;
 		rx_ber->update = rx_ber_param_update;
@@ -393,9 +412,9 @@ int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
 	v |= (PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK);
 	updatew_bits(hw, PHY, off_prepost, mask, v);
 
-	mask = MAIN_OVRD_CURSOR_MASK | MAIN_OVRD_EN_MASK | OVRD_IN_EN_MASK;
+	mask = MAIN_OVRD_CURSOR_MASK | MAIN_OVRD_EN_MASK;
 	v = (u32)cur.main << MAIN_OVRD_CURSOR_SHIFT;
-	v |= OVRD_IN_EN_MASK | MAIN_OVRD_EN_MASK;
+	v |= MAIN_OVRD_EN_MASK;
 	updatew_bits(hw, PHY, off_main, mask, v);
 
 	dev_dbg(hw->dev, "lane[%d] PRE/POST/MAIN: %d/%d/%d\n",
@@ -415,31 +434,26 @@ int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
 static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_phy_param *param;
-	u16 v, reg, lane_id, mask;
+	u16 v, lane_id, mask;
 	u32 off;
 
 	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
 		param = &hw->phy_f.param[lane_id];
-		if (!param->en)
-			continue;
-
-		off = LANE0_DIG_ASIC_TX_OVRD_IN_2 + lane_id * LANE_OFFSET;
-
-		mask = MAIN_OVRD_CURSOR_MASK | MAIN_OVRD_EN_MASK |
-			OVRD_IN_EN_MASK;
+		mask = MAIN_OVRD_CURSOR_MASK | MAIN_OVRD_EN_MASK;
 		v = (u16) param->swing << MAIN_OVRD_CURSOR_SHIFT;
-		v |= OVRD_IN_EN_MASK | MAIN_OVRD_EN_MASK;
-		reg = readw(hw->res[KVX_ETH_RES_PHY].base + off) & ~(mask);
-		writew(reg | v, hw->res[KVX_ETH_RES_PHY].base + off);
+		if (param->ovrd_en)
+			v |= MAIN_OVRD_EN_MASK;
+		off = LANE0_DIG_ASIC_TX_OVRD_IN_2 + lane_id * LANE_OFFSET;
+		updatew_bits(hw, PHY, off, mask, v);
 
 		mask = PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK |
 			PRE_OVRD_CURSOR_MASK | POST_OVRD_CURSOR_MASK;
 		v = ((u16) param->pre << PRE_OVRD_CURSOR_SHIFT) |
 			((u16) param->post << POST_OVRD_CURSOR_SHIFT);
-		v |= PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK;
+		if (param->ovrd_en)
+			v |= PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK;
 		off = LANE0_DIG_ASIC_TX_OVRD_IN_3 + lane_id * LANE_OFFSET;
-		reg = readw(hw->res[KVX_ETH_RES_PHY].base + off) & ~(mask);
-		writew(reg | v, hw->res[KVX_ETH_RES_PHY].base + off);
+		updatew_bits(hw, PHY, off, mask, v);
 
 		dev_dbg(hw->dev, "Lane [%d] param tuning (pre:%d, post:%d, swing:%d) done\n",
 			lane_id, param->pre, param->post, param->swing);
