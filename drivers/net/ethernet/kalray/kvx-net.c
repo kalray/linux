@@ -48,6 +48,7 @@
 #define KVX_MAX_LAST_SEG_SIZE   256
 /* Max segment size sent to DMA */
 #define KVX_SEG_SIZE            1024
+#define LINK_POLL_TIMER_IN_MS   1000
 
 #define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
 
@@ -122,14 +123,15 @@ static void kvx_eth_poll_link(struct timer_list *t)
 
 	/* No link checks for BERT and SGMII modes (handled @phy/mac level) */
 	if (ndev->hw->phy_f.bert_en || ndev->cfg.speed == SPEED_1000)
-		return;
-
-	if (link != netif_carrier_ok(ndev->netdev) || link_los == link) {
-		netdev_dbg(ndev->netdev, "%s link: %d link_los: %d carrier: %d\n",
-		   __func__, link, !link_los, netif_carrier_ok(ndev->netdev));
+		goto exit;
+	if (link != netif_carrier_ok(ndev->netdev))
 		/* Reschedule mac config (consider link down) */
-		phylink_mac_change(ndev->phylink, !link_los);
-	}
+		phylink_mac_change(ndev->phylink, link);
+	else if (link_los)
+		phylink_mac_change(ndev->phylink, false);
+
+exit:
+	mod_timer(t, jiffies + msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
 }
 
 /* kvx_eth_netdev_init() - Init netdev (called once)
@@ -1650,7 +1652,6 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 		state->link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
 	state->speed = ndev->cfg.speed;
 	state->duplex = ndev->cfg.duplex;
-	kvx_eth_mac_pcs_status(ndev->hw, &ndev->cfg);
 	state->pause = 0;
 	if (ndev->cfg.pfc_f.global_pause_en)
 		state->pause = MLO_PAUSE_RX | MLO_PAUSE_TX;
@@ -1770,8 +1771,8 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	int an_enabled = state->an_enabled;
 	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
+	bool update_serdes = false;
 	int speed_fmt, ret = 0;
-	bool update_serdes = true;
 	char *unit;
 
 	netdev_dbg(ndev->netdev, "%s state->speed: %d ndev->speed: %d\n",
@@ -1805,14 +1806,17 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		return;
 	}
 
+	if (ndev->hw->phy_f.bert_en) {
+		netdev_warn(ndev->netdev, "Trying to reconfigure mac while BERT is enabled\n");
+		return;
+	}
+
 	if (state->interface != PHY_INTERFACE_MODE_NA)
 		ndev->cfg.phy_mode = state->interface;
 	ndev->cfg.an_mode = an_mode;
 
-
-	if (ndev->cfg.speed != state->speed ||
-	    ndev->cfg.duplex != state->duplex)
-		update_serdes = true;
+	update_serdes = (ndev->cfg.speed != state->speed ||
+			 ndev->cfg.duplex != state->duplex);
 
 	if (state->speed != SPEED_UNKNOWN)
 		ndev->cfg.speed = state->speed;
@@ -1825,7 +1829,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		kvx_eth_pfc_f_cfg(ndev->hw, &ndev->cfg.pfc_f);
 	}
 
-	if (an_enabled) {
+	if (an_enabled && !ndev->hw->phy_f.bert_en) {
 		ret = kvx_eth_autoneg(ndev);
 		/* If AN is successful MAC/PHY are already configured on
 		 * correct mode as link training requires to be performed at
@@ -1842,9 +1846,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 
 	kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, update_serdes);
 	/* Force re-assess link state */
-	//kvx_eth_wait_link_up(ndev->hw, &ndev->cfg);
-	//link = (kvx_eth_mac_getlink(ndev->hw, &ndev->cfg) ? true : false);
-	mod_timer(&ndev->link_poll, jiffies + msecs_to_jiffies(1000));
+	kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
 }
 
 static void kvx_phylink_mac_an_restart(struct phylink_config *cfg)
@@ -1857,10 +1859,9 @@ static void kvx_phylink_mac_link_down(struct phylink_config *config,
 				      phy_interface_t interface)
 {
 	struct net_device *netdev = to_net_dev(config->dev);
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	mod_timer(&ndev->link_poll, jiffies + msecs_to_jiffies(1000));
-	pr_debug("%s carrier: %d\n", __func__, netif_carrier_ok(netdev));
+	netdev_dbg(netdev, "%s carrier: %d\n", __func__,
+		   netif_carrier_ok(netdev));
 }
 
 static void kvx_phylink_mac_link_up(struct phylink_config *config,
@@ -1870,7 +1871,8 @@ static void kvx_phylink_mac_link_up(struct phylink_config *config,
 {
 	struct net_device *netdev = to_net_dev(config->dev);
 
-	pr_debug("%s carrier: %d\n", __func__, netif_carrier_ok(netdev));
+	netdev_dbg(netdev, "%s carrier: %d\n", __func__,
+		   netif_carrier_ok(netdev));
 }
 
 const static struct phylink_mac_ops kvx_phylink_ops = {
