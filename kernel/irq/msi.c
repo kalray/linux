@@ -464,6 +464,8 @@ static inline void irq_chip_write_msi_msg(struct irq_data *data,
 					  struct msi_msg *msg)
 {
 	data->chip->irq_write_msi_msg(data, msg);
+
+	irq_chip_write_msi_msg_done(data);
 }
 
 static void msi_check_level(struct irq_domain *domain, struct msi_msg *msg)
