@@ -1537,6 +1537,30 @@ EXPORT_SYMBOL_GPL(irq_chip_release_resources_parent);
 #endif
 
 /**
+ * irq_chip_write_msi_msg_done - Signal that msi message has been written
+ * @data:	Pointer to interrupt specific data
+ * @msg:	Pointer to the MSI message
+ *
+ * For hierarchical domains we find the first chip in the hierarchy
+ * which implements the irq_write_msi_msg_done callback. For non
+ * hierarchical we use the top level chip.
+ */
+void irq_chip_write_msi_msg_done(struct irq_data *data)
+{
+	struct irq_data *pos = NULL;
+
+#ifdef	CONFIG_IRQ_DOMAIN_HIERARCHY
+	for (; data; data = data->parent_data)
+#endif
+		if (data->chip && data->chip->irq_write_msi_msg_done)
+			pos = data;
+	if (!pos)
+		return;
+
+	pos->chip->irq_write_msi_msg_done(pos);
+}
+
+/**
  * irq_chip_compose_msi_msg - Compose msi message for a irq chip
  * @data:	Pointer to interrupt specific data
  * @msg:	Pointer to the MSI message
