@@ -95,8 +95,6 @@ void start_thread(struct pt_regs *regs,
 	/* Set privilege level to +1 (relative) */
 	regs->sps &= ~KVX_SFR_PS_PL_MASK;
 	regs->sps |= (1 << KVX_SFR_PS_PL_SHIFT);
-
-	set_fs(USER_DS);
 }
 
 int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
