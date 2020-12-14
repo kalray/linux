@@ -7,7 +7,6 @@
  */
 
 #include <linux/dma-mapping.h>
-#include <linux/dma-noncoherent.h>
 #include <linux/dma-iommu.h>
 
 #include <asm/cacheflush.h>
