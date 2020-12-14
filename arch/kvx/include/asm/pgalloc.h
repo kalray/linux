@@ -12,6 +12,7 @@
 #include <linux/mm.h>
 #include <asm/tlb.h>
 
+#define __HAVE_ARCH_PGD_FREE
 #include <asm-generic/pgalloc.h>	/* for pte_{alloc,free}_one */
 
 static inline void check_pgt_cache(void)
@@ -87,17 +88,6 @@ static inline void pmd_populate(struct mm_struct *mm,
 
 #if CONFIG_PGTABLE_LEVELS > 2
 #define __pmd_free_tlb(tlb, pmd, addr) pmd_free((tlb)->mm, pmd)
-
-static inline pmd_t *pmd_alloc_one(struct mm_struct *mm, unsigned long addr)
-{
-	return (pmd_t *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
-}
-
-static inline void pmd_free(struct mm_struct *mm, pmd_t *pmd)
-{
-	free_page((unsigned long)pmd);
-}
-
 #endif /* CONFIG_PGTABLE_LEVELS > 2 */
 
 /**
