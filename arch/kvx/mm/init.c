@@ -106,26 +106,12 @@ static void __init setup_initrd(void)
 }
 #endif
 
-static void __init setup_memblock_nodes(void)
-{
-	struct memblock_region *reg;
-
-	for_each_memblock(memory, reg) {
-		unsigned long start_pfn = memblock_region_memory_base_pfn(reg);
-		unsigned long end_pfn = memblock_region_memory_end_pfn(reg);
-
-		memblock_set_node(PFN_PHYS(start_pfn),
-				  PFN_PHYS(end_pfn - start_pfn),
-				  &memblock.memory, 0);
-	}
-}
-
 static void __init setup_bootmem(void)
 {
-	struct memblock_region *region;
 	phys_addr_t kernel_start, kernel_end;
-	phys_addr_t memory_start, memory_end;
+	phys_addr_t start, end = 0;
 	int kernel_memory_reserved = 0;
+	u64 i;
 
 	init_mm.start_code = (unsigned long)_stext;
 	init_mm.end_code = (unsigned long)_etext;
@@ -137,16 +123,14 @@ static void __init setup_bootmem(void)
 	kernel_end = __pa(init_mm.brk);
 
 	/* Find the memory region containing the kernel */
-	for_each_memblock(memory, region) {
-		memory_start = region->base;
-		memory_end = memory_start + region->size;
+	for_each_mem_range(i, &start, &end) {
 
 		/* Check that this memblock includes the kernel */
-		if (memory_start <= kernel_start && kernel_end <= memory_end) {
+		if (start <= kernel_start && kernel_end <= end) {
 
 			pr_info("%15s: memory  : 0x%lx - 0x%lx\n", __func__,
-				(unsigned long)memory_start,
-				(unsigned long)memory_end);
+				(unsigned long)start,
+				(unsigned long)end);
 			pr_info("%15s: reserved: 0x%lx - 0x%lx\n", __func__,
 				(unsigned long)kernel_start,
 				(unsigned long)kernel_end);
@@ -180,9 +164,6 @@ static void __init setup_bootmem(void)
 
 	memblock_allow_resize();
 	memblock_dump_all();
-	setup_memblock_nodes();
-
-	memblocks_present();
 }
 
 static void * __init alloc_page_table(void)
@@ -401,9 +382,9 @@ static void __init map_kernel(void)
 static void __init map_memory(void)
 {
 	phys_addr_t start, end;
-	struct memblock_region *reg;
 	phys_addr_t kernel_start = __pa(__inittext_start);
 	phys_addr_t kernel_end = __pa_symbol(_end);
+	u64 i;
 
 	/**
 	 * Mark the full kernel text/data as nomap to avoid remapping all
@@ -412,14 +393,10 @@ static void __init map_memory(void)
 	memblock_mark_nomap(kernel_start, kernel_end - kernel_start);
 
 	/* Map all memory banks */
-	for_each_memblock(memory, reg) {
-		start = reg->base;
-		end = start + reg->size;
+	for_each_mem_range(i, &start, &end) {
 
 		if (start >= end)
 			break;
-		if (memblock_is_nomap(reg))
-			continue;
 
 		create_pgd_mapping(swapper_pg_dir, start,
 				   (unsigned long) __va(start),
