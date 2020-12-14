@@ -12,7 +12,6 @@
 #include <linux/errno.h>
 #include <linux/ioport.h>
 #include <linux/dma-mapping.h>
-#include <linux/dma-contiguous.h>
 #include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
