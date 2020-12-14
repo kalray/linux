@@ -12,22 +12,6 @@
 #include <linux/sched.h>
 #include <linux/types.h>
 
-
-#define KERNEL_DS	(~0UL)
-#define USER_DS		(TASK_SIZE)
-
-#define get_ds()	(KERNEL_DS)
-#define get_fs()	(current->thread.addr_limit)
-
-static inline void set_fs(mm_segment_t fs)
-{
-	current->thread.addr_limit = fs;
-}
-
-#define user_addr_max() (current->thread.addr_limit)
-
-#define segment_eq(a, b)    ((a) == (b))
-
 /**
  * access_ok: - Checks if a user space pointer is valid
  * @addr: User space pointer to start of block to check
@@ -55,9 +39,7 @@ static inline void set_fs(mm_segment_t fs)
  */
 static inline int __access_ok(unsigned long addr, unsigned long size)
 {
-	const mm_segment_t fs = get_fs();
-
-	return (size <= fs) && (addr <= (fs - size));
+	return size <= TASK_SIZE && addr <= TASK_SIZE - size;
 }
 
 /*
@@ -105,6 +87,9 @@ clear_user(void __user *to, unsigned long n)
 
 extern __must_check long strnlen_user(const char __user *str, long n);
 extern long strncpy_from_user(char *dest, const char __user *src, long count);
+
+#define __enable_user_access()
+#define __disable_user_access()
 
 /**
  * get_user: - Get a simple variable from user space.
@@ -157,28 +142,38 @@ extern long strncpy_from_user(char *dest, const char __user *src, long count);
  */
 #define __get_user(x, ptr)						\
 ({									\
-	unsigned long __gu_addr = (unsigned long)(ptr);			\
-	unsigned long __gu_val, __err = 0;					\
+	unsigned long __err = 0;					\
 	__chk_user_ptr(ptr);						\
+									\
+	__enable_user_access();						\
+	__get_user_nocheck(x, ptr, __err);				\
+	__disable_user_access();					\
+									\
+	__err;								\
+})
+
+#define __get_user_nocheck(x, ptr, err)					\
+do {									\
+	unsigned long __gu_addr = (unsigned long)(ptr);			\
+	unsigned long __gu_val;						\
 	switch (sizeof(*(ptr))) {					\
 	case 1:								\
-		__get_user_asm("lbz", __gu_val, __gu_addr, __err);	\
+		__get_user_asm("lbz", __gu_val, __gu_addr, err);	\
 		break;							\
 	case 2:								\
-		__get_user_asm("lhz", __gu_val, __gu_addr, __err);	\
+		__get_user_asm("lhz", __gu_val, __gu_addr, err);	\
 		break;							\
 	case 4:								\
-		__get_user_asm("lwz", __gu_val, __gu_addr, __err);	\
+		__get_user_asm("lwz", __gu_val, __gu_addr, err);	\
 		break;							\
 	case 8:								\
-		__get_user_asm("ld", __gu_val, __gu_addr, __err);	\
+		__get_user_asm("ld", __gu_val, __gu_addr, err);		\
 		break;							\
 	default:							\
 		BUILD_BUG();						\
 	}								\
 	(x) = (__typeof__(*(ptr)))__gu_val;				\
-	__err;								\
-})
+} while (0)
 
 #define __get_user_asm(op, x, addr, err)				\
 ({									\
@@ -250,28 +245,37 @@ extern long strncpy_from_user(char *dest, const char __user *src, long count);
  */
 #define __put_user(x, ptr)						\
 ({									\
-	unsigned long __pu_addr = (unsigned long)(ptr);			\
-	unsigned long __err = 0;						\
-	__typeof__(*(ptr)) __pu_val = (x);				\
+	unsigned long __err = 0;					\
 	__chk_user_ptr(ptr);						\
+									\
+	__enable_user_access();						\
+	__put_user_nocheck(x, ptr, __err);				\
+	__disable_user_access();					\
+									\
+	__err;								\
+})
+
+#define __put_user_nocheck(x, ptr, err)					\
+do {									\
+	unsigned long __pu_addr = (unsigned long)(ptr);			\
+	__typeof__(*(ptr)) __pu_val = (x);				\
 	switch (sizeof(*(ptr))) {					\
 	case 1:								\
-		__put_user_asm("sb", __pu_val, __pu_addr, __err);	\
+		__put_user_asm("sb", __pu_val, __pu_addr, err);		\
 		break;							\
 	case 2:								\
-		__put_user_asm("sh", __pu_val, __pu_addr, __err);	\
+		__put_user_asm("sh", __pu_val, __pu_addr, err);		\
 		break;							\
 	case 4:								\
-		__put_user_asm("sw", __pu_val, __pu_addr, __err);	\
+		__put_user_asm("sw", __pu_val, __pu_addr, err);		\
 		break;							\
 	case 8:								\
-		__put_user_asm("sd", __pu_val, __pu_addr, __err);	\
+		__put_user_asm("sd", __pu_val, __pu_addr, err);		\
 		break;							\
 	default:							\
 		BUILD_BUG();						\
 	}								\
-	__err;								\
-})
+} while (0)
 
 #define __put_user_asm(op, x, addr, err)				\
 ({									\
@@ -293,5 +297,26 @@ extern long strncpy_from_user(char *dest, const char __user *src, long count);
 			: "=r"(err)					\
 			: "r"(x), "r"(addr), "i"(-EFAULT), "0"(err));	\
 })
+
+#define HAVE_GET_KERNEL_NOFAULT
+
+#define __get_kernel_nofault(dst, src, type, err_label)			\
+do {									\
+	long __kr_err;							\
+									\
+	__get_user_nocheck(*((type *)(dst)), (type *)(src), __kr_err);	\
+	if (unlikely(__kr_err))						\
+		goto err_label;						\
+} while (0)
+
+#define __put_kernel_nofault(dst, src, type, err_label)			\
+do {									\
+	long __kr_err;							\
+									\
+	__put_user_nocheck(*((type *)(src)), (type *)(dst), __kr_err);	\
+	if (unlikely(__kr_err))						\
+		goto err_label;						\
+} while (0)
+
 
 #endif	/* _ASM_KVX_UACCESS_H */
