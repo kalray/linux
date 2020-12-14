@@ -13,7 +13,6 @@
 #include <linux/device.h>
 #include <linux/iopoll.h>
 #include <linux/dma-mapping.h>
-#include <linux/dma-contiguous.h>
 
 #include "kvx-dma-hw.h"
 #include "kvx-dma-ucode.h"
