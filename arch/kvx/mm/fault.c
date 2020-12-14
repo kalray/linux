@@ -165,7 +165,7 @@ good_area:
 	 * we exit gracefully rather then retry endlessly with the same
 	 * result.
 	 */
-	fault = handle_mm_fault(vma, ea, flags);
+	fault = handle_mm_fault(vma, ea, flags, regs);
 
 	/*
 	 * If we need to retry but a fatal signal is pending, handle the
