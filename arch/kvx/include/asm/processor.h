@@ -12,7 +12,6 @@
 
 #include <asm/mmu.h>
 #include <asm/types.h>
-#include <asm/segment.h>
 #include <asm/ptrace.h>
 #include <asm/sfr_defs.h>
 
@@ -110,7 +109,6 @@ struct debug_info {
 
 struct thread_struct {
 	uint64_t kernel_sp;
-	mm_segment_t addr_limit;		/* Addr limit */
 	uint64_t save_area[SAVE_AREA_SIZE];	/* regs save area */
 
 #ifdef CONFIG_KVX_MMU_STATS
@@ -126,7 +124,6 @@ struct thread_struct {
 #define INIT_THREAD  {							\
 	.ctx_switch.sp =						\
 		sizeof(init_stack) + (unsigned long) &init_stack,	\
-	.addr_limit = KERNEL_DS,					\
 }
 
 #define KSTK_ESP(tsk)   (task_pt_regs(tsk)->sp)
