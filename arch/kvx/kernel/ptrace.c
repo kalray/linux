@@ -220,12 +220,11 @@ static long ptrace_set_hw_pt_regs(struct task_struct *child, long addr,
 
 static int kvx_gpr_get(struct task_struct *target,
 			 const struct user_regset *regset,
-			 unsigned int pos, unsigned int count,
-			 void *kbuf, void __user *ubuf)
+			 struct membuf to)
 {
 	struct user_pt_regs *regs = &task_pt_regs(target)->user_regs;
 
-	return user_regset_copyout(&pos, &count, &kbuf, &ubuf, regs, 0, -1);
+	return membuf_write(&to, regs, sizeof(*regs));
 }
 
 static int kvx_gpr_set(struct task_struct *target,
@@ -241,19 +240,16 @@ static int kvx_gpr_set(struct task_struct *target,
 #ifdef CONFIG_ENABLE_TCA
 static int kvx_tca_reg_get(struct task_struct *target,
 			 const struct user_regset *regset,
-			 unsigned int pos, unsigned int count,
-			 void *kbuf, void __user *ubuf)
+			 struct membuf to)
 {
 	struct ctx_switch_regs *ctx_regs = &target->thread.ctx_switch;
 	struct tca_reg *regs = ctx_regs->tca_regs;
 	int ret;
 
 	if (!ctx_regs->tca_regs_saved)
-		ret = user_regset_copyout_zero(&pos, &count, &kbuf, &ubuf,
-					       0, -1);
+		ret = membuf_zero(&to, sizeof(*regs));
 	else
-		ret = user_regset_copyout(&pos, &count, &kbuf, &ubuf, regs,
-					  0, -1);
+		ret = membuf_write(&to, regs, sizeof(*regs));
 
 	return ret;
 }
@@ -284,7 +280,7 @@ static const struct user_regset kvx_user_regset[] = {
 		.n = ELF_NGREG,
 		.size = sizeof(elf_greg_t),
 		.align = sizeof(elf_greg_t),
-		.get = &kvx_gpr_get,
+		.regset_get = &kvx_gpr_get,
 		.set = &kvx_gpr_set,
 	},
 #ifdef CONFIG_ENABLE_TCA
@@ -293,7 +289,7 @@ static const struct user_regset kvx_user_regset[] = {
 		.n = TCA_REG_COUNT,
 		.size = sizeof(struct tca_reg),
 		.align = sizeof(struct tca_reg),
-		.get = &kvx_tca_reg_get,
+		.regset_get = &kvx_tca_reg_get,
 		.set = &kvx_tca_reg_set,
 	},
 #endif
