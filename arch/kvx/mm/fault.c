@@ -185,30 +185,13 @@ good_area:
 		BUG();
 	}
 
-	if (flags & FAULT_FLAG_ALLOW_RETRY) {
-		/* To avoid updating stats twice for retry case */
-		if (fault & VM_FAULT_MAJOR) {
-			current->maj_flt++;
-			perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1, regs,
-				      ea);
-		} else {
-			current->min_flt++;
-			perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MIN, 1, regs,
-				      ea);
-		}
-
-		if (fault & VM_FAULT_RETRY) {
-			/* Clear FAULT_FLAG_ALLOW_RETRY to avoid any risk
-			 * of starvation.
-			 */
-			flags &= ~FAULT_FLAG_ALLOW_RETRY;
-			flags |= FAULT_FLAG_TRIED;
-			/* No need to up_read(&mm->mmap_sem) as we would
-			 * have already released it in __lock_page_or_retry().
-			 * Look in mm/filemap.c for explanations.
-			 */
-			goto retry;
-		}
+	if (unlikely((fault & VM_FAULT_RETRY) && (flags & FAULT_FLAG_ALLOW_RETRY))) {
+		flags |= FAULT_FLAG_TRIED;
+		/* No need to up_read(&mm->mmap_sem) as we would
+		 * have already released it in __lock_page_or_retry().
+		 * Look in mm/filemap.c for explanations.
+		 */
+		goto retry;
 	}
 
 	/* Fault errors and retry case have been handled nicely */
