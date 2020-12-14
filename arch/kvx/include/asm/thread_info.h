@@ -8,7 +8,6 @@
 #define _ASM_KVX_THREAD_INFO_H
 
 #ifndef __ASSEMBLY__
-#include <asm/segment.h>
 #endif /* __ASSEMBLY__*/
 
 #include <asm/page.h>
