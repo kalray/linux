@@ -30,9 +30,6 @@ config RWSEM_GENERIC_SPINLOCK
 config GENERIC_HWEIGHT
 	def_bool y
 
-config HAVE_COPY_THREAD_TLS
-	def_bool y
-
 config ZONE_DMA32
 	def_bool n
 
