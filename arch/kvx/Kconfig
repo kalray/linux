@@ -264,6 +264,21 @@ config CMDLINE
 
 endmenu
 
+menu "System Type"
+
+choice
+	prompt "KVX cpu variant"
+
+config KVX_SUBARCH_KV3_1
+	bool "Coolidge V1 (KV3-1)"
+
+config KVX_SUBARCH_KV3_2
+	bool "Coolidge V2 (KV3-2)"
+
+endchoice
+
+endmenu
+
 menu "Kernel Features"
 source "kernel/Kconfig.hz"
 endmenu
