@@ -97,7 +97,7 @@ void start_thread(struct pt_regs *regs,
 	regs->sps |= (1 << KVX_SFR_PS_PL_SHIFT);
 }
 
-int copy_thread_tls(unsigned long clone_flags, unsigned long usp,
+int copy_thread(unsigned long clone_flags, unsigned long usp,
 		unsigned long kthread_arg, struct task_struct *p,
 		unsigned long tls)
 {
