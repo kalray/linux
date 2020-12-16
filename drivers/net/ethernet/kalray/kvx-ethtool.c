@@ -1183,9 +1183,13 @@ int kvx_eth_get_module_transceiver(struct net_device *netdev,
 		.offset = SFP_PAGE + 1,
 	};
 	u8 *id, tech;
+	int ret = 0;
 
-	if (netdev->sfp_bus)
-		sfp_get_module_eeprom(netdev->sfp_bus, &ee, data);
+	if (netdev->sfp_bus) {
+		ret = sfp_get_module_eeprom(netdev->sfp_bus, &ee, data);
+		if (ret)
+			return ret;
+	}
 
 	id = ee.data;
 	transceiver->id = id[SFP_PHYS_ID];
