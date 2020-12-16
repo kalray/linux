@@ -118,12 +118,14 @@ static void kvx_eth_poll_link(struct timer_list *t)
 {
 	struct kvx_eth_netdev *ndev = container_of(t, struct kvx_eth_netdev,
 						   link_poll);
-	bool link_los = kvx_eth_pmac_linklos(ndev->hw, &ndev->cfg);
-	bool link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
+	bool link_los, link;
 
 	/* No link checks for BERT and SGMII modes (handled @phy/mac level) */
-	if (ndev->hw->phy_f.bert_en || ndev->cfg.speed == SPEED_1000)
+	if (ndev->hw->phy_f.bert_en || ndev->cfg.speed == SPEED_1000 ||
+	    ndev->cfg.transceiver.id == 0)
 		goto exit;
+	link_los = kvx_eth_pmac_linklos(ndev->hw, &ndev->cfg);
+	link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
 	if (link != netif_carrier_ok(ndev->netdev))
 		/* Reschedule mac config (consider link down) */
 		phylink_mac_change(ndev->phylink, link);
@@ -1560,7 +1562,8 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(mac_supported) = { 0, };
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(additional_prot) = { 0, };
 
-	kvx_eth_get_module_transceiver(netdev, &ndev->cfg.transceiver);
+	if (kvx_eth_get_module_transceiver(netdev, &ndev->cfg.transceiver))
+		return;
 
 	/*
 	 * Indicate all capabilities supported by the MAC
