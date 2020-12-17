@@ -1640,6 +1640,12 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 			phylink_set(additional_prot, 100000baseCR4_Full);
 		if (KVX_TEST_BIT(25000baseSR_Full, supported))
 			phylink_set(additional_prot, 100000baseSR4_Full);
+		if (KVX_TEST_BIT(40000baseCR4_Full, supported))
+			phylink_set(additional_prot, 10000baseCR_Full);
+		if (KVX_TEST_BIT(40000baseSR4_Full, supported))
+			phylink_set(additional_prot, 10000baseSR_Full);
+		if (KVX_TEST_BIT(40000baseLR4_Full, supported))
+			phylink_set(additional_prot, 10000baseLR_Full);
 	}
 
 	phylink_set(additional_prot, FEC_NONE);
