@@ -921,14 +921,13 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 		 */
 		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * lane_id;
 		val = XPCS_VENDOR_PCS_MODE_ENA_CLAUSE49_MASK |
-			XPCS_VENDOR_PCS_MODE_ST_DISABLE_MLD_MASK;
-		updatel_bits(hw, MAC, reg +
-			     XPCS_VENDOR_PCS_MODE_OFFSET, val, val);
+			XPCS_VENDOR_PCS_MODE_DISABLE_MLD_MASK;
+		kvx_mac_writel(hw, val, reg + XPCS_VENDOR_PCS_MODE_OFFSET);
 		updatel_bits(hw, MAC, reg + XPCS_CTRL1_OFFSET,
 			     XPCS_CTRL1_RESET_MASK, XPCS_CTRL1_RESET_MASK);
 		/* Check speed selection is set to 10G (0x0) */
 		val = kvx_mac_readl(hw, reg + XPCS_CTRL1_OFFSET);
-		if (!!(val & XPCS_CTRL1_SPEED_SELECTION_MASK)) {
+		if (val & XPCS_CTRL1_SPEED_SELECTION_MASK) {
 			dev_err(hw->dev, "Mac 10G speed selection failed\n");
 			return -EINVAL;
 		}
@@ -956,8 +955,8 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 
 		reg = XPCS_OFFSET + XPCS_ELEM_SIZE * lane_id;
 		kvx_mac_writel(hw, val, reg + XPCS_VENDOR_PCS_MODE_OFFSET);
-		kvx_mac_writel(hw, XPCS_CTRL1_RESET_MASK,
-			       reg + XPCS_CTRL1_OFFSET);
+		updatel_bits(hw, MAC, reg + XPCS_CTRL1_OFFSET,
+			     XPCS_CTRL1_RESET_MASK, XPCS_CTRL1_RESET_MASK);
 		/* Check speed selection is set to 25G (0x5) */
 		val = kvx_mac_readl(hw, reg + XPCS_CTRL1_OFFSET);
 		if (GETF(val, XPCS_CTRL1_SPEED_SELECTION) != 5) {
