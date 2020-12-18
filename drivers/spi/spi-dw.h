@@ -164,6 +164,7 @@ struct dw_spi {
 	unsigned int		dfs_offset;     /* CTRLR0 DFS field offset */
 	u32			max_mem_freq;	/* max mem-ops bus freq */
 	u32			max_freq;	/* max bus freq supported */
+	u32			mode_bits;	/* Additionnal mode bits */
 
 	u32			caps;		/* DW SPI capabilities */
 
