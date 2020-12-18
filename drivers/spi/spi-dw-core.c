@@ -869,7 +869,7 @@ int dw_spi_add_host(struct device *dev, struct dw_spi *dws)
 	dw_spi_init_mem_ops(dws);
 
 	master->use_gpio_descriptors = true;
-	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_LOOP;
+	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_LOOP | dws->mode_bits;
 	master->bits_per_word_mask =  SPI_BPW_RANGE_MASK(4, 16);
 	master->bus_num = dws->bus_num;
 	master->num_chipselect = dws->num_cs;

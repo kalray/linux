@@ -159,6 +159,7 @@ struct dw_spi {
 	u32			fifo_len;	/* depth of the FIFO buffer */
 	u32			max_mem_freq;	/* max mem-ops bus freq */
 	u32			max_freq;	/* max bus freq supported */
+	u32			mode_bits;	/* Additionnal mode bits */
 
 	u32			caps;		/* DW SPI capabilities */
 
