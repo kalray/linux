@@ -214,6 +214,11 @@ static irqreturn_t dw_spi_transfer_handler(struct dw_spi *dws)
 {
 	u16 irq_status = dw_readl(dws, DW_SPI_ISR);
 
+	if (!dws->master->cur_msg) {
+		spi_mask_intr(dws, 0xff);
+		return IRQ_HANDLED;
+	}
+
 	if (dw_spi_check_status(dws, false)) {
 		spi_finalize_current_transfer(dws->master);
 		return IRQ_HANDLED;
@@ -256,11 +261,6 @@ static irqreturn_t dw_spi_irq(int irq, void *dev_id)
 
 	if (!irq_status)
 		return IRQ_NONE;
-
-	if (!master->cur_msg) {
-		spi_mask_intr(dws, 0xff);
-		return IRQ_HANDLED;
-	}
 
 	return dws->transfer_handler(dws);
 }
