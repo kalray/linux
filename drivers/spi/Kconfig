@@ -305,6 +305,14 @@ config SPI_DW_BT1
 	  The later one is normally connected to an external SPI-nor flash
 	  of 128Mb (in general can be of bigger size).
 
+config SPI_DW_KVX
+	tristate "kalray KVX driver for DW SPI core"
+	depends on KVX || COMPILE_TEST
+	help
+	  Kalray KVX SoC is equipped with a DW APB SSI-based MMIO SPI
+	  controller. It is configured with clock-stretching, dual/quad/
+	  octal support.
+
 config SPI_DW_BT1_DIRMAP
 	bool "Directly mapped Baikal-T1 Boot SPI flash support"
 	depends on SPI_DW_BT1
