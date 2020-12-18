@@ -191,6 +191,12 @@ static void dw_spi_dma_exit(struct dw_spi *dws)
 
 static irqreturn_t dw_spi_dma_transfer_handler(struct dw_spi *dws)
 {
+
+	if (!dws->master->cur_msg) {
+		spi_mask_intr(dws, 0xff);
+		return IRQ_HANDLED;
+	}
+
 	dw_spi_check_status(dws, false);
 
 	complete(&dws->dma_completion);
