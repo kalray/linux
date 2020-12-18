@@ -32,6 +32,9 @@
 /* DW SPI controller capabilities */
 #define DW_SPI_CAP_CS_OVERRIDE		BIT(0)
 #define DW_SPI_CAP_DFS32		BIT(1)
+#define DW_SPI_CAP_KEEMBAY_MST		BIT(2)
+#define DW_SPI_CAP_DWC_SSI		BIT(3)
+#define DW_SPI_CAP_ENHANCED		BIT(4)
 
 /* Register offsets (Generic for both DWC APB SSI and DWC SSI IP-cores) */
 #define DW_SPI_CTRLR0			0x00
@@ -95,6 +98,20 @@
 #define DW_HSSI_CTRLR0_SRL			BIT(13)
 #define DW_HSSI_CTRLR0_MST			BIT(31)
 
+/* SPI Frame Format */
+#define SPI_SPI_FRF_OFFSET		22
+#define SPI_SPI_FRF_STANDARD		0
+#define SPI_SPI_FRF_DUAL		1
+#define SPI_SPI_FRF_QUAD		2
+#define SPI_SPI_FRF_OCTAL		3
+
+/*
+ * For Keem Bay, CTRLR0[31] is used to select controller mode.
+ * 0: SSI is slave
+ * 1: SSI is master
+ */
+#define DW_HSSI_CTRLR0_KEEMBAY_MST		BIT(31)
+
 /* Bit fields in CTRLR1 */
 #define DW_SPI_NDF_MASK				GENMASK(15, 0)
 
@@ -135,6 +152,7 @@ struct dw_spi_cfg {
 	u8 dfs;
 	u32 ndf;
 	u32 freq;
+	u8 spi_frf;
 };
 
 struct dw_spi;
