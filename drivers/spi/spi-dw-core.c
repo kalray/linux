@@ -335,10 +335,14 @@ void dw_spi_update_config(struct dw_spi *dws, struct spi_device *spi,
 		/* CTRLR0[11:10] Transfer Mode */
 		cr0 |= FIELD_PREP(DW_HSSI_CTRLR0_TMOD_MASK, cfg->tmode);
 
+	if (dws->caps & DW_SPI_CAP_ENHANCED)
+		cr0 |= cfg->spi_frf << SPI_SPI_FRF_OFFSET;
+
 	dw_writel(dws, DW_SPI_CTRLR0, cr0);
 
 	if (cfg->tmode == DW_SPI_CTRLR0_TMOD_EPROMREAD ||
-	    cfg->tmode == DW_SPI_CTRLR0_TMOD_RO)
+	    cfg->tmode == DW_SPI_CTRLR0_TMOD_RO ||
+	    cfg->tmode == DW_SPI_CTRLR0_TMOD_TO)
 		dw_writel(dws, DW_SPI_CTRLR1, cfg->ndf ? cfg->ndf - 1 : 0);
 
 	/* Note DW APB SSI clock divider doesn't support odd numbers */
