@@ -95,6 +95,13 @@
 #define DW_HSSI_CTRLR0_TMOD_MASK		GENMASK(11, 10)
 #define DW_HSSI_CTRLR0_SRL			BIT(13)
 
+/* SPI Frame Format */
+#define SPI_SPI_FRF_OFFSET		22
+#define SPI_SPI_FRF_STANDARD		0
+#define SPI_SPI_FRF_DUAL		1
+#define SPI_SPI_FRF_QUAD		2
+#define SPI_SPI_FRF_OCTAL		3
+
 /*
  * For Keem Bay, CTRLR0[31] is used to select controller mode.
  * 0: SSI is slave
@@ -136,12 +143,26 @@
 #define DW_SPI_GET_BYTE(_val, _idx) \
 	((_val) >> (BITS_PER_BYTE * (_idx)) & 0xff)
 
+enum dw_ssi_type {
+	SSI_MOTO_SPI = 0,
+	SSI_TI_SSP,
+	SSI_NS_MICROWIRE,
+};
+
+/* DW SPI capabilities */
+#define DW_SPI_CAP_CS_OVERRIDE		BIT(0)
+#define DW_SPI_CAP_KEEMBAY_MST		BIT(1)
+#define DW_SPI_CAP_DWC_SSI		BIT(2)
+#define DW_SPI_CAP_DFS32		BIT(3)
+#define DW_SPI_CAP_ENHANCED		BIT(4)
+
 /* Slave spi_transfer/spi_mem_op related */
 struct dw_spi_cfg {
 	u8 tmode;
 	u8 dfs;
 	u32 ndf;
 	u32 freq;
+	u8 spi_frf;
 };
 
 struct dw_spi;
