@@ -109,6 +109,7 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 
 	hw->phy_f.hw = hw;
 	hw->phy_f.loopback_mode = NO_LOOPBACK;
+	hw->phy_f.fw_updated = false;
 	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
 		p = &hw->phy_f.param[i];
 		rx_ber = &hw->phy_f.rx_ber[i];
