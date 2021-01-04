@@ -86,8 +86,8 @@ static struct kvx_stats kvx_str_stats[] = {
 	STAT("TX cbfcpauseframes[6]       ", tx.cbfcpauseframestransmitted[6]),
 	STAT("TX cbfcpauseframes[7]       ", tx.cbfcpauseframestransmitted[7]),
 	STAT("TX macctrlframes            ", tx.maccontrolframestransmitted),
-	STAT("RX ring alloc error         ", rx_ring.skb_alloc_err),
-	STAT("RX ring skb frag missed     ", rx_ring.skb_rx_frag_missed),
+	STAT("RX ring alloc error         ", ring.skb_alloc_err),
+	STAT("RX ring skb frag missed     ", ring.skb_rx_frag_missed),
 };
 
 #define KVX_STATS_LEN   ARRAY_SIZE(kvx_str_stats)
@@ -113,13 +113,6 @@ kvx_eth_get_ethtool_stats(struct net_device *netdev,
 
 	kvx_eth_update_stats64(ndev->hw, ndev->cfg.id, &ndev->stats);
 
-	memset(&ndev->stats.rx_ring, 0, sizeof(ndev->stats.rx_ring));
-	for (i = 0; i < ndev->dma_cfg.rx_chan_id.nb;  ++i) {
-		ndev->stats.rx_ring.skb_alloc_err +=
-			ndev->rx_ring[i].stats.skb_alloc_err;
-		ndev->stats.rx_ring.skb_rx_frag_missed +=
-			ndev->rx_ring[i].stats.skb_rx_frag_missed;
-	}
 	for (i = 0; i < KVX_STATS_LEN; ++i)
 		data[i] = *((u64 *)(p + kvx_str_stats[i].offset));
 }

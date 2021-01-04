@@ -2234,7 +2234,6 @@ void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
 	if (kvx_mac_readl(hw, MAC_RESET_OFFSET))
 		return;
 
-	memset(s, 0, sizeof(*s));
 	for (i = 0; i < sizeof(s->rx); i += 8)
 		*p++ = readq(b + STAT64_OFFSET + STAT64_RX_OFFSET +
 			     lane_id * STAT64_RX_ELEM_SIZE + i);
