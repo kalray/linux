@@ -94,6 +94,7 @@
 #define LANE0_DIG_RX_DPLL_FREQ      0x4134   //0x2000
 #define LANEX_DIG_RX_LBERT_CTL      0x1411C
 
+#define RAWMEM_DIG_RAM_CMN          0x30000
 
 #define RX_OVRD_IN_0_PSTATE_MASK           0xc00
 #define RX_OVRD_IN_0_PSTATE_OVRD_EN_MASK   0x1000
