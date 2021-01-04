@@ -427,7 +427,7 @@ struct kvx_eth_polarities {
  * @ber: phy BER testing
  * @polarities: lane polarities
  * @reg_avail: false for HAPS platform
- * @bert_en: enable LBERT (set serdes in specific configuration)
+ * @fw_updated: fw updated once
  */
 struct kvx_eth_phy_f {
 	struct kobject kobj;
@@ -439,6 +439,7 @@ struct kvx_eth_phy_f {
 	struct kvx_eth_tx_bert_param tx_ber[KVX_ETH_LANE_NB];
 	struct kvx_eth_polarities polarities[KVX_ETH_LANE_NB];
 	bool reg_avail;
+	bool fw_updated;
 };
 
 /**
@@ -853,6 +854,7 @@ void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
 void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
+int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw_data);
 
 /* MAC */
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
