@@ -19,6 +19,8 @@
 #include "kvx-phy-hw.h"
 #include "kvx-phy-regs.h"
 
+#define KVX_PHY_RAM_SIZE 0x8000
+
 #define MAC_LOOPBACK_LATENCY  4
 #define MAC_SYNC_TIMEOUT_MS   5000
 #define SIGDET_TIMEOUT_MS     1000
@@ -289,7 +291,7 @@ static void kvx_eth_phy_reset(struct kvx_eth_hw *hw, u32 serdes_mask,
 	u32 val = kvx_phy_readl(hw, PHY_RESET_OFFSET);
 
 	if (phy_reset || val)
-		val |= BIT(PHY_RST_SHIFT);
+		val |= PHY_RST_MASK;
 
 	val |= (serdes_mask << PHY_RESET_SERDES_RX_SHIFT) |
 		(serdes_mask << PHY_RESET_SERDES_TX_SHIFT);
@@ -545,6 +547,104 @@ static inline bool is_lane_in_use(struct kvx_eth_hw *hw, int lane_id)
 	return test_bit(lane_id, &hw->pll_cfg.serdes_mask);
 }
 
+int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw)
+{
+	u32 serdes_mask = get_serdes_mask(0, KVX_ETH_LANE_NB);
+	struct pll_cfg *pll = &hw->pll_cfg;
+	u32 val, mask, reg;
+	int i, addr;
+	u16 data;
+
+	if (hw->phy_f.fw_updated)
+		return 0;
+
+	/* Enable CR interface */
+	kvx_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
+
+	/* Select the MAC PLL ref clock */
+	if (pll->rate_plla == SPEED_1000 && !test_bit(PLL_A, &pll->avail) &&
+	    test_bit(PLL_B, &pll->avail))
+		kvx_phy_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
+	else
+		kvx_phy_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
+	/* Configure serdes PLL master + power down pll */
+	kvx_phy_writel(hw, 0, PHY_SERDES_PLL_CFG_OFFSET);
+
+	/*
+	 * Enable serdes, pstate:
+	 *   3: off (sig detector powered up and the rest of RX is down)
+	 *   2: analog front-end (AFE) + voltage regulators are up, RX VCO in reset
+	 *   1: voltage-controlled oscillator (VCO) is in continuous calibration mode, output receive clocks are not available
+	 *   0: running
+	 * Do not set pstate in running mode during PLL serdes boot
+	 */
+	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
+		reg = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
+		mask = (PHY_LANE_RX_SERDES_CFG_DISABLE_MASK |
+			PHY_LANE_RX_SERDES_CFG_PSTATE_MASK |
+			PHY_LANE_RX_SERDES_CFG_LPD_MASK);
+		val = ((u32)PSTATE_P1 << PHY_LANE_RX_SERDES_CFG_PSTATE_SHIFT) |
+			PHY_LANE_RX_SERDES_CFG_DISABLE_MASK;
+		updatel_bits(hw, PHYMAC, reg + PHY_LANE_RX_SERDES_CFG_OFFSET,
+			     mask, val);
+		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_RX_SERDES_CFG_OFFSET);
+
+		mask = (PHY_LANE_TX_SERDES_CFG_DISABLE_MASK |
+			PHY_LANE_TX_SERDES_CFG_PSTATE_MASK |
+			PHY_LANE_TX_SERDES_CFG_LPD_MASK);
+		val = ((u32)PSTATE_P1 << PHY_LANE_TX_SERDES_CFG_PSTATE_SHIFT) |
+			PHY_LANE_TX_SERDES_CFG_DISABLE_MASK;
+		updatel_bits(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET,
+			     mask, val);
+		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
+	}
+
+	mask = PHY_PLL_SRAM_BYPASS_MASK | PHY_PLL_SRAM_LD_DONE_MASK |
+		PHY_PLL_SRAM_BOOT_BYPASS_MASK;
+	val = PHY_PLL_SRAM_BOOT_BYPASS_MASK;
+	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET, mask, val);
+
+	kvx_eth_phy_reset(hw, serdes_mask, false);
+
+	mask = PHY_PLL_STATUS_SRAM_INIT_DONE_MASK;
+	kvx_poll(kvx_phy_readl, PHY_PLL_STATUS_OFFSET, mask, mask,
+		 SERDES_ACK_TIMEOUT_MS);
+	/* Copy FW to RAM */
+	for (i = 0, addr = 0; i < KVX_PHY_RAM_SIZE; i += 2, addr += 4) {
+		data = (fw[i] << 8) | fw[i + 1];
+		writew(data, hw->res[KVX_ETH_RES_PHY].base +
+		       RAWMEM_DIG_RAM_CMN + addr);
+	}
+
+	/* Wait for init SRAM done */
+	mask = PHY_PLL_STATUS_SRAM_INIT_DONE_MASK;
+	kvx_poll(kvx_phy_readl, PHY_PLL_STATUS_OFFSET, mask, mask,
+		 SERDES_ACK_TIMEOUT_MS);
+	/* Start after fw load */
+	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET, PHY_PLL_SRAM_LD_DONE_MASK,
+		     PHY_PLL_SRAM_LD_DONE_MASK);
+
+	/* Waits for the ack signals be low */
+	mask = (serdes_mask << PHY_SERDES_STATUS_RX_ACK_SHIFT) |
+		(serdes_mask << PHY_SERDES_STATUS_TX_ACK_SHIFT);
+	kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, mask, 0,
+		     SERDES_ACK_TIMEOUT_MS);
+
+	mask = PHY_PLL_STATUS_REF_CLK_DETECTED_MASK;
+	if (!test_bit(PLL_A, &pll->avail))
+		mask |= BIT(PHY_PLL_STATUS_PLLA_SHIFT);
+	if (!test_bit(PLL_B, &pll->avail))
+		mask |= BIT(PHY_PLL_STATUS_PLLB_SHIFT);
+
+	/* Waits for PLL lock */
+	kvx_poll(kvx_phy_readl, PHY_PLL_STATUS_OFFSET, mask, mask,
+		 SERDES_ACK_TIMEOUT_MS);
+
+	dev_info(hw->dev, "PHY fw updated\n");
+	hw->phy_f.fw_updated = true;
+	return 0;
+}
+
 /**
  * kvx_mac_phy_disable_serdes() - Change serdes state to P1
  */
@@ -595,7 +695,9 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb,
 			     mask, val);
 		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
 	}
+
 	kvx_eth_phy_reset(hw, serdes_mask, phy_reset_all);
+
 	/* Waits for the ack signals be low */
 	mask = (serdes_mask << PHY_SERDES_STATUS_RX_ACK_SHIFT) |
 		(serdes_mask << PHY_SERDES_STATUS_TX_ACK_SHIFT);
