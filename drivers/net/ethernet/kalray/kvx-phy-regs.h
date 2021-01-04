@@ -75,6 +75,8 @@
 #define PHY_PLL_STATUS_PLLA_MASK                   0x2UL
 #define PHY_PLL_STATUS_PLLB_SHIFT                  0x3
 #define PHY_PLL_STATUS_PLLB_MASK                   0x8UL
+#define PHY_PLL_STATUS_SRAM_INIT_DONE_SHIFT        0x4
+#define PHY_PLL_STATUS_SRAM_INIT_DONE_MASK         0x10UL
 #define PHY_PLL_STATUS_REF_CLK_DETECTED_SHIFT      0x6
 #define PHY_PLL_STATUS_REF_CLK_DETECTED_MASK       0x40UL
 #define PHY_PLL_SRAM_BYPASS_SHIFT                  0x10
