@@ -30,12 +30,15 @@
 #include <linux/ti-retimer.h>
 #include <linux/rtnetlink.h>
 #include <linux/hash.h>
+#include <linux/firmware.h>
 
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
 #include "kvx-net-regs.h"
 #include "kvx-net-hdr.h"
 #include "kvx-mac-regs.h"
+
+#define KVX_PHY_FW_NAME "dwc_phy.bin"
 
 #define KVX_RX_HEADROOM  (NET_IP_ALIGN + NET_SKB_PAD)
 #define KVX_SKB_PAD      (SKB_DATA_ALIGN(sizeof(struct skb_shared_info) + \
@@ -54,6 +57,10 @@
 
 #define KVX_TEST_BIT(name, bitmap)	test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, \
 				 bitmap)
+
+static bool load_phy_fw = true;
+module_param(load_phy_fw, bool, 0);
+MODULE_PARM_DESC(load_phy_fw, "Update PHY firmware ("KVX_PHY_FW_NAME")");
 
 /* Device tree related entries */
 static const char *rtm_prop_name[RTM_NB] = {
@@ -2108,6 +2115,27 @@ static struct platform_driver kvx_netdev_driver = {
 	},
 };
 
+static int kvx_eth_phy_fw_update(struct platform_device *pdev)
+{
+	struct kvx_eth_dev *dev = platform_get_drvdata(pdev);
+	const struct firmware *fw;
+	int ret = 0;
+
+	dev_info(&pdev->dev, "Requesting phy firmware %s\n", KVX_PHY_FW_NAME);
+	ret = request_firmware(&fw, KVX_PHY_FW_NAME, &pdev->dev);
+	if (ret < 0 || fw->size == 0) {
+		dev_err(&pdev->dev, "Unable to load firmware %s\n",
+			KVX_PHY_FW_NAME);
+		return ret;
+	}
+
+	/* Update parameters according to probbed fw informations */
+	ret = kvx_phy_fw_update(&dev->hw, fw->data);
+	release_firmware(fw);
+
+	return ret;
+}
+
 static const char *kvx_eth_res_names[KVX_ETH_NUM_RES] = {
 	"phy", "phymac", "mac", "eth" };
 
@@ -2179,6 +2207,10 @@ static int kvx_eth_probe(struct platform_device *pdev)
 			goto err;
 		}
 	}
+
+	/* Try loading phy firmware */
+	if (load_phy_fw)
+		kvx_eth_phy_fw_update(pdev);
 
 	kvx_eth_init_dispatch_table(&dev->hw);
 	kvx_eth_tx_init(&dev->hw);
