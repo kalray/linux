@@ -759,12 +759,16 @@ struct kvx_eth_hw_tx_stats {
 struct ring_stats {
 	u64 skb_alloc_err;
 	u64 skb_rx_frag_missed;
+	u64 rx_pkts;
+	u64 rx_bytes;
+	u64 tx_pkts;
+	u64 tx_bytes;
 } __packed;
 
 struct kvx_eth_hw_stats {
 	struct kvx_eth_hw_rx_stats rx;
 	struct kvx_eth_hw_tx_stats tx;
-	struct ring_stats rx_ring;
+	struct ring_stats ring;
 } __packed;
 
 struct kvx_eth_rx_dispatch_table_entry {
