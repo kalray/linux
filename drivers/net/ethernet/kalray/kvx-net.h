@@ -68,7 +68,6 @@ struct kvx_eth_ring {
 	};
 	struct napi_struct napi;
 	struct sk_buff *skb;
-	struct ring_stats stats;
 	u16 count;          /* Number of desc in ring */
 	u16 next_to_use;
 	u16 next_to_clean;

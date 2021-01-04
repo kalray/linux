@@ -367,8 +367,6 @@ static int kvx_eth_clean_tx_irq(struct kvx_eth_ring *txr, size_t desc_len)
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	u32 tx_r = txr->next_to_clean;
 	struct kvx_eth_netdev_tx *tx = &txr->tx_buf[tx_r];
-	int bytes_completed = 0;
-	int pkt_completed = 0;
 	int ret = 0;
 
 	tx = &txr->tx_buf[tx_r];
@@ -382,13 +380,13 @@ static int kvx_eth_clean_tx_irq(struct kvx_eth_ring *txr, size_t desc_len)
 
 	/* consume_skb */
 	kvx_eth_unmap_skb(ndev->dev, tx);
-	bytes_completed += tx->len;
-	++pkt_completed;
+	ndev->stats.ring.tx_bytes += tx->len;
+	ndev->stats.ring.tx_pkts++;
 	dev_consume_skb_irq(tx->skb);
 	tx->skb = NULL;
 
 exit:
-	netdev_tx_completed_queue(get_txq(txr), pkt_completed, bytes_completed);
+	netdev_tx_completed_queue(get_txq(txr), 1, tx->len);
 	++tx_r;
 	if (tx_r == txr->count)
 		tx_r = 0;
@@ -728,7 +726,7 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 		data_end = data + data_len;
 		rxr->skb = build_skb(va, KVX_SKB_SIZE(data_len));
 		if (unlikely(!rxr->skb)) {
-			rxr->stats.skb_alloc_err++;
+			ndev->stats.ring.skb_alloc_err++;
 			ret = -ENOMEM;
 			goto recycle_page;
 		}
@@ -745,7 +743,9 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 		skb_record_rx_queue(rxr->skb, ndev->dma_cfg.rx_chan_id.start +
 				    rxr->qidx);
 		rxr->skb->protocol = eth_type_trans(rxr->skb, netdev);
+		ndev->stats.ring.rx_pkts++;
 	}
+	ndev->stats.ring.rx_bytes += data_len;
 
 	/* Release descriptor */
 	page_pool_release_page(rxr->pool.pagepool, page);
@@ -895,10 +895,10 @@ static void kvx_eth_netdev_get_stats64(struct net_device *netdev,
 
 	kvx_eth_update_stats64(ndev->hw, ndev->cfg.id, &ndev->stats);
 
-	stats->rx_packets = ndev->stats.rx.etherstatspkts;
-	stats->tx_packets = ndev->stats.tx.framestransmittedok;
-	stats->rx_bytes = ndev->stats.rx.etherstatsoctets;
-	stats->tx_bytes = ndev->stats.tx.etherstatsoctets;
+	stats->rx_packets = ndev->stats.ring.rx_pkts;
+	stats->tx_packets = ndev->stats.ring.tx_pkts;
+	stats->rx_bytes = ndev->stats.ring.rx_bytes;
+	stats->tx_bytes = ndev->stats.ring.tx_bytes;
 	stats->rx_errors = ndev->stats.rx.ifinerrors;
 	stats->tx_errors = ndev->stats.tx.ifouterrors;
 	stats->rx_dropped = ndev->stats.rx.etherstatsdropevents;
@@ -1034,7 +1034,6 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	struct kvx_eth_dt_f dt;
 	int ret = 0;
 
-	memset(&r->stats, 0, sizeof(r->stats));
 	r->count = kvx_dma_get_max_nb_desc(dma_cfg->pdev);
 	r->refill_thres = REFILL_THRES(r->count);
 	r->next_to_use = 0;
@@ -1137,7 +1136,6 @@ int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 {
 	int i, ret = 0;
 
-	memset(&r->stats, 0, sizeof(r->stats));
 	r->netdev = ndev->netdev;
 	r->next_to_use = 0;
 	r->next_to_clean = 0;
