@@ -300,3 +300,17 @@ static int __init hugetlbpage_init(void)
 	return 0;
 }
 arch_initcall(hugetlbpage_init);
+
+bool __init arch_hugetlb_valid_size(unsigned long size)
+{
+#if defined(CONFIG_KVX_4K_PAGES)
+	switch (size) {
+	case KVX_PAGE_64K_SIZE:
+	case KVX_PAGE_2M_SIZE:
+	case KVX_PAGE_512M_SIZE:
+		return true;
+	}
+#endif
+
+	return false;
+}
