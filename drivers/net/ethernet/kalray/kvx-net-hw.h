@@ -338,6 +338,7 @@ struct kvx_eth_dt_f {
  * @pfc_mode: control flow config at mac level
  * @tx_fcs_offload: Enable Tx FCS offload (enabled by default, for testing
  *                  purpose)
+ * @promisc_mode: promiscuous state
  */
 struct kvx_eth_mac_f {
 	struct kobject kobj;
@@ -347,6 +348,7 @@ struct kvx_eth_mac_f {
 	enum kvx_eth_loopback_mode loopback_mode;
 	enum kvx_eth_pfc_mode pfc_mode;
 	bool tx_fcs_offload;
+	bool promisc_mode;
 };
 
 /**
@@ -866,6 +868,7 @@ int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_mac_getfec(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_mac_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
