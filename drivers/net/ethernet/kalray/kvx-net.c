@@ -891,6 +891,15 @@ static int kvx_eth_change_mtu(struct net_device *netdev, int new_mtu)
 	return 0;
 }
 
+static void kvx_eth_change_rx_flags(struct net_device *netdev, int flags)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	ndev->cfg.mac_f.promisc_mode = (flags & IFF_PROMISC) ? true : false;
+
+	kvx_eth_mac_init(ndev->hw, &ndev->cfg);
+}
+
 /* kvx_eth_netdev_get_stats64() - Update stats
  * @netdev: Current netdev
  * @stats: Statistic struct
@@ -955,6 +964,7 @@ static const struct net_device_ops kvx_eth_netdev_ops = {
 	.ndo_validate_addr      = eth_validate_addr,
 	.ndo_set_mac_address    = kvx_eth_set_mac_addr,
 	.ndo_change_mtu         = kvx_eth_change_mtu,
+	.ndo_change_rx_flags    = kvx_eth_change_rx_flags,
 	.ndo_get_phys_port_name = kvx_eth_get_phys_port_name,
 	.ndo_get_phys_port_id   = kvx_eth_get_phys_port_id,
 #ifdef CONFIG_NET_POLL_CONTROLLER
@@ -2053,7 +2063,6 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
-	kvx_mac_set_addr(&dev->hw, &ndev->cfg);
 	kvx_eth_lb_set_default(&dev->hw, &ndev->cfg);
 	kvx_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
 

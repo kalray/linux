@@ -111,10 +111,10 @@ void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	/* PMAC */
 	a = &cfg->mac_f.addr[0];
-	val = (u32)a[2] << 24 | (u32)a[3] << 16 | (u32)a[4] << 8 | (u32)a[5];
+	val = (u32)a[3] << 24 | (u32)a[2] << 16 | (u32)a[1] << 8 | (u32)a[0];
 	kvx_mac_writel(hw, val, off + PMAC_MAC_ADDR_0_OFFSET);
 	kvx_mac_writel(hw, val, off + EMAC_MAC_ADDR_0_OFFSET);
-	val = (u32)a[0] << 8 | (u32)a[1];
+	val = (u32)a[5] << 8 | (u32)a[4];
 	kvx_mac_writel(hw, val, off + PMAC_MAC_ADDR_1_OFFSET);
 	kvx_mac_writel(hw, val, off + EMAC_MAC_ADDR_1_OFFSET);
 }
@@ -131,7 +131,6 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 	val = (u32)EMAC_CMD_CFG_TX_EN_MASK      |
 		EMAC_CMD_CFG_RX_EN_MASK         |
 		EMAC_CMD_CFG_CNTL_FRAME_EN_MASK |
-		EMAC_CMD_CFG_PROMIS_EN_MASK |
 		EMAC_CMD_CFG_SW_RESET_MASK      |
 		EMAC_CMD_CFG_TX_FIFO_RESET_MASK |
 		EMAC_CMD_CFG_TX_FLUSH_MASK;
@@ -140,6 +139,9 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 		val |= EMAC_CMD_CFG_PAUSE_PFC_COMP_MASK;
 	else if (cfg->mac_f.pfc_mode == MAC_PFC)
 		val |= EMAC_CMD_CFG_PFC_MODE_MASK;
+
+	if (cfg->mac_f.promisc_mode)
+		val |= EMAC_CMD_CFG_PROMIS_EN_MASK;
 
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	kvx_mac_writel(hw, val, off + EMAC_CMD_CFG_OFFSET);
@@ -198,13 +200,15 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 	/* Preembtible MAC */
 	val = PMAC_CMD_CFG_TX_EN_MASK       |
 		PMAC_CMD_CFG_RX_EN_MASK     |
-		PMAC_CMD_CFG_PROMIS_EN_MASK |
 		PMAC_CMD_CFG_TX_PAD_EN_MASK |
 		PMAC_CMD_CFG_SW_RESET_MASK  |
 		PMAC_CMD_CFG_CNTL_FRAME_EN_MASK;
 
 	if (cfg->mac_f.pfc_mode == MAC_PFC)
 		val |= PMAC_CMD_CFG_PFC_MODE_MASK;
+
+	if (cfg->mac_f.promisc_mode)
+		val |= PMAC_CMD_CFG_PROMIS_EN_MASK;
 
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	kvx_mac_writel(hw, val, off + PMAC_CMD_CFG_OFFSET);
@@ -268,9 +272,8 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			kvx_mac_writel(hw, val, off);
 		}
 	}
-	kvx_eth_emac_init(hw, cfg);
-	kvx_eth_pmac_init(hw, cfg);
 	kvx_eth_tx_f_cfg(hw, &hw->tx_f[tx_fifo_id]);
+	kvx_eth_mac_init(hw, cfg);
 }
 
 bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
@@ -2211,6 +2214,18 @@ int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	return ret;
 }
 
+int kvx_eth_mac_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	int ret = 0;
+
+	kvx_mac_set_addr(hw, cfg);
+	ret = kvx_eth_emac_init(hw, cfg);
+	if (ret)
+		return ret;
+
+	return kvx_eth_pmac_init(hw, cfg);
+}
+
 /**
  * kvx_eth_mac_cfg() - MAC configuration
  */
@@ -2252,11 +2267,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	kvx_eth_tx_f_cfg(hw, &hw->tx_f[cfg->id]);
 	kvx_eth_lb_f_cfg(hw, &hw->lb_f[cfg->id]);
 
-	ret = kvx_eth_emac_init(hw, cfg);
-	if (ret)
-		return ret;
-
-	ret = kvx_eth_pmac_init(hw, cfg);
+	ret = kvx_eth_mac_init(hw, cfg);
 	if (ret)
 		return ret;
 
@@ -2301,6 +2312,7 @@ void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	cfg->mac_f.loopback_mode = NO_LOOPBACK;
 	hw->phy_f.loopback_mode = cfg->mac_f.loopback_mode;
 	cfg->mac_f.tx_fcs_offload = true;
+	cfg->mac_f.promisc_mode = false;
 }
 
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
