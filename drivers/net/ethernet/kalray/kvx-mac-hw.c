@@ -825,9 +825,6 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 
 	/* Update parameters with reset values */
 	for (i = cfg->id; i < cfg->id + lane_nb; i++) {
-		/* Process rx adaptation once to avoid bad result on BERT */
-		if (hw->phy_f.param[i].fom == 0)
-			kvx_phy_rx_adapt(hw, i);
 		/* Update parameters with reset values (except if overriden) */
 		if (hw->phy_f.param[i].update && !hw->phy_f.param[i].ovrd_en)
 			hw->phy_f.param[i].update(&hw->phy_f.param[i]);
