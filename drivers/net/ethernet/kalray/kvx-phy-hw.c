@@ -47,8 +47,8 @@ static void rx_ber_param_update(void *data)
 static void kvx_phy_get_tx_coef(struct kvx_eth_hw *hw, int lane_id,
 	    struct tx_coefs *coef)
 {
-	u32 reg_main = LANE1_DIG_ASIC_TX_ASIC_IN_1 + lane_id * LANE_OFFSET;
-	u32 reg_prepost = LANE1_DIG_ASIC_TX_ASIC_IN_2 + lane_id * LANE_OFFSET;
+	u32 reg_main = LANE0_DIG_ASIC_TX_ASIC_IN_1 + lane_id * LANE_OFFSET;
+	u32 reg_prepost = LANE0_DIG_ASIC_TX_ASIC_IN_2 + lane_id * LANE_OFFSET;
 	u32 reg_ovrdm = LANE0_DIG_ASIC_TX_OVRD_IN_2 + lane_id * LANE_OFFSET;
 	u32 reg_ovrdp = LANE0_DIG_ASIC_TX_OVRD_IN_3 + lane_id * LANE_OFFSET;
 	u16 v = readw(hw->res[KVX_ETH_RES_PHY].base + reg_ovrdm);
