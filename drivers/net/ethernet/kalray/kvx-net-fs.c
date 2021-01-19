@@ -138,12 +138,10 @@ SYSFS_TYPES(rx_bert_param);
 
 DECLARE_SYSFS_ENTRY(tx_bert_param);
 FIELD_RW_ENTRY(tx_bert_param, trig_err, 0, 1);
-FIELD_RW_ENTRY(tx_bert_param, pat0, 0, U16_MAX);
 FIELD_RW_ENTRY(tx_bert_param, tx_mode, BERT_DISABLED, BERT_MODE_NB);
 
 static struct attribute *tx_bert_param_attrs[] = {
 	&tx_bert_param_trig_err_attr.attr,
-	&tx_bert_param_pat0_attr.attr,
 	&tx_bert_param_tx_mode_attr.attr,
 	NULL,
 };
