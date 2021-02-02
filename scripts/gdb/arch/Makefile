@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 subdir-y := kvx
 
-always := gdb-scripts
+always-y := gdb-scripts
 
 SRCTREE := $(abspath $(srctree))
 
