@@ -213,6 +213,15 @@ static struct attribute *lut_f_attrs[] = {
 };
 SYSFS_TYPES(lut_f);
 
+DECLARE_SYSFS_ENTRY(lut_entry_f);
+FIELD_R_ENTRY(lut_entry_f, dt_id, 0, 0);
+
+static struct attribute *lut_entry_f_attrs[] = {
+	&lut_entry_f_dt_id_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(lut_entry_f);
+
 DECLARE_SYSFS_ENTRY(pfc_f);
 FIELD_RW_ENTRY(pfc_f, global_release_level, 0,
 	       RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
@@ -364,6 +373,7 @@ static struct kset *lb_kset;
 static struct kset *rx_noc_kset;
 static struct kset *tx_kset;
 static struct kset *dt_kset;
+static struct kset *lut_entry_kset;
 static struct kset *parser_kset;
 static struct kset *rule_kset;
 static struct kset *pfc_cl_kset;
@@ -421,6 +431,7 @@ kvx_declare_kset(rx_noc, "rx_noc")
 kvx_declare_kset(tx_f, "tx")
 kvx_declare_kset(cl_f, "pfc_cl")
 kvx_declare_kset(dt_f, "dispatch_table")
+kvx_declare_kset(lut_entry_f, "lut_entries")
 kvx_declare_kset(parser_f, "parser")
 kvx_declare_kset(rule_f, "rule")
 kvx_declare_kset(phy_param, "param")
@@ -449,6 +460,9 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 
 	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; i++)
 		kobject_init(&hw->dt_f[i].kobj, &dt_f_ktype);
+
+	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; i++)
+		kobject_init(&hw->lut_entry_f[i].kobj, &lut_entry_f_ktype);
 
 	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
 		kobject_init(&hw->parser_f[i].kobj, &parser_f_ktype);
@@ -527,6 +541,11 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
+	ret = kvx_kset_lut_entry_f_create(ndev, &ndev->netdev->dev.kobj, lut_entry_kset,
+			&hw->lut_entry_f[0], RX_LB_LUT_ARRAY_SIZE);
+	if (ret)
+		goto err;
+
 	ret = kvx_kset_parser_f_create(ndev, &ndev->netdev->dev.kobj,
 			parser_kset, &hw->parser_f[0], KVX_ETH_PARSER_NB);
 	if (ret)
@@ -558,6 +577,8 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 
 	kvx_kset_dt_f_remove(ndev, dt_kset, &ndev->hw->dt_f[0],
 			RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
+	kvx_kset_lut_entry_f_remove(ndev, lut_entry_kset, &ndev->hw->lut_entry_f[0],
+			RX_LB_LUT_ARRAY_SIZE);
 	kvx_kset_cl_f_remove(ndev, pfc_cl_kset, &ndev->cfg.cl_f[0],
 			KVX_ETH_PFC_CLASS_NB);
 	kvx_kset_tx_f_remove(ndev, tx_kset, &ndev->hw->tx_f[0], TX_FIFO_NB);

@@ -1060,8 +1060,12 @@ static void kvx_eth_set_lut(struct net_device *netdev, struct kvx_eth_hw *hw,
 	u32 off = RX_LB_LUT_OFFSET + RX_LB_LUT_LUT_OFFSET;
 	u32 i, r = off;
 
-	for (i = 0; i < kvx_eth_rss_indir_size(netdev); ++i, r += 4)
-		kvx_eth_writel(hw, indir[lut2scrambled[i]] & RX_LB_LUT_NOC_TABLE_ID_MASK, r);
+	for (i = 0; i < kvx_eth_rss_indir_size(netdev); ++i, r += 4) {
+		u32 indir_id = indir[lut2scrambled[i]] & RX_LB_LUT_NOC_TABLE_ID_MASK;
+
+		kvx_eth_writel(hw, indir_id, r);
+		hw->lut_entry_f[i].dt_id = indir_id;
+	}
 }
 
 static int kvx_eth_get_rxfh(struct net_device *netdev, u32 *indir, u8 *key,
