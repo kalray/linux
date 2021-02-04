@@ -162,6 +162,18 @@ struct kvx_eth_lut_f {
 };
 
 /**
+ * struct kvx_eth_lut_entry_f - LUT entry config
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @dt_id: the dispatch table entry pointed by this LUT entry
+ */
+struct kvx_eth_lut_entry_f {
+	struct kobject kobj;
+	void (*update)(void *p);
+	u32 dt_id;
+};
+
+/**
  * struct kvx_eth_rx_noc - rx_noc features (PPS limiter config)
  */
 struct kvx_eth_rx_noc {
@@ -694,6 +706,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_lut_f lut_f;
 	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
+	struct kvx_eth_lut_entry_f lut_entry_f[RX_LB_LUT_ARRAY_SIZE];
 	struct kvx_eth_phy_f phy_f;
 	struct kvx_eth_rtm_params rtm_params[RTM_NB];
 	struct lt_status lt_status[KVX_ETH_LANE_NB];
