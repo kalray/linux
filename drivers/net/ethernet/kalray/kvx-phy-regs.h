@@ -14,8 +14,8 @@
 #define PHY_PHY_CR_PARA_CTRL_OFFSET                0x0
 #define PHY_REF_CLK_SEL_OFFSET                     0x4
 #define PHY_RESET_OFFSET                           0x8
-#define PHY_RST_SHIFT                              0x0
-#define PHY_RST_MASK                               0x1UL
+#define PHY_RESET_SHIFT                            0x0
+#define PHY_RESET_MASK                             0x1UL
 #define PHY_RESET_SERDES_RX_SHIFT                  0x1
 #define PHY_RESET_SERDES_RX_MASK                   0x1EUL
 #define PHY_RESET_SERDES_TX_SHIFT                  0x5
