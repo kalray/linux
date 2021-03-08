@@ -12,6 +12,9 @@
 #include "kvx-net-hw.h"
 #include "kvx-net-regs.h"
 
+/* Due to a hardware bug, we must slow down the packets rate */
+#define RX_NOC_DEFAULT_PPS_TIMER 200
+
 #define DEFAULT_PFC_ALERT_LEVEL   ((7 * PFC_MAX_LEVEL) / 10)
 #define DEFAULT_PFC_RELEASE_LEVEL ((3 * PFC_MAX_LEVEL) / 10)
 
@@ -300,10 +303,11 @@ void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	lb_f->add_header = 0;
 	lb_f->add_footer = 0;
 	for (i = 0; i < NB_CLUSTER; i++) {
-		lb_f->rx_noc[i].vchan0_pps_timer = 0;
-		lb_f->rx_noc[i].vchan0_payload_flit_nb = 0xF;
-		lb_f->rx_noc[i].vchan1_pps_timer = 0;
-		lb_f->rx_noc[i].vchan1_payload_flit_nb = 0xF;
+		lb_f->rx_noc[i].vchan0_pps_timer = RX_NOC_DEFAULT_PPS_TIMER;
+		lb_f->rx_noc[i].vchan0_payload_flit_nb = 16;
+		lb_f->rx_noc[i].vchan1_pps_timer = RX_NOC_DEFAULT_PPS_TIMER;
+		lb_f->rx_noc[i].vchan1_payload_flit_nb = 16;
+		kvx_eth_rx_noc_cfg(hw, &lb_f->rx_noc[i]);
 	}
 
 	for (i = 0; i < RX_LB_DEFAULT_RULE_LANE_RR_TARGET_ARRAY_SIZE; ++i)
