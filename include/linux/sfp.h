@@ -248,6 +248,17 @@ struct sfp_eeprom_ext {
 	u8 cc_ext;
 } __packed;
 
+struct sfp_eeprom_ext_8636 {
+	u8 code;
+	u8 option[3];
+	char vendor_sn[16];
+	char datecode[8];
+	u8 diagmon;
+	u8 enhopts;
+	u8 nominal_baudrate;
+	u8 cc_ext;
+} __packed;
+
 /**
  * struct sfp_eeprom_id - raw SFP module identification information
  * @base: base SFP module identification structure
@@ -259,7 +270,10 @@ struct sfp_eeprom_ext {
  */
 struct sfp_eeprom_id {
 	struct sfp_eeprom_base base;
-	struct sfp_eeprom_ext ext;
+	union {
+		struct sfp_eeprom_ext ext;
+		struct sfp_eeprom_ext_8636 ext_8636;
+	};
 } __packed;
 
 struct sfp_diag {
@@ -355,6 +369,9 @@ enum {
 	SFF8024_ECC_100GBASE_CR4	= 0x0b,
 	SFF8024_ECC_25GBASE_CR_S	= 0x0c,
 	SFF8024_ECC_25GBASE_CR_N	= 0x0d,
+	SFF8024_ECC_40GBASE_ER          = 0x10,
+	SFF8024_ECC_4_10GBASE_SR        = 0x11,
+	SFF8024_ECC_40GBASE_PSM4_SMF    = 0x12,
 	SFF8024_ECC_10GBASE_T_SFI	= 0x16,
 	SFF8024_ECC_10GBASE_T_SR	= 0x1c,
 	SFF8024_ECC_5GBASE_T		= 0x1d,
