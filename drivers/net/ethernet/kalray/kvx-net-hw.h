@@ -82,6 +82,11 @@ enum kvx_eth_loopback_mode {
 	MAC_RX2TX_LOOPBACK,
 };
 
+enum kvx_eth_serdes {
+	SERDES_RX = BIT(0),
+	SERDES_TX = BIT(1),
+};
+
 enum kvx_eth_pfc_mode {
 	MAC_PFC_NONE = 0,
 	MAC_PFC,
