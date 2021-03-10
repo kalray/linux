@@ -292,7 +292,7 @@ void kvx_phy_refclk_cfg(struct kvx_eth_hw *hw, unsigned int speed)
 		     REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_OVRD_EN_MASK, val);
 }
 
-void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable)
+static void kvx_phy_loopback(struct kvx_eth_hw *hw, int lane_id, bool enable)
 {
 	u32 off, val;
 	u32 mask = BIT(LANE_TX2RX_SER_LB_EN_OVRD_EN_SHIFT) |
@@ -301,13 +301,45 @@ void kvx_phy_loopback(struct kvx_eth_hw *hw, bool enable)
 	if (!hw->phy_f.reg_avail)
 		return;
 
-	off = RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN;
+	off = RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN + lane_id * LANE_OFFSET;
 	val = readw(hw->res[KVX_ETH_RES_PHY].base + off);
 	if (enable)
 		val |= mask;
 	else
 		val &= ~mask;
 	writew(val, hw->res[KVX_ETH_RES_PHY].base + off);
+}
+
+void kvx_serdes_loopback(struct kvx_eth_hw *hw, int lane, int lane_nb)
+{
+	u32 serdes_mask = get_serdes_mask(lane, lane_nb);
+	int i = lane;
+	u32 val;
+
+	/* Must be set in pstate P0 */
+	if (hw->phy_f.loopback_mode == MAC_SERDES_LOOPBACK) {
+		dev_info(hw->dev, "Mac serdes TX2RX loopback\n");
+		val = serdes_mask << PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT;
+		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
+			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, val);
+	} else if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK) {
+		dev_info(hw->dev, "Phy TX2RX loopback\n");
+		for (i = lane; i < lane + lane_nb; i++)
+			kvx_phy_loopback(hw, i, true);
+		/* PHY loopback Sequence requests at least 100us delay
+		 * (See 5.18.6.1 Loopback functions).
+		 */
+		usleep_range(100, 150);
+	} else { /* Default: disable loopback */
+		for (i = lane; i < lane + lane_nb; i++)
+			kvx_phy_loopback(hw, i, false);
+		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
+			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, 0);
+		/* PHY loopback Sequence requests at least 100us delay
+		 * (See 5.18.6.1 Loopback functions).
+		 */
+		usleep_range(100, 150);
+	}
 }
 
 /**
