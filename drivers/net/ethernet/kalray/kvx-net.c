@@ -1835,7 +1835,8 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		 * for autoneg completion in this case.
 		 */
 		netdev_warn(ndev->netdev, "No cable detected\n");
-		return;
+		if (!ndev->cfg.mac_f.loopback_mode)
+			return;
 	}
 
 	if (kvx_eth_phy_is_bert_en(ndev->hw)) {

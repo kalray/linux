@@ -197,4 +197,6 @@ struct pll_serdes_param {
 	struct phy_pll phy_pll;
 };
 
+u32 get_serdes_mask(int first_lane, int lane_nb);
+
 #endif
