@@ -1452,34 +1452,34 @@ static void kvx_eth_netdev_set_hw_addr(struct kvx_eth_netdev *ndev)
 	struct net_device *netdev = ndev->netdev;
 	struct kvx_eth_dev *dev = KVX_DEV(ndev);
 	struct device *d = &dev->pdev->dev;
-	u8 *a;
+	u8 *a, tmp[6];
 	u64 h;
 
 	addr = of_get_mac_address(ndev->netdev->dev.of_node);
 	if (!IS_ERR(addr) && addr) {
 		a = (u8 *)addr;
-		goto exit;
-	}
-
-	if (dev->hw.mppa_id == 0) {
+		/* set local assignment bit (IEEE802) */
+		a[0] |= 0x02;
+	} else if (false) {
+		/* waiting for MAC address in fuse */
+	} else if (dev->hw.mppa_id != 0) {
+		h = hash_64((dev->hw.mppa_id << 9) | dev->hw.dev_id, 16);
+		/* set local assignment bit (IEEE802) */
+		tmp[0] = 0xA0 | 0x02;
+		tmp[1] = 0x28;
+		tmp[2] = 0x33;
+		tmp[3] = 0xC0 | (0x0F & h);
+		tmp[4] = 0xFF & (h >> 4);
+		tmp[5] = (0xF0 & ((h >> 12) << 4)) |
+	       ((ndev->hw->eth_id << 2 | ndev->cfg.id) & 0x0F);
+	    a = tmp;
+	} else {
 		dev_warn(d, "Using random hwaddr\n");
 		eth_hw_addr_random(netdev);
-		h = *(u64 *)netdev->dev_addr;
-	} else {
-		h = (dev->hw.mppa_id << 9) | dev->hw.dev_id;
+		ether_addr_copy(ndev->cfg.mac_f.addr, netdev->dev_addr);
+		return;
 	}
 
-	/* Hash 64bits -> keep 20MSB (host order) -> 20LSB (network order) */
-	h = (h * GOLDEN_RATIO_64);
-	a = (u8 *)&h;
-	/* Prefix (endianess -> network format) */
-	a[0] = 0xA0;
-	a[1] = 0x28;
-	a[2] = 0x33;
-	a[3] |= 0xC0;
-	a[5] += ndev->hw->eth_id * KVX_ETH_LANE_NB + ndev->cfg.id;
-
-exit:
 	netdev->addr_assign_type = NET_ADDR_PERM;
 	ether_addr_copy(netdev->dev_addr, a);
 	ether_addr_copy(ndev->cfg.mac_f.addr, a);
