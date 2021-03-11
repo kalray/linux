@@ -1296,6 +1296,7 @@ static struct platform_driver kvx_dma_driver = {
 };
 
 module_platform_driver(kvx_dma_driver);
+MODULE_AUTHOR("Thomas Costis <tcostis@kalray.eu>");
 MODULE_LICENSE("GPL");
 MODULE_FIRMWARE(KVX_DMA_MEM2MEM_UCODE_NAME);
 MODULE_FIRMWARE(KVX_DMA_MEM2ETH_UCODE_NAME);
