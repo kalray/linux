@@ -491,5 +491,5 @@ static struct i2c_driver ti_retimer_driver = {
 
 module_i2c_driver(ti_retimer_driver);
 
-MODULE_AUTHOR("Kalray");
+MODULE_AUTHOR("Benjamin Mugnier <bmugnier@kalray.eu>");
 MODULE_LICENSE("GPL v2");
