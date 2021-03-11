@@ -2304,5 +2304,6 @@ int kvx_eth_get_lut_indir(struct net_device *netdev, u32 lut_id,
 }
 EXPORT_SYMBOL(kvx_eth_get_lut_indir);
 
-MODULE_AUTHOR("Kalray");
+MODULE_AUTHOR("Thomas Costis <tcostis@kalray.eu>");
+MODULE_AUTHOR("Benjamin Mugnier <bmugnier@kalray.eu>");
 MODULE_LICENSE("GPL");
