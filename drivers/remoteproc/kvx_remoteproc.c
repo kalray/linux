@@ -16,6 +16,7 @@
 #include <linux/mailbox_client.h>
 #include <linux/platform_device.h>
 #include <linux/of_reserved_mem.h>
+#include <linux/iopoll.h>
 
 #include <asm/pwr_ctrl.h>
 
@@ -161,6 +162,9 @@ enum fw_rsc_kalray_boot_params_version {
 	KALRAY_BOOT_PARAMS_VERSION_1 = 1
 };
 
+/* Cluster reset status maximum read attempts */
+#define KVX_CLUSTER_RST_STATUS_RETRY 50
+
 /* Maximum size of executable name for remote */
 #define EXEC_NAME_LEN	64
 
@@ -267,6 +271,23 @@ struct kvx_rproc {
 static int kvx_rproc_request_mboxes(struct kvx_rproc *kvx_rproc);
 static void kvx_rproc_free_mboxes(struct kvx_rproc *kvx_rproc);
 
+static int wait_cluster_ready(struct kvx_rproc *kvx_rproc)
+{
+	u32 val, timeout = 0;
+	unsigned int status_offset = (void *)(KVX_FTU_CLUSTER_STATUS +
+			kvx_rproc->cluster_id * KVX_FTU_CLUSTER_STRIDE);
+
+	do {
+		regmap_read(kvx_rproc->ftu_regmap, status_offset, &val);
+		val &= BIT(KVX_FTU_CLUSTER_STATUS_RST_BIT);
+		timeout++;
+	} while (val && (timeout < KVX_CLUSTER_RST_STATUS_RETRY));
+
+	if (val)
+		return -ETIMEDOUT;
+	return 0;
+}
+
 static int kvx_rproc_start(struct rproc *rproc)
 {
 	int ret;
@@ -309,7 +330,8 @@ static int kvx_rproc_start(struct rproc *rproc)
 		return ret;
 	}
 
-	return 0;
+	/* Wait for reset to be over */
+	return wait_cluster_ready(kvx_rproc);
 }
 
 static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
@@ -333,7 +355,8 @@ static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
 		return ret;
 	}
 
-	return 0;
+	/* Wait for reset to be over */
+	return wait_cluster_ready(kvx_rproc);
 }
 
 static void kvx_rproc_free_args_env(struct kvx_rproc *kvx_rproc, char **str)
