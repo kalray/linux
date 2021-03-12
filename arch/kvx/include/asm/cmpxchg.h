@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2018-2020 Kalray Inc.
- * Author: Clement Leger
+ * Copyright (C) 2018-2021 Kalray Inc.
+ * Authors:
+ *      Clement Leger <cleger@kalray.eu>
+ *      Yann Sionneau <ysionneau@kalray.eu>
  */
 
 #ifndef _ASM_KVX_CMPXCHG_H
@@ -47,7 +49,7 @@
 		"l"  #op_suffix  #load_suffix" $r63 = 0[%[rPtr]]\n"	\
 		";;\n"							\
 		/* Check if equal to "old" one */			\
-		"compd.ne $r62 = $r63, %[rOld]\n"			\
+		"comp" #op_suffix ".ne $r62 = $r63, %[rOld]\n"		\
 		";;\n"							\
 		/* If different from "old", return it to caller */	\
 		"cb.deqz $r62? 1b\n"					\
