@@ -1393,6 +1393,7 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	int i, ret = 0;
 	u8 *cell_data;
 	size_t len;
+	u32 val;
 
 	if (of_property_read_u32(np, "cell-index", &dev->hw.eth_id)) {
 		dev_warn(&pdev->dev, "Default kvx ethernet index to 0\n");
@@ -1417,7 +1418,7 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 		dev->hw.phy_f.polarities[i].tx = (bool) tmp_tx_polarities[i];
 	}
 
-	cell = nvmem_cell_get(&pdev->dev, "mppaid");
+	cell = nvmem_cell_get(&pdev->dev, "ews_fuse");
 	if (!IS_ERR(cell)) {
 		cell_data = nvmem_cell_read(cell, &len);
 		nvmem_cell_put(cell);
@@ -1426,6 +1427,16 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 		kfree(cell_data);
 	}
 
+	cell = nvmem_cell_get(&pdev->dev, "ft_fuse");
+	if (!IS_ERR(cell)) {
+		cell_data = nvmem_cell_read(cell, &len);
+		nvmem_cell_put(cell);
+		if (!IS_ERR(cell_data)) {
+			val = *(u32 *)cell_data;
+			dev->hw.dev_id = (val >> 22) & 0x1FF;
+		}
+		kfree(cell_data);
+	}
 	ret = kvx_eth_rtm_parse_dt(pdev, dev);
 
 	return ret;
@@ -1455,7 +1466,7 @@ static void kvx_eth_netdev_set_hw_addr(struct kvx_eth_netdev *ndev)
 		eth_hw_addr_random(netdev);
 		h = *(u64 *)netdev->dev_addr;
 	} else {
-		h = dev->hw.mppa_id;
+		h = (dev->hw.mppa_id << 9) | dev->hw.dev_id;
 	}
 
 	/* Hash 64bits -> keep 20MSB (host order) -> 20LSB (network order) */
