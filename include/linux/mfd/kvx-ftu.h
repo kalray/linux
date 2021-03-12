@@ -19,8 +19,12 @@
 #define KVX_FTU_CLUSTER_CTRL_WUP_BIT               0x0
 #define KVX_FTU_CLUSTER_CTRL_RST_BIT               0x1
 #define KVX_FTU_CLUSTER_CTRL_CLKEN_BIT             0x2
+/* FTU Cluster status register definitions */
 #define KVX_FTU_CLUSTER_STATUS                     0x20
 #define KVX_FTU_CLUSTER_STATUS_RM_RUNNING_BIT      0x0
+#define KVX_FTU_CLUSTER_STATUS_RST_BIT             0x1
+#define KVX_FTU_CLUSTER_STATUS_CLK_EN_BIT          0x2
+#define KVX_FTU_CLUSTER_STATUS_SCRAM_DIS_BIT       0x3
 #define KVX_FTU_BOOTADDR_OFFSET                    0x60
 
 /* PCIe reset control register definitions */
