@@ -697,6 +697,9 @@ struct lt_status {
  * @lt_status: link training fsm status structure
  * @rxtx_crossed: are rx lanes crossed with tx ones
  *                meaning rx4->tx0, rx3->tx1, etc.
+ * @eth_id: [0, 1] ethernet hw block id
+ * @mppa_id: owns ews fuse reg
+ * @dev_id: mppa device_id (part of FT fuse reg)
  * @asn: device ASN
  * @vchan: dma-noc vchan (MUST be different of the one used by l2-cache)
  * @max_frame_size: current mtu for mac
@@ -718,6 +721,7 @@ struct kvx_eth_hw {
 	bool rxtx_crossed;
 	u32 eth_id;
 	u64 mppa_id;
+	u16 dev_id;
 	struct pll_cfg pll_cfg;
 	u32 asn;
 	u32 vchan;
