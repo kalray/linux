@@ -288,7 +288,7 @@ bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
 }
 
 #define RESET_TIMEOUT_MS 50
-static void kvx_phy_reset(struct kvx_eth_hw *hw)
+void kvx_phy_reset(struct kvx_eth_hw *hw)
 {
 	u32 val = PHY_RESET_MASK;
 
