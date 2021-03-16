@@ -2131,6 +2131,9 @@ static int kvx_eth_phy_fw_update(struct platform_device *pdev)
 	const struct firmware *fw;
 	int ret = 0;
 
+	if (!load_phy_fw)
+		return -EINVAL;
+
 	dev_info(&pdev->dev, "Requesting phy firmware %s\n", KVX_PHY_FW_NAME);
 	ret = request_firmware(&fw, KVX_PHY_FW_NAME, &pdev->dev);
 	if (ret < 0 || fw->size == 0) {
@@ -2219,8 +2222,9 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	}
 
 	/* Try loading phy firmware */
-	if (load_phy_fw)
-		kvx_eth_phy_fw_update(pdev);
+	ret = kvx_eth_phy_fw_update(pdev);
+	if (ret)
+		kvx_phy_reset(&dev->hw);
 
 	kvx_eth_init_dispatch_table(&dev->hw);
 	kvx_eth_tx_init(&dev->hw);
