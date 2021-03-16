@@ -719,6 +719,13 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb)
 
 	dev_dbg(hw->dev, "%s lane[%d->%d] serdes_mask: 0x%x\n",
 		__func__, lane, lane + lane_nb, serdes_mask);
+	/**
+	 * Reseting phy is needed for aggregated lanes (40G or 100G) on some
+	 * setups. For desaggregated lanes: only resets the right serdes
+	 * (reseting phy is *NOT* possible in this case).
+	 */
+	if (serdes_mask == 0xF)
+		kvx_phy_reset(hw);
 	kvx_phy_serdes_reset(hw, serdes_mask);
 	/*
 	 * Enable serdes, pstate:
