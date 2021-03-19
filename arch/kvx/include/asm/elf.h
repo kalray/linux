@@ -33,6 +33,14 @@ typedef elf_greg_t elf_gregset_t[ELF_NGREG];
  */
 #define elf_check_arch(x) ((x)->e_machine == EM_KVX)
 
+#if defined(__kvxarch_kv3_1)
+#define ELF_CORE_EFLAGS 0x1308
+#elif defined(__kvxarch_kv3_2)
+#define ELF_CORE_EFLAGS 0x2308
+#else
+#error Unknown kvx architecture
+#endif
+
 #define ELF_EXEC_PAGESIZE	(PAGE_SIZE)
 
 /*
