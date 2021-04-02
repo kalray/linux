@@ -123,10 +123,17 @@
 #define DO_WFXL_OWN(__field, __pl) \
 	SFR_SET_VAL_WFXL(DO, __field, __pl)
 
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define DO_WFXL_VALUE(__pl) (DO_WFXL_OWN(B0, __pl) | \
 			     DO_WFXL_OWN(B1, __pl) | \
 			     DO_WFXL_OWN(W0, __pl) | \
 			     DO_WFXL_OWN(W1, __pl))
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define DO_WFXL_VALUE(__pl) (DO_WFXL_OWN(B2, __pl) | \
+			     DO_WFXL_OWN(B3, __pl) | \
+			     DO_WFXL_OWN(W2, __pl) | \
+			     DO_WFXL_OWN(W3, __pl))
+#endif
 
 #define DO_WFXL_VALUE_PL_CUR_PLUS_1     DO_WFXL_VALUE(PL_CUR_PLUS_1)
 #define DO_WFXL_VALUE_PL_CUR            DO_WFXL_VALUE(PL_CUR)
