@@ -13,7 +13,17 @@
 
 #define KVX_HW_BREAKPOINT_TYPE	0
 #define KVX_HW_WATCHPOINT_TYPE	1
+
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define KVX_HW_WP_PER_WP	2
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+enum en_watchpoint_type {
+	WATCHPOINT_TYPE_NONE = 0,
+	WATCHPOINT_TYPE_WRITE = 1,
+	WATCHPOINT_TYPE_READ = 2,
+	WATCHPOINT_TYPE_ACCESS = WATCHPOINT_TYPE_READ | WATCHPOINT_TYPE_WRITE,
+};
+#endif
 
 struct arch_hw_breakpoint {
 	u64 addr;
@@ -25,9 +35,15 @@ struct arch_hw_breakpoint {
 			u32 hw_range;
 		} bp;
 		struct {
-			u64 hw_wp_addr[KVX_HW_WP_PER_WP];
-			u32 hw_wp_range[KVX_HW_WP_PER_WP];
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
+			u64 hw_addr[KVX_HW_WP_PER_WP];
+			u32 hw_range[KVX_HW_WP_PER_WP];
 			u32 use_wp1;
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+			u64 hw_addr;
+			u32 hw_size;
+			u32 hw_type;
+#endif
 			u32 hit_info;
 		} wp;
 	};
