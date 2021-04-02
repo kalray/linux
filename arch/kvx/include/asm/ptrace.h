@@ -17,8 +17,13 @@
 
 #define ES_SYSCALL	0x3
 
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define KVX_HW_BREAKPOINT_COUNT		2
 #define KVX_HW_WATCHPOINT_COUNT		1
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define KVX_HW_BREAKPOINT_COUNT		2
+#define KVX_HW_WATCHPOINT_COUNT		2
+#endif
 
 #define REG_SIZE	sizeof(u64)
 
@@ -158,7 +163,12 @@ struct pt_regs {
 #define user_mode(regs)	(pl((regs)->sps) == MODE_USER)
 #define es_ec(regs) kvx_sfr_field_val(regs->es, ES, EC)
 #define es_sysno(regs) kvx_sfr_field_val(regs->es, ES, SN)
+
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define debug_dc(es) kvx_sfr_field_val((es), ES, DC)
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define debug_dc(es) kvx_sfr_field_val((es), ES, DCV2)
+#endif
 
 /* ptrace */
 #define PTRACE_GET_HW_PT_REGS	20
