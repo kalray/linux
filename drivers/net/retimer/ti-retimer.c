@@ -11,16 +11,13 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
-#include <linux/of_gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/ethtool.h>
 
 #include <linux/ti-retimer.h>
 
 #define TI_RTM_DRIVER_NAME "ti-retimer"
 #define TI_RTM_I2C_ADDR_BUF_SIZE (4)
-#define TI_RTM_GPIO_SLAVE_MODE (1)
-#define TI_RTM_GPIO_READ_EN (1)
-#define TI_RTM_GPIO_ALL_DONE (1)
 #define TI_RTM_SEQ_ARGS_SIZE (4)
 #define TI_RTM_REGINIT_MAX_SIZE (64)
 #define TI_RTM_DEFAULT_TIMEOUT (500)
@@ -63,9 +60,9 @@ struct ti_rtm_reg_init {
  */
 struct ti_rtm_dev {
 	struct i2c_client *client;
-	int en_smb_gpio;
-	int read_en_gpio;
-	int all_done_gpio;
+	struct gpio_desc *en_smb_gpio;
+	struct gpio_desc *read_en_gpio;
+	struct gpio_desc *all_done_gpio;
 	struct ti_rtm_reg_init reg_init;
 	struct device_node *eeprom_np;
 };
@@ -335,48 +332,42 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 	struct device *dev = &rtm->client->dev;
 	int ret = 0;
 
-	/* Force slave mode */
-	dev_dbg(dev, "Setting en_smb_gpio to 0x%x\n", TI_RTM_GPIO_SLAVE_MODE);
-	gpio_set_value(rtm->en_smb_gpio, TI_RTM_GPIO_SLAVE_MODE);
-	ret = gpio_direction_output(rtm->en_smb_gpio, TI_RTM_GPIO_SLAVE_MODE);
-	if (ret) {
-		dev_err(dev, "Failed to configure en_smb_gpio (slave mode)\n");
-		return ret;
-	}
-	ret = gpio_get_value(rtm->en_smb_gpio);
-	if (ret != TI_RTM_GPIO_SLAVE_MODE) {
-		dev_warn(dev, "Unexpected value read for en_smb_gpio (got: 0x%x, expected: 0x%x)\n",
-				ret, TI_RTM_GPIO_SLAVE_MODE);
-		return ret;
+	/* Activate SMBus slave mode */
+	dev_dbg(dev, "Enabling SMBus mode\n");
+	if (rtm->en_smb_gpio) {
+		ret = gpiod_direction_output(rtm->en_smb_gpio, 1);
+		if (ret) {
+			dev_err(dev, "Failed to configure en_smb_gpio: %d\n", ret);
+			return ret;
+		}
+		if (!gpiod_get_value(rtm->en_smb_gpio)) {
+			dev_warn(dev, "Failed to enable SMBus mode\n");
+			return -EIO;
+		}
 	}
 
-	if (gpio_is_valid(rtm->read_en_gpio)) {
-		/* read_enable to 1 in slave mode -> normal operation */
-		dev_dbg(dev, "Setting read_en_gpio to 0x%x\n",
-				TI_RTM_GPIO_SLAVE_MODE);
-		gpio_set_value(rtm->read_en_gpio, TI_RTM_GPIO_READ_EN);
-		ret = gpio_direction_output(rtm->read_en_gpio,
-				TI_RTM_GPIO_READ_EN);
+	if (rtm->read_en_gpio) {
+		/* Exit reset and enter normal operation mode */
+		dev_dbg(dev, "Exiting reset condition\n");
+		ret = gpiod_direction_output(rtm->read_en_gpio, 1);
 		if (ret) {
-			dev_err(dev, "Failed to configure read_enable_gpio\n");
+			dev_err(dev, "Failed to configure read_en_gpio: %d\n", ret);
 			return ret;
 		}
-		ret = gpio_get_value(rtm->read_en_gpio);
-		if (ret != TI_RTM_GPIO_READ_EN) {
-			dev_err(dev, "Unexpected value read for read_enable_gpio (got: 0x%x, expected: 0x%x)\n",
-					ret, TI_RTM_GPIO_READ_EN);
-			return ret;
+		if (!gpiod_get_value(rtm->read_en_gpio)) {
+			dev_err(dev, "Failed to exit reset condition\n");
+			return -EIO;
 		}
 	}
-	if (gpio_is_valid(rtm->all_done_gpio)) {
+
+	if (rtm->all_done_gpio) {
 		/* Check the rtm is in correct state */
 		unsigned long t = jiffies +
 			msecs_to_jiffies(TI_RTM_DEFAULT_TIMEOUT);
 		do {
 			if (time_after(jiffies, t))
 				goto timeout;
-			ret = gpio_get_value(rtm->all_done_gpio);
-		} while (ret != TI_RTM_GPIO_ALL_DONE);
+		} while (!gpiod_get_value(rtm->all_done_gpio));
 	}
 
 	write_i2c_regs(rtm->client, rtm->reg_init.seq, rtm->reg_init.size);
@@ -384,15 +375,14 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 	return 0;
 
 timeout:
-	if (!gpio_is_valid(rtm->read_en_gpio)) {
+	if (!rtm->read_en_gpio) {
 		/* If we can't drive the read_enable, someone else has
 		 * to drive it for us. We have to wait.
 		 */
-		dev_err(dev, "Retimer in reset mode (%x), deferring.\n",
-				ret);
+		dev_err(dev, "Retimer in reset mode (%x), deferring.\n", ret);
 		return -EPROBE_DEFER;
 	}
-	dev_err(dev, "Fail to configure read_enable gpio\n");
+
 	return -EINVAL;
 }
 
@@ -406,44 +396,38 @@ static int parse_dt(struct ti_rtm_dev *rtm)
 	if (!np)
 		return -EINVAL;
 
-	rtm->en_smb_gpio = of_get_named_gpio(np, "en-smb-gpios", 0);
-	if (!gpio_is_valid(rtm->en_smb_gpio)) {
-		dev_err(dev, "DT en_smb gpio not found\n");
-		return -EINVAL;
+	rtm->en_smb_gpio = devm_gpiod_get(dev, "en-smb", GPIOD_ASIS);
+	if (IS_ERR(rtm->en_smb_gpio)) {
+		ret = PTR_ERR(rtm->en_smb_gpio);
+		/* If en-smb gpio is already requested (-EBUSY) means this gpio
+		 * is shared by several retimers. We delegate responsabilities
+		 * to the first retimer that claimed the gpio.
+		 */
+		if (ret == -EBUSY) {
+			dev_dbg(dev, "Shared en-smb gpio\n");
+			/* Ignore this gpio */
+			rtm->en_smb_gpio = NULL;
+		} else {
+			dev_err(dev, "Error getting en-smb gpio: %d\n", ret);
+			return ret;
+		}
 	}
-	ret = devm_gpio_request(dev, rtm->en_smb_gpio,
-				"I2C slave enable");
-	/* If en-smb gpio is already requested, it means it's common for
-	 * several retimers. We delegate responsabilities to the first retimer
-	 * that claimed the gpio
-	 */
-	if (ret == -EBUSY) {
-		dev_dbg(dev, "Shared en-smb gpio %d\n", rtm->en_smb_gpio);
-	} else if (ret) {
-		dev_err(dev, "Failed requesting slave enable gpio %d\n", ret);
+
+	rtm->read_en_gpio = devm_gpiod_get_optional(dev, "read-en", GPIOD_ASIS);
+	if (IS_ERR(rtm->read_en_gpio)) {
+		ret = PTR_ERR(rtm->read_en_gpio);
+		dev_err(dev, "Error getting read-en gpio: %d\n", ret);
 		return ret;
 	}
 
-	rtm->read_en_gpio = of_get_named_gpio(np, "read-en-gpios", 0);
-	if (gpio_is_valid(rtm->read_en_gpio)) {
-		ret = devm_gpio_request(dev, rtm->read_en_gpio, "Read enable");
-		if (ret) {
-			dev_err(dev, "Failed requesting read enable gpio\n");
-			return ret;
-		}
+	rtm->all_done_gpio = devm_gpiod_get_optional(dev, "all-done", GPIOD_IN);
+	if (IS_ERR(rtm->all_done_gpio)) {
+		ret = PTR_ERR(rtm->all_done_gpio);
+		dev_err(dev, "Error getting all-done gpio: %d\n", ret);
+		return ret;
 	}
 
-	rtm->all_done_gpio = of_get_named_gpio(np, "all-done-gpios", 0);
-	if (gpio_is_valid(rtm->all_done_gpio)) {
-		ret = devm_gpio_request(dev, rtm->all_done_gpio, "All done");
-		if (ret) {
-			dev_err(dev, "Failed requesting all done gpio\n");
-			return ret;
-		}
-	}
-
-	if (!gpio_is_valid(rtm->read_en_gpio) &&
-			!gpio_is_valid(rtm->all_done_gpio)) {
+	if (!rtm->read_en_gpio && !rtm->all_done_gpio) {
 		dev_err(dev, "Retimer needs at least read-en-gpios or all-done-gpios\n");
 		return ret;
 	}
