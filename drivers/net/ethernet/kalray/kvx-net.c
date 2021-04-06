@@ -1876,7 +1876,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		kvx_eth_pfc_f_cfg(ndev->hw, &ndev->cfg.pfc_f);
 	}
 
-	if (an_enabled) {
+	if (an_enabled && !ndev->cfg.mac_f.loopback_mode) {
 		ret = kvx_eth_autoneg(ndev);
 		/* If AN is successful MAC/PHY are already configured on
 		 * correct mode as link training requires to be performed at
