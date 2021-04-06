@@ -419,7 +419,26 @@ static int kvx_eth_check_tx_coef_sat(enum lt_coef_requests op,
 static int kvx_eth_rtm_tx_coef(struct kvx_eth_hw *hw, int lane_id,
 		     enum lt_coef_requests op, enum tx_coef_type param)
 {
-	return -EINVAL;
+	struct kvx_eth_rtm_params *rtm = &hw->rtm_params[RTM_TX];
+	struct ti_rtm_params rtm_params;
+	struct tx_coefs delta;
+	int lane = rtm->channels[lane_id];
+	int ret = 0;
+
+	kvx_eth_get_tx_coef_delta(op, param, &delta);
+
+	ret = ti_retimer_get_tx_coef(rtm->rtm, lane, &rtm_params);
+	dev_info(hw->dev, "%s lane[%d](rtm channel[%d]) pre: %d, post: %d, main: %d\n",
+		 __func__, lane_id, lane, rtm_params.pre, rtm_params.post,
+		 rtm_params.main);
+
+	rtm_params.main += delta.main;
+	rtm_params.pre += delta.pre;
+	rtm_params.post += delta.post;
+
+	ret = ti_retimer_set_tx_coef(rtm->rtm, lane, rtm_params);
+
+	return ret;
 }
 
 /**
@@ -438,10 +457,10 @@ int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
 	u16 v, mask;
 	int ret;
 
-	kvx_eth_get_tx_coef_delta(op, param, &delta);
-
 	if (hw->rtm_params[RTM_TX].rtm)
 		return kvx_eth_rtm_tx_coef(hw, lane_id, op, param);
+
+	kvx_eth_get_tx_coef_delta(op, param, &delta);
 
 	/* Fallback if no retimers */
 	kvx_phy_get_tx_coef(hw, lane_id, &cur);
