@@ -27,12 +27,8 @@
 #define TI_RTM_NB_LANE (8)
 #define TI_RTM_DEFAULT_SPEED (SPEED_10000)
 #define TI_RTM_MAX_REGINIT_SIZE (256)
-#define TI_RTM_I2C_REG_POSITIVE_VALUE (0x00)
-#define TI_RTM_I2C_REG_NEGATIVE_VALUE (0x40)
 
-#define VALUE_SIGN(val) \
-	(val < 0 ? TI_RTM_I2C_REG_NEGATIVE_VALUE : \
-	 TI_RTM_I2C_REG_POSITIVE_VALUE)
+#define VALUE_SIGN(val) (val < 0 ? TX_SIGN_MASK : 0)
 
 struct seq_args {
 	u8 reg;
@@ -170,13 +166,73 @@ static void write_i2c_regs(struct i2c_client *client, struct seq_args seq[],
 }
 
 /**
- * ti_retimer_set_params() - Set tuning params for a lane
+ * ti_retimer_get_tx_coef() - Get tuning params for a lane
+ * @client: i2c client
+ * @lane: retimer lane [0:7]
+ * @params: current tuning parameters of rtm
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+int ti_retimer_get_tx_coef(struct i2c_client *client, u8 lane,
+		struct ti_rtm_params *params)
+{
+	struct device *dev = &client->dev;
+	u8 read_buf;
+	int ret = 0;
+	struct seq_args params_set_seq[] = {
+		/* Select channel registers */
+		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
+		/* Select lane */
+		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 1 << lane},
+	};
+
+	if (lane >= TI_RTM_NB_LANE) {
+		dev_err(dev, "Wrong lane number %d (max: %d)\n", lane,
+				TI_RTM_NB_LANE);
+		return -EINVAL;
+	}
+
+	/* Select lane and channel */
+	write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq));
+
+	ret = ti_rtm_i2c_read(client, PRE_REG, &read_buf, 1);
+	if (ret) {
+		dev_err(dev, "Unable to get PRE value channel[%d]\n", lane);
+		goto exit;
+	}
+	params->pre = read_buf & TX_COEF_MASK;
+	params->pre = (read_buf & TX_SIGN_MASK ? -params->pre : params->pre);
+
+	ret = ti_rtm_i2c_read(client, MAIN_REG, &read_buf, 1);
+	if (ret) {
+		dev_err(dev, "Unable to get MAIN value channel[%d]\n", lane);
+		goto exit;
+	}
+	params->main = read_buf & TX_COEF_MASK;
+	params->main = (read_buf & TX_SIGN_MASK ? -params->main : params->main);
+
+	ret = ti_rtm_i2c_read(client, POST_REG, &read_buf, 1);
+	if (ret) {
+		dev_err(dev, "Unable to get POST value channel[%d]\n", lane);
+		goto exit;
+	}
+	params->post = read_buf & TX_COEF_MASK;
+	params->post = (read_buf & TX_SIGN_MASK ? -params->post : params->post);
+
+exit:
+	return ret;
+}
+EXPORT_SYMBOL(ti_retimer_get_tx_coef);
+
+/**
+ * ti_retimer_set_tx_coef() - Set tuning params for a lane
  * @client: i2c client
  * @lane: retimer lane [0:7]
  * @params: tuning parameters to apply
+ *
  * Return: 0 on success, < 0 on failure
  */
-int ti_retimer_set_params(struct i2c_client *client, u8 lane,
+int ti_retimer_set_tx_coef(struct i2c_client *client, u8 lane,
 		struct ti_rtm_params params)
 {
 	struct device *dev = &client->dev;
@@ -188,22 +244,22 @@ int ti_retimer_set_params(struct i2c_client *client, u8 lane,
 		/* CDR reset */
 		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x0c},
 		/* Write pre sign */
-		{.reg = 0x3e, .offset = 0x00, .mask = 0x40,
+		{.reg = PRE_REG, .offset = 0x00, .mask = TX_SIGN_MASK,
 			.value = VALUE_SIGN(params.pre)},
 		/* Write pre value */
-		{.reg = 0x3e, .offset = 0x00, .mask = 0x3f,
+		{.reg = PRE_REG, .offset = 0x00, .mask = TX_COEF_MASK,
 			.value = abs(params.pre)},
 		/* Write main sign */
-		{.reg = 0x3d, .offset = 0x00, .mask = 0x40,
+		{.reg = MAIN_REG, .offset = 0x00, .mask = TX_SIGN_MASK,
 			.value = VALUE_SIGN(params.main)},
 		/* Write main value */
-		{.reg = 0x3d, .offset = 0x00, .mask = 0x3f,
+		{.reg = MAIN_REG, .offset = 0x00, .mask = TX_COEF_MASK,
 			.value = abs(params.main)},
 		/* Write post sign */
-		{.reg = 0x3f, .offset = 0x00, .mask = 0x40,
+		{.reg = POST_REG, .offset = 0x00, .mask = TX_SIGN_MASK,
 			.value = VALUE_SIGN(params.post)},
 		/* Write post value */
-		{.reg = 0x3f, .offset = 0x00, .mask = 0x3f,
+		{.reg = POST_REG, .offset = 0x00, .mask = TX_COEF_MASK,
 			.value = abs(params.post)},
 		/* Release CDR reset */
 		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x00},
@@ -219,7 +275,7 @@ int ti_retimer_set_params(struct i2c_client *client, u8 lane,
 
 	return 0;
 }
-EXPORT_SYMBOL(ti_retimer_set_params);
+EXPORT_SYMBOL(ti_retimer_set_tx_coef);
 
 static inline int speed_to_rtm_reg_value(int speed)
 {
