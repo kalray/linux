@@ -751,6 +751,8 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 				    rxr->qidx);
 		rxr->skb->protocol = eth_type_trans(rxr->skb, netdev);
 		ndev->stats.ring.rx_pkts++;
+		netdev_dbg(ndev->netdev, "%s skb->len: %d data_len: %d\n",
+			   __func__, rxr->skb->len, rxr->skb->data_len);
 	}
 	ndev->stats.ring.rx_bytes += data_len;
 
@@ -976,6 +978,7 @@ static void kvx_eth_dma_irq_rx(void *data)
 {
 	struct kvx_eth_ring *ring = data;
 
+	netdev_dbg(ring->netdev, "%s\n", __func__);
 	napi_schedule(&ring->napi);
 }
 
