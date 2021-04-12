@@ -149,6 +149,8 @@ static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 		if (param->ovrd_en)
 			v |= MAIN_OVRD_EN_MASK;
 		off = LANE0_DIG_ASIC_TX_OVRD_IN_2 + lane_id * LANE_OFFSET;
+		/* Write it twice */
+		updatew_bits(hw, PHY, off, mask, v);
 		updatew_bits(hw, PHY, off, mask, v);
 
 		mask = PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK |
@@ -158,6 +160,8 @@ static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 		if (param->ovrd_en)
 			v |= PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK;
 		off = LANE0_DIG_ASIC_TX_OVRD_IN_3 + lane_id * LANE_OFFSET;
+		/* Write it twice */
+		updatew_bits(hw, PHY, off, mask, v);
 		updatew_bits(hw, PHY, off, mask, v);
 
 		dev_dbg(hw->dev, "Lane [%d] param tuning (pre:%d, post:%d, swing:%d) done\n",
