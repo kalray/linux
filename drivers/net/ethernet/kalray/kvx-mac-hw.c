@@ -309,6 +309,12 @@ static void kvx_phy_serdes_reset(struct kvx_eth_hw *hw, u32 serdes_mask)
 	u32 val = (serdes_mask << PHY_RESET_SERDES_RX_SHIFT) |
 		(serdes_mask << PHY_RESET_SERDES_TX_SHIFT);
 
+	/* If all serdes set under reset, also reset PHY
+	 * **MUST** be done at the same time
+	 */
+	if (serdes_mask == 0xF)
+		val |= PHY_RESET_MASK;
+
 	updatel_bits(hw, PHYMAC, PHY_RESET_OFFSET, val, val);
 	kvx_poll(kvx_phy_readl, PHY_RESET_OFFSET, val, val, RESET_TIMEOUT_MS);
 	/* PHY Power-Down Sequence requests 15us delay after reset in power-up
@@ -724,8 +730,6 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb)
 	 * setups. For desaggregated lanes: only resets the right serdes
 	 * (reseting phy is *NOT* possible in this case).
 	 */
-	if (serdes_mask == 0xF)
-		kvx_phy_reset(hw);
 	kvx_phy_serdes_reset(hw, serdes_mask);
 	/*
 	 * Enable serdes, pstate:
