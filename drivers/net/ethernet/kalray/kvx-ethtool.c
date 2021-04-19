@@ -249,6 +249,10 @@ static enum kvx_traffic_types flow_type_to_traffic_type(u32 flow_type)
 		return KVX_TT_UDP4;
 	case UDP_V6_FLOW:
 		return KVX_TT_UDP6;
+	case IPV4_USER_FLOW:
+		return KVX_TT_IP4;
+	case IPV6_USER_FLOW:
+		return KVX_TT_IP6;
 	default:
 		return KVX_TT_UNSUPPORTED;
 	}
@@ -434,7 +438,11 @@ static void fill_ipv4_filter(struct kvx_eth_netdev *ndev,
 		filter->protocol_mask = 0xff;
 	}
 
-	if (traffic_type_is_supported(tt)) {
+	if (tt == KVX_TT_IP4) {
+		netdev_info(ndev->netdev, "Force src/dst hashing for IP4 only rule\n");
+		filter->sa_hash_mask = 0xffffffff;
+		filter->da_hash_mask = 0xffffffff;
+	} else if (traffic_type_is_supported(tt)) {
 		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_SRC_IP) != 0)
 			filter->sa_hash_mask = 0xffffffff;
@@ -496,7 +504,14 @@ static void fill_ipv6_filter(struct kvx_eth_netdev *ndev,
 		filter->d0.nh_mask = 0xff;
 	}
 
-	if (traffic_type_is_supported(tt)) {
+	if (tt == KVX_TT_IP6) {
+		netdev_info(ndev->netdev, "Force src/dst hashing for IP6 only rule\n");
+		filter->d1.src_lsb_hash_mask = 0xffffffffffffffffULL;
+		filter->d1.src_msb_hash_mask = 0xffffffffffffffffULL;
+
+		filter->d2.dst_lsb_hash_mask = 0xffffffffffffffffULL;
+		filter->d2.dst_msb_hash_mask = 0xffffffffffffffffULL;
+	} else if (traffic_type_is_supported(tt)) {
 		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_SRC_IP) != 0) {
 			filter->d1.src_lsb_hash_mask = 0xffffffffffffffffULL;
