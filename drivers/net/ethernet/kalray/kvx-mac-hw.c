@@ -125,47 +125,51 @@ void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 			     struct kvx_eth_lane_cfg *cfg)
 {
+	int i, lane_speed, ret = 0;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
 	u32 val, off;
 
-	/* No MAC addr filtering */
-	val = (u32)EMAC_CMD_CFG_TX_EN_MASK      |
-		EMAC_CMD_CFG_RX_EN_MASK         |
-		EMAC_CMD_CFG_CNTL_FRAME_EN_MASK |
-		EMAC_CMD_CFG_SW_RESET_MASK      |
-		EMAC_CMD_CFG_TX_FIFO_RESET_MASK |
-		EMAC_CMD_CFG_TX_FLUSH_MASK;
+	for (i = cfg->id; i < lane_nb; i++) {
+		/* No MAC addr filtering */
+		val = (u32)EMAC_CMD_CFG_TX_EN_MASK      |
+			EMAC_CMD_CFG_RX_EN_MASK         |
+			EMAC_CMD_CFG_CNTL_FRAME_EN_MASK |
+			EMAC_CMD_CFG_SW_RESET_MASK      |
+			EMAC_CMD_CFG_TX_FIFO_RESET_MASK |
+			EMAC_CMD_CFG_TX_FLUSH_MASK;
 
-	if (cfg->mac_f.pfc_mode == MAC_PAUSE)
-		val |= EMAC_CMD_CFG_PAUSE_PFC_COMP_MASK;
-	else if (cfg->mac_f.pfc_mode == MAC_PFC)
-		val |= EMAC_CMD_CFG_PFC_MODE_MASK;
+		if (cfg->mac_f.pfc_mode == MAC_PAUSE)
+			val |= EMAC_CMD_CFG_PAUSE_PFC_COMP_MASK;
+		else if (cfg->mac_f.pfc_mode == MAC_PFC)
+			val |= EMAC_CMD_CFG_PFC_MODE_MASK;
 
-	if (cfg->mac_f.promisc_mode)
-		val |= EMAC_CMD_CFG_PROMIS_EN_MASK;
+		if (cfg->mac_f.promisc_mode)
+			val |= EMAC_CMD_CFG_PROMIS_EN_MASK;
 
-	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
-	kvx_mac_writel(hw, val, off + EMAC_CMD_CFG_OFFSET);
+		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
+		kvx_mac_writel(hw, val, off + EMAC_CMD_CFG_OFFSET);
 
-	/* Disable MAC auto Xon/Xoff gen and store and forward mode */
-	val = RX_FIFO_SECTION_FULL_THRES << EMAC_RX_FIFO_SECTION_FULL_SHIFT;
-	updatel_bits(hw, MAC, off + EMAC_RX_FIFO_SECTIONS_OFFSET,
-		   EMAC_RX_FIFO_SECTION_FULL_MASK, val);
-	/* MAC Threshold for emitting pkt (low threshold -> low latency
-	 * but risk underflow -> bad tx transmission)
-	 */
-	val = TX_FIFO_SECTION_FULL_THRES << EMAC_TX_FIFO_SECTION_FULL_SHIFT;
-	updatel_bits(hw, MAC, off + EMAC_TX_FIFO_SECTIONS_OFFSET,
-		    EMAC_TX_FIFO_SECTION_FULL_MASK, val);
-	val = kvx_mac_readl(hw, off + EMAC_CMD_CFG_OFFSET);
-	if (GETF(val, EMAC_CMD_CFG_SW_RESET)) {
-		dev_err(hw->dev, "EMAC Lane[%d] sw_reset != 0(0x%x)\n", cfg->id,
-			(u32)GETF(val, EMAC_CMD_CFG_SW_RESET));
-		return -EINVAL;
+		/* Disable MAC auto Xon/Xoff gen and store and forward mode */
+		val = RX_FIFO_SECTION_FULL_THRES << EMAC_RX_FIFO_SECTION_FULL_SHIFT;
+		updatel_bits(hw, MAC, off + EMAC_RX_FIFO_SECTIONS_OFFSET,
+			     EMAC_RX_FIFO_SECTION_FULL_MASK, val);
+		/* MAC Threshold for emitting pkt (low threshold -> low latency
+		 * but risk underflow -> bad tx transmission)
+		 */
+		val = TX_FIFO_SECTION_FULL_THRES << EMAC_TX_FIFO_SECTION_FULL_SHIFT;
+		updatel_bits(hw, MAC, off + EMAC_TX_FIFO_SECTIONS_OFFSET,
+			     EMAC_TX_FIFO_SECTION_FULL_MASK, val);
+		val = kvx_mac_readl(hw, off + EMAC_CMD_CFG_OFFSET);
+		if (GETF(val, EMAC_CMD_CFG_SW_RESET)) {
+			dev_warn(hw->dev, "EMAC Lane[%d] sw_reset != 0(0x%x)\n",
+				i, (u32)GETF(val, EMAC_CMD_CFG_SW_RESET));
+			ret = -EINVAL;
+		}
+
+		kvx_mac_writel(hw, hw->max_frame_size, off + EMAC_FRM_LEN_OFFSET);
 	}
 
-	kvx_mac_writel(hw, hw->max_frame_size, off + EMAC_FRM_LEN_OFFSET);
-
-	return 0;
+	return ret;
 }
 
 bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
@@ -195,45 +199,50 @@ bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 			     struct kvx_eth_lane_cfg *cfg)
 {
+	int i, lane_speed, ret = 0;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
 	u32 off, val;
 
-	/* Preembtible MAC */
-	val = PMAC_CMD_CFG_TX_EN_MASK       |
-		PMAC_CMD_CFG_RX_EN_MASK     |
-		PMAC_CMD_CFG_TX_PAD_EN_MASK |
-		PMAC_CMD_CFG_SW_RESET_MASK  |
-		PMAC_CMD_CFG_CNTL_FRAME_EN_MASK;
 
-	if (cfg->mac_f.pfc_mode == MAC_PFC)
-		val |= PMAC_CMD_CFG_PFC_MODE_MASK;
+	for (i = 0; i < lane_nb; i++) {
+		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
+		/* Preembtible MAC */
+		val = PMAC_CMD_CFG_TX_EN_MASK       |
+			PMAC_CMD_CFG_RX_EN_MASK     |
+			PMAC_CMD_CFG_TX_PAD_EN_MASK |
+			PMAC_CMD_CFG_SW_RESET_MASK  |
+			PMAC_CMD_CFG_CNTL_FRAME_EN_MASK;
 
-	if (cfg->mac_f.promisc_mode)
-		val |= PMAC_CMD_CFG_PROMIS_EN_MASK;
+		if (cfg->mac_f.pfc_mode == MAC_PFC)
+			val |= PMAC_CMD_CFG_PFC_MODE_MASK;
 
-	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
-	kvx_mac_writel(hw, val, off + PMAC_CMD_CFG_OFFSET);
-	/* Disable MAC auto Xon/Xoff gen and store and forward mode */
-	val = RX_FIFO_SECTION_FULL_THRES << PMAC_RX_FIFO_SECTION_FULL_SHIFT;
-	updatel_bits(hw, MAC, off + PMAC_RX_FIFO_SECTIONS_OFFSET,
-		     PMAC_RX_FIFO_SECTION_FULL_MASK, val);
-	/* MAC Threshold for emitting pkt (low threshold -> low latency
-	 * but risk underflow -> bad tx transmission)
-	 */
-	val = TX_FIFO_SECTION_FULL_THRES << PMAC_TX_FIFO_SECTION_FULL_SHIFT;
-	updatel_bits(hw, MAC, off + PMAC_TX_FIFO_SECTIONS_OFFSET,
-		    PMAC_TX_FIFO_SECTION_FULL_MASK, val);
+		if (cfg->mac_f.promisc_mode)
+			val |= PMAC_CMD_CFG_PROMIS_EN_MASK;
+		kvx_mac_writel(hw, val, off + PMAC_CMD_CFG_OFFSET);
+		/* Disable MAC auto Xon/Xoff gen and store and forward mode */
+		val = RX_FIFO_SECTION_FULL_THRES <<
+			PMAC_RX_FIFO_SECTION_FULL_SHIFT;
+		updatel_bits(hw, MAC, off + PMAC_RX_FIFO_SECTIONS_OFFSET,
+			     PMAC_RX_FIFO_SECTION_FULL_MASK, val);
+		/* MAC Threshold for emitting pkt (low threshold -> low latency
+		 * but risk underflow -> bad tx transmission)
+		 */
+		val = TX_FIFO_SECTION_FULL_THRES <<
+			PMAC_TX_FIFO_SECTION_FULL_SHIFT;
+		updatel_bits(hw, MAC, off + PMAC_TX_FIFO_SECTIONS_OFFSET,
+			     PMAC_TX_FIFO_SECTION_FULL_MASK, val);
 
-	val = kvx_mac_readl(hw, off + PMAC_CMD_CFG_OFFSET);
-	if (GETF(val, PMAC_CMD_CFG_SW_RESET)) {
-		dev_err(hw->dev, "PMAC Lane[%d] sw_reset != 0\n", cfg->id);
-		val = kvx_mac_readl(hw, off + PMAC_STATUS_OFFSET);
-		dev_dbg(hw->dev, "Lane[%d] PMAC status: 0x%x\n", cfg->id, val);
-		return -EINVAL;
+		val = kvx_mac_readl(hw, off + PMAC_CMD_CFG_OFFSET);
+		if (GETF(val, PMAC_CMD_CFG_SW_RESET)) {
+			dev_warn(hw->dev, "PMAC Lane[%d] sw_reset != 0\n", i);
+			ret = -EINVAL;
+		}
+
+		kvx_mac_writel(hw, hw->max_frame_size,
+			       off + PMAC_FRM_LEN_OFFSET);
 	}
 
-	kvx_mac_writel(hw, hw->max_frame_size, off + PMAC_FRM_LEN_OFFSET);
-
-	return 0;
+	return ret;
 }
 
 void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
@@ -913,34 +922,136 @@ int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	return 0;
 }
 
-static int kvx_eth_mac_reset(struct kvx_eth_hw *hw, int lane_id)
+static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
+				   struct kvx_eth_lane_cfg *cfg,
+				   bool aggregated_lanes)
+{
+	int i, lane_speed, ret = 0;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	u32 off, mask, val;
+
+	if (kvx_mac_readl(hw, MAC_RESET_OFFSET))
+		return -EINVAL;
+
+	ret = kvx_eth_mac_init(hw, cfg);
+
+	/* Reset all config registers */
+	/* Disable all ena registers: FEC, RS-FEC, PCS100G, ... */
+	val = 0;
+	if (cfg->speed == SPEED_40000)
+		val = MAC_MODE40_EN_IN_MASK;
+	if (cfg->speed == SPEED_100000)
+		val = MAC_PCS100_EN_IN_MASK;
+	kvx_mac_writel(hw, val, MAC_MODE_OFFSET);
+
+	/* Reset all FEC registers (mandatory for rate changes) */
+	if (aggregated_lanes) {
+		updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET,
+			     MAC_FEC91_ENA_IN_MASK | MAC_FEC91_1LANE_IN0_MASK |
+			     MAC_FEC91_1LANE_IN2_MASK, 0);
+		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET,
+			     MAC_FEC_CTRL_FEC_EN_MASK, 0);
+		kvx_mac_writel(hw, 0, MAC_SG_OFFSET);
+		mask = PCS_100G_CTRL1_SPEED_SEL_MASK |
+			PCS_100G_CTRL1_RESET_MASK |
+			PCS_100G_CTRL1_SPEED_SEL6_MASK |
+			PCS_100G_CTRL1_SPEED_SEL13_MASK;
+		updatel_bits(hw, MAC, PCS_100G_OFFSET + PCS_100G_CTRL1_OFFSET,
+			     mask, mask);
+		kvx_mac_writel(hw, 0, PCS_100G_OFFSET + PCS_100G_MODE_OFFSET);
+	} else {
+		mask = BIT(cfg->id);
+		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET, mask, 0);
+		mask = MAC_FEC91_ENA_IN_MASK;
+		mask |= (cfg->id < 2 ? MAC_FEC91_1LANE_IN0_MASK :
+			 MAC_FEC91_1LANE_IN2_MASK);
+		updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET, mask, 0);
+		mask = BIT(cfg->id + MAC_SG_EN_SHIFT);
+		mask |= MAC_SG_TX_LANE_CKMULT_MASK;
+		updatel_bits(hw, MAC, MAC_SG_OFFSET, mask, 0);
+	}
+
+	for (i = cfg->id; i < lane_nb; i++) {
+		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
+		kvx_mac_writel(hw, PMAC_XIF_TX_MAC_RS_ERR_MASK,
+			       off + PMAC_XIF_OFFSET);
+
+		/* disable MAC_1G */
+		off = MAC_1G_OFFSET + MAC_1G_ELEM_SIZE * i;
+		kvx_mac_writel(hw, 0, off + MAC_1G_IF_MODE_OFFSET);
+
+		val = BIT(MAC_1G_CTRL_RESET_SHIFT + i);
+		val |= MAC_1G_CTRL_SPEED_SEL_LSB_MASK |
+			MAC_1G_CTRL_SPEED_SEL_MSB_MASK |
+			MAC_1G_CTRL_DUPLEX_MODE_MASK |
+			MAC_1G_CTRL_RESTART_AN_MASK;
+		kvx_mac_writel(hw, val, off + MAC_1G_CTRL_OFFSET);
+
+		/* Reset XPCS */
+		off = XPCS_OFFSET + XPCS_ELEM_SIZE * i;
+		val = XPCS_VENDOR_PCS_MODE_ST_ENA_CLAUSE49_MASK |
+			XPCS_VENDOR_PCS_MODE_ST_DISABLE_MLD_MASK |
+			XPCS_VENDOR_PCS_MODE_DISABLE_MLD_MASK |
+			XPCS_VENDOR_PCS_MODE_ENA_CLAUSE49_MASK;
+		kvx_mac_writel(hw, val, off + XPCS_VENDOR_PCS_MODE_OFFSET);
+
+		kvx_mac_writel(hw, 0xD80, off + XPCS_VENDOR_RXLAUI_CFG_OFFSET);
+
+		val = XPCS_CTRL1_RESET_MASK | XPCS_CTRL1_SPEED_ALWAYS1_MASK |
+			XPCS_CTRL1_SPEED_SELECT_ALWAYS1_MASK;
+		kvx_mac_writel(hw, val, off + XPCS_CTRL1_OFFSET);
+	}
+	/* local link, remote fault status clear */
+	kvx_mac_readl(hw, MAC_FAULT_STATUS_LAC_OFFSET);
+
+	mask = MAC_RESET_SD_TX_CLK_MASK | MAC_RESET_SD_RX_CLK_MASK |
+		MAC_RESET_MAC0_FF_CLK_MASK;
+	val = mask;
+	for (i = cfg->id; i < lane_nb; i++) {
+		val |= (BIT(i + MAC_RESET_SD_TX_CLK_SHIFT)) |
+			(BIT(i + MAC_RESET_SD_RX_CLK_SHIFT)) |
+			(BIT(i + MAC_RESET_MAC0_FF_CLK_SHIFT));
+	}
+	if (aggregated_lanes) {
+		mask |= MAC_RESET_TDM_FF_CLK_MASK | MAC_RESET_REG_CLK_MASK |
+			MAC_RESET_MAC0_REF_CLK_MASK |
+			MAC_RESET_XPCS_REF_CLK_MASK |
+			MAC_RESET_SPCS_REF_CLK_MASK |
+			MAC_RESET_REF_CLK_MASK;
+		val = mask;
+	}
+
+	updatel_bits(hw, MAC, MAC_RESET_SET_OFFSET, mask, val);
+
+	return ret;
+}
+
+static int kvx_eth_mac_reset(struct kvx_eth_hw *hw,
+			     struct kvx_eth_lane_cfg *cfg)
 {
 	u32 mask, val = kvx_mac_readl(hw, MAC_RESET_OFFSET);
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
-	int ret = 0;
+	int ret = kvx_mac_restore_default(hw, cfg, aggregated_lanes);
 
 	if (val || aggregated_lanes) {
+		mask = ~0U;
 		/* Initial state: MAC under reset */
-		kvx_mac_writel(hw, (~0U), MAC_RESET_CLEAR_OFFSET);
+		kvx_mac_writel(hw, mask, MAC_RESET_CLEAR_OFFSET);
 	} else {
-		val = (BIT(lane_id + MAC_RESET_SD_TX_CLK_SHIFT)) |
-		       (BIT(lane_id + MAC_RESET_SD_RX_CLK_SHIFT));
+		val = (BIT(cfg->id + MAC_RESET_SD_TX_CLK_SHIFT)) |
+		       (BIT(cfg->id + MAC_RESET_SD_RX_CLK_SHIFT));
 		mask = MAC_RESET_SD_TX_CLK_MASK | MAC_RESET_SD_RX_CLK_MASK;
 		updatel_bits(hw, MAC, MAC_RESET_CLEAR_OFFSET, mask, val);
 	}
 
-	ret = kvx_poll(kvx_mac_readl, MAC_RESET_OFFSET, (u32)(~0U), 0,
+	ret = kvx_poll(kvx_mac_readl, MAC_RESET_OFFSET, ~mask, 0,
 		       RESET_TIMEOUT_MS);
 	if (ret) {
 		dev_err(hw->dev, "Mac reset failed\n");
 		return -EINVAL;
 	}
 
-	/* MAC loopback mode */
-	val = (u32)4 << MAC_BYPASS_LOOPBACK_LATENCY_SHIFT;
-	kvx_mac_writel(hw, val, MAC_BYPASS_OFFSET);
-
-	return 0;
+	return ret;
 }
 
 static void update_ipg_len_compensation(struct kvx_eth_hw *hw, int lane_id,
@@ -1073,7 +1184,8 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 		break;
 	case SPEED_10000:
 		/* Set MAC interface to XGMII */
-		updatel_bits(hw, MAC, PMAC_XIF_OFFSET,
+		updatel_bits(hw, MAC, MAC_CTRL_OFFSET +
+			     MAC_CTRL_ELEM_SIZE * lane_id + PMAC_XIF_OFFSET,
 			     PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
 		/* Set MAC marker compensation to 0, IPG bias mode disabled,
 		 * idle blocks are removed.
@@ -1094,7 +1206,8 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 	case SPEED_25000:
 		mc = MARKER_COMP_25G;
 		/* Set MAC interface into XGMII */
-		updatel_bits(hw, MAC, PMAC_XIF_OFFSET,
+		updatel_bits(hw, MAC, MAC_CTRL_OFFSET +
+			     MAC_CTRL_ELEM_SIZE * lane_id + PMAC_XIF_OFFSET,
 			     PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
 		update_set_vendor_xpcs_vl(hw, lane_id, XPCS_RATE_25G);
 
@@ -2015,7 +2128,7 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 
 	kvx_phy_mac_10G_cfg(hw, LANE_RATE_10GBASE_KR, WIDTH_20BITS);
 	kvx_mac_phy_serdes_cfg(hw, cfg);
-	kvx_eth_mac_reset(hw, cfg->id);
+	kvx_eth_mac_reset(hw, cfg);
 
 	return 0;
 }
@@ -2353,7 +2466,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 	kvx_mac_writel(hw, val, MAC_SG_OFFSET);
 
-	ret = kvx_eth_mac_reset(hw, cfg->id);
+	ret = kvx_eth_mac_reset(hw, cfg);
 	if (ret)
 		return ret;
 
