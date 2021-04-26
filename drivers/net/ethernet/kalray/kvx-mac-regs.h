@@ -12,6 +12,7 @@
 
 /* MAC */
 #define MAC_RESET_OFFSET                           0x6020
+#define MAC_RESET_SET_OFFSET                       0x6024
 #define MAC_RESET_CLEAR_OFFSET                     0x6028
 #define MAC_RESET_SD_TX_CLK_SHIFT                  0x0
 #define MAC_RESET_SD_TX_CLK_MASK                   0xFUL
@@ -67,6 +68,7 @@
 #define MAC_FEC91_1LANE_IN2_MASK                   0x20UL
 #define MAC_TX_FAULT_CTRL_OFFSET                   0x60D4
 #define MAC_FAULT_STATUS_OFFSET                    0x60D8
+#define MAC_FAULT_STATUS_LAC_OFFSET                0x60DC
 #define MAC_SYNC_STATUS_OFFSET                     0x602C
 #define MAC_SYNC_STATUS_LINK_STATUS_SHIFT          0x19
 #define MAC_SYNC_STATUS_LINK_STATUS_MASK           0x1E000000UL
@@ -133,6 +135,7 @@
 #define MAC_1G_STATUS_LINK_100BASE_T4_MASK         0x8000UL
 #define MAC_1G_STATUS_LINK_STATUS_SHIFT            0x2
 #define MAC_1G_STATUS_LINK_STATUS_MASK             0x4UL
+#define MAC_1G_IF_MODE_OFFSET                      0x50
 
 /* MAC_SERDES */
 #define MAC_SERDES_CTRL_1G_OFFSET                  0x615C
@@ -316,6 +319,7 @@
 #define XPCS_VENDOR_TXLANE_THRESH_OFFSET           0x70C
 #define XPCS_VENDOR_TXLANE_THRESH_THRESHOLD_SHIFT  0x0
 #define XPCS_VENDOR_TXLANE_THRESH_THRESHOLD_MASK   0xFUL
+#define XPCS_VENDOR_RXLAUI_CFG_OFFSET              0x710
 
 /* PCS_100G */
 #define PCS_100G_OFFSET                            0x7000
@@ -336,6 +340,7 @@
 #define PCS_100G_CTRL2_OFFSET                      0x1C
 #define PCS_100G_CTRL2_PCS_TYPE_SHIFT              0x0
 #define PCS_100G_CTRL2_PCS_TYPE_MASK               0x7UL
+#define PCS_100G_MODE_OFFSET                       0x840
 #define PCS_100G_STATUS1_OFFSET                    0x4
 #define PCS_100G_STATUS1_LOW_POWER_ABILITY_SHIFT   0x1
 #define PCS_100G_STATUS1_LOW_POWER_ABILITY_MASK    0x2UL
