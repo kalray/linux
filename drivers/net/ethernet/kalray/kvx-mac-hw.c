@@ -569,7 +569,7 @@ static inline bool is_lane_in_use(struct kvx_eth_hw *hw, int lane_id)
 }
 
 static int kvx_serdes_handshake(struct kvx_eth_hw *hw, u32 serdes_mask,
-				enum kvx_eth_serdes serdes)
+				unsigned int serdes)
 {
 	int ret = 0;
 	u32 req = 0;
@@ -725,12 +725,18 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb)
 
 	dev_dbg(hw->dev, "%s lane[%d->%d] serdes_mask: 0x%x\n",
 		__func__, lane, lane + lane_nb, serdes_mask);
-	/**
-	 * Reseting phy is needed for aggregated lanes (40G or 100G) on some
-	 * setups. For desaggregated lanes: only resets the right serdes
-	 * (reseting phy is *NOT* possible in this case).
-	 */
-	kvx_phy_serdes_reset(hw, serdes_mask);
+
+	/* Select the MAC PLL ref clock */
+	if (pll->rate_plla == SPEED_1000 && !test_bit(PLL_A, &pll->avail) &&
+	    test_bit(PLL_B, &pll->avail))
+		kvx_phy_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
+	else
+		kvx_phy_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
+	/* Configure serdes PLL master + power down pll */
+	mask = (serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_EN_SHIFT |
+		serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_SEL_SHIFT);
+	updatel_bits(hw, PHYMAC, PHY_SERDES_PLL_CFG_OFFSET, mask, 0);
+
 	/*
 	 * Enable serdes, pstate:
 	 *   3: off (sig detector powered up and the rest of RX is down)
@@ -761,17 +767,12 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb)
 		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
 	}
 
-	kvx_serdes_handshake(hw, serdes_mask, SERDES_RX | SERDES_TX);
-	/* Select the MAC PLL ref clock */
-	if (pll->rate_plla == SPEED_1000 && !test_bit(PLL_A, &pll->avail) &&
-	    test_bit(PLL_B, &pll->avail))
-		kvx_phy_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
-	else
-		kvx_phy_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
-	/* Configure serdes PLL master + power down pll */
-	mask = (serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_EN_SHIFT |
-		serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_SEL_SHIFT);
-	updatel_bits(hw, PHYMAC, PHY_SERDES_PLL_CFG_OFFSET, mask, 0);
+	/**
+	 * Reseting phy is needed for aggregated lanes (40G or 100G) on some
+	 * setups. For desaggregated lanes: only resets the right serdes
+	 * (reseting phy is *NOT* possible in this case).
+	 */
+	kvx_phy_serdes_reset(hw, serdes_mask);
 
 	kvx_serdes_handshake(hw, serdes_mask, SERDES_RX | SERDES_TX);
 
