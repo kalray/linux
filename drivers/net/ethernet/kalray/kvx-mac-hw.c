@@ -1345,32 +1345,70 @@ int kvx_eth_mac_getfec(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 static int kvx_eth_mac_setup_fec(struct kvx_eth_hw *hw,
 			       struct kvx_eth_lane_cfg *cfg)
 {
-	u32 v;
+	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
+	u32 v, mask;
+
+	/**
+	 * Reset all FEC registers (mandatory for rate changes, as a new rate
+	 * may not be compatible with previous FEC settings). Mac reset does
+	 * NOT reset all control registers.
+	 */
+	if (aggregated_lanes) {
+		updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET, MAC_FEC91_ENA_IN_MASK |
+			     MAC_FEC91_1LANE_IN0_MASK | MAC_FEC91_1LANE_IN2_MASK, 0);
+		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET, MAC_FEC_CTRL_FEC_EN_MASK, 0);
+	} else {
+		mask = BIT(cfg->id);
+		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET, mask, 0);
+		mask = MAC_FEC91_ENA_IN_MASK;
+		mask |= (cfg->id < 2 ? MAC_FEC91_1LANE_IN0_MASK :
+			 MAC_FEC91_1LANE_IN2_MASK);
+		updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET, mask, 0);
+	}
 
 	switch (cfg->speed) {
 	case SPEED_100000:
-		v = (cfg->fec ? MAC_FEC91_ENA_IN_MASK : 0);
 		/* Enable RS FEC */
-		updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET,
-			     MAC_FEC91_ENA_IN_MASK, v);
+		if (cfg->fec & FEC_25G_RS_REQUESTED)
+			updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET,
+				  MAC_FEC91_ENA_IN_MASK, MAC_FEC91_ENA_IN_MASK);
 		break;
 	case SPEED_50000:
-		v = (3 << MAC_FEC_CTRL_FEC_EN_SHIFT) + (cfg->id * 2);
-		v = (cfg->fec ? v : 0);
-		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET,
-			     MAC_FEC_CTRL_FEC_EN_MASK, v);
-		break;
-	case SPEED_40000:
-		v = (cfg->fec ? 0xF : 0);
-		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET,
-			     MAC_FEC_CTRL_FEC_EN_MASK, v);
+		if (cfg->fec & FEC_25G_RS_REQUESTED) {
+			v = mask = MAC_FEC91_ENA_IN_MASK;
+			mask |= (cfg->id < 2 ? MAC_FEC91_1LANE_IN0_MASK :
+				MAC_FEC91_1LANE_IN2_MASK);
+			updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET, mask, v);
+		} else if (cfg->fec & FEC_25G_BASE_R_REQUESTED) {
+			v = (3 << MAC_FEC_CTRL_FEC_EN_SHIFT) + (cfg->id * 2);
+			updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET,
+				     MAC_FEC_CTRL_FEC_EN_MASK, v);
+		}
 		break;
 	case SPEED_25000:
+		if (cfg->fec & FEC_25G_RS_REQUESTED) {
+			v = mask = MAC_FEC91_ENA_IN_MASK;
+			mask |= (cfg->id < 2 ? MAC_FEC91_1LANE_IN0_MASK :
+				MAC_FEC91_1LANE_IN2_MASK);
+			v |= (cfg->id < 2 ? MAC_FEC91_1LANE_IN2_MASK :
+			      MAC_FEC91_1LANE_IN0_MASK);
+			updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET, mask, v);
+		} else if (cfg->fec & FEC_25G_BASE_R_REQUESTED) {
+			v = BIT(MAC_FEC_CTRL_FEC_EN_SHIFT + cfg->id);
+			updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET, v, v);
+		}
+		break;
 	case SPEED_10000:
-		v = (u32)BIT(MAC_FEC_CTRL_FEC_EN_SHIFT + cfg->id);
-		v = (cfg->fec ? v : 0);
-		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET,
-			     MAC_FEC_CTRL_FEC_EN_MASK, v);
+		fallthrough;
+	case SPEED_40000:
+		v = (aggregated_lanes ? 0xF : BIT(cfg->id));
+		if (cfg->fec & (FEC_10G_FEC_ABILITY | FEC_10G_FEC_REQUESTED)) {
+			updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET,
+				     MAC_FEC_CTRL_FEC_EN_MASK, v);
+		} else if (cfg->fec) {
+			dev_warn(hw->dev, "Incorrect FEC for lane [%d] @ speed %d\n",
+				 cfg->id, cfg->speed);
+		}
 		break;
 	default:
 		return -EINVAL;
@@ -2326,11 +2364,11 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	if (ret)
 		return ret;
 
-	/* For 100G links FEC can't be deduced from autoneg registers in MTIP
-	 * IP, but is mandatory according to 802.3. Force it.
+	/* For 100G links FEC can't be deduced from autoneg registers,
+	 * but is mandatory according to 802.3. Force it as needed for most
+	 * link partners.
 	 */
 	if (cfg->speed == SPEED_100000) {
-		/* RS FEC is mandatory for 100G */
 		dev_dbg(hw->dev, "Forcing 25G RS-FEC\n");
 		cfg->fec = FEC_25G_RS_REQUESTED;
 	}
