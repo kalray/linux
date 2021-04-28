@@ -18,6 +18,11 @@
 
 #include "kvx-scramble-lut.h"
 
+/* Unicast bit is the first bit in MAC address. But MAC address are byte
+ * reversed on the bus. Then, we must look at position 40.
+ */
+#define KVX_ETH_UNICAST_MASK 0x010000000000ULL
+
 #define STAT(n, m)   { n, sizeof_field(struct kvx_eth_hw_stats, m), \
 	offsetof(struct kvx_eth_hw_stats, m) }
 
@@ -185,6 +190,24 @@ static int find_rule(struct kvx_eth_netdev *ndev, int parser_id,
 	return -ENOENT;
 }
 
+/**
+ * get_phys_parser() - Return a physical parser id from a virtual one
+ * @ndev: this netdev
+ * @location: the virtual id of the parser
+ * Return: parser physical id, or error if not found
+ */
+static int get_phys_parser(struct kvx_eth_netdev *ndev,
+		int location)
+{
+	int i;
+
+	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
+		if (ndev->hw->parsing.parsers[i].loc == location)
+			return i;
+	}
+	return -EINVAL;
+}
+
 static int kvx_eth_get_rule(struct kvx_eth_netdev *ndev,
 		struct ethtool_rxnfc *cmd, int location)
 {
@@ -204,10 +227,13 @@ static int kvx_eth_get_all_rules_loc(struct kvx_eth_netdev *ndev,
 {
 	int idx = 0;
 	int err = 0;
-	int i;
+	int i, parser_id;
 
 	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
-		err = find_rule(ndev, i, NULL);
+		parser_id = get_phys_parser(ndev, i);
+		if (parser_id < 0)
+			continue;
+		err = find_rule(ndev, parser_id, NULL);
 		if (!err)
 			rule_locs[idx++] = i;
 	}
@@ -282,7 +308,7 @@ static inline bool traffic_type_is_supported(enum kvx_traffic_types tt)
 	(port > mask) ? -EINVAL : 0; \
 })
 
-static int fill_tcp_filter(struct kvx_eth_netdev *ndev,
+static union tcp_filter_desc *fill_tcp_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt)
 {
 	union tcp_filter_desc *filter = &flt->tcp;
@@ -304,7 +330,7 @@ static int fill_tcp_filter(struct kvx_eth_netdev *ndev,
 			netdev_err(ndev->netdev, "Min port must be lower than max port (%d > %d)\n",
 					filter->src_min_port,
 					filter->src_max_port);
-			return ret;
+			return NULL;
 		}
 		filter->src_ctrl = KVX_ETH_ADDR_MATCH_EQUAL;
 		if (filter->src_min_port != filter->src_max_port) {
@@ -320,7 +346,7 @@ static int fill_tcp_filter(struct kvx_eth_netdev *ndev,
 			netdev_err(ndev->netdev, "Min port must be lower than max port (%d > %d)\n",
 					filter->dst_min_port,
 					filter->dst_max_port);
-			return ret;
+			return NULL;
 		}
 		filter->dst_ctrl = KVX_ETH_ADDR_MATCH_EQUAL;
 		if (filter->dst_min_port != filter->dst_max_port) {
@@ -338,7 +364,7 @@ static int fill_tcp_filter(struct kvx_eth_netdev *ndev,
 			filter->dst_hash_mask = 0xffff;
 	}
 
-	return 0;
+	return filter;
 }
 
 static union udp_filter_desc *fill_udp_filter(struct kvx_eth_netdev *ndev,
@@ -400,7 +426,7 @@ static union udp_filter_desc *fill_udp_filter(struct kvx_eth_netdev *ndev,
 	return filter;
 }
 
-static void fill_ipv4_filter(struct kvx_eth_netdev *ndev,
+static union ipv4_filter_desc *fill_ipv4_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		int ptype_ovrd)
 {
@@ -449,6 +475,8 @@ static void fill_ipv4_filter(struct kvx_eth_netdev *ndev,
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_DST_IP) != 0)
 			filter->da_hash_mask = 0xffffffff;
 	}
+
+	return filter;
 }
 
 #define KVX_FORMAT_IP6_TO_HW(src, dst) \
@@ -457,7 +485,7 @@ static void fill_ipv4_filter(struct kvx_eth_netdev *ndev,
 		dst[1] = ((u64)ntohl(src[2]) << 32) | ntohl(src[3]); \
 	} while (0)
 
-static void fill_ipv6_filter(struct kvx_eth_netdev *ndev,
+static struct ipv6_filter_desc *fill_ipv6_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		int ptype_ovrd)
 {
@@ -522,6 +550,8 @@ static void fill_ipv6_filter(struct kvx_eth_netdev *ndev,
 			filter->d2.dst_msb_hash_mask = 0xffffffffffffffffULL;
 		}
 	}
+
+	return filter;
 }
 
 static bool is_roce_filter(struct kvx_eth_netdev *ndev,
@@ -552,7 +582,7 @@ static bool is_roce_filter(struct kvx_eth_netdev *ndev,
 }
 
 /* Fill a ROcE filter using the userdef ethtool field */
-static void fill_roce_filter(struct kvx_eth_netdev *ndev,
+static union roce_filter_desc *fill_roce_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		enum kvx_roce_version roce_version)
 {
@@ -571,10 +601,11 @@ static void fill_roce_filter(struct kvx_eth_netdev *ndev,
 		filter->qpair_mask = qpair_mask;
 	}
 
+	return filter;
 }
 
 /* This functions support only one VLAN level */
-static void fill_eth_filter(struct kvx_eth_netdev *ndev,
+static union mac_filter_desc *fill_eth_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		int etype_ovrd)
 {
@@ -608,12 +639,24 @@ static void fill_eth_filter(struct kvx_eth_netdev *ndev,
 		}
 	}
 
+	/* Tictoc requires source unicast bit to be set to zero to allow dummy
+	 * packets sent by the hardware to always drop
+	 */
+	if ((src_addr & KVX_ETH_UNICAST_MASK) != 0 &&
+			(src_mask & KVX_ETH_UNICAST_MASK) != 0) {
+		netdev_err(ndev->netdev, "Mac address unicast bit must be set to 0");
+		return NULL;
+	}
+
 	memcpy(filter, &mac_filter_default, sizeof(mac_filter_default));
 
 	if (src_mask != 0) {
 		filter->sa = src_addr;
 		filter->sa_mask = src_mask;
 	}
+	/* Force unicast bit in source address to filter for tictoc patch */
+	filter->sa_mask |= KVX_ETH_UNICAST_MASK;
+
 	if (dst_mask != 0) {
 		filter->da = dst_addr;
 		filter->da_mask = dst_mask;
@@ -642,6 +685,7 @@ static void fill_eth_filter(struct kvx_eth_netdev *ndev,
 			filter->tci0_hash_mask = TCI_VLAN_HASH_MASK;
 	}
 
+	return filter;
 }
 
 static int delete_parser_cfg(struct kvx_eth_netdev *ndev, int location)
@@ -662,7 +706,7 @@ static int delete_parser_cfg(struct kvx_eth_netdev *ndev, int location)
 		delete_filter(ndev, location, i);
 
 	/* Disable parser */
-	err = parser_disable(ndev->hw, location);
+	err = parser_disable_wrapper(ndev->hw, location);
 	if (err)
 		return err;
 
@@ -671,6 +715,7 @@ static int delete_parser_cfg(struct kvx_eth_netdev *ndev, int location)
 	parser->rule_spec = NULL;
 
 	parser->enabled = 0;
+	parser->loc = -1;
 	ndev->hw->parsing.active_filters_nb--;
 
 	return 0;
@@ -734,7 +779,7 @@ static int kvx_eth_fill_parser(struct kvx_eth_netdev *ndev,
 	case TCP_V4_FLOW:
 		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IP);
 		fill_ipv4_filter(ndev, fs, flt[nb_layers++], IPPROTO_TCP);
-		if (fill_tcp_filter(ndev, fs, flt[nb_layers++]))
+		if (!fill_tcp_filter(ndev, fs, flt[nb_layers++]))
 			return -EINVAL;
 		break;
 	case UDP_V4_FLOW:
@@ -753,7 +798,7 @@ static int kvx_eth_fill_parser(struct kvx_eth_netdev *ndev,
 	case TCP_V6_FLOW:
 		fill_eth_filter(ndev, fs, flt[nb_layers++], ETH_P_IPV6);
 		fill_ipv6_filter(ndev, fs, flt[nb_layers++], IPPROTO_TCP);
-		if (fill_tcp_filter(ndev, fs, flt[nb_layers++]))
+		if (!fill_tcp_filter(ndev, fs, flt[nb_layers++]))
 			return -EINVAL;
 		break;
 	case UDP_V6_FLOW:
@@ -792,9 +837,51 @@ static int kvx_eth_fill_parser(struct kvx_eth_netdev *ndev,
 	}
 
 	hw->parsing.parsers[parser_index].nb_layers = nb_layers;
-	hw->parsing.parsers[parser_index].enabled = 1;
 
 	return 0;
+}
+
+/**
+ * find_elligible_parser() - Find the next free parser within the appropriate
+ *   CRC group (based on fs parameter)
+ * @ndev: this netdev
+ * @fs: rules to match
+ * Return: a free parser id, or error if full
+ */
+static int find_elligible_parser(struct kvx_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs)
+{
+	int i;
+	struct kvx_eth_hw *hw = ndev->hw;
+	enum parser_crc_ability crc_ability;
+	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
+
+	/* Determine which kind of parser we need */
+	if (proto == ETHER_FLOW) {
+		/* Could be RoCEv1, if so we need 1 crc */
+		if (is_roce_filter(ndev, fs, NULL))
+			crc_ability = PARSER_CRC_ABILITY_1;
+		else
+			crc_ability = PARSER_CRC_ABILITY_NO;
+	} else if (proto == IP_USER_FLOW || proto == IPV6_USER_FLOW)
+		crc_ability = PARSER_CRC_ABILITY_1;
+	else {
+		/* This case includes RoCEv2 too as it is over UDP4/6 */
+		crc_ability = PARSER_CRC_ABILITY_4;
+	}
+
+	netdev_dbg(ndev->netdev, "Requesting parser type %d\n", crc_ability);
+
+	/* Find parser matching criteria */
+	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
+		if (hw->parsing.parsers[i].crc_ability == crc_ability &&
+				hw->parsing.parsers[i].loc == -1) {
+			netdev_dbg(ndev->netdev, "Electing parser %d\n", i);
+			return i;
+		}
+	}
+
+	return -EINVAL;
 }
 
 static int kvx_eth_parse_ethtool_rule(struct kvx_eth_netdev *ndev,
@@ -833,13 +920,12 @@ err:
 }
 
 static int add_parser_filter(struct kvx_eth_netdev *ndev,
-				 struct ethtool_rx_flow_spec *fs)
+				 struct ethtool_rx_flow_spec *fs,
+				 int parser_index)
 {
 	int err, prio;
 	int action = fs->ring_cookie;
-	unsigned int parser_index = fs->location;
 	enum parser_dispatch_policy dispatch_policy = PARSER_HASH_LUT;
-
 
 	/* Parse flow */
 	err = kvx_eth_parse_ethtool_rule(ndev, fs, parser_index);
@@ -858,11 +944,14 @@ static int add_parser_filter(struct kvx_eth_netdev *ndev,
 		return -EINVAL;
 
 	/* Write flow to hardware */
-	if (parser_config(ndev->hw, &ndev->cfg, parser_index,
+	if (parser_config_wrapper(ndev->hw, &ndev->cfg, parser_index,
 			dispatch_policy, prio) != 0) {
 		delete_parser_cfg(ndev, parser_index);
 		return -EBUSY;
 	}
+
+	ndev->hw->parsing.parsers[parser_index].enabled = 1;
+	ndev->hw->parsing.parsers[parser_index].loc = fs->location;
 
 	return 0;
 }
@@ -872,25 +961,35 @@ static int add_parser_cfg(struct kvx_eth_netdev *ndev,
 {
 	int ret;
 	int action = fs->ring_cookie;
-	unsigned int parser_index = fs->location;
+	int parser_index = -1;
 
-	if (parser_index >= KVX_ETH_PARSER_NB) {
+	if (fs->location >= KVX_ETH_PARSER_NB) {
 		netdev_err(ndev->netdev, "Invalid parser identifier in location parameter (max: %d)\n",
-				KVX_ETH_PARSER_NB);
+				KVX_ETH_PARSER_NB - 1);
 		return -EINVAL;
 	}
 	if (action < ETHTOOL_RXNTUPLE_ACTION_DROP || action > 0) {
-		netdev_warn(ndev->netdev, "Unsupported action, please use default or -1 for drop policy\n");
+		netdev_err(ndev->netdev, "Unsupported action, please use default or -1 for drop policy\n");
 		return -EINVAL;
 	}
 
-	ret = delete_parser_cfg(ndev, parser_index);
-	if (ret == 0) {
+	/* Find old parser id */
+	parser_index = get_phys_parser(ndev, fs->location);
+	if (parser_index >= 0) {
+		/* Delete old parser at location */
 		netdev_warn(ndev->netdev, "Overriding parser %d filters",
-				parser_index);
+				fs->location);
+		delete_parser_cfg(ndev, parser_index);
 	}
 
-	ret = add_parser_filter(ndev, fs);
+	/* Find a new parser */
+	parser_index = find_elligible_parser(ndev, fs);
+	if (parser_index < 0) {
+		netdev_err(ndev->netdev, "No free parser matching criteria could be found\n");
+		return -EINVAL;
+	}
+
+	ret = add_parser_filter(ndev, fs, parser_index);
 	if (ret)
 		return ret;
 
@@ -917,7 +1016,7 @@ static int update_parsers(struct kvx_eth_netdev *ndev,
 			continue;
 
 		/* Update the parser with the same rule to use RSS */
-		ret = add_parser_filter(ndev, rule);
+		ret = add_parser_filter(ndev, rule, i);
 		if (ret != 0)
 			return ret;
 	}
@@ -999,13 +1098,17 @@ static int kvx_eth_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(dev);
 	int ret = -EOPNOTSUPP;
+	int pid = -1;
 
 	switch (cmd->cmd) {
 	case ETHTOOL_SRXCLSRLINS:
 		ret = add_parser_cfg(ndev, &cmd->fs);
 		break;
 	case ETHTOOL_SRXCLSRLDEL:
-		ret = delete_parser_cfg(ndev, cmd->fs.location);
+		pid = get_phys_parser(ndev, cmd->fs.location);
+		if (pid < 0)
+			return pid;
+		ret = delete_parser_cfg(ndev, pid);
 		break;
 	case ETHTOOL_SRXFH:
 		ret = set_rss_hash_opt(ndev, cmd);
@@ -1022,6 +1125,7 @@ static int kvx_eth_get_rxnfc(struct net_device *netdev,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_hw *hw = ndev->hw;
 	int ret = -EOPNOTSUPP;
+	int pid;
 
 	switch (cmd->cmd) {
 	case ETHTOOL_GRXRINGS:
@@ -1038,7 +1142,10 @@ static int kvx_eth_get_rxnfc(struct net_device *netdev,
 		ret = kvx_eth_get_all_rules_loc(ndev, cmd, rule_locs);
 		break;
 	case ETHTOOL_GRXCLSRULE:
-		ret = kvx_eth_get_rule(ndev, cmd, cmd->fs.location);
+		pid = get_phys_parser(ndev, cmd->fs.location);
+		if (pid < 0)
+			return pid;
+		ret = kvx_eth_get_rule(ndev, cmd, pid);
 		break;
 	case ETHTOOL_GRXFH:
 		ret = kvx_get_rss_hash_opt(ndev, cmd);
