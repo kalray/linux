@@ -292,6 +292,92 @@ void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 }
 
+/* All available parsers indexes, sorted by how many CRC check they can
+ * handle.
+ * This separates them into different pools, as not every parser is able to
+ * handle all crcs computation fast enough, we restrain those who can not.
+ * As parsers are mirrored, the crc capabillity is the minimum of the
+ * parser and its mirror.
+ * Every pool must end by -1 as sentinel.
+ */
+static int parsers_no_crc_init_pool[] = {0, 2, 3, 5, 6, 7, 8, 9, 10, 13, 15, -1};
+static int parsers_1_crc_init_pool[]  = {1, 4, -1};
+static int parsers_4_crc_init_pool[]  = {11, 12, 14, -1};
+
+/* Wrapper to available parsers sorted by pool */
+static int *parsers_init_pool[PARSER_CRC_ABILITY_NB] = {
+	parsers_no_crc_init_pool,
+	parsers_1_crc_init_pool,
+	parsers_4_crc_init_pool,
+	NULL,
+};
+
+/**
+ * is_parser_in_crc_ability_init_pool() - Check if a parser is of a given crc_ability
+ *   This function should only be used at init time to help fill the parsers,
+ *   once done, you should only rely on parsers[i].crc_ability.
+ * @hw: this hardware structure
+ * @parser_id: the parser physical id
+ * @parser_crc_ability: the crc_ability to check
+ * Return: true if parser is of the requested crc_ability, false otherwise
+ */
+static bool is_parser_in_crc_ability_init_pool(struct kvx_eth_hw *hw,
+		int parser_id, enum parser_crc_ability crc_ability)
+{
+	int i = 0;
+	int *parser_init_pool = parsers_init_pool[crc_ability];
+
+	if (parser_init_pool == NULL)
+		return false;
+
+	while (parsers_init_pool[crc_ability][i] != -1 && i < KVX_ETH_PARSER_NB) {
+		if (parser_id == parser_init_pool[i])
+			return true;
+		++i;
+	}
+	return false;
+}
+
+/**
+ * parser_crc_ability_init() - Get the crc_ability of a specific parser
+ * @hw: this hardware structure
+ * @parser_id: the parser physical id
+ * Return: the parser crc_ability
+ */
+static enum parser_crc_ability parser_crc_ability_init(struct kvx_eth_hw *hw, int parser_id)
+{
+	enum parser_crc_ability crc_ability;
+
+	for (crc_ability = 0; crc_ability < PARSER_CRC_ABILITY_NB; ++crc_ability) {
+		if (is_parser_in_crc_ability_init_pool(hw, parser_id, crc_ability))
+			return crc_ability;
+	}
+	return PARSER_CRC_ABILITY_UNKNOWN;
+}
+
+/**
+ * kvx_eth_parsers_init() - Initialize parsers structures
+ *   Used to mark their location id at -1, meaning they're currently unused,
+ *   and fill their crc_ability.
+ * @hw: this hardware structure
+ * Return: 0 on success, -1 if a parser has no crc_ability
+ */
+int kvx_eth_parsers_init(struct kvx_eth_hw *hw)
+{
+	int i;
+
+	for (i = 0; i < KVX_ETH_PARSER_NB; ++i) {
+		hw->parsing.parsers[i].loc = -1;
+		hw->parsing.parsers[i].crc_ability = parser_crc_ability_init(hw, i);
+		if (hw->parsing.parsers[i].crc_ability == PARSER_CRC_ABILITY_UNKNOWN) {
+			dev_err(hw->dev, "Unknown parser crc_ability for parser %d", i);
+			return -1;
+		}
+		dev_dbg(hw->dev, "Parser %d is of crc_ability %d\n", i, hw->parsing.parsers[i].crc_ability);
+	}
+	return 0;
+}
+
 void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	int i, l = cfg->id;
