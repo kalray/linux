@@ -12,7 +12,8 @@
 
 #define KVX_ETH_JUMBO_MTU         (9216)
 #define KVX_ETH_HEADER_SIZE       (32)
-#define KVX_ETH_PARSER_NB         (32)
+#define KVX_ETH_PARSER_NB         (16)
+#define KVX_ETH_PHYS_PARSER_NB    (32)
 
 /* TX */
 #define TX_OFFSET                                  0x15000
