@@ -464,7 +464,7 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; i++)
 		kobject_init(&hw->lut_entry_f[i].kobj, &lut_entry_f_ktype);
 
-	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
+	for (i = 0; i < ARRAY_SIZE(hw->parser_f); i++) {
 		kobject_init(&hw->parser_f[i].kobj, &parser_f_ktype);
 		for (j = 0; j < KVX_NET_LAYER_NB; j++) {
 			kobject_init(&hw->parser_f[i].rules[j].kobj,
@@ -547,10 +547,10 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 		goto err;
 
 	ret = kvx_kset_parser_f_create(ndev, &ndev->netdev->dev.kobj,
-			parser_kset, &hw->parser_f[0], KVX_ETH_PARSER_NB);
+			parser_kset, &hw->parser_f[0], ARRAY_SIZE(hw->parser_f));
 	if (ret)
 		goto err;
-	for (p = 0; p < KVX_ETH_PARSER_NB; p++) {
+	for (p = 0; p < ARRAY_SIZE(hw->parser_f); p++) {
 		ret = kvx_kset_rule_f_create(ndev, &ndev->hw->parser_f[p].kobj,
 				rule_kset, &hw->parser_f[p].rules[0],
 				KVX_NET_LAYER_NB);
@@ -595,12 +595,12 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 	kvx_kset_phy_param_remove(ndev, phy_param_kset,
 			&ndev->hw->phy_f.param[0], KVX_ETH_LANE_NB);
 
-	for (i = 0; i < KVX_ETH_PARSER_NB; i++)
+	for (i = 0; i < ARRAY_SIZE(ndev->hw->parser_f); i++)
 		kvx_kset_rule_f_remove(ndev, rule_kset,
 				&ndev->hw->parser_f[i].rules[0],
 				KVX_NET_LAYER_NB);
 	kvx_kset_parser_f_remove(ndev, parser_kset, &ndev->hw->parser_f[0],
-			KVX_ETH_PARSER_NB);
+			ARRAY_SIZE(ndev->hw->parser_f));
 
 	for (i = 0; i < ARRAY_SIZE(t); ++i)
 		kvx_eth_kobject_del(&ndev->cfg, &t[i]);
