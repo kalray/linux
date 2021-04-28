@@ -568,11 +568,27 @@ struct kvx_eth_lane_cfg {
 	u32 default_dispatch_entry;
 };
 
+/**
+ * parser_type - Type of a parser, meaning how many checksums it can perform
+ * PARSER_TYPE_NO_CHECKSUM: Can't handle any checksum
+ * PARSER_TYPE_1_CHECKSUM: Can handle 1 checksum
+ * PARSER_TYPE_4_CHECKSUM: Can handle 4 checksum
+ */
+enum parser_crc_ability {
+	PARSER_CRC_ABILITY_NO,
+	PARSER_CRC_ABILITY_1,
+	PARSER_CRC_ABILITY_4,
+	PARSER_CRC_ABILITY_UNKNOWN,
+	PARSER_CRC_ABILITY_NB,
+};
+
 struct kvx_eth_parser {
 	union filter_desc *filters[KVX_NET_LAYER_NB];
 	void *rule_spec; /* Opaque type */
 	unsigned int enabled;
 	enum kvx_eth_layer nb_layers;
+	int loc;
+	enum parser_crc_ability crc_ability;
 };
 
 struct kvx_eth_parsing {
@@ -697,6 +713,8 @@ struct lt_status {
  * @lt_status: link training fsm status structure
  * @rxtx_crossed: are rx lanes crossed with tx ones
  *                meaning rx4->tx0, rx3->tx1, etc.
+ * @parsers_tictoc: if we need to mirror parsers configuration from top half
+ *          to bottom half. aka tictoc patch.
  * @eth_id: [0, 1] ethernet hw block id
  * @mppa_id: owns ews fuse reg
  * @dev_id: mppa device_id (part of FT fuse reg)
@@ -710,7 +728,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_res res[KVX_ETH_NUM_RES];
 	struct kvx_eth_parsing parsing;
 	struct kvx_eth_lb_f lb_f[KVX_ETH_LANE_NB];
-	struct kvx_eth_parser_f parser_f[KVX_ETH_PARSER_NB];
+	struct kvx_eth_parser_f parser_f[KVX_ETH_PHYS_PARSER_NB];
 	struct kvx_eth_lut_f lut_f;
 	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
@@ -718,7 +736,8 @@ struct kvx_eth_hw {
 	struct kvx_eth_phy_f phy_f;
 	struct kvx_eth_rtm_params rtm_params[RTM_NB];
 	struct lt_status lt_status[KVX_ETH_LANE_NB];
-	bool rxtx_crossed;
+	u32 rxtx_crossed;
+	u32 parsers_tictoc;
 	u32 eth_id;
 	u64 mppa_id;
 	u16 dev_id;
@@ -909,6 +928,7 @@ u32 kvx_eth_lb_has_footer(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_parsers_init(struct kvx_eth_hw *hw);
 void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id);
 void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc);
 void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
@@ -939,10 +959,10 @@ u32  kvx_eth_tx_has_header(struct kvx_eth_hw *hw, int tx_fifo_id);
 void kvx_eth_tx_init(struct kvx_eth_hw *hw);
 
 /* PARSING */
-int parser_config(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
+int parser_config_wrapper(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 		  int parser_id, enum parser_dispatch_policy policy, int prio);
 void parser_disp(struct kvx_eth_hw *hw, unsigned int parser_id);
-int parser_disable(struct kvx_eth_hw *hw, int parser_id);
+int parser_disable_wrapper(struct kvx_eth_hw *hw, int parser_id);
 
 /* STATS */
 void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
