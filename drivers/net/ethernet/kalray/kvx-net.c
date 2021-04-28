@@ -1404,8 +1404,14 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	}
 
 	if (of_property_read_u32(np, "kalray,rxtx-crossed",
-			(u32 *) &dev->hw.rxtx_crossed) != 0)
+			&dev->hw.rxtx_crossed) != 0)
 		dev->hw.rxtx_crossed = 0;
+	if (of_property_read_u32(np, "kalray,parsers_tictoc",
+			&dev->hw.parsers_tictoc) != 0) {
+		dev_err(&pdev->dev, "kalray,parsers_tictoc property not found but required\n");
+		return -EINVAL;
+	}
+	dev_info(&pdev->dev, "parser tictoc: %d\n", dev->hw.parsers_tictoc);
 
 	if (of_property_read_u32_array(np, "kalray,dma-rx-chan-error",
 				       (u32 *)&dev->hw.rx_chan_error, 1) != 0)
@@ -2242,6 +2248,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 
 	kvx_eth_init_dispatch_table(&dev->hw);
 	kvx_eth_tx_init(&dev->hw);
+	kvx_eth_parsers_init(&dev->hw);
 	kvx_eth_phy_f_init(&dev->hw);
 	kvx_eth_hw_sysfs_init(&dev->hw);
 	dev_info(&pdev->dev, "KVX network driver\n");

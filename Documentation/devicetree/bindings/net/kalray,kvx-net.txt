@@ -40,6 +40,8 @@ Required properties:
 - kalray,default-dispatch-entry: default dispatch table entry used by current cluster
 - sfp: sfp definition
 - fixed-link: as defined in bindings/net/ethernet-controller.yaml
+- kalray,tictoc: enable tictoc workaround for parsers, mirroring top 16 parsers
+  to 16 bottom ones.
 
 Example:
 
@@ -51,6 +53,7 @@ Example:
 	};
 
 	eth0: ethernet@10050000 {
+		kalray,tictoc = <1>;
 		kalray,rtmrx = <&rtmrx>;
 		kalray,rtmtx = <&rtmtx>;
 		kalray,rtmrx-channels = <0 1 2 3>;
