@@ -633,14 +633,12 @@ enum lane_rate_cfg {
  *
  * @serdes_mask: 4 serdes
  * @serdes_pll_master: pll configuration per serdes
- * @avail: availability (2 PLLs)
- * @rate_plla: PLLA rate
+ * @rate: requested rate
  */
 struct pll_cfg {
 	unsigned long serdes_mask;
 	unsigned long serdes_pll_master;
-	unsigned long avail;
-	unsigned int rate_plla;
+	unsigned int rate;
 };
 
 /**
