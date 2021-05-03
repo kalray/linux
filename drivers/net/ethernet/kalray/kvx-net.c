@@ -1975,7 +1975,7 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	ndev->cfg.hw = ndev->hw;
 	ndev->phylink_cfg.dev = &netdev->dev;
 	ndev->phylink_cfg.type = PHYLINK_NETDEV;
-	ndev->phylink_cfg.pcs_poll = true;
+	ndev->phylink_cfg.pcs_poll = false;
 	INIT_LIST_HEAD(&ndev->cfg.tx_fifo_list);
 	timer_setup(&ndev->link_poll, kvx_eth_poll_link, 0);
 
