@@ -334,9 +334,6 @@ int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 	hw->phy_f.reg_avail = true;
 	if (speed == SPEED_40000 || speed == SPEED_100000)
 		memset(pll, 0, sizeof(*pll));
-	/* Default PLLA/PLLB are available */
-	set_bit(PLL_A, &pll->avail);
-	set_bit(PLL_B, &pll->avail);
 
 	return 0;
 }
@@ -356,27 +353,26 @@ int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 /**
  * PHY / MAC configuration
  */
-static void kvx_eth_phy_pll(struct kvx_eth_hw *hw, enum pll_id pll, u32 r10G_en)
+static void kvx_eth_phy_pll(struct kvx_eth_hw *hw, enum pll_id pll,
+			    unsigned int speed)
 {
+	u32 r10G_en = 0;
 	u32 mask, val;
 
+	hw->pll_cfg.rate = speed;
 	if (pll == PLL_A) {
+		if (speed == SPEED_10000 || speed == SPEED_40000)
+			r10G_en = 1;
 		mask = (PHY_PLL_PLLA_RATE_10G_EN_MASK |
 			 PHY_PLL_PLLA_FORCE_EN_MASK);
 		val = (r10G_en << PHY_PLL_PLLA_RATE_10G_EN_SHIFT) |
 			PHY_PLL_PLLA_FORCE_EN_MASK;
-		if (!r10G_en)
-			hw->pll_cfg.rate_plla = SPEED_1000;
-		else
-			hw->pll_cfg.rate_plla = SPEED_10000;
 	} else {
 		mask = PHY_PLL_PLLB_FORCE_EN_MASK;
 		val = mask;
 	}
 	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET, mask, val);
-	clear_bit(pll, &hw->pll_cfg.avail);
 }
-
 
 static void kvx_eth_phy_release_pll(struct kvx_eth_hw *hw, enum pll_id pll)
 {
@@ -387,7 +383,6 @@ static void kvx_eth_phy_release_pll(struct kvx_eth_hw *hw, enum pll_id pll)
 	else
 		mask = PHY_PLL_PLLB_FORCE_EN_MASK;
 	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET, mask, 0);
-	set_bit(pll, &hw->pll_cfg.avail);
 }
 /**
  * kvx_eth_phy_serdes() - Sets sw pll/serdes configuration
@@ -410,28 +405,18 @@ static int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, unsigned int lane_id,
 	case SPEED_10:
 	case SPEED_100:
 	case SPEED_1000:
-		if (test_and_clear_bit(PLL_A, &pll->avail))
-			kvx_eth_phy_pll(hw, PLL_A, 0);
-		else
-			if (pll->rate_plla != SPEED_1000)
-				return -EINVAL;
+		kvx_eth_phy_pll(hw, PLL_A, speed);
 		clear_bit(lane_id, &pll->serdes_pll_master);
 		set_bit(lane_id, &pll->serdes_mask);
 		break;
 	case SPEED_10000:
-		if (test_and_clear_bit(PLL_A, &pll->avail))
-			kvx_eth_phy_pll(hw, PLL_A, 1);
-		else
-			if (pll->rate_plla != SPEED_10000)
-				return -EINVAL;
-		if (test_and_clear_bit(PLL_B, &pll->avail))
-			kvx_eth_phy_pll(hw, PLL_B, 0);
+		kvx_eth_phy_pll(hw, PLL_A, speed);
+		kvx_eth_phy_pll(hw, PLL_B, speed);
 		clear_bit(lane_id, &pll->serdes_pll_master);
 		set_bit(lane_id, &pll->serdes_mask);
 		break;
 	case SPEED_25000:
-		if (test_and_clear_bit(PLL_B, &pll->avail))
-			kvx_eth_phy_pll(hw, PLL_B, 0);
+		kvx_eth_phy_pll(hw, PLL_B, speed);
 		set_bit(lane_id, &pll->serdes_pll_master);
 		set_bit(lane_id, &pll->serdes_mask);
 		break;
@@ -440,9 +425,8 @@ static int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, unsigned int lane_id,
 			dev_err(hw->dev, "Failed to set serdes for 40G\n");
 			return -EINVAL;
 		}
-		pll->rate_plla = SPEED_10000;
-		kvx_eth_phy_pll(hw, PLL_A, 1);
-		kvx_eth_phy_pll(hw, PLL_B, 0);
+		kvx_eth_phy_pll(hw, PLL_A, speed);
+		kvx_eth_phy_pll(hw, PLL_B, speed);
 		pll->serdes_pll_master = 0;
 		pll->serdes_mask = 0xF;
 		break;
@@ -451,8 +435,7 @@ static int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, unsigned int lane_id,
 			dev_err(hw->dev, "Failed to set serdes for 50G\n");
 			return -EINVAL;
 		}
-		if (test_and_clear_bit(PLL_B, &pll->avail))
-			kvx_eth_phy_pll(hw, PLL_B, 0);
+		kvx_eth_phy_pll(hw, PLL_B, speed);
 		set_bit(lane_id, &pll->serdes_pll_master);
 		set_bit(lane_id + 1, &pll->serdes_pll_master);
 		set_bit(lane_id, &pll->serdes_mask);
@@ -465,7 +448,7 @@ static int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, unsigned int lane_id,
 		}
 
 		kvx_eth_phy_release_pll(hw, PLL_A);
-		kvx_eth_phy_pll(hw, PLL_B, 0);
+		kvx_eth_phy_pll(hw, PLL_B, speed);
 		pll->serdes_pll_master = 0xF;
 		pll->serdes_mask = 0xF;
 		break;
@@ -607,6 +590,44 @@ static int kvx_serdes_handshake(struct kvx_eth_hw *hw, u32 serdes_mask,
 	return ret;
 }
 
+static int kvx_pll_wait_lock(struct kvx_eth_hw *hw)
+{
+	u32 val = PHY_PLL_STATUS_REF_CLK_DETECTED_MASK;
+	u32 mask = val;
+
+	switch (hw->pll_cfg.rate) {
+	case SPEED_10:
+	case SPEED_100:
+	case SPEED_1000:
+		val |= PHY_PLL_STATUS_PLLA_MASK;
+		mask |= (PHY_PLL_STATUS_PLLA_MASK | PHY_PLL_STATUS_PLLB_MASK);
+		break;
+	case SPEED_10000:
+		fallthrough;
+	case SPEED_40000:
+		val |= PHY_PLL_STATUS_PLLA_MASK;
+		mask |= PHY_PLL_STATUS_PLLA_MASK;
+		break;
+	case SPEED_25000:
+		fallthrough;
+	case SPEED_50000:
+		val |= PHY_PLL_STATUS_PLLB_MASK;
+		mask |= PHY_PLL_STATUS_PLLB_MASK;
+		break;
+	case SPEED_100000:
+		val |= PHY_PLL_STATUS_PLLB_MASK;
+		mask |= (PHY_PLL_STATUS_PLLA_MASK | PHY_PLL_STATUS_PLLB_MASK);
+		break;
+	default:
+		dev_err(hw->dev, "Unsupported speed for serdes cfg\n");
+		return -EINVAL;
+	}
+
+	/* Waits for PLL lock */
+	return kvx_poll(kvx_phy_readl, PHY_PLL_STATUS_OFFSET, mask, val,
+			SERDES_ACK_TIMEOUT_MS);
+}
+
 /**
  * kvx_phy_fw_update() - Update phy rom code if not already done
  * Reset phy and serdes
@@ -616,7 +637,7 @@ int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw)
 	u32 serdes_mask = get_serdes_mask(0, KVX_ETH_LANE_NB);
 	struct pll_cfg *pll = &hw->pll_cfg;
 	u32 val, mask, reg;
-	int i, addr;
+	int i, addr, ret;
 	u16 data;
 
 	if (hw->phy_f.fw_updated)
@@ -629,8 +650,7 @@ int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw)
 	kvx_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
 
 	/* Select the MAC PLL ref clock */
-	if (pll->rate_plla == SPEED_1000 && !test_bit(PLL_A, &pll->avail) &&
-	    test_bit(PLL_B, &pll->avail))
+	if (pll->rate == SPEED_1000)
 		kvx_phy_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
 	else
 		kvx_phy_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
@@ -699,15 +719,11 @@ int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw)
 	kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, mask, 0,
 		     SERDES_ACK_TIMEOUT_MS);
 
-	mask = PHY_PLL_STATUS_REF_CLK_DETECTED_MASK;
-	if (!test_bit(PLL_A, &pll->avail))
-		mask |= BIT(PHY_PLL_STATUS_PLLA_SHIFT);
-	if (!test_bit(PLL_B, &pll->avail))
-		mask |= BIT(PHY_PLL_STATUS_PLLB_SHIFT);
-
-	/* Waits for PLL lock */
-	kvx_poll(kvx_phy_readl, PHY_PLL_STATUS_OFFSET, mask, mask,
-		 SERDES_ACK_TIMEOUT_MS);
+	ret = kvx_pll_wait_lock(hw);
+	if (ret) {
+		dev_err(hw->dev, "PLL lock failed\n");
+		return ret;
+	}
 
 	dev_info(hw->dev, "PHY fw updated\n");
 	hw->phy_f.fw_updated = true;
@@ -722,13 +738,13 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb)
 	u32 serdes_mask = get_serdes_mask(lane, lane_nb);
 	struct pll_cfg *pll = &hw->pll_cfg;
 	u32 i, val, mask, reg;
+	int ret = 0;
 
 	dev_dbg(hw->dev, "%s lane[%d->%d] serdes_mask: 0x%x\n",
 		__func__, lane, lane + lane_nb, serdes_mask);
 
 	/* Select the MAC PLL ref clock */
-	if (pll->rate_plla == SPEED_1000 && !test_bit(PLL_A, &pll->avail) &&
-	    test_bit(PLL_B, &pll->avail))
+	if (pll->rate == SPEED_1000)
 		kvx_phy_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
 	else
 		kvx_phy_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
@@ -750,6 +766,7 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb)
 		mask = (PHY_LANE_RX_SERDES_CFG_DISABLE_MASK |
 			PHY_LANE_RX_SERDES_CFG_PSTATE_MASK |
 			PHY_LANE_RX_SERDES_CFG_LPD_MASK |
+			PHY_LANE_RX_SERDES_CFG_INVERT_MASK |
 			PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_MASK);
 		val = ((u32)PSTATE_P1 << PHY_LANE_RX_SERDES_CFG_PSTATE_SHIFT) |
 			PHY_LANE_RX_SERDES_CFG_DISABLE_MASK;
@@ -759,6 +776,7 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb)
 
 		mask = (PHY_LANE_TX_SERDES_CFG_DISABLE_MASK |
 			PHY_LANE_TX_SERDES_CFG_PSTATE_MASK |
+			PHY_LANE_TX_SERDES_CFG_INVERT_MASK |
 			PHY_LANE_TX_SERDES_CFG_LPD_MASK);
 		val = ((u32)PSTATE_P1 << PHY_LANE_TX_SERDES_CFG_PSTATE_SHIFT) |
 			PHY_LANE_TX_SERDES_CFG_DISABLE_MASK;
@@ -776,15 +794,11 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb)
 
 	kvx_serdes_handshake(hw, serdes_mask, SERDES_RX | SERDES_TX);
 
-	mask = PHY_PLL_STATUS_REF_CLK_DETECTED_MASK;
-	if (!test_bit(PLL_A, &pll->avail))
-		mask |= BIT(PHY_PLL_STATUS_PLLA_SHIFT);
-	if (!test_bit(PLL_B, &pll->avail))
-		mask |= BIT(PHY_PLL_STATUS_PLLB_SHIFT);
-
-	/* Waits for PLL lock */
-	kvx_poll(kvx_phy_readl, PHY_PLL_STATUS_OFFSET, mask, mask,
-		 SERDES_ACK_TIMEOUT_MS);
+	ret = kvx_pll_wait_lock(hw);
+	if (ret) {
+		dev_err(hw->dev, "PLL lock failed\n");
+		return ret;
+	}
 
 	return 0;
 }
@@ -859,9 +873,9 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	ret = kvx_eth_phy_serdes_init(hw, cfg->id, cfg->speed);
 	if (ret)
 		return ret;
-	dev_dbg(hw->dev, "serdes_mask: 0x%lx serdes_pll_master: 0x%lx avail: 0x%lx\n",
-		hw->pll_cfg.serdes_mask, hw->pll_cfg.serdes_pll_master,
-		hw->pll_cfg.avail);
+	dev_dbg(hw->dev, "%s nb_lanes: %d speed: %d serdes_mask: 0x%lx serdes_pll_master: 0x%lx\n",
+		__func__, lane_nb, cfg->speed, hw->pll_cfg.serdes_mask,
+		hw->pll_cfg.serdes_pll_master);
 	/* Relaunch full serdes cycle with *new* config:
 	 * Full cycle (disable/enable) is needed to get serdes in appropriate
 	 * state (typically for MDIO operations in SGMII mode)
