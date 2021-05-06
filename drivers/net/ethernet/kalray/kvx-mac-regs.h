@@ -57,6 +57,7 @@
 #define MAC_SG_TX_LANE_CKMULT_MASK                 0x70UL
 #define MAC_SG_STATUS_OFFSET                       0x60D0
 #define MAC_FEC_CTRL_OFFSET                        0x6034
+#define MAC_FEC_CLEAR_OFFSET                       0x603C
 #define MAC_FEC_CTRL_FEC_EN_SHIFT                  0x0
 #define MAC_FEC_CTRL_FEC_EN_MASK                   0xFUL
 #define MAC_FEC91_CTRL_OFFSET                      0x60C0
