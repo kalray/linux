@@ -31,6 +31,7 @@
 #define LT_FRAME_LOCK_TIMEOUT_MS 2000
 #define LT_FSM_TIMEOUT_MS     5000
 #define LT_STAT_RECEIVER_READY BIT(15)
+#define PHY_LOS_TIMEOUT_MS    400
 
 #define LT_OP_INIT_MASK BIT(12)
 #define LT_OP_PRESET_MASK BIT(13)
@@ -176,18 +177,31 @@ bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 			  struct kvx_eth_lane_cfg *cfg)
 {
 	u32 off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
-	u32 pcs_link, phy_los;
+	u32 mask, pcs_link, phy_los;
+	unsigned long t;
 	bool ret;
 
 	phy_los = kvx_mac_readl(hw, off + PMAC_STATUS_OFFSET);
 	phy_los &= PMAC_STATUS_PHY_LOS_MASK;
+
 	if (cfg->speed == SPEED_100000) {
-		pcs_link = kvx_mac_readl(hw, PCS_100G_STATUS1_OFFSET);
-		pcs_link &= PCS_100G_STATUS1_PCS_RECEIVE_LINK_MASK;
+		off = PCS_100G_STATUS1_OFFSET;
+		mask = PCS_100G_STATUS1_PCS_RECEIVE_LINK_MASK;
 	} else if (cfg->speed != SPEED_1000) {
-		pcs_link = kvx_mac_readl(hw, XPCS_STATUS1_OFFSET);
-		pcs_link &= XPCS_STATUS1_PCS_RECEIVE_LINK_MASK;
+		off = XPCS_ELEM_SIZE * cfg->id + XPCS_STATUS1_OFFSET;
+		mask = XPCS_STATUS1_PCS_RECEIVE_LINK_MASK;
+	} else {
+		return 0;
 	}
+
+	t = jiffies + msecs_to_jiffies(PHY_LOS_TIMEOUT_MS);
+	do {
+		if (time_after(jiffies, t))
+			break;
+		pcs_link = kvx_mac_readl(hw, off);
+		pcs_link &= mask;
+	} while (pcs_link == 0);
+
 	ret = (phy_los || !pcs_link);
 
 	return ret;
@@ -937,7 +951,7 @@ static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
 {
 	int i, lane_speed, ret = 0;
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
-	u32 off, mask, val;
+	u32 off, mask, val = 0;
 
 	if (kvx_mac_readl(hw, MAC_RESET_OFFSET))
 		return -EINVAL;
@@ -946,12 +960,7 @@ static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
 
 	/* Reset all config registers */
 	/* Disable all ena registers: FEC, RS-FEC, PCS100G, ... */
-	val = 0;
-	if (cfg->speed == SPEED_40000)
-		val = MAC_MODE40_EN_IN_MASK;
-	if (cfg->speed == SPEED_100000)
-		val = MAC_PCS100_EN_IN_MASK;
-	kvx_mac_writel(hw, val, MAC_MODE_OFFSET);
+	kvx_mac_writel(hw, 0, MAC_MODE_OFFSET);
 
 	/* Reset all FEC registers (mandatory for rate changes) */
 	if (aggregated_lanes) {
@@ -960,6 +969,7 @@ static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
 			     MAC_FEC91_1LANE_IN2_MASK, 0);
 		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET,
 			     MAC_FEC_CTRL_FEC_EN_MASK, 0);
+		kvx_mac_writel(hw, ~0, MAC_FEC_CLEAR_OFFSET);
 		kvx_mac_writel(hw, 0, MAC_SG_OFFSET);
 		mask = PCS_100G_CTRL1_SPEED_SEL_MASK |
 			PCS_100G_CTRL1_RESET_MASK |
@@ -1013,25 +1023,6 @@ static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
 	/* local link, remote fault status clear */
 	kvx_mac_readl(hw, MAC_FAULT_STATUS_LAC_OFFSET);
 
-	mask = MAC_RESET_SD_TX_CLK_MASK | MAC_RESET_SD_RX_CLK_MASK |
-		MAC_RESET_MAC0_FF_CLK_MASK;
-	val = mask;
-	for (i = cfg->id; i < lane_nb; i++) {
-		val |= (BIT(i + MAC_RESET_SD_TX_CLK_SHIFT)) |
-			(BIT(i + MAC_RESET_SD_RX_CLK_SHIFT)) |
-			(BIT(i + MAC_RESET_MAC0_FF_CLK_SHIFT));
-	}
-	if (aggregated_lanes) {
-		mask |= MAC_RESET_TDM_FF_CLK_MASK | MAC_RESET_REG_CLK_MASK |
-			MAC_RESET_MAC0_REF_CLK_MASK |
-			MAC_RESET_XPCS_REF_CLK_MASK |
-			MAC_RESET_SPCS_REF_CLK_MASK |
-			MAC_RESET_REF_CLK_MASK;
-		val = mask;
-	}
-
-	updatel_bits(hw, MAC, MAC_RESET_SET_OFFSET, mask, val);
-
 	return ret;
 }
 
@@ -1040,16 +1031,18 @@ static int kvx_eth_mac_reset(struct kvx_eth_hw *hw,
 {
 	u32 mask, val = kvx_mac_readl(hw, MAC_RESET_OFFSET);
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
-	int ret = kvx_mac_restore_default(hw, cfg, aggregated_lanes);
+	int ret = 0;
 
 	if (val || aggregated_lanes) {
 		mask = ~0U;
+		kvx_mac_writel(hw, mask, MAC_RESET_SET_OFFSET);
 		/* Initial state: MAC under reset */
 		kvx_mac_writel(hw, mask, MAC_RESET_CLEAR_OFFSET);
 	} else {
 		val = (BIT(cfg->id + MAC_RESET_SD_TX_CLK_SHIFT)) |
 		       (BIT(cfg->id + MAC_RESET_SD_RX_CLK_SHIFT));
 		mask = MAC_RESET_SD_TX_CLK_MASK | MAC_RESET_SD_RX_CLK_MASK;
+		updatel_bits(hw, MAC, MAC_RESET_SET_OFFSET, mask, val);
 		updatel_bits(hw, MAC, MAC_RESET_CLEAR_OFFSET, mask, val);
 	}
 
@@ -2117,7 +2110,7 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 		struct kvx_eth_lane_cfg *cfg)
 {
 	int i, ret, lane_speed;
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	int lane_nb = kvx_eth_speed_to_nb_lanes(SPEED_10000, &lane_speed);
 
 	/* Before reconfiguring retimers, serdes must be disabled */
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
@@ -2401,7 +2394,7 @@ static int kvx_eth_an_good_status_wait(struct kvx_eth_hw *hw,
 int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	int lane_speed;
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	int lane_nb = kvx_eth_speed_to_nb_lanes(SPEED_10000, &lane_speed);
 	int ret;
 
 	ret = kvx_eth_mac_pcs_pma_autoneg_setup(hw, cfg);
@@ -2450,10 +2443,16 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	int i, ret, lane_speed;
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
 	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
 	int lane_fom_ok, fom_retry = 4;
 	u32 off, mask, val = 0;
+
+	kvx_mac_restore_default(hw, cfg, aggregated_lanes);
+	ret = kvx_eth_mac_reset(hw, cfg);
+	if (ret)
+		return ret;
 
 	if (cfg->speed == SPEED_40000)
 		val = MAC_MODE40_EN_IN_MASK;
@@ -2478,10 +2477,6 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		val |= ((u32) 3 << MAC_SG_TX_LANE_CKMULT_SHIFT);
 	}
 	kvx_mac_writel(hw, val, MAC_SG_OFFSET);
-
-	ret = kvx_eth_mac_reset(hw, cfg);
-	if (ret)
-		return ret;
 
 	kvx_eth_tx_f_cfg(hw, &hw->tx_f[cfg->id]);
 	kvx_eth_lb_f_cfg(hw, &hw->lb_f[cfg->id]);
