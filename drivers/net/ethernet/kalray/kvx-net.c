@@ -131,13 +131,15 @@ static void kvx_eth_poll_link(struct timer_list *t)
 	if (kvx_eth_phy_is_bert_en(ndev->hw) || ndev->cfg.speed == SPEED_1000 ||
 	    ndev->cfg.transceiver.id == 0)
 		goto exit;
-	link_los = kvx_eth_pmac_linklos(ndev->hw, &ndev->cfg);
 	link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
-	if (link != netif_carrier_ok(ndev->netdev))
+	if (link != netif_carrier_ok(ndev->netdev)) {
 		/* Reschedule mac config (consider link down) */
 		phylink_mac_change(ndev->phylink, link);
-	else if (link_los)
-		phylink_mac_change(ndev->phylink, false);
+	} else {
+		link_los = kvx_eth_pmac_linklos(ndev->hw, &ndev->cfg);
+		if (link_los)
+			phylink_mac_change(ndev->phylink, false);
+	}
 
 exit:
 	mod_timer(t, jiffies + msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
