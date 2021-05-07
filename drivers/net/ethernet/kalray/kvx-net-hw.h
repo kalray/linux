@@ -28,6 +28,8 @@
 #define KVX_ETH_RX_TAG_NB          64
 #define KVX_ETH_PARSERS_MAX_PRIO   7
 #define RX_CACHE_NB                4
+#define FOM_THRESHOLD             140
+
 /* Use last 64 entries for current cluster */
 #define KVX_ETH_DEFAULT_RULE_DTABLE_IDX 256
 
@@ -722,6 +724,7 @@ struct lt_status {
  * @vchan: dma-noc vchan (MUST be different of the one used by l2-cache)
  * @max_frame_size: current mtu for mac
  * @rx_chan_error: rx dma channel used to generate RX_CHAN_CLOSED interrupt
+ * @fom_thres: FOM threshold for RX adaptation process
  */
 struct kvx_eth_hw {
 	struct device *dev;
@@ -746,6 +749,7 @@ struct kvx_eth_hw {
 	u32 vchan;
 	u32 max_frame_size;
 	u32 rx_chan_error;
+	u8 fom_thres;
 };
 
 struct kvx_eth_hw_rx_stats {
