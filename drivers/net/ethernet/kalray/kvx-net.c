@@ -1409,6 +1409,9 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	}
 	ret = kvx_eth_rtm_parse_dt(pdev, dev);
 
+	if (of_property_read_u8(np, "kalray,fom_thres", &dev->hw.fom_thres))
+		dev->hw.fom_thres = FOM_THRESHOLD;
+
 	return ret;
 }
 
@@ -1853,7 +1856,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 			return;
 
 		kvx_eth_get_formated_speed(ndev->cfg.speed, &speed_fmt, &unit);
-		netdev_err(netdev, "Autonegotiation failed, using default speed %i%s\n",
+		netdev_warn(netdev, "Autonegotiation failed, using default speed %i%s\n",
 				speed_fmt, unit);
 		update_serdes = true;
 	}
