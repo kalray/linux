@@ -481,6 +481,11 @@ static void dump_phy_status(struct kvx_eth_hw *hw)
 	dev_dbg(hw->dev, "phy PLL: 0x%x\n", val);
 }
 
+/**
+ * kvx_phy_rx_adapt() - Launch RX adaptation process, update FOM value
+ *
+ * Return: FOM on success, < 0 on error
+ */
 int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 {
 	struct kvx_eth_phy_param *p = &hw->phy_f.param[lane_id];
@@ -507,6 +512,7 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
 	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 	p->fom = GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
+	ret = p->fom;
 
 	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
@@ -531,6 +537,8 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 		}
 		v = readw(hw->res[KVX_ETH_RES_PHY].base + off);
 	} while (v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK);
+
+	dev_dbg(hw->dev, "lane[%d] FOM %d\n", lane_id, p->fom);
 
 	return ret;
 }
@@ -898,6 +906,7 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 		if (hw->phy_f.param[i].update && !hw->phy_f.param[i].ovrd_en)
 			hw->phy_f.param[i].update(&hw->phy_f.param[i]);
 	}
+
 
 	dump_phy_status(hw);
 
@@ -2286,6 +2295,8 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
 	int i, ret = 0;
 
+	dev_dbg(hw->dev, "%s update_serdes: %d speed: %d\n", __func__,
+		update_serdes, cfg->speed);
 	for (i = 0; i < RTM_NB; i++) {
 		ret = configure_rtm(hw, cfg->id, i, cfg->speed);
 		if (ret) {
@@ -2440,6 +2451,8 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	int i, ret, lane_speed;
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
 	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
+	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
+	int lane_fom_ok, fom_retry = 4;
 	u32 off, mask, val = 0;
 
 	if (cfg->speed == SPEED_40000)
@@ -2508,6 +2521,18 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		dev_dbg(hw->dev, "PHY_LANE_RX_SERDES_STATUS[%d] (data_en): 0x%x\n",
 			i, val);
 	}
+
+	do {
+		lane_fom_ok = 0;
+		for (i = cfg->id; i < cfg->id + lane_nb; i++) {
+			if (hw->phy_f.rx_ber[i].rx_mode == BERT_DISABLED &&
+			    hw->phy_f.tx_ber[i].tx_mode == BERT_DISABLED)
+				if (lane_fom[i] < hw->fom_thres)
+					lane_fom[i] = kvx_phy_rx_adapt(hw, i);
+				else
+					lane_fom_ok++;
+		}
+	} while (fom_retry-- && lane_fom_ok < lane_nb);
 
 	return 0;
 }
