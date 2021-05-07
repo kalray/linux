@@ -38,6 +38,7 @@ Required properties:
   otherwise.
 - kalray,dma-tx-channel-ids: stat index of TX channel followed by number [0, 9]
 - kalray,default-dispatch-entry: default dispatch table entry used by current cluster
+- kalray,fom_thres: FOM threshold for RX adaptation process [0, 255]
 - sfp: sfp definition
 - fixed-link: as defined in bindings/net/ethernet-controller.yaml
 - kalray,tictoc: enable tictoc workaround for parsers, mirroring top 16 parsers
@@ -62,6 +63,7 @@ Example:
 		kalray,dma-rx-chan-error = <63>;
 		kalray,rx-phy-polarities = <0 0 0 0>;
 		kalray,tx-phy-polarities = <0 0 0 0>;
+		kalray,fom_thres = <150>;
 		eth0: ethernet@10050000 {
 			compatible = "kalray,kvx-eth";
 			reg = <0x0 0x10000000 0x0 0x3FFFF>,
