@@ -242,7 +242,8 @@ static struct attribute *pfc_f_attrs[] = {
 SYSFS_TYPES(pfc_f);
 
 DECLARE_SYSFS_ENTRY(tx_f);
-FIELD_RW_ENTRY(tx_f, header_en, 0, 1);
+FIELD_R_ENTRY(tx_f, header_en, 0, 1);
+FIELD_R_ENTRY(tx_f, crc_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, drop_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, nocx_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, nocx_pack_en, 0, 1);
@@ -256,6 +257,7 @@ FIELD_R_ENTRY(tx_f, xoff, 0, 1);
 
 static struct attribute *tx_f_attrs[] = {
 	&tx_f_header_en_attr.attr,
+	&tx_f_crc_en_attr.attr,
 	&tx_f_drop_en_attr.attr,
 	&tx_f_nocx_en_attr.attr,
 	&tx_f_nocx_pack_en_attr.attr,
