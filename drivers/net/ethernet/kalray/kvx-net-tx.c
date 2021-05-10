@@ -25,6 +25,8 @@ void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 		INIT_LIST_HEAD(&f->node);
 		f->fifo_id = i;
 		f->rr_trigger = 1;
+		f->header_en = 1;
+		f->crc_en = 0; /* CRC offload disabled */
 	}
 }
 
