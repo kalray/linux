@@ -422,11 +422,6 @@ static void kvx_eth_netdev_dma_callback_tx(void *param)
 	kvx_eth_clean_tx_irq(txr, p->len);
 }
 
-static u32 ipaddr_checksum(u8 *ip_addr, int idx)
-{
-	return ((((u16)ip_addr[2 * idx]) << 8) | ((u16)ip_addr[(2 * idx) + 1]));
-}
-
 static u32 align_checksum(u32 cks)
 {
 	u32 c = cks;
@@ -434,49 +429,6 @@ static u32 align_checksum(u32 cks)
 	while (c > 0xffff)
 		c = (c >> 16) + (c & 0xffff);
 	return c;
-}
-
-/* compute_header_checksum() - Compute CRC depending on protocols (debug only)
- * @ndev: Current kvx_eth_netdev
- * @skb: skb to handle
- * @ip_mode: ip version
- * @crc_mode: supported protocols
- *
- * Return: computed crc
- */
-u32 compute_header_checksum(struct kvx_eth_netdev *ndev, struct sk_buff *skb,
-			    enum tx_ip_mode ip_mode, enum tx_crc_mode crc_mode)
-{
-	int i = 0;
-	u32 cks = 0;
-	u8 protocol;
-	u8 *src_ip_ptr = 0;
-	struct ethhdr *eth_h = eth_hdr(skb);
-	struct iphdr *iph = ip_hdr(skb);
-	u16 payload_length = skb_tail_pointer(skb) - (unsigned char *)eth_h;
-
-	if (crc_mode != UDP_MODE && crc_mode != TCP_MODE) {
-		netdev_err(ndev->netdev, "CRC mode not supported\n");
-		return 0;
-	}
-	protocol = (crc_mode == UDP_MODE ? 0x11 : 0x6);
-	if (ip_mode == IP_V4_MODE) {
-		src_ip_ptr = (unsigned char *)iph + 12;
-		for (i = 0; i < 4; i++)
-			cks += ipaddr_checksum(src_ip_ptr, i);
-	} else if (ip_mode == IP_V6_MODE) {
-		src_ip_ptr = (unsigned char *)iph + 8;
-		for (i = 0; i < 16; ++i)
-			cks += ipaddr_checksum(src_ip_ptr, i);
-	}
-
-	cks += protocol;
-	cks += payload_length;
-	netdev_dbg(ndev->netdev, "%s proto: 0x%x len: %d src_ip_ptr: 0x%x %x %x %x\n",
-		   __func__, protocol, payload_length, src_ip_ptr[0],
-		   src_ip_ptr[1], src_ip_ptr[2], src_ip_ptr[3]);
-
-	return align_checksum(cks);
 }
 
 /* kvx_eth_pseudo_hdr_cks() - Compute pseudo CRC on skb
@@ -506,16 +458,16 @@ static u16 kvx_eth_pseudo_hdr_cks(struct sk_buff *skb)
  * Return: skb on success, NULL on error.
  */
 static struct sk_buff *kvx_eth_tx_add_hdr(struct kvx_eth_netdev *ndev,
-					  struct sk_buff *skb, int tx_fifo_id)
+					  struct sk_buff *skb)
 {
 	union tx_metadata *hdr, h;
 	size_t hdr_len = sizeof(h);
 	struct ethhdr *eth_h = eth_hdr(skb);
 	struct iphdr *iph = ip_hdr(skb);
-	int pkt_size = skb->len;
 	enum tx_ip_mode ip_mode = NO_IP_MODE;
 	enum tx_crc_mode crc_mode = NO_CRC_MODE;
 	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	int pkt_size;
 
 	memset(&h, 0, hdr_len);
 	if (skb_headroom(skb) < hdr_len) {
@@ -525,40 +477,42 @@ static struct sk_buff *kvx_eth_tx_add_hdr(struct kvx_eth_netdev *ndev,
 		if (!skb_new)
 			return NULL;
 		skb = skb_new;
+		eth_h = eth_hdr(skb);
+		iph = ip_hdr(skb);
 	}
 
+	/* Packet size without tx metadata */
+	pkt_size = skb_pagelen(skb);
 	hdr = (union tx_metadata *)skb_push(skb, hdr_len);
-
-	netdev_dbg(ndev->netdev, "%s skb->len: %d pkt_size: %d skb->data: 0x%lx\n",
-		   __func__, skb->len, pkt_size, (uintptr_t)skb->data);
-
-	h._.pkt_size = skb->len - sizeof(h);
+	h._.pkt_size = pkt_size;
 	h._.lane = cfg->id;
-	h._.nocx_en = ndev->hw->tx_f[tx_fifo_id].nocx_en;
+	h._.nocx_en = ndev->hw->tx_f[ndev->cfg.tx_fifo_id].nocx_en;
+
+	if (skb->ip_summed != CHECKSUM_PARTIAL)
+		goto exit;
 
 	if (eth_h->h_proto == ETH_P_IP)
 		ip_mode = IP_V4_MODE;
 	else if (eth_h->h_proto == ETH_P_IPV6)
 		ip_mode = IP_V6_MODE;
 
-	if (iph) {
+	if (iph && ndev->hw->tx_f[ndev->cfg.tx_fifo_id].crc_en) {
 		if (iph->protocol == IPPROTO_TCP)
 			crc_mode = TCP_MODE;
-		else if (iph->protocol == IPPROTO_UDP)
+		else if ((iph->protocol == IPPROTO_UDP) ||
+			 (iph->protocol == IPPROTO_UDPLITE))
 			crc_mode = UDP_MODE;
 	}
 	if (ip_mode && crc_mode) {
-		u32 c = compute_header_checksum(ndev, skb, ip_mode, crc_mode);
-
 		h._.ip_mode  = ip_mode;
 		h._.crc_mode = crc_mode;
 		h._.index    = (u16)skb->transport_header;
 		h._.udp_tcp_cksum = kvx_eth_pseudo_hdr_cks(skb);
-		if (c != h._.udp_tcp_cksum)
-			netdev_err(ndev->netdev, "CRC FAILS (0x%x != 0x%x)\n",
-				c, h._.udp_tcp_cksum);
+	} else {
+		skb_checksum_help(skb);
 	}
 
+exit:
 	put_unaligned(h.dword[0], &hdr->dword[0]);
 	put_unaligned(h.dword[1], &hdr->dword[1]);
 
@@ -583,13 +537,19 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 	struct kvx_eth_netdev_tx *tx = &txr->tx_buf[tx_w];
 	int unused_tx;
 
+	if (skb_padto(skb, ETH_ZLEN))
+		return NETDEV_TX_OK;
+
 	if (skb->len <= 0) {
 		dev_kfree_skb_any(skb);
 		return NETDEV_TX_OK;
 	}
 
-	if (kvx_eth_tx_has_header(ndev->hw, ndev->cfg.tx_fifo_id))
-		skb = kvx_eth_tx_add_hdr(ndev, skb, ndev->cfg.tx_fifo_id);
+	if (likely(ndev->hw->tx_f[ndev->cfg.tx_fifo_id].header_en)) {
+		skb = kvx_eth_tx_add_hdr(ndev, skb);
+		if (!skb)
+			return NETDEV_TX_OK;
+	}
 
 	tx->skb = skb;
 	tx->len = 0;
@@ -1177,7 +1137,8 @@ int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	r->config.dir = KVX_DMA_DIR_TYPE_TX;
 	r->config.noc_route = noc_route_c2eth(ndev->hw->eth_id,
 					      kvx_cluster_id());
-	r->config.rx_tag = ndev->dma_cfg.tx_chan_id.start + r->qidx;
+	/* rx_tag must refer to tx_fifo_id*/
+	r->config.rx_tag = ndev->cfg.tx_fifo_id;
 	r->config.qos_id = 0;
 
 	/* Keep opened channel (only realloc tx_buf) */
