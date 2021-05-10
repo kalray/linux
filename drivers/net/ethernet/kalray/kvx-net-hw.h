@@ -296,6 +296,7 @@ struct kvx_eth_pfc_f {
  * @fifo_id: TX fifo [0, 9] associated with lane id
  * @lane_id: Identifier of the current lane
  * @header_en: Add metadata TX
+ * @crc_en: Enable TX CRC offload
  * @drop_en: Allow dropping pkt if tx fifo full
  * @nocx_en: Enable NoC extension
  * @nocx_pack_en: Enables NoCX bandwidth optimization (only if nocx_en)
@@ -315,6 +316,7 @@ struct kvx_eth_tx_f {
 	int fifo_id;
 	u8 lane_id;
 	u8 header_en;
+	u8 crc_en;
 	u8 drop_en;
 	u8 nocx_en;
 	u8 nocx_pack_en;
