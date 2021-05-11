@@ -2290,21 +2290,22 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 
 	dev_dbg(hw->dev, "%s update_serdes: %d speed: %d\n", __func__,
 		update_serdes, cfg->speed);
-	for (i = 0; i < RTM_NB; i++) {
-		ret = configure_rtm(hw, cfg->id, i, cfg->speed);
-		if (ret) {
-			dev_err(hw->dev, "Failed to configure retimer %i\n",
-				   i);
-			return ret;
+	if (update_serdes) {
+		for (i = 0; i < RTM_NB; i++) {
+			ret = configure_rtm(hw, cfg->id, i, cfg->speed);
+			if (ret) {
+				dev_err(hw->dev, "Config RTM[%d] failed\n", i);
+				return ret;
+			}
 		}
-	}
 
-	/* Setup PHY + serdes */
-	if (dev->type->phy_cfg && update_serdes) {
-		ret = dev->type->phy_cfg(hw, cfg);
-		if (ret) {
-			dev_err(hw->dev, "Failed to configure PHY/MAC\n");
-			return ret;
+		/* Setup PHY + serdes */
+		if (dev->type->phy_cfg) {
+			ret = dev->type->phy_cfg(hw, cfg);
+			if (ret) {
+				dev_err(hw->dev, "Failed to configure PHY/MAC\n");
+				return ret;
+			}
 		}
 	}
 
