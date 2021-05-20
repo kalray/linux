@@ -34,7 +34,10 @@
 #define KVX_ETH_DEFAULT_RULE_DTABLE_IDX 256
 
 #define PFC_MAX_LEVEL 0x60000 /* 32 bits, must be 128 aligned */
-#define DEFAULT_PAUSE_QUANTA  0xFFFF
+/* Pause timer is reset to quanta value */
+#define DEFAULT_PAUSE_QUANTA        0xFFFF
+/* Pause frame/req is re-sent is timer is below quanta_thres */
+#define DEFAULT_PAUSE_QUANTA_THRES  100
 
 #define DUMP_REG(hw, bl, off) { \
 	u32 v = readl(hw->res[KVX_ETH_RES_##bl].base + off); \
@@ -267,6 +270,7 @@ struct kvx_eth_cl_f {
 	unsigned int alert_level;
 	unsigned int pfc_ena;
 	u16 quanta;
+	u16 quanta_thres;
 	int lane_id;
 	int id;
 };
@@ -286,8 +290,10 @@ struct kvx_eth_pfc_f {
 	int global_release_level;
 	int global_drop_level;
 	int global_alert_level;
+	u32 pause_req_cnt;
 	u8 global_pfc_en;
 	u8 global_pause_en;
+	int lane_id;
 };
 
 /**
