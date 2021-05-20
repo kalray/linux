@@ -230,6 +230,7 @@ FIELD_RW_ENTRY(pfc_f, global_alert_level, 0,
 	       RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
 FIELD_RW_ENTRY(pfc_f, global_pfc_en, 0, 1);
 FIELD_RW_ENTRY(pfc_f, global_pause_en, 0, 1);
+FIELD_R_ENTRY(pfc_f, pause_req_cnt, 0, U32_MAX);
 
 static struct attribute *pfc_f_attrs[] = {
 	&pfc_f_global_release_level_attr.attr,
@@ -237,6 +238,7 @@ static struct attribute *pfc_f_attrs[] = {
 	&pfc_f_global_alert_level_attr.attr,
 	&pfc_f_global_pfc_en_attr.attr,
 	&pfc_f_global_pause_en_attr.attr,
+	&pfc_f_pause_req_cnt_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(pfc_f);
@@ -273,7 +275,8 @@ static struct attribute *tx_f_attrs[] = {
 SYSFS_TYPES(tx_f);
 
 DECLARE_SYSFS_ENTRY(cl_f);
-FIELD_RW_ENTRY(cl_f, quanta, 0, DEFAULT_PAUSE_QUANTA);
+FIELD_RW_ENTRY(cl_f, quanta, 0, U16_MAX);
+FIELD_RW_ENTRY(cl_f, quanta_thres, 0, U16_MAX);
 FIELD_RW_ENTRY(cl_f, release_level, 0, RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
 FIELD_RW_ENTRY(cl_f, drop_level, 0, RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
 FIELD_RW_ENTRY(cl_f, alert_level, 0, RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
@@ -281,6 +284,7 @@ FIELD_RW_ENTRY(cl_f, pfc_ena, 0, 1);
 
 static struct attribute *cl_f_attrs[] = {
 	&cl_f_quanta_attr.attr,
+	&cl_f_quanta_thres_attr.attr,
 	&cl_f_release_level_attr.attr,
 	&cl_f_drop_level_attr.attr,
 	&cl_f_alert_level_attr.attr,
