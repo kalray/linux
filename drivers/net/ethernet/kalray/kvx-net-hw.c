@@ -146,7 +146,18 @@ void kvx_eth_pfc_f_set_default(struct kvx_eth_hw *hw,
 		kvx_eth_writel(hw, cfg->cl_f[i].release_level, cl_offset +
 			      RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
 		cfg->cl_f[i].quanta = DEFAULT_PAUSE_QUANTA;
+		cfg->cl_f[i].quanta_thres = DEFAULT_PAUSE_QUANTA_THRES;
 	}
+}
+
+static void pfc_f_update(void *data)
+{
+	struct kvx_eth_pfc_f *p = (struct kvx_eth_pfc_f *)data;
+	u32 off = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
+		p->lane_id * RX_PFC_LANE_ELEM_SIZE;
+
+	p->pause_req_cnt = kvx_eth_readl(p->hw,
+				off + RX_PFC_LANE_GLOBAL_PAUSE_REQ_CNT_OFFSET);
 }
 
 void kvx_eth_pfc_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
@@ -154,6 +165,8 @@ void kvx_eth_pfc_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	int i;
 
 	cfg->pfc_f.hw = hw;
+	cfg->pfc_f.lane_id = cfg->id;
+	cfg->pfc_f.update = pfc_f_update;
 
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
 		cfg->cl_f[i].hw = hw;
