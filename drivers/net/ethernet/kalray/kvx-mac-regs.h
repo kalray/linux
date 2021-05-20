@@ -859,4 +859,11 @@
 #define STAT64_TX_OFFSET                           0x800
 #define STAT64_TX_ELEM_SIZE                        0x200
 
+/* STATS */
+#define STATS_OFFSET                              0x3900
+#define STATS_RX_OFFSET                           0x0
+#define STATS_RX_ELEM_SIZE                        0x8C
+#define STATS_TX_OFFSET                           0x230
+#define STATS_TX_ELEM_SIZE                        0x68
+
 #endif /* ASM_KVX_MAC_REGS_H */
