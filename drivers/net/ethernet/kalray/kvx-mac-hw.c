@@ -139,15 +139,16 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 			EMAC_CMD_CFG_TX_FIFO_RESET_MASK |
 			EMAC_CMD_CFG_TX_FLUSH_MASK;
 
-		if (cfg->mac_f.pfc_mode == MAC_PAUSE)
-			val |= EMAC_CMD_CFG_PAUSE_PFC_COMP_MASK;
-		else if (cfg->mac_f.pfc_mode == MAC_PFC)
+		if (cfg->mac_f.pfc_mode == MAC_PFC)
 			val |= EMAC_CMD_CFG_PFC_MODE_MASK;
 
 		if (cfg->mac_f.promisc_mode)
 			val |= EMAC_CMD_CFG_PROMIS_EN_MASK;
 
 		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
+		kvx_mac_writel(hw, val, off + EMAC_CMD_CFG_OFFSET);
+		/* TX flush is not self-cleared -> restore it (PFC features) */
+		val &= ~EMAC_CMD_CFG_TX_FLUSH_MASK;
 		kvx_mac_writel(hw, val, off + EMAC_CMD_CFG_OFFSET);
 
 		/* Disable MAC auto Xon/Xoff gen and store and forward mode */
@@ -217,7 +218,6 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
 	u32 off, val;
 
-
 	for (i = 0; i < lane_nb; i++) {
 		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
 		/* Preembtible MAC */
@@ -261,6 +261,7 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 
 void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
+	u32 base = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	int tx_fifo_id = cfg->tx_fifo_id;
 	u32 val, off;
 	int i = 0;
@@ -290,11 +291,18 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 		if ((i % 2) == 0) {
 			val = (u32)cfg->cl_f[i + 1].quanta << 16 |
-				cfg->cl_f[i].quanta;
-			off = EMAC_CL01_PAUSE_QUANTA_OFFSET + 4 * i;
-			kvx_mac_writel(hw, val, off);
+				(u32)cfg->cl_f[i].quanta;
+			off = EMAC_CL01_PAUSE_QUANTA_OFFSET + 2 * i;
+			kvx_mac_writel(hw, val, base + off);
+			val = (u32)cfg->cl_f[i + 1].quanta_thres << 16 |
+				(u32)cfg->cl_f[i].quanta_thres;
+			off = EMAC_CL01_QUANTA_THRESH_OFFSET + 2 * i;
+			kvx_mac_writel(hw, val, base + off);
 		}
 	}
+	dev_dbg(hw->dev, "%s reg class[0] quanta: 0x%x thres: 0x%x\n", __func__,
+		 kvx_mac_readl(hw, base + EMAC_CL01_PAUSE_QUANTA_OFFSET),
+		 kvx_mac_readl(hw, base + EMAC_CL01_QUANTA_THRESH_OFFSET));
 	kvx_eth_tx_f_cfg(hw, &hw->tx_f[tx_fifo_id]);
 	kvx_eth_mac_init(hw, cfg);
 }
@@ -2452,8 +2460,10 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 	kvx_mac_restore_default(hw, cfg, aggregated_lanes);
 	ret = kvx_eth_mac_reset(hw, cfg);
-	if (ret)
+	if (ret) {
+		dev_warn(hw->dev, "MAC reset failed\n");
 		return ret;
+	}
 
 	if (cfg->speed == SPEED_40000)
 		val = MAC_MODE40_EN_IN_MASK;
@@ -2483,9 +2493,11 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	kvx_eth_lb_f_cfg(hw, &hw->lb_f[cfg->id]);
 
 	ret = kvx_eth_mac_init(hw, cfg);
-	if (ret)
+	if (ret) {
+		dev_warn(hw->dev, "MAC init failed\n");
 		return ret;
-
+	}
+	kvx_mac_pfc_cfg(hw, cfg);
 	/* For 100G links FEC can't be deduced from autoneg registers,
 	 * but is mandatory according to 802.3. Force it as needed for most
 	 * link partners.
@@ -2499,8 +2511,10 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 	/* config MAC PCS */
 	ret = kvx_eth_mac_pcs_cfg(hw, cfg);
-	if (ret)
+	if (ret) {
+		dev_warn(hw->dev, "PCS config failed\n");
 		return ret;
+	}
 
 	mask = serdes_mask << PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT;
 	ret = kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, mask,
