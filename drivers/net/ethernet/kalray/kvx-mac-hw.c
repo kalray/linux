@@ -634,6 +634,10 @@ static int kvx_pll_wait_lock(struct kvx_eth_hw *hw)
 	u32 val = PHY_PLL_STATUS_REF_CLK_DETECTED_MASK;
 	u32 mask = val;
 
+	/* If rate is not set, polling on PLL lock is useless */
+	if (!hw->pll_cfg.rate)
+		return 0;
+
 	switch (hw->pll_cfg.rate) {
 	case SPEED_10:
 	case SPEED_100:
