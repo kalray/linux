@@ -904,7 +904,7 @@ static int kvx_dma_allocate_phy(struct kvx_dma_dev *dev)
 	}
 
 	if (kvx_dma_default_ucodes_load(dev) != 0)
-		return -EPROBE_DEFER;
+		return -ENODEV;
 
 	return 0;
 }
