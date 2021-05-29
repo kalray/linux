@@ -1450,7 +1450,7 @@ static phys_addr_t kvx_iommu_iova_to_phys(struct iommu_domain *domain,
 {
 	struct kvx_iommu_domain *kvx_domain;
 	struct kvx_iommu_hw *iommu_hw;
-	struct kvx_iommu_tlb_entry *cur;
+	struct kvx_iommu_tlb_entry cur;
 	struct kvx_iommu_tlb_entry entry;
 	int i, set, way;
 	phys_addr_t paddr;
@@ -1468,6 +1468,7 @@ static phys_addr_t kvx_iommu_iova_to_phys(struct iommu_domain *domain,
 	 */
 	iommu_hw = &kvx_domain->iommu->iommu_hw[KVX_IOMMU_RX];
 	entry.teh.pn  = iova >> KVX_IOMMU_PN_SHIFT;
+	entry.teh.asn = kvx_domain->asn;
 
 	paddr = 0;
 	for (i = 0; i < KVX_IOMMU_PS_NB; i++) {
@@ -1485,10 +1486,12 @@ static phys_addr_t kvx_iommu_iova_to_phys(struct iommu_domain *domain,
 		}
 
 		for (way = 0; way < iommu_hw->ways; way++) {
-			cur = &iommu_hw->tlb_cache[set][way];
-			if (cur->teh.pn == entry.teh.pn) {
+			cur = iommu_hw->tlb_cache[set][way];
+			if ((cur.teh.pn == entry.teh.pn) &&
+			    (cur.teh.asn == entry.teh.asn) &&
+			    (cur.tel.es == KVX_IOMMU_ES_VALID)) {
 				/* Get the frame number */
-				paddr = cur->tel.fn << KVX_IOMMU_PN_SHIFT;
+				paddr = cur.tel.fn << KVX_IOMMU_PN_SHIFT;
 				/* Add the offset of the IOVA and we are done */
 				paddr |=
 					iova & (kvx_iommu_get_page_size[i] - 1);
