@@ -1569,6 +1569,7 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(mac_supported) = { 0, };
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv) = { 0, };
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(additional_prot) = { 0, };
 
 	if (kvx_eth_get_module_transceiver(netdev, &ndev->cfg.transceiver))
@@ -1584,6 +1585,7 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 	phylink_set(mac_supported, Pause);
 	phylink_set(mac_supported, Asym_Pause);
 	phylink_set_port_modes(mac_supported);
+	bitmap_copy(adv, mac_supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
 	phylink_set(mac_supported, 10baseT_Half);
 	phylink_set(mac_supported, 10baseT_Full);
 	phylink_set(mac_supported, 100baseT_Half);
@@ -1603,6 +1605,42 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 	phylink_set(mac_supported, 100000baseSR4_Full);
 	phylink_set(mac_supported, 100000baseLR4_ER4_Full);
 
+	netdev_dbg(netdev, "%s: state->speed: %d\n", __func__, state->speed);
+	/*
+	 * Fill advertising with real expected speed. It *must* be different
+	 * for each requested speed for change rate test cases
+	 */
+	switch (state->speed) {
+	case SPEED_40000:
+		phylink_set(adv, 40000baseCR4_Full);
+		phylink_set(adv, 40000baseSR4_Full);
+		phylink_set(adv, 40000baseLR4_Full);
+		fallthrough;
+	case SPEED_10000:
+		phylink_set(adv, 10000baseCR_Full);
+		phylink_set(adv, 10000baseSR_Full);
+		phylink_set(adv, 10000baseLR_Full);
+		phylink_set(adv, 10000baseER_Full);
+		break;
+	case SPEED_100000:
+		phylink_set(adv, 100000baseKR4_Full);
+		phylink_set(adv, 100000baseCR4_Full);
+		phylink_set(adv, 100000baseSR4_Full);
+		phylink_set(adv, 100000baseLR4_ER4_Full);
+		fallthrough;
+	case SPEED_25000:
+		phylink_set(adv, 25000baseCR_Full);
+		phylink_set(adv, 25000baseSR_Full);
+		break;
+	default:
+		break;
+	}
+
+	phylink_set(additional_prot, FEC_NONE);
+	phylink_set(additional_prot, FEC_RS);
+	phylink_set(additional_prot, FEC_BASER);
+	bitmap_or(adv, adv, additional_prot, __ETHTOOL_LINK_MODE_MASK_NBITS);
+
 	/*
 	 * Match media or module capabilities with MAC capabilities
 	 * The AND operation select only capabilities supported by both
@@ -1610,15 +1648,16 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 	 */
 	bitmap_and(supported, supported, mac_supported,
 		   __ETHTOOL_LINK_MODE_MASK_NBITS);
-	bitmap_and(state->advertising, state->advertising, mac_supported,
-		   __ETHTOOL_LINK_MODE_MASK_NBITS);
+
+	if (state->an_enabled) /* Advertise all supported speeds */
+		bitmap_and(state->advertising, state->advertising,
+			   mac_supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
+	else /* Advertise only requested speed */
+		bitmap_copy(state->advertising, adv, __ETHTOOL_LINK_MODE_MASK_NBITS);
 
 	if (state->interface == PHY_INTERFACE_MODE_SGMII)
 		return;
 
-	phylink_set(additional_prot, FEC_NONE);
-	phylink_set(additional_prot, FEC_RS);
-	phylink_set(additional_prot, FEC_BASER);
 	/*
 	 * With sfp/qsfp, the match is too restrictive in some cases.
 	 * Handle those special cases separatelly
@@ -1649,13 +1688,7 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 			phylink_set(additional_prot, 10000baseLR_Full);
 	}
 
-	phylink_set(additional_prot, FEC_NONE);
-	phylink_set(additional_prot, FEC_RS);
-	phylink_set(additional_prot, FEC_BASER);
-
 	bitmap_or(supported, supported, additional_prot, __ETHTOOL_LINK_MODE_MASK_NBITS);
-	bitmap_or(state->advertising, state->advertising, additional_prot,
-		   __ETHTOOL_LINK_MODE_MASK_NBITS);
 }
 
 static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
