@@ -31,7 +31,8 @@
 #define FOM_THRESHOLD             140
 
 /* Use last 64 entries for current cluster */
-#define KVX_ETH_DEFAULT_RULE_DTABLE_IDX 256
+#define RX_DISPATCH_TABLE_ACCELERATION_NB 256
+#define KVX_ETH_DEFAULT_RULE_DTABLE_IDX RX_DISPATCH_TABLE_ACCELERATION_NB
 
 #define PFC_MAX_LEVEL 0x60000 /* 32 bits, must be 128 aligned */
 /* Pause timer is reset to quanta value */
@@ -357,6 +358,15 @@ struct kvx_eth_dt_f {
 	u8 vchan;
 	int id;
 };
+
+struct kvx_eth_dt_acc_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	char weights[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE * 2 + 1];
+	bool reset;
+};
+
 
 /**
  * struct kvx_eth_mac_f - MAC controller features
@@ -741,6 +751,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_lut_f lut_f;
 	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
+	struct kvx_eth_dt_acc_f dt_acc_f;
 	struct kvx_eth_lut_entry_f lut_entry_f[RX_LB_LUT_ARRAY_SIZE];
 	struct kvx_eth_phy_f phy_f;
 	struct kvx_eth_rtm_params rtm_params[RTM_NB];
@@ -947,10 +958,12 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg,
 				 struct kvx_eth_dt_f *dt, int idx);
-void kvx_eth_init_dispatch_table(struct kvx_eth_hw *hw);
+void kvx_eth_init_dispatch_table(struct kvx_eth_hw *hw,
+		unsigned int start, unsigned int end);
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg, u32 rx_tag);
 void kvx_eth_dt_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_f *dt);
+void kvx_eth_dt_acc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_acc_f *dt_acc);
 void kvx_eth_dt_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 
 /* PFC */
