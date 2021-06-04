@@ -2212,7 +2212,8 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	if (ret)
 		kvx_phy_reset(&dev->hw);
 
-	kvx_eth_init_dispatch_table(&dev->hw);
+	kvx_eth_init_dispatch_table(&dev->hw, 0,
+			RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 	kvx_eth_tx_init(&dev->hw);
 	kvx_eth_parsers_init(&dev->hw);
 	kvx_eth_phy_f_init(&dev->hw);
