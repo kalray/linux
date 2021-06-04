@@ -535,6 +535,23 @@ void kvx_eth_dt_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		hw->dt_f[i].hw = hw;
 		hw->dt_f[i].id = i;
 	}
+	hw->dt_acc_f.hw = hw;
+}
+
+void kvx_eth_dt_acc_f_update(struct kvx_eth_hw *hw)
+{
+	struct kvx_eth_dt_f *dt;
+	struct kvx_eth_dt_acc_f *dt_acc = &hw->dt_acc_f;
+	char *buf = dt_acc->weights;
+	int i;
+
+	for (i = 0; i < RX_DISPATCH_TABLE_ACCELERATION_NB; ++i) {
+		dt = &hw->dt_f[i];
+		buf += sprintf(buf, "%d ",
+				(dt->cluster_id >= 1 && dt->cluster_id <= 4) ?
+				1 : 0);
+	}
+	BUG_ON(buf >= dt_acc->weights + sizeof(dt_acc->weights));
 }
 
 void kvx_eth_dt_f_cfg(struct kvx_eth_hw *h, struct kvx_eth_dt_f *dt)
@@ -575,6 +592,37 @@ void kvx_eth_dt_f_cfg(struct kvx_eth_hw *h, struct kvx_eth_dt_f *dt)
 	dev_dbg(h->dev, "%s dispatch_table_idx: %d rx_chan: %lld\n", __func__,
 		dt->id, (val & RX_DISPATCH_TABLE_ENTRY_RX_CHAN_MASK) >>
 		RX_DISPATCH_TABLE_ENTRY_RX_CHAN_SHIFT);
+
+	kvx_eth_dt_acc_f_update(h);
+}
+
+void kvx_eth_init_dispatch_table(struct kvx_eth_hw *hw,
+		unsigned int start, unsigned int end)
+{
+	struct kvx_eth_dt_f *dt;
+	int i;
+
+	for (i = start; i < end; ++i) {
+		dt = &hw->dt_f[i];
+		dt->cluster_id = 0xff;
+		dt->rx_channel = 0;
+		dt->split_trigger = 0;
+		dt->vchan = hw->vchan;
+		kvx_eth_dt_f_cfg(hw, dt);
+	}
+}
+
+void kvx_eth_reset_dispatch_table_acceleration(struct kvx_eth_hw *hw)
+{
+	kvx_eth_init_dispatch_table(hw, 0, RX_DISPATCH_TABLE_ACCELERATION_NB);
+}
+
+void kvx_eth_dt_acc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_acc_f *dt_acc)
+{
+	if (dt_acc->reset) {
+		kvx_eth_reset_dispatch_table_acceleration(hw);
+		dt_acc->reset = false;
+	}
 }
 
 void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
@@ -590,21 +638,6 @@ void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
 	kvx_eth_dt_f_cfg(hw, dt_entry);
 
 	enable_default_dispatch_entry(hw, cfg, idx);
-}
-
-void kvx_eth_init_dispatch_table(struct kvx_eth_hw *hw)
-{
-	struct kvx_eth_dt_f *dt;
-	int i;
-
-	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; ++i) {
-		dt = &hw->dt_f[i];
-		dt->cluster_id = 0xff;
-		dt->rx_channel = 0;
-		dt->split_trigger = 0;
-		dt->vchan = hw->vchan;
-		kvx_eth_dt_f_cfg(hw, dt);
-	}
 }
 
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
