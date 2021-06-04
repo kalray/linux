@@ -8,11 +8,10 @@
  */
 
 #include <linux/module.h>
-#include <linux/module.h>
 
 #include "kvx-net.h"
 
-#define STR_LEN 20
+#define STR_LEN PAGE_SIZE
 
 #define DECLARE_SYSFS_ENTRY(s) \
 struct sysfs_##s##_entry { \
@@ -84,6 +83,33 @@ static ssize_t s##_##f##_show(struct kvx_eth_##s *p, char *buf) \
 } \
 static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0444, \
 		s##_##f##_show, NULL)
+
+#define FIELD_R_STRING_ENTRY(s, f, min, max) \
+static ssize_t s##_##f##_show(struct kvx_eth_##s *p, char *buf) \
+{ \
+	if (p->update) \
+		p->update(p); \
+	return scnprintf(buf, STR_LEN, "%s\n", p->f); \
+} \
+static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0444, \
+		s##_##f##_show, NULL)
+#define FIELD_W_ENTRY(s, f, min, max) \
+static ssize_t s##_##f##_store(struct kvx_eth_##s *p, const char *buf, \
+		size_t count) \
+{ \
+	ssize_t ret; \
+	unsigned int val; \
+	ret = kstrtouint(buf, 0, &val); \
+	if (ret) \
+		return ret; \
+	if (val < min || val > max) \
+		return -EINVAL; \
+	p->f = val; \
+	kvx_eth_##s##_cfg(p->hw, p); \
+	return count; \
+} \
+static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0644, \
+		NULL, s##_##f##_store) \
 
 DECLARE_SYSFS_ENTRY(mac_f);
 FIELD_RW_ENTRY(mac_f, loopback_mode, 0, MAC_RX2TX_LOOPBACK);
@@ -308,6 +334,17 @@ static struct attribute *dt_f_attrs[] = {
 };
 SYSFS_TYPES(dt_f);
 
+DECLARE_SYSFS_ENTRY(dt_acc_f);
+FIELD_R_STRING_ENTRY(dt_acc_f, weights, 0, 0);
+FIELD_W_ENTRY(dt_acc_f, reset, 1, 1);
+
+static struct attribute *dt_acc_f_attrs[] = {
+	&dt_acc_f_weights_attr.attr,
+	&dt_acc_f_reset_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(dt_acc_f);
+
 DECLARE_SYSFS_ENTRY(parser_f);
 FIELD_R_ENTRY(parser_f, enable, 0, 1);
 static struct attribute *parser_f_attrs[] = {
@@ -466,6 +503,7 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 
 	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; i++)
 		kobject_init(&hw->dt_f[i].kobj, &dt_f_ktype);
+	kobject_init(&hw->dt_acc_f.kobj, &dt_acc_f_ktype);
 
 	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; i++)
 		kobject_init(&hw->lut_entry_f[i].kobj, &lut_entry_f_ktype);
@@ -501,6 +539,10 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 		goto err;
 
 	ret = kobject_add(&hw->lut_f.kobj, &ndev->netdev->dev.kobj, "lut");
+	if (ret)
+		goto err;
+
+	ret = kobject_add(&hw->dt_acc_f.kobj, &ndev->netdev->dev.kobj, "dispatch_table_acc");
 	if (ret)
 		goto err;
 
@@ -572,6 +614,8 @@ err:
 
 	kobject_del(&ndev->hw->lut_f.kobj);
 	kobject_put(&ndev->hw->lut_f.kobj);
+	kobject_del(&ndev->hw->dt_acc_f.kobj);
+	kobject_put(&ndev->hw->dt_acc_f.kobj);
 	kobject_del(&ndev->hw->phy_f.kobj);
 	kobject_put(&ndev->hw->phy_f.kobj);
 	return ret;
@@ -612,6 +656,8 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 		kvx_eth_kobject_del(&ndev->cfg, &t[i]);
 	kobject_del(&ndev->hw->lut_f.kobj);
 	kobject_put(&ndev->hw->lut_f.kobj);
+	kobject_del(&ndev->hw->dt_acc_f.kobj);
+	kobject_put(&ndev->hw->dt_acc_f.kobj);
 	kobject_del(&ndev->hw->phy_f.kobj);
 	kobject_put(&ndev->hw->phy_f.kobj);
 }
