@@ -197,13 +197,13 @@ bool rproc_u64_fit_in_size_t(u64 val)
 
 static inline void rproc_rsc_set_addr(u32 *low, u32 *hi, u64 val)
 {
-	*low = lower_32_bits(val);
-	*hi = upper_32_bits(val);
+	WRITE_ONCE(*low, lower_32_bits(val));
+	WRITE_ONCE(*hi, upper_32_bits(val));
 }
 
 static inline u64 rproc_rsc_get_addr(u32 low, u32 hi)
 {
-	return ((u64) hi << 32) | low;
+	return ((u64) READ_ONCE(hi) << 32) | READ_ONCE(low);
 }
 
 #endif /* REMOTEPROC_INTERNAL_H */
