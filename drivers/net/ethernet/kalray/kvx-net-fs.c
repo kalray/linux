@@ -347,8 +347,10 @@ SYSFS_TYPES(dt_acc_f);
 
 DECLARE_SYSFS_ENTRY(parser_f);
 FIELD_R_ENTRY(parser_f, enable, 0, 1);
+FIELD_R_STRING_ENTRY(parser_f, desc, 0, 0);
 static struct attribute *parser_f_attrs[] = {
 	&parser_f_enable_attr.attr,
+	&parser_f_desc_attr.attr,
 	NULL,
 };
 

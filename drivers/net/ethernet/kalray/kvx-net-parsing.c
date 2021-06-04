@@ -21,6 +21,23 @@
 #define READ_DELAY         (10)
 #define READ_TIMEOUT       (5000)
 
+static void update_parser_desc(struct kvx_eth_hw *hw,
+		unsigned int parser)
+{
+	struct kvx_eth_parser_f *parser_f = &hw->parser_f[parser];
+	char *buf = parser_f->desc;
+	unsigned int rule;
+
+	for (rule = 0; rule < ARRAY_SIZE(parser_f->rules); ++rule) {
+		buf += sprintf(buf, PARSER_RULE_FMT,
+				parser_f->rules[rule].enable,
+				parser_f->rules[rule].type,
+				parser_f->rules[rule].add_metadata_index,
+				parser_f->rules[rule].check_header_checksum);
+	}
+	BUG_ON(buf >= parser_f->desc + sizeof(parser_f->desc));
+}
+
 /**
  * clear_parser_f() - Clear a sysfs parser structure, use this when you delete a
  *   parser to replicate the change on the sysfs
@@ -40,6 +57,7 @@ static void clear_parser_f(struct kvx_eth_hw *hw,
 		parser_f->rules[i].add_metadata_index = 0;
 		parser_f->rules[i].check_header_checksum = 0;
 	}
+	update_parser_desc(hw, parser_id);
 }
 
 /**
@@ -117,7 +135,7 @@ static int update_parser_f(struct kvx_eth_hw *hw,
 		rule_f->check_header_checksum = check_header_checksum;
 	}
 	hw->parser_f[parser_id].enable = true;
-
+	update_parser_desc(hw, parser_id);
 	return 0;
 }
 
