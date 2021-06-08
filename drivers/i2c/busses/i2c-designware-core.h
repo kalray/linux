@@ -40,6 +40,8 @@
 
 #define DW_IC_DATA_CMD_DAT			GENMASK(7, 0)
 
+#define DW_IC_DATA_CMD_DAT			GENMASK(7, 0)
+
 /*
  * Registers offset
  */
