@@ -204,8 +204,15 @@ static int i2c_dw_irq_handler_slave(struct dw_i2c_dev *dev)
 			regmap_read(dev->map, DW_IC_CLR_RX_DONE, &tmp);
 	}
 
-	if (stat & DW_IC_INTR_STOP_DET) {
+
+	if ((stat & DW_IC_INTR_STOP_DET) || dev->stop_received) {
+		regmap_read(dev->map, DW_IC_RAW_INTR_STAT, &raw_stat);
+		if ((raw_stat & DW_IC_INTR_RX_FULL) && !dev->stop_received) {
+			dev->stop_received = 1;
+			return 1;
+		}
 		dev->status = STATUS_IDLE;
+		dev->stop_received = 0;
 		i2c_slave_event(dev->slave, I2C_SLAVE_STOP, &val);
 	}
 
