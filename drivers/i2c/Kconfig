@@ -133,6 +133,12 @@ config I2C_SLAVE_TESTUNIT
 	  multi-master, SMBus Host Notify, etc. Please read
 	  Documentation/i2c/slave-testunit-backend.rst for further details.
 
+config I2C_SLAVE_USPACE
+	tristate "I2C generic slave driver"
+	help
+	  This backend makes Linux behave like a generic I2C slave.
+	  The I2C event must be handled by a user space process via
+	  the exposed character device.
 endif
 
 config I2C_DEBUG_CORE
