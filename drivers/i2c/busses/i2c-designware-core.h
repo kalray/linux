@@ -297,6 +297,7 @@ struct dw_i2c_dev {
 	int			(*set_sda_hold_time)(struct dw_i2c_dev *dev);
 	int			mode;
 	struct i2c_bus_recovery_info rinfo;
+	u8			stop_received;
 };
 
 #define ACCESS_INTR_MASK	BIT(0)
