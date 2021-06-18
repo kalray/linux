@@ -554,6 +554,28 @@ enum {
 	SFF8436_STATUS_FLAT_MEM              = BIT(2),
 };
 
+/* SFF8636 reisters */
+enum {
+	SFF8636_STATUS_REG1                 = 1,
+	SFF8636_STATUS_REG2                 = 2,
+	SFF8636_TX_DISABLE_REG              = 86,
+	SFF8636_POWER_REG                   = 93,
+	SFF8636_POWER_OVRD                  = BIT(0),
+	SFF8636_POWER_SET                   = BIT(1),
+	SFF8636_POWER_CLASS_57              = BIT(2),
+	SFF8636_POWER_CLASS_8               = BIT(3),
+	SFF8636_POWER_SW_RESET              = BIT(7),
+	SFF8636_CDR_REG                     = 98,
+	SFF8636_MAX_POWER_REG               = 107,
+	SFF8636_EXT_ID_POWER_CLASS_57       = 0x3,
+	SFF8636_EXT_ID_POWER_CLASS_14       = 0xC0,
+	SFF8636_ENH_OPTS_REG                = 221,
+	SFF8636_ENH_OPTS_RESET_IMPL         = BIT(0),
+	SFF8636_RX_DIFF_AMP_REG1            = 238,
+	SFF8636_RX_DIFF_AMP_REG2            = 239,
+	
+};
+
 struct fwnode_handle;
 struct ethtool_eeprom;
 struct ethtool_modinfo;

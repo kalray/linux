@@ -491,16 +491,32 @@ static unsigned int sfp_soft_get_state(struct sfp *sfp)
 
 static void sfp_soft_set_state(struct sfp *sfp, unsigned int state)
 {
-	u8 status;
+	bool a2 = false;
+	u8 status = 0;
 
-	if (sfp_read(sfp, true, SFP_STATUS, &status, sizeof(status)) ==
-		     sizeof(status)) {
+	if (sfp_is_qsfp_module(&sfp->id)) {
+		if (sfp_read(sfp, a2, SFF8636_TX_DISABLE_REG,
+			     &status, sizeof(status)) != sizeof(status)) {
+			a2 = true;
+			sfp_read(sfp, a2, SFF8636_TX_DISABLE_REG,
+				 &status, sizeof(status));
+		}
 		if (state & SFP_F_TX_DISABLE)
-			status |= SFP_STATUS_TX_DISABLE_FORCE;
+			status |= 0xF; /* Disable all lanes */
 		else
-			status &= ~SFP_STATUS_TX_DISABLE_FORCE;
+			status &= ~0xF;
+		sfp_write(sfp, a2, SFF8636_TX_DISABLE_REG,
+			  &status, sizeof(status));
+	} else {
+		if (sfp_read(sfp, true, SFP_STATUS, &status, sizeof(status)) ==
+		    sizeof(status)) {
+			if (state & SFP_F_TX_DISABLE)
+				status |= SFP_STATUS_TX_DISABLE_FORCE;
+			else
+				status &= ~SFP_STATUS_TX_DISABLE_FORCE;
 
-		sfp_write(sfp, true, SFP_STATUS, &status, sizeof(status));
+			sfp_write(sfp, true, SFP_STATUS, &status, sizeof(status));
+		}
 	}
 }
 
@@ -1502,6 +1518,12 @@ static void sfp_sm_link_check_los(struct sfp *sfp)
 {
 	unsigned int los = sfp->state & SFP_F_LOS;
 
+	if (sfp_is_qsfp_module(&sfp->id)) {
+		/* Force link up for SFF-8x36 */
+		sfp_sm_link_up(sfp);
+		return;
+	}
+
 	/* If neither SFP_OPTIONS_LOS_INVERTED nor SFP_OPTIONS_LOS_NORMAL
 	 * are set, we assume that no LOS signal is available.
 	 */
@@ -1579,7 +1601,52 @@ static int sfp_sm_probe_for_phy(struct sfp *sfp)
 
 static int qsfp_module_parse_power(struct sfp *sfp)
 {
-	return T_HPOWER_LEVEL;
+	u32 power_mW = 2000;
+	u8 c14 = sfp->id.base.phys_ext_id & SFF8636_EXT_ID_POWER_CLASS_14;
+	u8 c57 = (sfp->id.base.phys_ext_id & SFF8636_EXT_ID_POWER_CLASS_57) >> 6;
+
+	if (c57 == 0) {
+		switch (c14) {
+		case 0: /* Power class 1 */
+			power_mW = 1500;
+			break;
+		case 1: /* Power class 2 */
+			power_mW = 2000;
+			break;
+		case 2: /* Power class 3 */
+			power_mW = 2500;
+			break;
+		case 3: /* Power class 4 */
+			power_mW = 3500;
+			break;
+		default:
+			break;
+		}
+	} else {
+		switch (c57) {
+		case 1: /* Power class 5 */
+			power_mW = 4000;
+			break;
+		case 2: /* Power class 6 */
+			power_mW = 4500;
+			break;
+		case 3: /* Power class 7 */
+			power_mW = 5000;
+			break;
+		default:
+			break;
+		}
+	}
+
+	if (power_mW > sfp->max_power_mW) {
+		dev_warn(sfp->dev, "Host does not support %u.%uW modules (maximum-power-milliwatt property)\n",
+				 power_mW / 1000, (power_mW / 100) % 10);
+		return 0;
+	}
+
+	sfp->module_power_mW = power_mW;
+
+	return 0;
 }
 
 static int sfp_module_parse_power(struct sfp *sfp)
@@ -1628,10 +1695,71 @@ static int sfp_module_parse_power(struct sfp *sfp)
 	return 0;
 }
 
+static int qsfp_sm_mod_hpower(struct sfp *sfp, bool enable)
+{
+	bool a2 = false;
+	int err;
+	u8 val, enh_opts = 0;
+
+	/* Read bus @0x50 for qsfp by default */
+	err = sfp_read(sfp, a2, SFF8636_POWER_REG, &val, sizeof(val));
+	if (err != sizeof(val)) {
+		a2 = true;
+		err = sfp_read(sfp, a2, SFF8636_POWER_REG, &val, sizeof(val));
+		if (err != sizeof(val)) {
+			dev_err(sfp->dev, "Failed to read EEPROM: %d (l.%d)\n",
+				err, __LINE__);
+			return err;
+		}
+	}
+
+	err = sfp_read(sfp, a2, SFF8636_ENH_OPTS_REG, &enh_opts,
+		       sizeof(enh_opts));
+	if (err == sizeof(enh_opts)) {
+		if (!(enh_opts & SFF8636_ENH_OPTS_RESET_IMPL))
+			dev_warn(sfp->dev, "SW reset not implemented\n");
+		else
+			val |= SFF8636_POWER_SW_RESET;
+	}
+
+	dev_dbg(sfp->dev, "%s a2=%d power reg: 0x%x en: %d\n", __func__,
+		 a2, val, enable);
+	/* Force POWER_OVRD for QSFP support */
+	if (enable)
+		val = SFF8636_POWER_OVRD;
+	else
+		val &= ~(SFF8636_POWER_SET | SFF8636_POWER_OVRD);
+
+	err = sfp_write(sfp, a2, SFF8636_POWER_REG, &val, sizeof(val));
+	if (err != sizeof(val)) {
+		dev_err(sfp->dev, "Failed to write EEPROM: %d (l.%d)\n",
+			err, __LINE__);
+		return 0;
+	}
+
+	err = sfp_read(sfp, a2, SFF8636_POWER_REG, &val, sizeof(val));
+	if (err != sizeof(val)) {
+		dev_err(sfp->dev, "Failed to read EEPROM: %d (l.%d)\n",
+			err, __LINE__);
+		return 0;
+	}
+
+	dev_dbg(sfp->dev, "%s updated power reg: 0x%x\n", __func__, val);
+	if (enable)
+		dev_info(sfp->dev, "Module switched to %u.%uW power level\n",
+			 sfp->module_power_mW / 1000,
+			 (sfp->module_power_mW / 100) % 10);
+
+	return 0;
+}
+
 static int sfp_sm_mod_hpower(struct sfp *sfp, bool enable)
 {
 	u8 val;
 	int err;
+
+	if (sfp_is_qsfp_module(&sfp->id))
+		return qsfp_sm_mod_hpower(sfp, enable);
 
 	err = sfp_read(sfp, true, SFP_EXT_STATUS, &val, sizeof(val));
 	if (err != sizeof(val)) {

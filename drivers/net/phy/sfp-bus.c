@@ -227,7 +227,6 @@ static void qsfp_parse_support(struct sfp_bus *bus,
 			       const struct sfp_eeprom_id *id,
 			       unsigned long *support)
 {
-	unsigned int br_min, br_nom, br_max;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(modes) = { 0, };
 
 	/* Set ethtool support from the compliance fields. */
@@ -281,10 +280,9 @@ static void qsfp_parse_support(struct sfp_bus *bus,
 			break;
 		}
 	}
-	dev_dbg(bus->sfp_dev, "%s id->base.qsfp: 0x%x ext_code: 0x%x ext_opt: 0x%x 0x%x 0x%x\n",
-		__func__, id->base.qsfp, id->ext_8636.code,
-		id->ext_8636.option[0], id->ext_8636.option[1],
-		id->ext_8636.option[2]);
+	dev_dbg(bus->sfp_dev, "%s ext_code: 0x%x ext_opt: 0x%x 0x%x 0x%x\n",
+		__func__, id->ext_8636.code, id->ext_8636.option[0],
+		id->ext_8636.option[1], id->ext_8636.option[2]);
 
 	if (bus->sfp_quirk)
 		bus->sfp_quirk->modes(id, modes);
