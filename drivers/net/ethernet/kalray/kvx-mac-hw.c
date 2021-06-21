@@ -516,6 +516,17 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	int ret = 0;
 	u16 v;
 
+	off = PHY_LANE_OFFSET + lane_id * PHY_LANE_ELEM_SIZE;
+	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+	if (GETF(val, PHY_LANE_RX_SERDES_CFG_PSTATE) != PSTATE_P0) {
+		dev_err(hw->dev, "RX_ADAPT can not be done (not in P0)\n");
+		return -EINVAL;
+	}
+	if (GETF(val, PHY_LANE_RX_SERDES_CFG_ADAPT_IN_PROG)) {
+		dev_err(hw->dev, "RX_ADAPT already in progress\n");
+		return -EINVAL;
+	}
+
 	off = RAWLANE0_DIG_PCS_XF_ADAPT_CONT_OVRD_IN + LANE_OFFSET * lane_id;
 	v = PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_MASK |
 		PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK;
