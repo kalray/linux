@@ -1300,7 +1300,7 @@ int kvx_eth_get_module_transceiver(struct net_device *netdev,
 	u8 data[ETH_MODULE_SFF_8636_MAX_LEN] = {0};
 	struct ethtool_eeprom ee = {
 		.cmd = ETHTOOL_GEEPROM,
-		.len = ETH_MODULE_SFF_8636_LEN,
+		.len = 256,
 		.offset = 0,
 	};
 	u8 *id, tech;
@@ -1308,7 +1308,7 @@ int kvx_eth_get_module_transceiver(struct net_device *netdev,
 
 	if (netdev->sfp_bus) {
 		ret = sfp_get_module_eeprom(netdev->sfp_bus, &ee, data);
-		if (ret)
+		if (ret < 0)
 			return ret;
 	}
 
