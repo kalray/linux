@@ -93,7 +93,7 @@ void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int max_frame_len)
 {
 	u32 off = 0;
 
-	if (kvx_mac_readl(hw, MAC_RESET_OFFSET))
+	if (kvx_mac_under_reset(hw))
 		return;
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * lane;
 
@@ -106,7 +106,7 @@ void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	u8 *a;
 	u32 val, off;
 
-	if (kvx_mac_readl(hw, MAC_RESET_OFFSET))
+	if (kvx_mac_under_reset(hw))
 		return;
 
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
@@ -266,7 +266,7 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	u32 val, off;
 	int i = 0;
 
-	if (kvx_mac_readl(hw, MAC_RESET_OFFSET))
+	if (kvx_mac_under_reset(hw))
 		return;
 
 	if (cfg->pfc_f.global_pfc_en) {
@@ -311,7 +311,7 @@ bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
 {
 	u32 v;
 
-	if (!readl(hw->res[KVX_ETH_RES_MAC].base + MAC_RESET_OFFSET)) {
+	if (!kvx_mac_under_reset(hw)) {
 		v = readl(hw->res[KVX_ETH_RES_MAC].base + MAC_MODE_OFFSET);
 		return !!(v & (MAC_PCS100_EN_IN_MASK | MAC_MODE40_EN_IN_MASK));
 	}
@@ -976,7 +976,7 @@ static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
 	u32 off, mask, val = 0;
 
-	if (kvx_mac_readl(hw, MAC_RESET_OFFSET))
+	if (kvx_mac_under_reset(hw))
 		return -EINVAL;
 
 	ret = kvx_eth_mac_init(hw, cfg);
@@ -1047,6 +1047,17 @@ static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
 	kvx_mac_readl(hw, MAC_FAULT_STATUS_LAC_OFFSET);
 
 	return ret;
+}
+
+bool kvx_mac_under_reset(struct kvx_eth_hw *hw)
+{
+	u32 val = kvx_mac_readl(hw, MAC_RESET_OFFSET);
+	u32 mask = (MAC_RESET_REF_CLK_MASK | MAC_RESET_SPCS_REF_CLK_MASK |
+		    MAC_RESET_XPCS_REF_CLK_MASK | MAC_RESET_MAC0_REF_CLK_MASK |
+		    MAC_RESET_MAC0_FF_CLK_MASK | MAC_RESET_TDM_FF_CLK_MASK |
+		    MAC_RESET_REG_CLK_MASK);
+
+	return (val & mask);
 }
 
 static int kvx_eth_mac_reset(struct kvx_eth_hw *hw,
@@ -2590,7 +2601,7 @@ void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
 	u64 *p = (u64 *)&s->rx;
 	int i;
 
-	if (kvx_mac_readl(hw, MAC_RESET_OFFSET))
+	if (kvx_mac_under_reset(hw))
 		return;
 
 	for (i = 0; i < sizeof(s->rx); i += 8)
