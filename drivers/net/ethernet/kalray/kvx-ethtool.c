@@ -874,7 +874,22 @@ static int find_elligible_parser(struct kvx_eth_netdev *ndev,
 
 	/* Find parser matching criteria */
 	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
-		if (hw->parsing.parsers[i].crc_ability == crc_ability &&
+		if (crc_ability == PARSER_CRC_ABILITY_NO) {
+			if (hw->parsing.parsers[i].crc_ability == PARSER_CRC_ABILITY_NO &&
+				hw->parsing.parsers[i].loc == -1) {
+				netdev_dbg(ndev->netdev, "Electing parser %d\n", i);
+				return i;
+			}
+			/* If we don't need a CRC, never use a parser that
+			 * supports CRC, keep looking for one that doesn't
+			 */
+			continue;
+		}
+
+		/* If we need only 1 CRC, we can still use parsers that
+		 * support 4 CRC
+		 */
+		if (hw->parsing.parsers[i].crc_ability >= crc_ability &&
 				hw->parsing.parsers[i].loc == -1) {
 			netdev_dbg(ndev->netdev, "Electing parser %d\n", i);
 			return i;
