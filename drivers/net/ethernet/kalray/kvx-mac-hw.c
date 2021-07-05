@@ -93,12 +93,16 @@ void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int max_frame_len)
 {
 	u32 off = 0;
 
-	if (kvx_mac_under_reset(hw))
+	mutex_lock(&hw->mac_reset_lock);
+	if (kvx_mac_under_reset(hw)) {
+		mutex_unlock(&hw->mac_reset_lock);
 		return;
+	}
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * lane;
 
 	kvx_mac_writel(hw, max_frame_len, off + EMAC_FRM_LEN_OFFSET);
 	kvx_mac_writel(hw, max_frame_len, off + PMAC_FRM_LEN_OFFSET);
+	mutex_unlock(&hw->mac_reset_lock);
 }
 
 void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
@@ -106,18 +110,23 @@ void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	u8 *a;
 	u32 val, off;
 
-	if (kvx_mac_under_reset(hw))
+	mutex_lock(&hw->mac_reset_lock);
+	if (kvx_mac_under_reset(hw)) {
+		mutex_unlock(&hw->mac_reset_lock);
 		return;
+	}
 
 	off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	/* PMAC */
 	a = &cfg->mac_f.addr[0];
-	val = (u32)a[3] << 24 | (u32)a[2] << 16 | (u32)a[1] << 8 | (u32)a[0];
+	val = (u32)a[3] << 24 | (u32)a[2] << 16 |
+		(u32)a[1] << 8 | (u32)a[0];
 	kvx_mac_writel(hw, val, off + PMAC_MAC_ADDR_0_OFFSET);
 	kvx_mac_writel(hw, val, off + EMAC_MAC_ADDR_0_OFFSET);
 	val = (u32)a[5] << 8 | (u32)a[4];
 	kvx_mac_writel(hw, val, off + PMAC_MAC_ADDR_1_OFFSET);
 	kvx_mac_writel(hw, val, off + EMAC_MAC_ADDR_1_OFFSET);
+	mutex_unlock(&hw->mac_reset_lock);
 }
 
 /**
@@ -309,13 +318,9 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
 {
-	u32 v;
+	u32 v = readl(hw->res[KVX_ETH_RES_MAC].base + MAC_MODE_OFFSET);
 
-	if (!kvx_mac_under_reset(hw)) {
-		v = readl(hw->res[KVX_ETH_RES_MAC].base + MAC_MODE_OFFSET);
-		return !!(v & (MAC_PCS100_EN_IN_MASK | MAC_MODE40_EN_IN_MASK));
-	}
-	return false;
+	return !!(v & (MAC_PCS100_EN_IN_MASK | MAC_MODE40_EN_IN_MASK));
 }
 
 #define RESET_TIMEOUT_MS 50
@@ -1063,10 +1068,12 @@ bool kvx_mac_under_reset(struct kvx_eth_hw *hw)
 static int kvx_eth_mac_reset(struct kvx_eth_hw *hw,
 			     struct kvx_eth_lane_cfg *cfg)
 {
-	u32 mask, val = kvx_mac_readl(hw, MAC_RESET_OFFSET);
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
+	u32 mask, val;
 	int ret = 0;
 
+	mutex_lock(&hw->mac_reset_lock);
+	val = kvx_mac_readl(hw, MAC_RESET_OFFSET);
 	if (val || aggregated_lanes) {
 		mask = ~0U;
 		kvx_mac_writel(hw, mask, MAC_RESET_SET_OFFSET);
@@ -1082,10 +1089,10 @@ static int kvx_eth_mac_reset(struct kvx_eth_hw *hw,
 
 	ret = kvx_poll(kvx_mac_readl, MAC_RESET_OFFSET, ~mask, 0,
 		       RESET_TIMEOUT_MS);
-	if (ret) {
+	mutex_unlock(&hw->mac_reset_lock);
+	if (ret)
 		dev_err(hw->dev, "Mac reset failed\n");
-		return -EINVAL;
-	}
+
 
 	return ret;
 }
@@ -2589,27 +2596,35 @@ void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 					    struct kvx_eth_lane_cfg, mac_f);
 
 	cfg->fec = 0;
-	hw->phy_f.loopback_mode = mac_f->loopback_mode;
-	kvx_mac_phy_serdes_cfg(hw, cfg);
+	if (mac_f->loopback_mode != hw->phy_f.loopback_mode) {
+		hw->phy_f.loopback_mode = mac_f->loopback_mode;
+		kvx_mac_phy_serdes_cfg(hw, cfg);
+	}
 	kvx_eth_mac_cfg(hw, cfg);
 }
 
 void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
 			    struct kvx_eth_hw_stats *s)
 {
-	void __iomem *b = hw->res[KVX_ETH_RES_MAC].base;
-	u64 *p = (u64 *)&s->rx;
-	int i;
+	void __iomem *off, *b = hw->res[KVX_ETH_RES_MAC].base;
 
-	if (kvx_mac_under_reset(hw))
-		return;
+	/*
+	 * Lock on MAC reset that can be triggered by mac_cfg (from user space)
+	 * Prevent accessing register while Mac reset is occuring
+	 */
+	if (mutex_trylock(&hw->mac_reset_lock)) {
+		if (kvx_mac_under_reset(hw)) {
+			mutex_unlock(&hw->mac_reset_lock);
+			return;
+		}
 
-	for (i = 0; i < sizeof(s->rx); i += 8)
-		*p++ = readq(b + STAT64_OFFSET + STAT64_RX_OFFSET +
-			     lane_id * STAT64_RX_ELEM_SIZE + i);
+		off = b + STAT64_OFFSET + STAT64_RX_OFFSET +
+			lane_id * STAT64_RX_ELEM_SIZE;
+		memcpy_fromio(&s->rx, off, sizeof(s->rx));
 
-	p = (u64 *)&s->tx;
-	for (i = 0; i < sizeof(s->tx); i += 8)
-		*p++ = readq(b + STAT64_OFFSET + STAT64_TX_OFFSET +
-			    lane_id * STAT64_TX_ELEM_SIZE + i);
+		off = b + STAT64_OFFSET + STAT64_TX_OFFSET +
+			lane_id * STAT64_TX_ELEM_SIZE;
+		memcpy_fromio(&s->tx, off, sizeof(s->tx));
+		mutex_unlock(&hw->mac_reset_lock);
+	}
 }
