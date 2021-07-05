@@ -107,6 +107,21 @@ void l1_inval_icache_range(unsigned long start, unsigned long end)
 }
 
 static inline
+void wbinval_icache_range(phys_addr_t paddr, unsigned long size)
+{
+	unsigned long vaddr = (unsigned long) phys_to_virt(paddr);
+
+	/* Fence to ensure all write are committed */
+	kvx_fence();
+
+	l2_cache_wbinval_range(paddr, size);
+	/* invalidating l2 cache will invalidate l1 dcache
+	 * but not l1 icache
+	 */
+	l1_inval_icache_range(vaddr, vaddr + size);
+}
+
+static inline
 void sync_dcache_icache(unsigned long start, unsigned long end)
 {
 	/* Fence to ensure all write are committed to L2 */
