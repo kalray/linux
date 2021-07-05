@@ -73,9 +73,12 @@ int kvx_insns_write_nostop(u32 *insns, u8 insns_len, u32 *insn_addr)
 
 	insn_patch_unmap();
 
-	/* Flush & invalidate icache to reload instructions from memory */
-	local_flush_icache_range((unsigned long) insn_addr,
-				 (unsigned long) insn_addr + insns_len);
+	/*
+	 * Flush & invalidate L2 + L1 icache to reload instructions from memory
+	 * L2 wbinval is necessary because we write through DEVICE cache policy
+	 * mapping which is uncached therefore L2 is bypassed
+	 */
+	wbinval_icache_range(virt_to_phys(insn_addr), insns_len);
 
 	return ret;
 }
