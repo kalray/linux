@@ -2200,6 +2200,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	dev->pdev = pdev;
 	dev->type = &kvx_eth_data;
 	INIT_LIST_HEAD(&dev->list);
+	mutex_init(&dev->hw.mac_reset_lock);
 
 	if (of_machine_is_compatible("kalray,haps"))
 		dev->type = &kvx_haps_data;
