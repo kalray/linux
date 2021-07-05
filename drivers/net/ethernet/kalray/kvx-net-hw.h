@@ -739,6 +739,7 @@ struct lt_status {
  * @tx_f: tx features for all tx fifos
  * @rtm_params: retimer relative parameters
  * @lt_status: link training fsm status structure
+ * @mac_reset_lock: MAC reset critical section
  * @rxtx_crossed: are rx lanes crossed with tx ones
  *                meaning rx4->tx0, rx3->tx1, etc.
  * @parsers_tictoc: if we need to mirror parsers configuration from top half
@@ -766,6 +767,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_phy_f phy_f;
 	struct kvx_eth_rtm_params rtm_params[RTM_NB];
 	struct lt_status lt_status[KVX_ETH_LANE_NB];
+	struct mutex mac_reset_lock;
 	u32 rxtx_crossed;
 	u32 parsers_tictoc;
 	u32 eth_id;
