@@ -440,7 +440,7 @@ static int kvx_eth_rtm_tx_coef(struct kvx_eth_hw *hw, int lane_id,
 	rtm_params.pre += delta.pre;
 	rtm_params.post += delta.post;
 
-	ret = ti_retimer_set_tx_coef(rtm->rtm, lane, rtm_params);
+	ret = ti_retimer_set_tx_coef(rtm->rtm, lane, &rtm_params);
 
 	return ret;
 }
