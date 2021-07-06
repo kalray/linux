@@ -15,57 +15,17 @@
 #include <linux/ethtool.h>
 
 #include <linux/ti-retimer.h>
+#include "ti-retimer.h"
 
 #define TI_RTM_DRIVER_NAME "ti-retimer"
 #define TI_RTM_I2C_ADDR_BUF_SIZE (4)
 #define TI_RTM_SEQ_ARGS_SIZE (4)
 #define TI_RTM_REGINIT_MAX_SIZE (64)
 #define TI_RTM_DEFAULT_TIMEOUT (500)
-#define TI_RTM_NB_LANE (8)
-#define TI_RTM_DEFAULT_SPEED (SPEED_10000)
 #define TI_RTM_MAX_REGINIT_SIZE (256)
 
 #define VALUE_SIGN(val) (val < 0 ? TX_SIGN_MASK : 0)
 
-struct seq_args {
-	u8 reg;
-	u8 offset;
-	u8 mask;
-	u8 value;
-};
-
-/**
- * struct ti_rtm_reg_init - TI retimer i2c register initialization structure
- * @seq: sequence to perform
- * @size: reg_init number of elements
- */
-struct ti_rtm_reg_init {
-	struct seq_args *seq;
-	int size;
-};
-
-/**
- * struct ti_rtm_dev - TI retimer priv
- * @client: pointer to I2C client
- * @en_smb_gpio: RX/TX slave enable gpio
- *   Z for E2PROM mode, 1 for I2C slave
- * @read_en_gpio: read enable gpio
- *   if en_smb = Z, read enable must be 0 for E2PROM master mode
- *   if en_smb = 1, 0 for reset, 1 for normal operation
- * @all_done_gpio: all_done gpio
- *   if en_smb = 1, this gpio has the same value as read_en_gpio
- *   if en_smb = 0, 0 is E2PROM success, 1 is E2PROM fail
- * @reg_init: reg initialization structure
- * @eeprom_np: eeprom node
- */
-struct ti_rtm_dev {
-	struct i2c_client *client;
-	struct gpio_desc *en_smb_gpio;
-	struct gpio_desc *read_en_gpio;
-	struct gpio_desc *all_done_gpio;
-	struct ti_rtm_reg_init reg_init;
-	struct device_node *eeprom_np;
-};
 
 /* ti_rtm_i2c_read() - Send an I2C read message
  * @client: I2C client
@@ -193,15 +153,15 @@ int ti_retimer_get_tx_coef(struct i2c_client *client, u8 lane,
 	write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq));
 
 	ret = ti_rtm_i2c_read(client, PRE_REG, &read_buf, 1);
-	if (ret) {
-		dev_err(dev, "Unable to get PRE value channel[%d]\n", lane);
+	if (ret < 0) {
+		dev_err(dev, "Unable to get PRE value channel[%d] ret = %d\n", lane);
 		goto exit;
 	}
 	params->pre = read_buf & TX_COEF_MASK;
 	params->pre = (read_buf & TX_SIGN_MASK ? -params->pre : params->pre);
 
 	ret = ti_rtm_i2c_read(client, MAIN_REG, &read_buf, 1);
-	if (ret) {
+	if (ret < 0) {
 		dev_err(dev, "Unable to get MAIN value channel[%d]\n", lane);
 		goto exit;
 	}
@@ -209,7 +169,7 @@ int ti_retimer_get_tx_coef(struct i2c_client *client, u8 lane,
 	params->main = (read_buf & TX_SIGN_MASK ? -params->main : params->main);
 
 	ret = ti_rtm_i2c_read(client, POST_REG, &read_buf, 1);
-	if (ret) {
+	if (ret < 0) {
 		dev_err(dev, "Unable to get POST value channel[%d]\n", lane);
 		goto exit;
 	}
@@ -230,7 +190,7 @@ EXPORT_SYMBOL(ti_retimer_get_tx_coef);
  * Return: 0 on success, < 0 on failure
  */
 int ti_retimer_set_tx_coef(struct i2c_client *client, u8 lane,
-		struct ti_rtm_params params)
+		struct ti_rtm_params *params)
 {
 	struct device *dev = &client->dev;
 	struct seq_args params_set_seq[] = {
@@ -242,22 +202,22 @@ int ti_retimer_set_tx_coef(struct i2c_client *client, u8 lane,
 		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x0c},
 		/* Write pre sign */
 		{.reg = PRE_REG, .offset = 0x00, .mask = TX_SIGN_MASK,
-			.value = VALUE_SIGN(params.pre)},
+			.value = VALUE_SIGN(params->pre)},
 		/* Write pre value */
 		{.reg = PRE_REG, .offset = 0x00, .mask = TX_COEF_MASK,
-			.value = abs(params.pre)},
+			.value = abs(params->pre)},
 		/* Write main sign */
 		{.reg = MAIN_REG, .offset = 0x00, .mask = TX_SIGN_MASK,
-			.value = VALUE_SIGN(params.main)},
+			.value = VALUE_SIGN(params->main)},
 		/* Write main value */
 		{.reg = MAIN_REG, .offset = 0x00, .mask = TX_COEF_MASK,
-			.value = abs(params.main)},
+			.value = abs(params->main)},
 		/* Write post sign */
 		{.reg = POST_REG, .offset = 0x00, .mask = TX_SIGN_MASK,
-			.value = VALUE_SIGN(params.post)},
+			.value = VALUE_SIGN(params->post)},
 		/* Write post value */
 		{.reg = POST_REG, .offset = 0x00, .mask = TX_COEF_MASK,
-			.value = abs(params.post)},
+			.value = abs(params->post)},
 		/* Release CDR reset */
 		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x00},
 	};
@@ -499,6 +459,10 @@ static int ti_rtm_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, rtm);
 
+	ret = ti_rtm_sysfs_init(rtm);
+	if (ret)
+		dev_err(dev, "TI retimer failed to init sysfs\n");
+
 	dev_info(dev, "TI retimer driver\n");
 	return 0;
 }
@@ -510,6 +474,9 @@ static int ti_rtm_probe(struct i2c_client *client,
  */
 static int ti_rtm_remove(struct i2c_client *client)
 {
+	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
+
+	ti_rtm_sysfs_uninit(rtm);
 	i2c_set_clientdata(client, NULL);
 	return 0;
 }
