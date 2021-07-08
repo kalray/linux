@@ -390,6 +390,16 @@ static int __init l2_cache_init(void)
 			pr_info("controller disabled\n");
 			return 0;
 		}
+
+		if (np && of_get_property(np, "kalray,is-qemu", NULL)) {
+			/*
+			 * QEMU is always full cache coherent. The L2 cache controller is
+			 * not strictly necessary to ensure coherency in SMP.
+			 */
+			pr_info("controller disabled (QEMU detected)\n");
+			return 0;
+		}
+
 		/* Else, SMP is enabled and L2 is mandatory for it */
 		goto err;
 	}
