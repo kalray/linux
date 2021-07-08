@@ -12,12 +12,6 @@
 
 #include <linux/i2c.h>
 
-#define PRE_REG           0x3E
-#define MAIN_REG          0x3D
-#define POST_REG          0x3F
-#define TX_COEF_MASK      0x3F
-#define TX_SIGN_MASK      0x40
-
 /**
  * struct ti_rtm_params - TI retimer tuning params
  * @pre: pre tuning parameter
@@ -36,5 +30,6 @@ extern int ti_retimer_get_tx_coef(struct i2c_client *client, u8 lane,
 		struct ti_rtm_params *params);
 extern int ti_retimer_set_tx_coef(struct i2c_client *client, u8 lane,
 		struct ti_rtm_params *params);
+extern int ti_retimer_get_status(struct i2c_client *client, u8 lane);
 
 #endif /* __TI_RETIMER_H */
