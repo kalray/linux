@@ -15,6 +15,14 @@
 #define TI_RTM_NB_LANE (8)
 #define TI_RTM_DEFAULT_SPEED (SPEED_10000)
 
+#define PRE_REG           0x3E
+#define MAIN_REG          0x3D
+#define POST_REG          0x3F
+#define TX_COEF_MASK      0x3F
+#define TX_SIGN_MASK      0x40
+#define SIG_DET_REG       0x78
+#define RATE_REG          0x2F
+
 struct seq_args {
 	u8 reg;
 	u8 offset;

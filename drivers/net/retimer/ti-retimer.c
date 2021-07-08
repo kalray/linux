@@ -122,6 +122,27 @@ static void write_i2c_regs(struct i2c_client *client, struct seq_args seq[],
 	}
 }
 
+static int ti_retimer_select_lane(struct i2c_client *client, u8 lane)
+{
+	struct device *dev = &client->dev;
+	struct seq_args params_set_seq[] = {
+		/* Select channel registers */
+		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
+		/* Select lane */
+		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 1 << lane},
+	};
+
+	if (lane >= TI_RTM_NB_LANE) {
+		dev_err(dev, "Wrong lane number %d (max: %d)\n", lane,
+				TI_RTM_NB_LANE);
+		return -EINVAL;
+	}
+
+	write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq));
+
+	return 0;
+}
+
 /**
  * ti_retimer_get_tx_coef() - Get tuning params for a lane
  * @client: i2c client
@@ -192,12 +213,7 @@ EXPORT_SYMBOL(ti_retimer_get_tx_coef);
 int ti_retimer_set_tx_coef(struct i2c_client *client, u8 lane,
 		struct ti_rtm_params *params)
 {
-	struct device *dev = &client->dev;
 	struct seq_args params_set_seq[] = {
-		/* Select channel registers */
-		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
-		/* Select lane */
-		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 1 << lane},
 		/* CDR reset */
 		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x0c},
 		/* Write pre sign */
@@ -221,12 +237,10 @@ int ti_retimer_set_tx_coef(struct i2c_client *client, u8 lane,
 		/* Release CDR reset */
 		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x00},
 	};
+	int ret = ti_retimer_select_lane(client, lane);
 
-	if (lane >= TI_RTM_NB_LANE) {
-		dev_err(dev, "Wrong lane number %d (max: %d)\n", lane,
-				TI_RTM_NB_LANE);
-		return -EINVAL;
-	}
+	if (ret < 0)
+		return ret;
 
 	write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq));
 
@@ -258,34 +272,55 @@ int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
 	struct device *dev = &client->dev;
 	u8 speed_val = speed_to_rtm_reg_value(speed);
 	struct seq_args speed_set_seq[] = {
-		/* Select channel registers */
-		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
-		/* Select lane */
-		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 1 << lane},
 		/* CDR reset */
 		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x0c},
 		/* Write data rate value */
-		{.reg = 0x2f, .offset = 0x00, .mask = 0xff, .value = speed_val},
+		{.reg = RATE_REG, .offset = 0x00, .mask = 0xf0,
+			.value = speed_val},
 		/* Release CDR reset */
 		{.reg = 0x0a, .offset = 0x00, .mask = 0x0c, .value = 0x00},
 	};
-
-	if (lane >= TI_RTM_NB_LANE) {
-		dev_err(dev, "Wrong lane number %d (max: %d)\n", lane,
-				TI_RTM_NB_LANE);
-		return -EINVAL;
-	}
+	int ret;
 
 	if (speed_val < 0) {
 		dev_err(dev, "Unsupported speed %d\n", speed);
 		return speed_val;
 	}
 
+	ret = ti_retimer_select_lane(client, lane);
+	if (ret < 0)
+		return ret;
+
 	write_i2c_regs(client, speed_set_seq, ARRAY_SIZE(speed_set_seq));
 
 	return 0;
 }
 EXPORT_SYMBOL(ti_retimer_set_speed);
+
+int ti_retimer_get_status(struct i2c_client *client, u8 lane)
+{
+	int ret = ti_retimer_select_lane(client, lane);
+	u8 buf, rate;
+
+	if (ret < 0)
+		return ret;
+
+	ret = ti_rtm_i2c_read(client, SIG_DET_REG, &buf, 1);
+	if (ret < 0) {
+		dev_err(&client->dev, "Unable to read sigdet reg\n");
+		return ret;
+	}
+	ret = ti_rtm_i2c_read(client, RATE_REG, &rate, 1);
+	if (ret < 0) {
+		dev_err(&client->dev, "Unable to read rate reg\n");
+		return ret;
+	}
+	dev_dbg(&client->dev, "lane[%d]:  0x%x CDR_LOCK: %d, SIGDET: %d rate: 0x%x\n",
+		lane, buf, !!(buf & BIT(4)), !!(buf & BIT(5)), rate & 0xF0);
+
+	return 0;
+}
+EXPORT_SYMBOL(ti_retimer_get_status);
 
 static int retimer_cfg(struct ti_rtm_dev *rtm)
 {
