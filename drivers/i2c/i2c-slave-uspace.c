@@ -36,6 +36,8 @@ struct slave_data {
 	u8 get_fifo_len_index;
 };
 
+static struct class *i2c_slave_class;
+
 static int i2c_slave_generic_slave_cb(struct i2c_client *client,
 				      enum i2c_slave_event event, u8 *val)
 {
@@ -237,6 +239,11 @@ static int i2c_slave_generic_probe(struct i2c_client *client, const struct i2c_d
 	cdev_init(&slave->cdev, &slave_fileops);
 	cdev_add(&slave->cdev, slave->char_dev_num, 1);
 
+	if (i2c_slave_class)
+		device_create(i2c_slave_class, dev, slave->char_dev_num, NULL, "i2c-slave");
+	else
+		dev_err(dev, "Cannot auto-create the /dev/i2c-slave node because i2c_slave_class is not created\n");
+
 	return 0;
 
 cannot_alloc_chrdev:
@@ -244,6 +251,15 @@ cannot_alloc_chrdev:
 cannot_register_client:
 	return ret;
 };
+
+static int __init i2c_slave_init(void)
+{
+	i2c_slave_class = class_create(THIS_MODULE, "i2c-slave");
+	if (IS_ERR(i2c_slave_class))
+		pr_err("Error while creating device class\n");
+
+	return 0;
+}
 
 static int i2c_slave_generic_remove(struct i2c_client *client)
 {
@@ -270,6 +286,8 @@ static struct i2c_driver i2c_slave_generic_driver = {
 	.id_table = i2c_slave_generic_id,
 };
 module_i2c_driver(i2c_slave_generic_driver);
+
+subsys_initcall(i2c_slave_init);
 
 MODULE_AUTHOR("Yann Sionneau <ysionneau@kalrayinc.com>");
 MODULE_DESCRIPTION("I2C slave mode for userspace handling");
