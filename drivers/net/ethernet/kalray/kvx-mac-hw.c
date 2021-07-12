@@ -939,8 +939,10 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	 * Full cycle (disable/enable) is needed to get serdes in appropriate
 	 * state (typically for MDIO operations in SGMII mode)
 	 */
+	mutex_lock(&hw->mac_reset_lock);
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
 	kvx_mac_phy_enable_serdes(hw, cfg->id, lane_nb, PSTATE_P0);
+	mutex_unlock(&hw->mac_reset_lock);
 
 	/* Update parameters with reset values */
 	for (i = cfg->id; i < cfg->id + lane_nb; i++) {
