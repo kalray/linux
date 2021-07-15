@@ -38,6 +38,7 @@ enum {
 	KVX_HASH_FIELD_SEL_L4_SPORT	= BIT(2),
 	KVX_HASH_FIELD_SEL_L4_DPORT	= BIT(3),
 	KVX_HASH_FIELD_SEL_VLAN		= BIT(4),
+	KVX_HASH_FIELD_SEL_DST_MAC	= BIT(5),
 };
 
 enum kvx_roce_version {
