@@ -683,6 +683,8 @@ static union mac_filter_desc *fill_eth_filter(struct kvx_eth_netdev *ndev,
 		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_VLAN) != 0)
 			filter->tci0_hash_mask = TCI_VLAN_HASH_MASK;
+		if ((rx_hash_field & KVX_HASH_FIELD_SEL_DST_MAC) != 0)
+			filter->da_hash_mask = 0xffffffffffffULL;
 	}
 
 	return filter;
@@ -1052,7 +1054,7 @@ static int set_rss_hash_opt(struct kvx_eth_netdev *ndev,
 		return -EOPNOTSUPP;
 
 	if (nfc->data & ~(RXH_IP_SRC | RXH_IP_DST | RXH_L4_B_0_1 |
-				RXH_L4_B_2_3 | RXH_VLAN))
+				RXH_L4_B_2_3 | RXH_VLAN | RXH_L2DA))
 		return -EOPNOTSUPP;
 
 	tt = flow_type_to_traffic_type(nfc->flow_type);
@@ -1069,6 +1071,8 @@ static int set_rss_hash_opt(struct kvx_eth_netdev *ndev,
 		rx_hash_field |= KVX_HASH_FIELD_SEL_L4_DPORT;
 	if (nfc->data & RXH_VLAN)
 		rx_hash_field |= KVX_HASH_FIELD_SEL_VLAN;
+	if (nfc->data & RXH_L2DA)
+		rx_hash_field |= KVX_HASH_FIELD_SEL_DST_MAC;
 
 	/* If no change don't reprogram parsers */
 	if (rx_hash_field == ndev->hw->parsing.rx_hash_fields[tt])
