@@ -915,7 +915,8 @@ void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
 /* PHY */
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
 void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f);
-void kvx_serdes_loopback(struct kvx_eth_hw *hw, int lane, int lane_nb);
+void kvx_phy_serdes_reset(struct kvx_eth_hw *hw, u32 serdes_mask);
+int kvx_serdes_loopback(struct kvx_eth_hw *hw, int lane, int lane_nb);
 int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p);
 int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
 		     enum lt_coef_requests op, enum tx_coef_type param);

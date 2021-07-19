@@ -340,7 +340,7 @@ void kvx_phy_reset(struct kvx_eth_hw *hw)
 	kvx_poll(kvx_phy_readl, PHY_RESET_OFFSET, val, 0, RESET_TIMEOUT_MS);
 }
 
-static void kvx_phy_serdes_reset(struct kvx_eth_hw *hw, u32 serdes_mask)
+void kvx_phy_serdes_reset(struct kvx_eth_hw *hw, u32 serdes_mask)
 {
 	u32 val = (serdes_mask << PHY_RESET_SERDES_RX_SHIFT) |
 		(serdes_mask << PHY_RESET_SERDES_TX_SHIFT);
@@ -871,6 +871,7 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
 	u32 serdes_mask = get_serdes_mask(lane, lane_nb);
 	u32 serdes_master_mask = serdes_mask & hw->pll_cfg.serdes_pll_master;
 	u32 i, val, mask, reg;
+	int ret;
 
 	dev_dbg(hw->dev, "%s lane[%d->%d] serdes_mask: 0x%x serdes_pll_master: 0x%x\n",
 		__func__, lane, lane + lane_nb,
@@ -911,9 +912,9 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
 		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
 	}
 
-	kvx_serdes_loopback(hw, lane, lane_nb);
-
-	kvx_serdes_handshake(hw, serdes_mask, SERDES_RX | SERDES_TX);
+	ret = kvx_serdes_loopback(hw, lane, lane_nb);
+	if (ret == NO_LOOPBACK)
+		kvx_serdes_handshake(hw, serdes_mask, SERDES_RX | SERDES_TX);
 
 	return 0;
 }
@@ -2567,6 +2568,10 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			i, val);
 	}
 
+	/* Do not process rx adaptation while in loopback */
+	if (cfg->mac_f.loopback_mode != NO_LOOPBACK)
+		return 0;
+
 	do {
 		lane_fom_ok = 0;
 		for (i = cfg->id; i < cfg->id + lane_nb; i++) {
@@ -2597,7 +2602,6 @@ void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 	struct kvx_eth_lane_cfg *cfg = container_of(mac_f,
 					    struct kvx_eth_lane_cfg, mac_f);
 
-	cfg->fec = 0;
 	if (mac_f->loopback_mode != hw->phy_f.loopback_mode) {
 		hw->phy_f.loopback_mode = mac_f->loopback_mode;
 		kvx_mac_phy_serdes_cfg(hw, cfg);
