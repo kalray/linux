@@ -158,6 +158,7 @@ static int i2c_dw_irq_handler_slave(struct dw_i2c_dev *dev)
 {
 	u32 raw_stat, stat, enabled, tmp;
 	u8 val = 0, slave_activity;
+	int rx_still_full = 0;
 
 	regmap_read(dev->map, DW_IC_ENABLE, &enabled);
 	regmap_read(dev->map, DW_IC_RAW_INTR_STAT, &raw_stat);
@@ -172,21 +173,31 @@ static int i2c_dw_irq_handler_slave(struct dw_i2c_dev *dev)
 		"%#x STATUS SLAVE_ACTIVITY=%#x : RAW_INTR_STAT=%#x : INTR_STAT=%#x\n",
 		enabled, slave_activity, raw_stat, stat);
 
-	if (stat & DW_IC_INTR_RX_FULL) {
-		if (dev->status != STATUS_WRITE_IN_PROGRESS) {
-			dev->status = STATUS_WRITE_IN_PROGRESS;
+	if ((stat & DW_IC_INTR_RX_FULL)) {
+		int first_byte = 0;
+
+		regmap_read(dev->map, DW_IC_DATA_CMD, &tmp);
+		dev_dbg(dev->dev, "read 0x%08x\n", tmp);
+
+		if (tmp & 0x0800)
+			first_byte = 1;
+
+		if (first_byte) {
+			i2c_slave_event(dev->slave, I2C_SLAVE_STOP, NULL);
 			i2c_slave_event(dev->slave, I2C_SLAVE_WRITE_REQUESTED,
 					&val);
 		}
 
-		regmap_read(dev->map, DW_IC_DATA_CMD, &tmp);
 		val = tmp;
 		if (!i2c_slave_event(dev->slave, I2C_SLAVE_WRITE_RECEIVED,
 				     &val))
 			dev_vdbg(dev->dev, "Byte %X acked!", val);
 	}
 
-	if (stat & DW_IC_INTR_RD_REQ) {
+	regmap_read(dev->map, DW_IC_RAW_INTR_STAT, &raw_stat);
+	rx_still_full = (raw_stat & DW_IC_INTR_RX_FULL);
+
+	if ((stat & DW_IC_INTR_RD_REQ) && !rx_still_full) {
 		if (slave_activity) {
 			regmap_read(dev->map, DW_IC_CLR_RD_REQ, &tmp);
 
@@ -204,15 +215,9 @@ static int i2c_dw_irq_handler_slave(struct dw_i2c_dev *dev)
 		regmap_read(dev->map, DW_IC_CLR_RX_DONE, &tmp);
 
 
-	if ((stat & DW_IC_INTR_STOP_DET) || dev->stop_received) {
-		regmap_read(dev->map, DW_IC_RAW_INTR_STAT, &raw_stat);
-		if ((raw_stat & DW_IC_INTR_RX_FULL) && !dev->stop_received) {
-			dev->stop_received = 1;
-			return 1;
-		}
+	if (stat & DW_IC_INTR_STOP_DET) {
 		dev->status = STATUS_IDLE;
 		dev->stop_received = 0;
-		i2c_slave_event(dev->slave, I2C_SLAVE_STOP, &val);
 	}
 
 	return 1;
