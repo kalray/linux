@@ -15,7 +15,7 @@
 #define BUFFER_SIZE 128
 #define CMD_CODE_GET_FIFO_LEN (1)
 #define CMD_CODE_GET_FIFO_DATA (2)
-#define CMD_CODE_FLUSH_FIFOS (100)
+#define CMD_CODE_FLUSH_FIFOS (3)
 
 #define DRIVER_HANDLED_CMD_CODE(cmd) \
 	(((cmd) == CMD_CODE_GET_FIFO_LEN)  || \
