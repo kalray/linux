@@ -19,10 +19,10 @@
 
 #define TI_RTM_DRIVER_NAME "ti-retimer"
 #define TI_RTM_I2C_ADDR_BUF_SIZE (4)
-#define TI_RTM_SEQ_ARGS_SIZE (4)
-#define TI_RTM_REGINIT_MAX_SIZE (64)
-#define TI_RTM_DEFAULT_TIMEOUT (500)
-#define TI_RTM_MAX_REGINIT_SIZE (256)
+#define TI_RTM_SEQ_ARGS_SIZE     (4)
+#define TI_RTM_REGINIT_MAX_SIZE  (64)
+#define TI_RTM_DEFAULT_TIMEOUT   (500)
+#define TI_RTM_MAX_REGINIT_SIZE  (256)
 
 #define VALUE_SIGN(val) (val < 0 ? TX_SIGN_MASK : 0)
 
@@ -156,26 +156,14 @@ int ti_retimer_get_tx_coef(struct i2c_client *client, u8 lane,
 {
 	struct device *dev = &client->dev;
 	u8 read_buf;
-	int ret = 0;
-	struct seq_args params_set_seq[] = {
-		/* Select channel registers */
-		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
-		/* Select lane */
-		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 1 << lane},
-	};
+	int ret = ti_retimer_select_lane(client, lane);
 
-	if (lane >= TI_RTM_NB_LANE) {
-		dev_err(dev, "Wrong lane number %d (max: %d)\n", lane,
-				TI_RTM_NB_LANE);
-		return -EINVAL;
-	}
-
-	/* Select lane and channel */
-	write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq));
+	if (ret < 0)
+		return ret;
 
 	ret = ti_rtm_i2c_read(client, PRE_REG, &read_buf, 1);
 	if (ret < 0) {
-		dev_err(dev, "Unable to get PRE value channel[%d] ret = %d\n", lane);
+		dev_err(dev, "Unable to get PRE value channel[%d]\n", lane);
 		goto exit;
 	}
 	params->pre = read_buf & TX_COEF_MASK;
@@ -297,6 +285,35 @@ int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
 }
 EXPORT_SYMBOL(ti_retimer_set_speed);
 
+/**
+ * ti_retimer_set_rx_adapt_mode() - Set rx_adapt mode
+ * @client: i2c client
+ * @rx_adapt: mode for rx adaptation
+ * Return: 0 on success, < 0 on failure
+ */
+static int ti_retimer_set_rx_adapt_mode(struct i2c_client *client, u8 lane, u8 rx_adapt)
+{
+	struct device *dev = &client->dev;
+	struct seq_args seq[] = {
+		/* Write data rate value */
+		{.reg = RX_ADAPT_REG, .offset = 0x5, .mask = RX_ADAPT_MODE_MASK,
+			.value = rx_adapt},
+	};
+	int ret = ti_retimer_select_lane(client, lane);
+
+	if (ret < 0)
+		return ret;
+
+	if (rx_adapt > 3) {
+		dev_err(dev, "Unsupported RX adaptation mode (must be < 4)\n");
+		return -EINVAL;
+	}
+
+	write_i2c_regs(client, seq, ARRAY_SIZE(seq));
+
+	return 0;
+}
+
 int ti_retimer_get_status(struct i2c_client *client, u8 lane)
 {
 	int ret = ti_retimer_select_lane(client, lane);
@@ -325,7 +342,7 @@ EXPORT_SYMBOL(ti_retimer_get_status);
 static int retimer_cfg(struct ti_rtm_dev *rtm)
 {
 	struct device *dev = &rtm->client->dev;
-	int ret = 0;
+	int i, ret = 0;
 
 	/* Activate SMBus slave mode */
 	dev_dbg(dev, "Enabling SMBus mode\n");
@@ -366,6 +383,9 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 	}
 
 	write_i2c_regs(rtm->client, rtm->reg_init.seq, rtm->reg_init.size);
+
+	for (i = 0; i < TI_RTM_NB_LANE; i++)
+		ti_retimer_set_rx_adapt_mode(rtm->client, i, 2);
 
 	return 0;
 
