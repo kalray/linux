@@ -921,13 +921,17 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
 
 /* kvx_eth_phy_serdes_cfg() - config of serdes based on initialized hw->pll_cfg
  * @hw: hardware configuration
+ * @cfg: lane configuration
  */
 static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 				  struct kvx_eth_lane_cfg *cfg)
 {
-	int i, ret, lane_speed;
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	int i, ret, lane_speed, lane_nb;
 
+	/* Force speed if none provided for PHY loopback */
+	if (cfg->mac_f.loopback_mode && cfg->speed == SPEED_UNKNOWN)
+		cfg->speed = SPEED_100000;
+	lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
 	/* Disable serdes for *previous* config */
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
 	ret = kvx_eth_phy_serdes_init(hw, cfg->id, cfg->speed);
