@@ -307,6 +307,8 @@ FIELD_RW_ENTRY(cl_f, release_level, 0, RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
 FIELD_RW_ENTRY(cl_f, drop_level, 0, RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
 FIELD_RW_ENTRY(cl_f, alert_level, 0, RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK);
 FIELD_RW_ENTRY(cl_f, pfc_ena, 0, 1);
+FIELD_R_ENTRY(cl_f,  pfc_req_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(cl_f,  drop_cnt, 0, U32_MAX);
 
 static struct attribute *cl_f_attrs[] = {
 	&cl_f_quanta_attr.attr,
@@ -315,6 +317,8 @@ static struct attribute *cl_f_attrs[] = {
 	&cl_f_drop_level_attr.attr,
 	&cl_f_alert_level_attr.attr,
 	&cl_f_pfc_ena_attr.attr,
+	&cl_f_pfc_req_cnt_attr.attr,
+	&cl_f_drop_cnt_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(cl_f);
@@ -386,8 +390,6 @@ struct sysfs_type {
 static const struct sysfs_type t[] = {
 	{.name = "mac", .offset = offsetof(struct kvx_eth_lane_cfg, mac_f.kobj),
 		.type = &mac_f_ktype },
-	{.name = "pfc", .offset = offsetof(struct kvx_eth_lane_cfg, pfc_f.kobj),
-		.type = &pfc_f_ktype },
 };
 
 static int kvx_eth_kobject_add(struct net_device *netdev,
@@ -495,6 +497,10 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 		kobject_init(&hw->phy_f.rx_ber[i].kobj, &rx_bert_param_ktype);
 		kobject_init(&hw->phy_f.tx_ber[i].kobj, &tx_bert_param_ktype);
 		kobject_init(&hw->lb_f[i].kobj, &lb_f_ktype);
+		kobject_init(&hw->lb_f[i].pfc_f.kobj, &pfc_f_ktype);
+		for (j = 0; j < KVX_ETH_PFC_CLASS_NB; j++)
+			kobject_init(&hw->lb_f[i].cl_f[j].kobj,
+					&cl_f_ktype);
 		for (j = 0; j < NB_CLUSTER; j++)
 			kobject_init(&hw->lb_f[i].rx_noc[j].kobj,
 					&rx_noc_ktype);
@@ -526,9 +532,6 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 	struct kvx_eth_hw *hw = ndev->hw;
 	int lane_id = ndev->cfg.id;
 	int i, j, p, ret = 0;
-
-	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++)
-		kobject_init(&ndev->cfg.cl_f[i].kobj, &cl_f_ktype);
 
 	for (i = 0; i < ARRAY_SIZE(t); ++i) {
 		ret = kvx_eth_kobject_add(ndev->netdev, &ndev->cfg, &t[i]);
@@ -570,9 +573,19 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
-	ret = kvx_kset_rx_noc_create(ndev, &ndev->hw->lb_f[lane_id].kobj,
-				rx_noc_kset, &ndev->hw->lb_f[lane_id].rx_noc[0],
+	ret = kobject_add(&hw->lb_f[lane_id].pfc_f.kobj,
+			  &hw->lb_f[lane_id].kobj, "pfc");
+	if (ret)
+		goto err;
+
+	ret = kvx_kset_rx_noc_create(ndev, &hw->lb_f[lane_id].kobj,
+				rx_noc_kset, &hw->lb_f[lane_id].rx_noc[0],
 				NB_CLUSTER);
+	if (ret)
+		goto err;
+
+	ret = kvx_kset_cl_f_create(ndev, &hw->lb_f[lane_id].kobj, pfc_cl_kset,
+			   &hw->lb_f[lane_id].cl_f[0], KVX_ETH_PFC_CLASS_NB);
 	if (ret)
 		goto err;
 
@@ -581,10 +594,6 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
-	ret = kvx_kset_cl_f_create(ndev, &ndev->netdev->dev.kobj, pfc_cl_kset,
-				   &ndev->cfg.cl_f[0], KVX_ETH_PFC_CLASS_NB);
-	if (ret)
-		goto err;
 
 	ret = kvx_kset_dt_f_create(ndev, &ndev->netdev->dev.kobj, dt_kset,
 			&hw->dt_f[0], RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
@@ -614,6 +623,8 @@ err:
 	for (j = i - 1; j >= 0; --j)
 		kvx_eth_kobject_del(&ndev->cfg, &t[j]);
 
+	kobject_del(&ndev->hw->lb_f[lane_id].pfc_f.kobj);
+	kobject_put(&ndev->hw->lb_f[lane_id].pfc_f.kobj);
 	kobject_del(&ndev->hw->lut_f.kobj);
 	kobject_put(&ndev->hw->lut_f.kobj);
 	kobject_del(&ndev->hw->dt_acc_f.kobj);
@@ -631,12 +642,14 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 			RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 	kvx_kset_lut_entry_f_remove(ndev, lut_entry_kset, &ndev->hw->lut_entry_f[0],
 			RX_LB_LUT_ARRAY_SIZE);
-	kvx_kset_cl_f_remove(ndev, pfc_cl_kset, &ndev->cfg.cl_f[0],
-			KVX_ETH_PFC_CLASS_NB);
 	kvx_kset_tx_f_remove(ndev, tx_kset, &ndev->hw->tx_f[0], TX_FIFO_NB);
 	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
 		kvx_kset_rx_noc_remove(ndev, rx_noc_kset,
 				&ndev->hw->lb_f[i].rx_noc[0], NB_CLUSTER);
+		kvx_kset_cl_f_remove(ndev, pfc_cl_kset,
+			     &ndev->hw->lb_f[i].cl_f[0], KVX_ETH_PFC_CLASS_NB);
+		kobject_del(&ndev->hw->lb_f[i].pfc_f.kobj);
+		kobject_put(&ndev->hw->lb_f[i].pfc_f.kobj);
 	}
 	kvx_kset_lb_f_remove(ndev, lb_kset, &ndev->hw->lb_f[0],
 			KVX_ETH_LANE_NB);

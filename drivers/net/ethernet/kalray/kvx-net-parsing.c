@@ -312,8 +312,8 @@ static int parser_add_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
 		dev_dbg(hw->dev, "Parser[%d] rule[%d] filter mac\n",
 				parser_id, rule_id);
 		print_hex_dump_debug("filter mac: ", DUMP_PREFIX_NONE,
-				16, 4, desc->mac_vlan.word, sizeof(desc->mac_vlan.word),
-				false);
+				16, 4, desc->mac_vlan.word,
+				sizeof(desc->mac_vlan.word), false);
 		add_metadata_index = desc->mac_vlan.add_metadata_index;
 		check_header_checksum = 0;
 		*total_add_index += desc->mac_vlan.add_metadata_index;
@@ -566,10 +566,8 @@ static int parser_config(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 int parser_config_wrapper(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 		  int parser_id, enum parser_dispatch_policy policy, int prio)
 {
-	if (parser_config(hw, cfg, parser_id,
-			policy, prio) != 0) {
+	if (parser_config(hw, cfg, parser_id, policy, prio) != 0)
 		return -EBUSY;
-	}
 
 	if (hw->parsers_tictoc) {
 		/* Mirror parser configuration to the top half */
