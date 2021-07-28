@@ -675,8 +675,12 @@ static union mac_filter_desc *fill_eth_filter(struct kvx_eth_netdev *ndev,
 	/* Check VLAN presence */
 	if (fs->flow_type & FLOW_EXT) {
 		filter->tci0 = ntohs(fs->h_ext.vlan_tci);
-		filter->tci0_mask = ntohs(fs->m_ext.vlan_tci);
+		/* tci mask is bitwise-negated */
+		filter->tci0_mask = ~ntohs(fs->m_ext.vlan_tci);
 		filter->vlan_ctrl = KVX_ETH_VLAN_ONE;
+		filter->pfc_en    = 1;
+		netdev_dbg(ndev->netdev, "%s vlan: 0x%x /0x%x PFC en", __func__,
+			    filter->tci0, filter->tci0_mask);
 	}
 
 	if (traffic_type_is_supported(tt)) {
