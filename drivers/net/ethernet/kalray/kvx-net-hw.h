@@ -186,6 +186,15 @@ struct kvx_eth_lut_entry_f {
 
 /**
  * struct kvx_eth_rx_noc - rx_noc features (PPS limiter config)
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update rxnoc related registers in struct fields
+ * @vchan0_pps_timer: delay in cycles between 2 NOC pkt (for vchan0)
+ * @vchan0_payload_flit_nb: NOC payload flit number (vchan0)
+ * @vchan1_pps_timer: delay in cycles between 2 NOC pkt (for vchan1)
+ * @vchan1_payload_flit_nb: NOC payload flit number (vchan1)
+ * @lane_id: lane id (used for reg access)
+ * @fdir: noc direction (cluster id)
  */
 struct kvx_eth_rx_noc {
 	struct kobject kobj;
@@ -200,15 +209,89 @@ struct kvx_eth_rx_noc {
 };
 
 /**
+ * struct kvx_eth_pfc_f - Hardware PFC controller
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @cfg: back pointer to lane cfg (needed for mac cfg)
+ * @update: pointer function to read/update pfc related registers in struct fields
+ * @global_release_level: Max bytes before sending XON for every class
+ * @global_drop_level: Max bytes before dropping packets for every class
+ * @global_alert_level: Max bytes before sending XOFF for every class
+ * @pause_req_cnt: internal counter of pause requests
+ * @global_pfc_en: global pfc enable
+ * @global_pause_en: global pause enable
+ * @lane_id: lane id (used for reg access)
+ */
+struct kvx_eth_pfc_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void *cfg;
+	void (*update)(void *p);
+	int global_release_level;
+	int global_drop_level;
+	int global_alert_level;
+	u32 pause_req_cnt;
+	u8 global_pfc_en;
+	u8 global_pause_en;
+	int lane_id;
+};
+
+/**
+ * struct kvx_eth_cl_f - Hardware PFC classes
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @cfg: back pointer to lane cfg (needed for mac cfg)
+ * @update: pointer function to read/update pfc class related registers in struct fields
+ * @release_level: Max bytes before sending XON for this class
+ * @drop_level: Max bytes before dropping packets for this class
+ * @alert_level: Max bytes before sending XOFF request for this class
+ * @pfc_req_cnt: PFC pause request counter for class
+ * @drop_cnt: PFC drop counter for class
+ * @pfc_ena: is PFC enabled for this class
+ * @quanta: quanta of time sent with pause packet
+ * @quanta_thresh: threshold below which a new pause frame should be sent
+ * @lane_id: lane identifier
+ * @id: PFC class identifier
+ */
+struct kvx_eth_cl_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void *cfg;
+	void (*update)(void *p);
+	unsigned int release_level;
+	unsigned int drop_level;
+	unsigned int alert_level;
+	unsigned int pfc_req_cnt;
+	unsigned int drop_cnt;
+	unsigned int pfc_ena;
+	u16 quanta;
+	u16 quanta_thres;
+	int lane_id;
+	int id;
+};
+
+/**
  * struct kvx_eth_lb_f - Load balancer features
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update load balancer related registers in struct fields
  * @default_dispatch_policy: Load balancer policy
  * @store_and_forward: Is store and forward enabled
  * @keep_all_crc_error_pkt: Keep all received eth pkts including erroneous ones
  * @add_header: Add metadata to packet header
  * @add_footer: Add metadata to packet footer
  * @rx_noc: pps limiter features per direction
+ * @cl_f: pfc class features
+ * @pfc_f: pfc features
+ * @drop_mtu_cnt: counter of packet drop due to MTU oversize
+ * @drop_fcs_cnt: counter of packet drop due to bad fcs
+ * @drop_crc_cnt: counter of packet drop due to bad crc
+ * @drop_rule_cnt: counter of packet drop due drop rule matching
+ * @drop_fifo_overflow_cnt: counter of packet drop due fifo overflow
+ * @drop_total_cnt: counter of total packet dropped
+ * @default_hit_cnt: counter of packet hit default policy
+ * @global_drop_cnt: counter of packet drop (global pause)
+ * @global_no_pfc_drop_cnt: counter packet dropped (not related with pfc)
  * @id: lane id
  */
 struct kvx_eth_lb_f {
@@ -221,6 +304,8 @@ struct kvx_eth_lb_f {
 	u8 add_header;
 	u8 add_footer;
 	struct kvx_eth_rx_noc rx_noc[NB_CLUSTER];
+	struct kvx_eth_cl_f cl_f[KVX_ETH_PFC_CLASS_NB];
+	struct kvx_eth_pfc_f pfc_f;
 	u32 drop_mtu_cnt;
 	u32 drop_fcs_cnt;
 	u32 drop_crc_cnt;
@@ -261,51 +346,6 @@ struct kvx_eth_parser_f {
 	char desc[PARSER_DESC_LEN];
 };
 
-/**
- * struct kvx_eth_cl_f - Hardware PFC classes
- * @kobj: kobject for sysfs
- * @hw: back pointer to hw description
- * @alert_release_level: Max bytes before sending XON for this class
- * @drop_level: Max bytes before dropping packets for this class
- * @alert_level: Max bytes before sending XOFF request for this class
- * @pfc_ena: is PFC enabled for this class
- * @lane_id: lane identifier
- * @id: PFC class identifier
- */
-struct kvx_eth_cl_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
-	unsigned int release_level;
-	unsigned int drop_level;
-	unsigned int alert_level;
-	unsigned int pfc_ena;
-	u16 quanta;
-	u16 quanta_thres;
-	int lane_id;
-	int id;
-};
-
-/**
- * struct kvx_eth_pfc_f - Hardware PFC controller
- * @kobj: kobject for sysfs
- * @hw: back pointer to hw description
- * @global_alert_release_level: Max bytes before sending XON for every class
- * @global_drop_level: Max bytes before dropping packets for every class
- * @global_alert_level: Max bytes before sending XOFF for every class
- */
-struct kvx_eth_pfc_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
-	int global_release_level;
-	int global_drop_level;
-	int global_alert_level;
-	u32 pause_req_cnt;
-	u8 global_pfc_en;
-	u8 global_pause_en;
-	int lane_id;
-};
 
 /**
  * struct kvx_eth_tx_f - TX features
@@ -564,7 +604,7 @@ enum lt_ld_states {
  * struct kvx_eth_lane_cfg - Lane configuration
  * @id: lane_id [0, 3]
  * @tx_fifo_id: tx fifo id [0, 9]
- * @speed: phy node speed
+ * @speed: lane speed
  * @duplex: duplex mode
  * @fec: fec mode
  * @phy_mode: phy interface mode
@@ -574,9 +614,8 @@ enum lt_ld_states {
  * @hw: back pointer to hw description
  * @lb_f: Load balancer features
  * @tx_fifo_list: List of tx features
- * @pfc: Packet Flow Control
- * @cl_f: Array of 8 classes (per lane)
  * @mac_f: mac controller features
+ * @transceiver: data related to connector
  * @default_dispatch_entry: default dispatch table entry used by current cluster
  */
 struct kvx_eth_lane_cfg {
@@ -591,8 +630,6 @@ struct kvx_eth_lane_cfg {
 	struct link_capability ln;
 	struct kvx_eth_hw *hw;
 	struct list_head tx_fifo_list;
-	struct kvx_eth_pfc_f pfc_f;
-	struct kvx_eth_cl_f cl_f[KVX_ETH_PFC_CLASS_NB];
 	struct kvx_eth_mac_f mac_f;
 	struct kvx_transceiver_type transceiver;
 	u32 default_dispatch_entry;
@@ -984,7 +1021,6 @@ void kvx_eth_dt_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_pfc_f_set_default(struct kvx_eth_hw *hw,
 			       struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_pfc_f *pfc);
-void kvx_eth_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_pfc_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_cl_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_cl_f *cl);
 

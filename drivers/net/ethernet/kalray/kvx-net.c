@@ -1704,7 +1704,7 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	state->speed = ndev->cfg.speed;
 	state->duplex = ndev->cfg.duplex;
 	state->pause = 0;
-	if (ndev->cfg.pfc_f.global_pause_en)
+	if (ndev->hw->lb_f[ndev->cfg.id].pfc_f.global_pause_en)
 		state->pause = MLO_PAUSE_RX | MLO_PAUSE_TX;
 	netdev_dbg(netdev, "%s link: %d state->speed: %d ndev->speed: %d\n",
 		   __func__, state->link, state->speed, ndev->cfg.speed);
@@ -1820,6 +1820,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 {
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_pfc_f *pfc_f = &ndev->hw->lb_f[ndev->cfg.id].pfc_f;
 	int an_enabled = state->an_enabled;
 	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
 	bool update_serdes = false;
@@ -1850,7 +1851,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	/* Check if a sfp/qsfp module is inserted */
 	else if (ndev->cfg.transceiver.id == 0) {
 		netdev_warn(ndev->netdev, "No cable detected\n");
-		return 0;
+		return;
 	}
 
 	if (kvx_eth_phy_is_bert_en(ndev->hw)) {
@@ -1871,9 +1872,9 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		ndev->cfg.duplex = state->duplex;
 	ndev->cfg.fec = 0;
 
-	if (!(ndev->cfg.pfc_f.global_pause_en && pause)) {
-		ndev->cfg.pfc_f.global_pause_en = pause;
-		kvx_eth_pfc_f_cfg(ndev->hw, &ndev->cfg.pfc_f);
+	if (!(pfc_f->global_pause_en && pause)) {
+		pfc_f->global_pause_en = pause;
+		kvx_eth_pfc_f_cfg(ndev->hw, pfc_f);
 	}
 
 	if (an_enabled && !ndev->cfg.mac_f.loopback_mode) {
