@@ -270,19 +270,37 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 
 void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
+	struct kvx_eth_pfc_f *pfc_f = &hw->lb_f[cfg->id].pfc_f;
+	struct kvx_eth_cl_f *cl_f = hw->lb_f[cfg->id].cl_f;
 	u32 base = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	int tx_fifo_id = cfg->tx_fifo_id;
+	bool pfc_class_en = false;
 	u32 val, off;
 	int i = 0;
 
 	if (kvx_mac_under_reset(hw))
 		return;
 
-	if (cfg->pfc_f.global_pfc_en) {
+	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++) {
+		if (cl_f[i].pfc_ena)
+			pfc_class_en = true;
+
+		if ((i % 2) == 0) {
+			val = (u32)cl_f[i + 1].quanta << 16 |
+				(u32)cl_f[i].quanta;
+			off = EMAC_CL01_PAUSE_QUANTA_OFFSET + 2 * i;
+			kvx_mac_writel(hw, val, base + off);
+			val = (u32)cl_f[i + 1].quanta_thres << 16 |
+				(u32)cl_f[i].quanta_thres;
+			off = EMAC_CL01_QUANTA_THRESH_OFFSET + 2 * i;
+			kvx_mac_writel(hw, val, base + off);
+		}
+	}
+	if (pfc_f->global_pfc_en || pfc_class_en) {
 		cfg->mac_f.pfc_mode = MAC_PFC;
 		hw->tx_f[tx_fifo_id].pfc_en = 1;
 		hw->tx_f[tx_fifo_id].pause_en = 0;
-	} else if (cfg->pfc_f.global_pause_en) {
+	} else if (pfc_f->global_pause_en) {
 		cfg->mac_f.pfc_mode = MAC_PAUSE;
 		hw->tx_f[tx_fifo_id].pfc_en = 0;
 		hw->tx_f[tx_fifo_id].pause_en = 1;
@@ -290,24 +308,6 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		cfg->mac_f.pfc_mode = MAC_PFC_NONE;
 		hw->tx_f[tx_fifo_id].pfc_en = 0;
 		hw->tx_f[tx_fifo_id].pause_en = 0;
-	}
-
-	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++) {
-		if (cfg->cl_f[i].pfc_ena) {
-			cfg->mac_f.pfc_mode = MAC_PFC;
-			break;
-		}
-
-		if ((i % 2) == 0) {
-			val = (u32)cfg->cl_f[i + 1].quanta << 16 |
-				(u32)cfg->cl_f[i].quanta;
-			off = EMAC_CL01_PAUSE_QUANTA_OFFSET + 2 * i;
-			kvx_mac_writel(hw, val, base + off);
-			val = (u32)cfg->cl_f[i + 1].quanta_thres << 16 |
-				(u32)cfg->cl_f[i].quanta_thres;
-			off = EMAC_CL01_QUANTA_THRESH_OFFSET + 2 * i;
-			kvx_mac_writel(hw, val, base + off);
-		}
 	}
 	dev_dbg(hw->dev, "%s reg class[0] quanta: 0x%x thres: 0x%x\n", __func__,
 		 kvx_mac_readl(hw, base + EMAC_CL01_PAUSE_QUANTA_OFFSET),
