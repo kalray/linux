@@ -119,34 +119,36 @@ void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id)
 void kvx_eth_pfc_f_set_default(struct kvx_eth_hw *hw,
 			       struct kvx_eth_lane_cfg *cfg)
 {
-	int i = 0;
+	int i = 0, l = cfg->id;
 	int cl_offset, off = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
-		cfg->id * RX_PFC_LANE_ELEM_SIZE;
+		l * RX_PFC_LANE_ELEM_SIZE;
+	struct kvx_eth_pfc_f *pfc_f = &hw->lb_f[l].pfc_f;
+	struct kvx_eth_cl_f *cl_f = hw->lb_f[l].cl_f;
 
-	cfg->pfc_f.global_drop_level = kvx_eth_readl(hw, off +
-				RX_PFC_LANE_GLOBAL_DROP_LEVEL_OFFSET);
+	pfc_f->global_drop_level = kvx_eth_readl(hw, off +
+					 RX_PFC_LANE_GLOBAL_DROP_LEVEL_OFFSET);
 
-	cfg->pfc_f.global_alert_level = DEFAULT_PFC_ALERT_LEVEL;
-	cfg->pfc_f.global_release_level = DEFAULT_PFC_RELEASE_LEVEL;
-	kvx_eth_writel(hw, cfg->pfc_f.global_alert_level, off +
+	pfc_f->global_alert_level = DEFAULT_PFC_ALERT_LEVEL;
+	pfc_f->global_release_level = DEFAULT_PFC_RELEASE_LEVEL;
+	kvx_eth_writel(hw, pfc_f->global_alert_level, off +
 		      RX_PFC_LANE_GLOBAL_ALERT_LEVEL_OFFSET);
-	kvx_eth_writel(hw, cfg->pfc_f.global_alert_level, off +
+	kvx_eth_writel(hw, pfc_f->global_alert_level, off +
 		      RX_PFC_LANE_GLOBAL_RELEASE_LEVEL_OFFSET);
 
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
 		cl_offset = off + RX_PFC_LANE_CLASS_OFFSET +
 			i * RX_PFC_LANE_CLASS_ELEM_SIZE;
 
-		cfg->cl_f[i].drop_level = kvx_eth_readl(hw, cl_offset +
+		cl_f[i].drop_level = kvx_eth_readl(hw, cl_offset +
 			RX_PFC_LANE_CLASS_DROP_LEVEL_OFFSET);
-		cfg->cl_f[i].alert_level = DEFAULT_PFC_ALERT_LEVEL;
-		kvx_eth_writel(hw, cfg->cl_f[i].alert_level, cl_offset +
+		cl_f[i].alert_level = DEFAULT_PFC_ALERT_LEVEL;
+		kvx_eth_writel(hw, cl_f[i].alert_level, cl_offset +
 			       RX_PFC_LANE_CLASS_ALERT_LEVEL_OFFSET);
-		cfg->cl_f[i].release_level = DEFAULT_PFC_RELEASE_LEVEL;
-		kvx_eth_writel(hw, cfg->cl_f[i].release_level, cl_offset +
+		cl_f[i].release_level = DEFAULT_PFC_RELEASE_LEVEL;
+		kvx_eth_writel(hw, cl_f[i].release_level, cl_offset +
 			      RX_PFC_LANE_CLASS_RELEASE_LEVEL_OFFSET);
-		cfg->cl_f[i].quanta = DEFAULT_PAUSE_QUANTA;
-		cfg->cl_f[i].quanta_thres = DEFAULT_PAUSE_QUANTA_THRES;
+		cl_f[i].quanta = DEFAULT_PAUSE_QUANTA;
+		cl_f[i].quanta_thres = DEFAULT_PAUSE_QUANTA_THRES;
 	}
 }
 
@@ -160,18 +162,36 @@ static void pfc_f_update(void *data)
 				off + RX_PFC_LANE_GLOBAL_PAUSE_REQ_CNT_OFFSET);
 }
 
+static void kvx_eth_cl_f_update(void *data)
+{
+	struct kvx_eth_cl_f *cl = (struct kvx_eth_cl_f *)data;
+	int off = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
+		cl->lane_id * RX_PFC_LANE_ELEM_SIZE;
+	int cl_offset = off + RX_PFC_LANE_CLASS_OFFSET +
+		cl->id * RX_PFC_LANE_CLASS_ELEM_SIZE;
+
+	cl->pfc_req_cnt = kvx_eth_readl(cl->hw, cl_offset +
+					RX_PFC_LANE_CLASS_PFC_REQ_CNT_OFFSET);
+	cl->drop_cnt = kvx_eth_readl(cl->hw, cl_offset +
+				     RX_PFC_LANE_CLASS_DROP_CNT_OFFSET);
+}
+
 void kvx_eth_pfc_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
+	struct kvx_eth_lb_f *lb_f = &hw->lb_f[cfg->id];
 	int i;
 
-	cfg->pfc_f.hw = hw;
-	cfg->pfc_f.lane_id = cfg->id;
-	cfg->pfc_f.update = pfc_f_update;
+	lb_f->pfc_f.hw = hw;
+	lb_f->pfc_f.cfg = cfg;
+	lb_f->pfc_f.lane_id = cfg->id;
+	lb_f->pfc_f.update = pfc_f_update;
 
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
-		cfg->cl_f[i].hw = hw;
-		cfg->cl_f[i].id = i;
-		cfg->cl_f[i].lane_id = cfg->id;
+		lb_f->cl_f[i].hw = hw;
+		lb_f->cl_f[i].cfg = cfg;
+		lb_f->cl_f[i].id = i;
+		lb_f->cl_f[i].lane_id = cfg->id;
+		lb_f->cl_f[i].update = kvx_eth_cl_f_update;
 	}
 }
 
@@ -181,10 +201,8 @@ void kvx_eth_cl_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_cl_f *cl)
 		cl->lane_id * RX_PFC_LANE_ELEM_SIZE;
 	int cl_offset = offset + RX_PFC_LANE_CLASS_OFFSET +
 		cl->id * RX_PFC_LANE_CLASS_ELEM_SIZE;
-	char *poff = (char *)(&((struct kvx_eth_lane_cfg *)0)->cl_f[cl->id]);
-	struct kvx_eth_lane_cfg *cfg = (struct kvx_eth_lane_cfg *)
-		((char *)cl - poff);
-	u32 v = 0;
+	struct kvx_eth_lane_cfg *cfg = (struct kvx_eth_lane_cfg *)cl->cfg;
+	u32 mask, v = 0;
 
 	v = cl->release_level << RX_PFC_LANE_CLASS_RELEASE_LEVEL_SHIFT;
 	kvx_eth_writel(hw, v, cl_offset +
@@ -198,29 +216,17 @@ void kvx_eth_cl_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_cl_f *cl)
 	kvx_eth_writel(hw, v, cl_offset +
 		       RX_PFC_LANE_CLASS_ALERT_LEVEL_OFFSET);
 
-	v = kvx_eth_readl(hw, offset + RX_PFC_LANE_CTRL_OFFSET);
-	if (cl->pfc_ena)
-		set_bit(RX_PFC_LANE_CTRL_EN_SHIFT + cl->id, (void *)&v);
-	else
-		clear_bit(RX_PFC_LANE_CTRL_EN_SHIFT + cl->id, (void *)&v);
-	kvx_eth_writel(hw, v, offset + RX_PFC_LANE_CTRL_OFFSET);
+	mask = BIT(RX_PFC_LANE_CTRL_EN_SHIFT + cl->id);
+	updatel_bits(hw, ETH, offset + RX_PFC_LANE_CTRL_OFFSET, mask,
+		     (cl->pfc_ena ? 1 : 0));
+
 	kvx_mac_pfc_cfg(hw, cfg);
-}
-
-static void kvx_eth_pfc_class_cfg(struct kvx_eth_hw *hw,
-				  struct kvx_eth_lane_cfg *cfg)
-{
-	int i = 0;
-
-	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i)
-		kvx_eth_cl_f_cfg(hw, &cfg->cl_f[i]);
 }
 
 void kvx_eth_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_pfc_f *pfc)
 {
-	struct kvx_eth_lane_cfg *cfg = container_of(pfc,
-					    struct kvx_eth_lane_cfg, pfc_f);
-	int lane_id = cfg->id;
+	struct kvx_eth_lane_cfg *cfg = (struct kvx_eth_lane_cfg *)pfc->cfg;
+	int lane_id = pfc->lane_id;
 	unsigned long *p;
 	u32 v, off;
 
@@ -258,12 +264,6 @@ void kvx_eth_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_pfc_f *pfc)
 	}
 	kvx_eth_writel(hw, v, off + RX_PFC_LANE_CTRL_OFFSET);
 	kvx_mac_pfc_cfg(hw, cfg);
-}
-
-void kvx_eth_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
-{
-	kvx_eth_pfc_f_cfg(hw, &cfg->pfc_f);
-	kvx_eth_pfc_class_cfg(hw, cfg);
 }
 
 void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut)
@@ -665,7 +665,7 @@ void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				      cfg->default_dispatch_entry + rx_tag);
 
 	/* As of now, matching packets will use the same dispatch entry */
-	for (i = 0; i < KVX_ETH_PARSER_NB; ++i)
+	for (i = 0; i < KVX_ETH_PHYS_PARSER_NB; ++i)
 		enable_parser_dispatch_entry(hw, i,
 					  cfg->default_dispatch_entry + rx_tag);
 }
