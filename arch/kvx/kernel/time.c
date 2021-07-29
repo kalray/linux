@@ -20,6 +20,7 @@
 
 #include <asm/sfr_defs.h>
 
+#define KVX_TIMER_MIN_DELTA	1
 #define KVX_TIMER_MAX_DELTA	0xFFFFFFFFFFFFFFFFULL
 #define KVX_TIMER_MAX_VALUE	0xFFFFFFFFFFFFFFFFULL
 
@@ -109,8 +110,9 @@ static int kvx_timer_starting_cpu(unsigned int cpu)
 	evt->cpumask = cpumask_of(cpu);
 	evt->irq = kvx_timer_irq;
 
-	clockevents_config_and_register(evt, kvx_timer_frequency, 0,
-						KVX_TIMER_MAX_DELTA);
+	clockevents_config_and_register(evt, kvx_timer_frequency,
+					KVX_TIMER_MIN_DELTA,
+					KVX_TIMER_MAX_DELTA);
 
 	/* Enable timer interrupt */
 	kvx_sfr_set_field(TCR, T0IE, 1);
