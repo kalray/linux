@@ -58,13 +58,14 @@ static void kvx_net_dcbnl_getpfccfg(struct net_device *netdev, int priority,
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
 
 	if (priority < 0 || priority >= KVX_ETH_PFC_CLASS_NB) {
 		netdev_err(netdev, "Invalid priority\n");
 		return;
 	}
 
-	*setting = cfg->cl_f[priority].pfc_ena;
+	*setting = lb_f->cl_f[priority].pfc_ena;
 }
 
 static void kvx_net_dcbnl_setpfccfg(struct net_device *netdev, int priority,
@@ -72,15 +73,16 @@ static void kvx_net_dcbnl_setpfccfg(struct net_device *netdev, int priority,
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
 
 	if (priority < 0 || priority >= KVX_ETH_PFC_CLASS_NB) {
 		netdev_err(netdev, "Invalid priority\n");
 		return;
 	}
 
-	cfg->cl_f[priority].pfc_ena = setting;
+	lb_f->cl_f[priority].pfc_ena = setting;
 
-	kvx_eth_cl_f_cfg(ndev->hw, &cfg->cl_f[priority]);
+	kvx_eth_cl_f_cfg(ndev->hw, &lb_f->cl_f[priority]);
 	kvx_eth_tx_fifo_cfg(ndev->hw, cfg);
 }
 
@@ -88,16 +90,17 @@ static u8 kvx_net_dcbnl_getpfcstate(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
 	int i = 0;
 
-	if (cfg->pfc_f.global_pause_en)
+	if (lb_f->pfc_f.global_pause_en)
 		return 1;
 
-	if (cfg->pfc_f.global_pfc_en)
+	if (lb_f->pfc_f.global_pfc_en)
 		return 1;
 
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
-		if (cfg->cl_f[i].pfc_ena)
+		if (lb_f->cl_f[i].pfc_ena)
 			return 1;
 	}
 
@@ -111,13 +114,14 @@ static void kvx_net_dcbnl_setpfcstate(struct net_device *netdev, u8 state)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
 
-	cfg->pfc_f.global_pause_en = 0;
+	lb_f->pfc_f.global_pause_en = 0;
 	if (state == 1)
-		cfg->pfc_f.global_pause_en = 1;
+		lb_f->pfc_f.global_pause_en = 1;
 
-	kvx_eth_pfc_f_cfg(ndev->hw, &cfg->pfc_f);
-	kvx_eth_tx_fifo_cfg(ndev->hw, cfg);
+	kvx_eth_pfc_f_cfg(ndev->hw, &lb_f->pfc_f);
+	kvx_eth_tx_fifo_cfg(ndev->hw, &ndev->cfg);
 }
 
 static const struct dcbnl_rtnl_ops dcbnl_ops = {
