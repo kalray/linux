@@ -14,6 +14,17 @@
 
 #define TX_FIFO(f) (TX_OFFSET + TX_FIFO_OFFSET + (f) * TX_FIFO_ELEM_SIZE)
 
+static void kvx_eth_tx_f_update(void *data)
+{
+	struct kvx_eth_tx_f *f = (struct kvx_eth_tx_f *)data;
+	u32 off = TX_FIFO(f->fifo_id);
+	u32 val = kvx_eth_readl(f->hw, off + TX_FIFO_STATUS_OFFSET);
+
+	f->fifo_level = GETF(val, TX_FIFO_LEVEL);
+	f->xoff = GETF(val, TX_FIFO_XOFF);
+	f->drop_cnt = kvx_eth_readl(f->hw, off + TX_FIFO_DROP_CNT_OFFSET);
+}
+
 void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_tx_f *f;
@@ -22,6 +33,7 @@ void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 	for (i = 0; i < TX_FIFO_NB; ++i) {
 		f = &hw->tx_f[i];
 		f->hw = hw;
+		f->update = kvx_eth_tx_f_update;
 		INIT_LIST_HEAD(&f->node);
 		f->fifo_id = i;
 		f->rr_trigger = 1;
@@ -49,11 +61,6 @@ void kvx_eth_tx_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_f *f)
 		((u32)f->global << TX_FIFO_CTRL_GLOBAL_SHIFT) |
 		((u32)hw->asn << TX_FIFO_CTRL_ASN_SHIFT);
 	kvx_eth_writel(hw, val, off + TX_FIFO_CTRL_OFFSET);
-
-	f->drop_cnt = kvx_eth_readl(hw, off + TX_FIFO_DROP_CNT_OFFSET);
-	val = kvx_eth_readl(hw, off + TX_FIFO_STATUS_OFFSET);
-	f->fifo_level = GETF(val, TX_FIFO_LEVEL);
-	f->xoff = GETF(val, TX_FIFO_XOFF);
 }
 
 void kvx_eth_tx_fifo_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
