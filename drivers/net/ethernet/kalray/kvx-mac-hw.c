@@ -135,8 +135,8 @@ void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 			     struct kvx_eth_lane_cfg *cfg)
 {
-	int i, lane_speed, ret = 0;
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	int i, ret = 0;
 	u32 val, off;
 
 	for (i = cfg->id; i < lane_nb; i++) {
@@ -223,11 +223,11 @@ bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 			     struct kvx_eth_lane_cfg *cfg)
 {
-	int i, lane_speed, ret = 0;
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	int i, ret = 0;
 	u32 off, val;
 
-	for (i = 0; i < lane_nb; i++) {
+	for (i = cfg->id; i < lane_nb; i++) {
 		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
 		/* Preembtible MAC */
 		val = PMAC_CMD_CFG_TX_EN_MASK       |
@@ -268,11 +268,15 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 	return ret;
 }
 
+/**
+ * kvx_mac_pfc_cfg() - Configure pfc MAC and eth tx registers
+ */
 void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	struct kvx_eth_pfc_f *pfc_f = &hw->lb_f[cfg->id].pfc_f;
 	struct kvx_eth_cl_f *cl_f = hw->lb_f[cfg->id].cl_f;
 	u32 base = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	int tx_fifo_id = cfg->tx_fifo_id;
 	bool pfc_class_en = false;
 	u32 val, off;
@@ -313,7 +317,19 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		 kvx_mac_readl(hw, base + EMAC_CL01_PAUSE_QUANTA_OFFSET),
 		 kvx_mac_readl(hw, base + EMAC_CL01_QUANTA_THRESH_OFFSET));
 	kvx_eth_tx_f_cfg(hw, &hw->tx_f[tx_fifo_id]);
-	kvx_eth_mac_init(hw, cfg);
+	for (i = cfg->id; i < lane_nb; i++) {
+		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
+
+		val = (cfg->mac_f.pfc_mode == MAC_PFC ?
+			EMAC_CMD_CFG_PFC_MODE_MASK : 0);
+		updatel_bits(hw, MAC, off + EMAC_CMD_CFG_OFFSET,
+			     EMAC_CMD_CFG_PFC_MODE_MASK, val);
+
+		val = (cfg->mac_f.pfc_mode == MAC_PFC ?
+		       PMAC_CMD_CFG_PFC_MODE_MASK : 0);
+		updatel_bits(hw, MAC, off + PMAC_CMD_CFG_OFFSET,
+		       PMAC_CMD_CFG_PFC_MODE_MASK, val);
+	}
 }
 
 bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
@@ -926,12 +942,12 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
 static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 				  struct kvx_eth_lane_cfg *cfg)
 {
-	int i, ret, lane_speed, lane_nb;
+	int i, ret, lane_nb;
 
 	/* Force speed if none provided for PHY loopback */
 	if (cfg->mac_f.loopback_mode && cfg->speed == SPEED_UNKNOWN)
 		cfg->speed = SPEED_100000;
-	lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	/* Disable serdes for *previous* config */
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
 	ret = kvx_eth_phy_serdes_init(hw, cfg->id, cfg->speed);
@@ -984,9 +1000,9 @@ static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
 				   struct kvx_eth_lane_cfg *cfg,
 				   bool aggregated_lanes)
 {
-	int i, lane_speed, ret = 0;
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	u32 off, mask, val = 0;
+	int i, ret = 0;
 
 	if (kvx_mac_under_reset(hw))
 		return -EINVAL;
@@ -2156,13 +2172,14 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 		struct kvx_eth_lane_cfg *cfg, unsigned int an_speed)
 {
-	int lane_nb = kvx_eth_speed_to_nb_lanes(an_speed, NULL);
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	int i, ret;
 
 	/* Before reconfiguring retimers, serdes must be disabled */
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
 
+	lane_nb = kvx_eth_speed_to_nb_lanes(an_speed, NULL);
 	ret = kvx_eth_phy_serdes_init(hw, cfg->id, an_speed);
 	if (ret) {
 		dev_err(hw->dev, "Failed to configure serdes\n");
@@ -2529,13 +2546,13 @@ int kvx_eth_mac_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
  */
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	int i, ret, lane_speed;
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
 	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
 	int lane_fom_ok, fom_retry = 4;
 	u32 off, mask, val = 0;
+	int i, ret;
 
 	kvx_mac_restore_default(hw, cfg, aggregated_lanes);
 	ret = kvx_eth_mac_reset(hw, cfg);
