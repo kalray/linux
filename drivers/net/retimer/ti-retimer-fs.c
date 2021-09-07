@@ -86,6 +86,46 @@ static struct attribute *coef_attrs[] = {
 };
 SYSFS_TYPES(coef);
 
+static ssize_t eom_hit_cnt_read(struct file *filp, struct kobject *kobj,
+			   struct bin_attribute *bin_attr,
+			   char *buf, loff_t off, size_t count)
+{
+	struct ti_rtm_eom *eom = container_of(kobj, struct ti_rtm_eom, kobj);
+	size_t data_size = bin_attr->size;
+	int ret;
+
+	if (!off) {
+		ret = ti_retimer_req_eom(eom->i2c_client, eom->lane);
+		if (ret)
+			return 0;
+	}
+
+	if (off >= data_size) {
+		count = 0;
+	} else {
+		if (off + count > data_size)
+			count = data_size - off;
+		memcpy(buf, eom->hit_cnt, count);
+	}
+
+	return count;
+}
+
+BIN_ATTR_RO(eom_hit_cnt, EOM_COLS * EOM_ROWS * sizeof(u16));
+static struct attribute *eom_attrs[] = {
+	&bin_attr_eom_hit_cnt.attr,
+	NULL,
+};
+
+const struct sysfs_ops eom_sysfs_ops;
+struct attribute_group eom_attr_group = {
+	.attrs = eom_attrs,
+};
+
+struct kobj_type eom_ktype = {
+	.sysfs_ops = &eom_sysfs_ops,
+};
+
 static void ti_rtm_init_kobj(struct ti_rtm_dev *dev)
 {
 	int i = 0;
@@ -93,7 +133,10 @@ static void ti_rtm_init_kobj(struct ti_rtm_dev *dev)
 	for (i = 0; i < TI_RTM_NB_LANE; i++) {
 		dev->coef[i].lane = i;
 		dev->coef[i].i2c_client = dev->client;
+		dev->eom[i].lane = i;
+		dev->eom[i].i2c_client = dev->client;
 		kobject_init(&dev->coef[i].kobj, &coef_ktype);
+		kobject_init(&dev->eom[i].kobj, &eom_ktype);
 	}
 }
 
@@ -140,22 +183,49 @@ void kset_##s##_remove(struct kset *k, struct ti_rtm_##s *p, size_t size) \
 }
 
 static struct kset *coef_kset;
+static struct kset *eom_kset;
 declare_kset(coef, "param");
+declare_kset(eom, "eom");
 
 int ti_rtm_sysfs_init(struct ti_rtm_dev *dev)
 {
-	int ret = 0;
+	int i, ret = 0;
 
 	ti_rtm_init_kobj(dev);
 	ret = kset_coef_create(&dev->client->dev.kobj, coef_kset,
 			       &dev->coef[0], TI_RTM_NB_LANE);
 	if (ret)
 		return ret;
+	ret = kset_eom_create(&dev->client->dev.kobj, eom_kset,
+			       &dev->eom[0], TI_RTM_NB_LANE);
+	if (ret)
+		goto fail_eom;
+
+	for (i = 0; i < TI_RTM_NB_LANE; i++) {
+		ret = sysfs_create_bin_file(&dev->eom[i].kobj, &bin_attr_eom_hit_cnt);
+		if (ret)
+			goto fail_bin;
+	}
 
 	return 0;
+
+fail_bin:
+	i--;
+	for (i; i >= 0; i--)
+		sysfs_remove_bin_file(&dev->eom[i].kobj, &bin_attr_eom_hit_cnt);
+	kset_eom_remove(coef_kset, &dev->eom[0], TI_RTM_NB_LANE);
+fail_eom:
+	kset_coef_remove(coef_kset, &dev->coef[0], TI_RTM_NB_LANE);
+
+	return ret;
 }
 
 void ti_rtm_sysfs_uninit(struct ti_rtm_dev *dev)
 {
+	int i;
+
 	kset_coef_remove(coef_kset, &dev->coef[0], TI_RTM_NB_LANE);
+	for (i = 0; i < TI_RTM_NB_LANE; i++)
+		sysfs_remove_bin_file(&dev->eom[i].kobj, &bin_attr_eom_hit_cnt);
+	kset_eom_remove(coef_kset, &dev->eom[0], TI_RTM_NB_LANE);
 }

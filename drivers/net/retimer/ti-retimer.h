@@ -14,6 +14,8 @@
 
 #define TI_RTM_NB_LANE (8)
 #define TI_RTM_DEFAULT_SPEED (SPEED_10000)
+#define EOM_ROWS       64
+#define EOM_COLS       64
 
 #define RX_ADAPT_REG        0x31
 #define RX_ADAPT_MODE_MASK  0x60
@@ -24,6 +26,10 @@
 #define TX_SIGN_MASK        0x40
 #define SIG_DET_REG         0x78
 #define RATE_REG            0x2F
+#define EOM_CNT_MSB_REG     0x25
+#define EOM_CNT_LSB_REG     0x26
+#define HEO_REG             0x27
+#define VEO_REG             0x28
 
 struct seq_args {
 	u8 reg;
@@ -57,6 +63,20 @@ struct ti_rtm_coef {
 };
 
 /**
+ * struct ti_rtm_eom - TI retimer EOM in sysfs
+ * @hit_cnt: EOM hit counter array
+ * @kobj: kref (in sysfs)
+ * @i2c_client: back pointer to i2c retimer client
+ * @lane: retimer channel/lane id
+ */
+struct ti_rtm_eom {
+	u16 hit_cnt[EOM_ROWS][EOM_COLS];
+	struct kobject kobj;
+	void *i2c_client;
+	int lane;
+};
+
+/**
  * struct ti_rtm_dev - TI retimer priv
  * @client: pointer to I2C client
  * @en_smb_gpio: RX/TX slave enable gpio
@@ -79,9 +99,11 @@ struct ti_rtm_dev {
 	struct ti_rtm_reg_init reg_init;
 	struct device_node *eeprom_np;
 	struct ti_rtm_coef coef[TI_RTM_NB_LANE];
+	struct ti_rtm_eom  eom[TI_RTM_NB_LANE];
 };
 
 int ti_rtm_sysfs_init(struct ti_rtm_dev *dev);
 void ti_rtm_sysfs_uninit(struct ti_rtm_dev *dev);
+int ti_retimer_req_eom(struct i2c_client *client, u8 lane);
 
 #endif
