@@ -314,6 +314,74 @@ static int ti_retimer_set_rx_adapt_mode(struct i2c_client *client, u8 lane, u8 r
 	return 0;
 }
 
+int ti_retimer_req_eom(struct i2c_client *client, u8 lane)
+{
+	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
+	struct device *dev = &client->dev;
+	struct seq_args seq[] = {
+		/* Disable EOM lock monitoring */
+		{.reg = 0x67, .offset = 0, .mask = 0x20, .value = 0},
+		/* Enable the eye monitor */
+		{.reg = 0x11, .offset = 0, .mask = 0x20, .value = 0},
+		/* Enable fast_eom and eom_start controls to initiate an eye scan */
+		{.reg = 0x24, .offset = 0, .mask = 0x81, .value = 0x81},
+		/* Set the vertical eye range to +/-200mV
+		 * (0: 100mV, 0x40: 200mV, 0x80: 300mV, 0xC0: 400mV)
+		 */
+		{.reg = 0x11, .offset = 0, .mask = 0xC0, .value = 0x40},
+		/* Enable manual control of vertical eye range */
+		{.reg = 0x2C, .offset = 0, .mask = 0x40, .value = 0},
+	};
+	struct seq_args seq2[] = {
+		/* Re-enable EOM lock monitoring */
+		{.reg = 0x67, .offset = 0, .mask = 0x20, .value = 0x20},
+		/* Disable EOM */
+		{.reg = 0x11, .offset = 0, .mask = 0x20, .value = 0x20},
+		/* Disable fast_eom and eom_start */
+		{.reg = 0x24, .offset = 0, .mask = 0x81, .value = 0},
+		/* Return EOM vertical range control to automatic */
+		{.reg = 0x2C, .offset = 0, .mask = 0x40, .value = 0x40},
+	};
+	int i, j, ret = ti_retimer_select_lane(client, lane);
+	u8  buf;
+	u16 v;
+
+	if (ret < 0)
+		return ret;
+
+	write_i2c_regs(client, seq, ARRAY_SIZE(seq));
+
+	/* Read to clear out garbage data */
+	for (i = 0; i < 4; i++) {
+		ti_rtm_i2c_read(client, EOM_CNT_MSB_REG, &buf, 1);
+		ti_rtm_i2c_read(client, EOM_CNT_LSB_REG, &buf, 1);
+	}
+
+	for (i = 0; i < EOM_ROWS; i++) {
+		for (j = 0; j < EOM_COLS; j++) {
+			ret = ti_rtm_i2c_read(client, EOM_CNT_MSB_REG, &buf, 1);
+			if (ret < 0)
+				goto exit;
+			v = buf;
+			v <<= 8;
+			ret = ti_rtm_i2c_read(client, EOM_CNT_LSB_REG, &buf, 1);
+			if (ret < 0)
+				goto exit;
+			v |= (u16)buf;
+			rtm->eom[lane].hit_cnt[i][j] = v;
+		}
+	}
+
+	write_i2c_regs(client, seq2, ARRAY_SIZE(seq2));
+
+	return 0;
+
+exit:
+	dev_err(dev, "Failed to read EOM hit counters\n");
+	return -EINVAL;
+}
+
+
 int ti_retimer_get_status(struct i2c_client *client, u8 lane)
 {
 	int ret = ti_retimer_select_lane(client, lane);
