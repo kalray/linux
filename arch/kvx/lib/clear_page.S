@@ -11,7 +11,7 @@
 #include <asm/cache.h>
 #include <asm/page.h>
 
-#define CLEAR_PAGE_LOOP_COUNT	(PAGE_SIZE >> KVX_DCACHE_LINE_SHIFT)
+#define CLEAR_PAGE_LOOP_COUNT	(PAGE_SIZE / 32)
 
 /*
  * Clear page @dest.
@@ -24,10 +24,16 @@
 ENTRY(clear_page)
 	make $r1 = CLEAR_PAGE_LOOP_COUNT
 	;;
+	make $r4 = 0
+	make $r5 = 0
+	make $r6 = 0
+	make $r7 = 0
+	;;
+
 	loopdo $r1, clear_page_done
 		;;
-		dzerol 0[$r0]
-		addd $r0 = $r0, KVX_DCACHE_LINE_SIZE
+		so 0[$r0] = $r4r5r6r7
+		addd $r0 = $r0, 32
 		;;
 	clear_page_done:
 	ret
