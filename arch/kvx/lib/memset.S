@@ -196,7 +196,9 @@ ENTRY(memset):
 	;;
 	loopdo $r10, .Ldzerol_done
 		;;
-		dzerol 0[$r0]
+		so 0[$r0], $r32r33r34r35
+		;;
+		so 32[$r0], $r32r33r34r35
 		addd $r0 = $r0, $r11
 		;;
 	.Ldzerol_done:
