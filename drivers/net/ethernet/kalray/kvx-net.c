@@ -249,6 +249,7 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 	kvx_eth_lb_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_pfc_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_parser_f_init(ndev->hw, &ndev->cfg);
+	kvx_net_init_dcb(ndev->netdev);
 
 	return 0;
 }
