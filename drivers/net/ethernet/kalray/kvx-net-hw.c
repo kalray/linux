@@ -232,14 +232,11 @@ void kvx_eth_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_pfc_f *pfc)
 
 	off = RX_PFC_OFFSET + RX_PFC_LANE_OFFSET +
 		lane_id * RX_PFC_LANE_ELEM_SIZE;
-	v = pfc->global_release_level << RX_PFC_LANE_GLOBAL_RELEASE_LEVEL_SHIFT;
-	kvx_eth_writel(hw, v, off + RX_PFC_LANE_GLOBAL_RELEASE_LEVEL_OFFSET);
-
-	v = pfc->global_drop_level << RX_PFC_LANE_GLOBAL_DROP_LEVEL_SHIFT;
-	kvx_eth_writel(hw, v, off + RX_PFC_LANE_GLOBAL_DROP_LEVEL_OFFSET);
-
-	v = pfc->global_alert_level << RX_PFC_LANE_GLOBAL_ALERT_LEVEL_SHIFT;
-	kvx_eth_writel(hw, v, off + RX_PFC_LANE_GLOBAL_ALERT_LEVEL_OFFSET);
+	updatel_bits(hw, ETH, off + RX_PFC_LANE_GLOBAL_RELEASE_LEVEL_OFFSET,
+		RX_PFC_LANE_GLOBAL_RELEASE_LEVEL_MASK,
+		pfc->global_release_level);
+	updatel_bits(hw, ETH, off + RX_PFC_LANE_GLOBAL_DROP_LEVEL_OFFSET,
+		   RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK, pfc->global_drop_level);
 
 	v = kvx_eth_readl(hw, off + RX_PFC_LANE_CTRL_OFFSET);
 	p = (unsigned long *)&v;
@@ -259,9 +256,17 @@ void kvx_eth_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_pfc_f *pfc)
 			pfc->global_pfc_en = 0;
 		}
 		set_bit(RX_PFC_LANE_CTRL_GLOBAL_PAUSE_EN_SHIFT, p);
+		if (pfc->global_alert_level ==
+		    RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK)
+			pfc->global_alert_level = DEFAULT_PFC_ALERT_LEVEL;
 	} else {
 		clear_bit(RX_PFC_LANE_CTRL_GLOBAL_PAUSE_EN_SHIFT, p);
+		if (!pfc->global_pfc_en)
+			pfc->global_alert_level =
+				RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK;
 	}
+	updatel_bits(hw, ETH, off + RX_PFC_LANE_GLOBAL_ALERT_LEVEL_OFFSET,
+		RX_PFC_LANE_GLOBAL_ALERT_LEVEL_MASK, pfc->global_alert_level);
 	kvx_eth_writel(hw, v, off + RX_PFC_LANE_CTRL_OFFSET);
 	kvx_mac_pfc_cfg(hw, cfg);
 }
