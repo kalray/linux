@@ -88,6 +88,11 @@ struct kvx_dma_config {
 	struct kvx_eth_node_id tx_chan_id;
 };
 
+struct kbx_dcb_cfg {
+	u8 cap;
+	u8 state;
+};
+
 extern const union mac_filter_desc mac_filter_default;
 extern const union ipv4_filter_desc ipv4_filter_default;
 extern const struct ipv6_filter_desc ipv6_filter_default;
@@ -126,6 +131,7 @@ struct kvx_eth_netdev {
 	struct kvx_eth_ring tx_ring[TX_FIFO_NB];
 	struct kvx_eth_hw_stats stats;
 	struct timer_list link_poll;
+	struct kbx_dcb_cfg dcb_cfg;
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
@@ -147,6 +153,7 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 
 int kvx_eth_get_lut_indir(struct net_device *netdev, u32 lut_id, u32 *cluster_id, u32 *rx_channel);
 
+void kvx_net_init_dcb(struct net_device *netdev);
 #ifdef CONFIG_DCB
 void kvx_set_dcb_ops(struct net_device *netdev);
 #else
