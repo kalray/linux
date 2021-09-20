@@ -259,6 +259,25 @@ struct kvx_iommu_domain {
 /*****************************************************************************
  * Internal functions
  *****************************************************************************/
+static bool acs_on;
+
+/**
+ * pci_acs_override_setup - read command line parameter
+ *
+ * This option allow all pcie devices to appear in a single iommu group.
+ * This is required in particular when p2p operation shall be done.
+ * Note that pcie devices that are on the same controller are not physically
+ * isolated so default iommu behaviour is correct. This option allow to change
+ * this behaviour only when required
+ */
+static int __init pci_acs_override_setup(char *arg)
+{
+	strtobool(arg, &acs_on);
+
+	return 0;
+}
+early_param("pcie_acs_override", pci_acs_override_setup);
+
 
 /**
  * asn_is_invalid() - check ASN validity
@@ -1528,12 +1547,14 @@ static struct iommu_group *kvx_iommu_device_group(struct device *dev)
 
 	mutex_lock(&iommu_dev->lock);
 
-	list_for_each_entry(group, &iommu_dev->groups, list)
-		if (group->asn == fwspec->ids[0]) {
-			iommu_group_ref_get(group->group);
-			mutex_unlock(&iommu_dev->lock);
-			return group->group;
-		}
+	if (!acs_on || !dev_is_pci(dev)) {
+		list_for_each_entry(group, &iommu_dev->groups, list)
+			if (group->asn == fwspec->ids[0]) {
+				iommu_group_ref_get(group->group);
+				mutex_unlock(&iommu_dev->lock);
+				return group->group;
+			}
+	}
 
 	group = devm_kzalloc(iommu_dev->dev, sizeof(*group), GFP_KERNEL);
 	if (!group) {
