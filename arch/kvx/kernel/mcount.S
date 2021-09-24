@@ -282,6 +282,9 @@ ENTRY(ftrace_caller)
 	;;
 	addd $r1 = $r1, -KVX_INSN_SYLLABLE_WIDTH
 	;;
+	goto ftrace_call
+	;;
+.align 64
 GLOBAL(ftrace_call)
 	/*
 	 * To work with module we need to use far call. So prepare the
