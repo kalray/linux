@@ -51,7 +51,8 @@ void l1_inval_dcache_range(unsigned long vaddr, unsigned long size)
 		return;
 	}
 
-	for (; vaddr <= end; vaddr += KVX_DCACHE_LINE_SIZE)
+	vaddr = ALIGN_DOWN(vaddr, KVX_DCACHE_LINE_SIZE);
+	for (; vaddr < end; vaddr += KVX_DCACHE_LINE_SIZE)
 		__builtin_kvx_dinvall((void *) vaddr);
 }
 
@@ -100,7 +101,8 @@ void l1_inval_icache_range(unsigned long start, unsigned long end)
 		return;
 	}
 
-	for (addr = start; addr <= end; addr += KVX_ICACHE_LINE_SIZE)
+	start = ALIGN_DOWN(start, KVX_ICACHE_LINE_SIZE);
+	for (addr = start; addr < end; addr += KVX_ICACHE_LINE_SIZE)
 		__builtin_kvx_iinvals((void *) addr);
 
 	__builtin_kvx_barrier();
