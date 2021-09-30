@@ -3,7 +3,6 @@
  * Copyright (C) 2021 by Yann Sionneau, Kalray <ysionneau@kalrayinc.com>
  */
 
-#define DEBUG
 #include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -82,8 +81,8 @@ static int i2c_slave_generic_slave_cb(struct i2c_client *client,
 				return 0; // we should always return 0 here
 			}
 			out = kfifo_out(&slave->read_fifo, val, 1); // pop from the fifo
-			if (out)
-				dev_err(dev, "issue while poping from kfifo during i2c READ");
+			if (out != 1)
+				dev_err(dev, "issue while poping from kfifo during i2c READ: %d elements copied\n", out);
 			wake_up_interruptible(&slave->read_wait_queue);
 		}
 
@@ -95,8 +94,13 @@ static int i2c_slave_generic_slave_cb(struct i2c_client *client,
 			int out;
 
 			out = kfifo_out_peek(&slave->read_fifo, val, 1); // get without poping
-			if (out)
-				dev_err(dev, "issue while reading from kfifo during i2c READ");
+			/* we use only dev_dbg here because this can happen under the normal
+			 * working condition.
+			 * this callback can be called for READ_REQUESTED for last byte that
+			 * is never sent on the wire.
+			 */
+			if (out != 1)
+				dev_dbg(dev, "issue while reading from kfifo during i2c READ: %d elements copied\n", out);
 		}
 		dev_dbg(dev, "READ REQUESTED, sending %02x\n", *val);
 		break;
