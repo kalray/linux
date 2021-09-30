@@ -6,6 +6,7 @@
 
 #include <linux/linkage.h>
 #include <asm/insns_defs.h>
+#include <asm/sfr_defs.h>
 
 .altmacro
 
@@ -55,6 +56,9 @@
 #define STACK_OFFSET_P16  (STACK_OFFSET_Q60 + 32)
 #define STACK_SIZE        (STACK_OFFSET_P16 + 16)
 
+#define RA_DWARF_REGNO    (64 + KVX_SFR_RA)
+#define R14_DWARF_REGNO   14
+
 .macro save_all_context_but_P16
 	/*
 	 * r16 and r17 are already saved. r16 is already used to store the
@@ -64,8 +68,10 @@
 	get $r17 = $ra
 	sd STACK_OFFSET_FP[$r12] = $r14
 	;;
+	.cfi_offset R14_DWARF_REGNO, -STACK_SIZE + STACK_OFFSET_FP
 	sd STACK_OFFSET_RA[$r12] = $r17
 	;;
+	.cfi_offset RA_DWARF_REGNO, -STACK_SIZE + STACK_OFFSET_RA
 	sd STACK_OFFSET_R15[$r12] = $r15
 	;;
 	so STACK_OFFSET_Q0[$r12] = $r0r1r2r3
@@ -98,6 +104,8 @@
 	ld $r14 = STACK_OFFSET_FP[$r12]
 	set $ra = $r15
 	;;
+	.cfi_restore RA_DWARF_REGNO
+	.cfi_restore R14_DWARF_REGNO
 	ld $r15 = STACK_OFFSET_R15[$r12]
 	;;
 	lq $r16r17 = STACK_OFFSET_P16[$r12]
@@ -126,9 +134,11 @@
 	;;
 	addd $r12 = $r12, STACK_SIZE
 	;;
+	.cfi_def_cfa_offset 0
 .endm
 
 ENTRY(__mcount)
+.cfi_startproc
 #ifdef CONFIG_DYNAMIC_FTRACE
 	/*
 	 * With dynamic ftrace mcount() is only used during boot and then all
@@ -140,6 +150,7 @@ ENTRY(__mcount)
 #endif
 	addd $r12 = $r12, -STACK_SIZE
 	;;
+	.cfi_def_cfa_offset STACK_SIZE
 	sq STACK_OFFSET_P16[$r12] = $r16r17
 	;;
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
@@ -191,6 +202,7 @@ GLOBAL(ftrace_graph_call)
 	ret
 	;;
 ftrace_graph_end:
+	.cfi_def_cfa_offset STACK_SIZE
 #endif /* CONFIG_FUNCTION_GRAPH_TRACER */
 	/*
 	 * Check if function pointer ftrace_trace_function is set to
@@ -224,6 +236,7 @@ ftrace_graph_end:
 	;;
 	addd $r12 = $r12, STACK_SIZE
 	;;
+	.cfi_def_cfa_offset 0
 	ret
 	;;
 
@@ -241,6 +254,7 @@ ftrace_graph_end:
 	;;
 	ret
 	;;
+.cfi_endproc
 ENDPROC(__mcount)
 
 /* Required by ftrace_graph_ret_addr */
@@ -271,8 +285,11 @@ ENDPROC(return_to_handler)
 
 #ifdef CONFIG_DYNAMIC_FTRACE
 ENTRY(ftrace_caller)
+.cfi_startproc
+
 	addd $r12 = $r12, -STACK_SIZE
 	;;
+	.cfi_def_cfa_offset STACK_SIZE
 	sq STACK_OFFSET_P16[$r12] = $r16r17
 	;;
 	save_all_context_but_P16
@@ -310,6 +327,7 @@ GLOBAL(ftrace_call)
 	;;
 	ret
 	;;
+.cfi_endproc
 ENDPROC(ftrace_caller)
 #endif // CONFIG_DYNAMIC_FTRACE
 
