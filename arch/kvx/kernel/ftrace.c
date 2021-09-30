@@ -5,8 +5,11 @@
  */
 
 #include <linux/ftrace.h>
+#include <linux/atomic.h>
+#include <linux/stop_machine.h>
 #include <asm/insns.h>
 #include <asm/insns_defs.h>
+#include <asm/cacheflush.h>
 
 static int read_insns_and_check(u32 *insns, u8 insns_len, u32 *addr)
 {
@@ -102,6 +105,53 @@ int ftrace_disable_ftrace_graph_caller(void)
 #endif /* CONFIG_FUNCTION_GRAPH_TRACER */
 
 #ifdef CONFIG_DYNAMIC_FTRACE
+struct kvx_ftrace_modify_param {
+	atomic_t	cpu_ack;
+	int		cpu_master;
+	int		cmd;
+};
+
+static int __ftrace_modify_code_kvx(void *data)
+{
+	struct kvx_ftrace_modify_param *mp = data;
+	int no_cpus = num_online_cpus();
+	int cpu = smp_processor_id();
+
+	if (cpu == mp->cpu_master) {
+		ftrace_modify_all_code(mp->cmd);
+
+		/* Inform the other cpus that they can invalidate ICACHE */
+		atomic_inc(&mp->cpu_ack);
+
+		/* Make sure that the other cpus don't use anymore the param
+		 * allocated on the master cpu stack
+		 */
+		while (atomic_read(&mp->cpu_ack) < no_cpus)
+			cpu_relax();
+	} else {
+		/* Wait for the master cpu to finish the code modification */
+		while (atomic_read(&mp->cpu_ack) == 0)
+			cpu_relax();
+		atomic_inc(&mp->cpu_ack);
+
+		l1_inval_icache_all();
+	}
+
+	return 0;
+}
+
+void arch_ftrace_update_code(int command)
+{
+	const struct cpumask *cpumask = cpu_online_mask;
+	struct kvx_ftrace_modify_param mp = {
+		.cpu_ack = ATOMIC_INIT(0),
+		.cpu_master = smp_processor_id(),
+		.cmd = command,
+	};
+
+	stop_machine(__ftrace_modify_code_kvx, &mp, cpu_online_mask);
+}
+
 unsigned long ftrace_call_adjust(unsigned long addr)
 {
 	/*
