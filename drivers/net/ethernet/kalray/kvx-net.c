@@ -273,7 +273,7 @@ static void kvx_eth_unmap_skb(struct device *dev,
 		end = &si->frags[si->nr_frags];
 		for (fp = si->frags; fp < end; fp++, count++) {
 			dma_unmap_page(dev, sg_dma_address(&tx->sg[count]),
-				       skb_frag_size(fp), DMA_TO_DEVICE);
+				sg_dma_len(&tx->sg[count]), DMA_TO_DEVICE);
 		}
 	}
 }
@@ -360,6 +360,7 @@ unwind:
 			       skb_frag_size(fp), DMA_TO_DEVICE);
 	dma_unmap_single(dev, sg_dma_address(&tx->sg[0]),
 			 skb_headlen(tx->skb), DMA_TO_DEVICE);
+	tx->len = 0;
 
 out_err:
 	return -ENOMEM;
