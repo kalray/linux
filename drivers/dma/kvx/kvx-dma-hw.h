@@ -210,7 +210,7 @@ u64 kvx_dma_get_comp_count(struct kvx_dma_phy *phy);
  * Get completed Rx descriptors
  */
 int kvx_dma_rx_get_comp_pkt(struct kvx_dma_phy *phy,
-			    struct kvx_dma_pkt_full_desc *pkt);
+			    struct kvx_dma_pkt_full_desc **pkt);
 
 /* TX queues */
 int kvx_dma_rdma_tx_push_mem2mem(struct kvx_dma_phy *phy,
