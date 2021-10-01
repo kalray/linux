@@ -517,4 +517,15 @@ config KVX_IOMMU
 	  and/or remap interrupts from other devices on the
 	  system.
 
+
+config KVX_IOMMU_ONEDEVICE_PER_GROUP
+	bool "KVX IOMMU one pcie device per iommu group"
+	depends on KVX_IOMMU
+	help
+	  Say Y here if you want to force all pcie device to
+	  appear in a separate iommu group. By default all pcie
+	  devices will appear in the same iommu group. This might
+	  cause some problem if the device shall be managed in
+	  several distinct vfio container.
+
 endif # IOMMU_SUPPORT
