@@ -423,7 +423,7 @@ void kvx_dma_pkt_rx_queue_flush(struct kvx_dma_phy *phy)
  * Return: 0 - OK, -EAGAIN: if no completion
  */
 int kvx_dma_rx_get_comp_pkt(struct kvx_dma_phy *phy,
-			     struct kvx_dma_pkt_full_desc *pkt)
+			     struct kvx_dma_pkt_full_desc **pkt)
 {
 	u64 rx_comp_count = kvx_dma_q_readq(phy,
 					    KVX_DMA_RX_CHAN_COMP_Q_WP_OFFSET);
@@ -440,7 +440,7 @@ int kvx_dma_rx_get_comp_pkt(struct kvx_dma_phy *phy,
 				 KVX_DMA_RX_CHAN_COMP_Q_LOAD_INCR_RP_OFFSET);
 
 	idx = ticket & phy->fifo_size_mask;
-	memcpy(pkt, &fifo[idx], sizeof(*pkt));
+	*pkt = &fifo[idx];
 	rmb(); /* Read update */
 	kvx_dma_q_writeq(phy, ticket + 1,
 			 KVX_DMA_RX_CHAN_COMP_Q_VALID_RP_OFFSET);
