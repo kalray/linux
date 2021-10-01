@@ -125,7 +125,7 @@ void kvx_dma_flush_rx_queue(void *phy)
 EXPORT_SYMBOL_GPL(kvx_dma_flush_rx_queue);
 
 int kvx_dma_get_rx_completed(struct platform_device *pdev, void *phy,
-			     struct kvx_dma_pkt_full_desc *pkt)
+			     struct kvx_dma_pkt_full_desc **pkt)
 {
 	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
 	struct kvx_dma_phy *pp = (struct kvx_dma_phy *)phy;
@@ -137,7 +137,8 @@ int kvx_dma_get_rx_completed(struct platform_device *pdev, void *phy,
 
 		dev_err(pp->dev, "%s phy[%d] completion counter: %lld buf %lx size:%d/%d\n",
 			__func__, pp->hw_id, comp_count,
-			(uintptr_t)pkt->base, (u32)pkt->byte, (u32)pkt->size);
+			(uintptr_t)(*pkt)->base, (u32)(*pkt)->byte,
+			(u32)(*pkt)->size);
 		WRITE_ONCE(d->err_vec, 0);
 		kvx_dma_read_status(pp);
 	}

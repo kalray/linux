@@ -750,20 +750,21 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 	struct net_device *netdev = rxr->netdev;
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
-	struct kvx_dma_pkt_full_desc pkt;
+	struct kvx_dma_pkt_full_desc *pkt;
 	u32 rx_r = rxr->next_to_clean;
 	int work_done = 0;
 	int rx_count = 0;
 	int ret = 0;
 
-	while (!kvx_dma_get_rx_completed(dma_cfg->pdev, rxr->rx_dma_chan, &pkt)) {
+	while (!kvx_dma_get_rx_completed(dma_cfg->pdev,
+					 rxr->rx_dma_chan, &pkt)) {
 		work_done++;
 		rx_count++;
 
-		ret = kvx_eth_rx_frame(rxr, rx_r, (dma_addr_t)pkt.base,
-				       (size_t)pkt.byte, pkt.notif);
+		ret = kvx_eth_rx_frame(rxr, rx_r, (dma_addr_t)pkt->base,
+				       (size_t)pkt->byte, pkt->notif);
 		/* Still some RX segments pending */
-		if (likely(!ret && pkt.notif)) {
+		if (likely(!ret && pkt->notif)) {
 			napi_gro_receive(napi, rxr->skb);
 			rxr->skb = NULL;
 		}
