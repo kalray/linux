@@ -1853,8 +1853,11 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	}
 	/* Check if a sfp/qsfp module is inserted */
 	else if (ndev->cfg.transceiver.id == 0) {
-		netdev_warn(ndev->netdev, "No cable detected\n");
-		return;
+		if (kvx_eth_get_module_transceiver(netdev,
+						   &ndev->cfg.transceiver)) {
+			netdev_warn(ndev->netdev, "No cable detected\n");
+			return;
+		}
 	}
 
 	if (kvx_eth_phy_is_bert_en(ndev->hw)) {
