@@ -171,6 +171,12 @@ static void qsfp_parse_support(struct sfp_bus *bus,
 		phylink_set(modes, 40000baseSR4_Full);
 	if (id->base.qsfp.e40g_base_lr4)
 		phylink_set(modes, 40000baseLR4_Full);
+	if (id->base.qsfp.e40g_base_active) {
+		phylink_set(modes, 10000baseSR_Full);
+		phylink_set(modes, 10000baseLR_Full);
+		phylink_set(modes, 10000baseLRM_Full);
+	}
+
 	if (id->base.qsfp.extended) {
 		switch (id->ext_8636.code) {
 		case SFF8024_ECC_UNSPEC:
