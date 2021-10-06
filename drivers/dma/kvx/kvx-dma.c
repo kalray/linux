@@ -125,7 +125,7 @@ static int kvx_dma_start_sg_eth_tx(struct kvx_dma_desc *desc)
 	kvx_dma_pkt_tx_write_job(desc->phy, hw_job_id + i, &desc->txd[i], 1);
 	txd_size += (size_t)desc->txd[i].len;
 	ret = kvx_dma_pkt_tx_submit_jobs(desc->phy, hw_job_id, desc->txd_nb);
-	if (ret) {
+	if (ret < 0) {
 		dev_warn_ratelimited(desc->phy->dev, "%s Tx jobq[%d] failed to submit %d jobs\n",
 				     __func__, desc->phy->hw_id, desc->txd_nb);
 		goto out;
@@ -137,7 +137,7 @@ static int kvx_dma_start_sg_eth_tx(struct kvx_dma_desc *desc)
 		 __func__, (uintptr_t)desc->phy,
 		 (uintptr_t)desc, (u32) desc->size);
 out:
-	return ret;
+	return 0;
 }
 
 /**
@@ -358,7 +358,7 @@ struct kvx_dma_phy *kvx_dma_get_phy(struct kvx_dma_dev *dev,
 		for (i = 0; i < nb_phy; ++i) {
 			p = &dev->phy[dir][i];
 			/* rx_tag is equivalent to Rx fifo id */
-			if (!refcount_read(&p->used) &&
+			if (refcount_read(&p->used) <= 1 &&
 			    p->hw_id == c->cfg.rx_tag) {
 				if (kvx_dma_check_rx_q_enabled(p,
 							c->cfg.rx_cache_id)) {
@@ -399,36 +399,6 @@ out:
 }
 
 /**
- * kvx_dma_slave_config() - Configures slave before actual transfer
- * @chan: Channel to configure
- * @cfg: Base dmaengine configuration (contained in kvx_dma_slave_cfg)
- *
- * Initializes hw queues depending on transfer direction and type
- *
- * Return: O - OK
- */
-static int kvx_dma_slave_config(struct dma_chan *chan,
-				struct dma_slave_config *cfg)
-{
-	struct kvx_dma_chan *c = to_kvx_dma_chan(chan);
-	struct device *dev = c->dev->dma.dev;
-
-	/* Get extended slave config */
-	struct kvx_dma_slave_cfg *slave_cfg = container_of(cfg,
-					 struct kvx_dma_slave_cfg, cfg);
-
-	/* Copy config */
-	if (!test_bit(KVX_DMA_HW_INIT_DONE, &c->state)) {
-		c->cfg = *slave_cfg;
-	} else {
-		dev_err(dev, "%s Attempt to reset configuration\n", __func__);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-/**
  * kvx_dma_alloc_chan_resources() - Allocates channel resources
  * @chan: Channel to configure
  *
@@ -453,6 +423,23 @@ err_kmemcache:
 	c->phy = NULL;
 	kmem_cache_destroy(c->desc_cache);
 	return -ENOMEM;
+}
+
+/**
+ * kvx_dma_release_phy() - release hw_queues associated to phy
+ * @dev: Current device
+ * @phy: phy to release
+ */
+static void kvx_dma_release_phy(struct kvx_dma_dev *d, struct kvx_dma_phy *phy)
+{
+	if (!phy)
+		return;
+
+	dev_dbg(d->dma.dev, "%s dir: %d hw_id: %d\n", __func__,
+		phy->dir, phy->hw_id);
+	spin_lock(&d->lock);
+	kvx_dma_release_queues(phy, &d->jobq_list);
+	spin_unlock(&d->lock);
 }
 
 /**
@@ -567,33 +554,55 @@ static int kvx_dma_get_route_id(struct kvx_dma_dev *dev, u64 route,
  *
  * Return: 0 - OK -EAGAIN - failed to add route
  */
-static int kvx_dma_setup_route(struct kvx_dma_chan *c)
+int kvx_dma_add_route(struct kvx_dma_dev *d, struct kvx_dma_phy *phy,
+		      struct kvx_dma_param *param)
 {
-	struct kvx_dma_dev *dev = c->dev;
-	struct kvx_dma_slave_cfg *cfg = &c->cfg;
-	int global = is_asn_global(c->phy->asn);
-	u64 route = cfg->noc_route;
+	int global = is_asn_global(phy->asn);
+	u64 route = param->noc_route;
 	int ret = 0;
 
-	route |= ((u64)(cfg->rx_tag & 0x3FU) << KVX_DMA_NOC_RT_RX_TAG_SHIFT) |
-		((u64)(cfg->qos_id & 0xFU)   << KVX_DMA_NOC_RT_QOS_ID_SHIFT) |
+	route |= ((u64)(param->rx_tag & 0x3FU) << KVX_DMA_NOC_RT_RX_TAG_SHIFT) |
+		((u64)(param->qos_id & 0xFU)   << KVX_DMA_NOC_RT_QOS_ID_SHIFT) |
 		((u64)(global & 0x1U)        << KVX_DMA_NOC_RT_GLOBAL_SHIFT) |
-		((u64)(c->phy->asn & KVX_DMA_ASN_MASK) <<
+		((u64)(phy->asn & KVX_DMA_ASN_MASK) <<
 		 KVX_DMA_NOC_RT_ASN_SHIFT) |
-		((u64)(c->phy->vchan & 0x1)  << KVX_DMA_NOC_RT_VCHAN_SHIFT)  |
+		((u64)(phy->vchan & 0x1)     << KVX_DMA_NOC_RT_VCHAN_SHIFT)  |
 		((u64)(1)                    << KVX_DMA_NOC_RT_VALID_SHIFT);
-	spin_lock(&dev->lock);
-	ret = kvx_dma_get_route_id(dev, route, &c->cfg.route_id);
-	spin_unlock(&dev->lock);
+	spin_lock(&d->lock);
+	ret = kvx_dma_get_route_id(d, route, &param->route_id);
+	spin_unlock(&d->lock);
 	if (ret) {
-		dev_err(dev->dma.dev, "Unable to get route_id\n");
+		dev_err(phy->dev, "Unable to get route_id\n");
 		return ret;
 	}
-	dev_dbg(dev->dma.dev, "chan[%d] route[%d]: 0x%llx rx_tag: 0x%x global: %d asn: %d vchan: %d\n",
-		 c->phy->hw_id, c->cfg.route_id, route, cfg->rx_tag,
-		 global, c->phy->asn, c->phy->vchan);
+	dev_dbg(phy->dev, "chan[%d] route[%d]: 0x%llx rx_tag: 0x%x global: %d asn: %d vchan: %d\n",
+		 phy->hw_id, param->route_id, route, param->rx_tag,
+		 global, phy->asn, phy->vchan);
 
 	return 0;
+}
+
+/**
+ * kvx_dma_setup_route() - Sets chan route_id based on noc route
+ * @c: channel with configuration
+ *
+ * Adds route to dma noc_route table
+ *
+ * Return: 0 - OK -EAGAIN - failed to add route
+ */
+static int kvx_dma_setup_route(struct kvx_dma_chan *c)
+{
+	struct kvx_dma_param param = {
+		.noc_route = c->cfg.noc_route,
+		.rx_tag = c->cfg.rx_tag,
+		.qos_id = c->cfg.qos_id,
+	};
+	int ret = kvx_dma_add_route(c->dev, c->phy, &param);
+
+	if (!ret)
+		c->cfg.route_id = param.route_id;
+
+	return ret;
 }
 
 /**
@@ -694,138 +703,6 @@ err:
 }
 
 /**
- * kvx_dma_prep_slave_sg() - Get new transfer descriptor for slave connexion
- * @chan: the channel to get a descriptor from
- * @sgl: the list of buffers to map the descriptor
- * @sgl_len: the size of sg (number of elements)
- * @direction: RX or TX
- * @tx_flags: tx flags to pass
- * @context: unused in this driver
- *
- * Return: new dma transfer descriptor or NULL
- */
-static struct dma_async_tx_descriptor *kvx_dma_prep_slave_sg(
-		struct dma_chan *chan,
-		struct scatterlist *sgl, unsigned int sg_len,
-		enum dma_transfer_direction direction, unsigned long tx_flags,
-		void *context)
-{
-	struct kvx_dma_chan *c = to_kvx_dma_chan(chan);
-	struct kvx_dma_dev *d = c->dev;
-	struct device *dev = d->dma.dev;
-	struct virt_dma_chan *vc = &c->vc;
-	struct kvx_dma_desc *desc;
-	struct kvx_dma_tx_job *txd;
-	struct scatterlist *sgent;
-	enum kvx_dma_dir_type dir = c->cfg.dir;
-	enum kvx_dma_transfer_type type = c->cfg.trans_type;
-	int i = 0, ret = 0;
-
-	if (sg_len > KVX_DMA_MAX_TXD) {
-		dev_err(dev, "Too many requested transfers (limit: %d)!\n",
-			KVX_DMA_MAX_TXD);
-		return NULL;
-	}
-
-	if (direction != DMA_DEV_TO_MEM && direction != DMA_MEM_TO_DEV) {
-		dev_err(dev, "Invalid DMA direction %d!\n", direction);
-		return NULL;
-	}
-
-	if ((direction == DMA_DEV_TO_MEM && dir != KVX_DMA_DIR_TYPE_RX) ||
-	    (direction == DMA_MEM_TO_DEV && dir != KVX_DMA_DIR_TYPE_TX)) {
-		dev_err(dev, "Invalid DMA dir != hw %d!\n", direction);
-		return NULL;
-	}
-
-	if (dir == KVX_DMA_DIR_TYPE_RX && type == KVX_DMA_TYPE_MEM2ETH) {
-		dev_err(dev, "RX flow not supported by DMA engine\n");
-		return NULL;
-	}
-
-	if (dir == KVX_DMA_DIR_TYPE_RX) {
-		if (sg_len > 1 && type == KVX_DMA_TYPE_MEM2NOC) {
-			/* sg_len limited to 1 for RX eth/noc 1 desc == 1 hw_job
-			 * Rx completion can not be handled else
-			 */
-			dev_err(dev, "SG len > 1 NOT supported\n");
-			return NULL;
-		}
-	}
-
-	desc = kvx_dma_get_desc(c);
-	if (!desc) {
-		dev_err(dev, "Failed to alloc dma desc\n");
-		return NULL;
-	}
-	desc->dir = direction;
-
-	if (!test_and_set_bit(KVX_DMA_HW_INIT_DONE, &c->state)) {
-		c->phy = kvx_dma_get_phy(d, c);
-		if (c->phy == NULL) {
-			dev_err(dev, "No phy available\n");
-			goto err_hw_init;
-		}
-
-		spin_lock(&d->lock);
-		ret = kvx_dma_allocate_queues(c->phy, &d->jobq_list,
-					      c->cfg.trans_type);
-		spin_unlock(&d->lock);
-		if (!ret) {
-			if (dir == KVX_DMA_DIR_TYPE_RX)
-				ret = kvx_dma_init_rx_queues(c->phy,
-							     c->cfg.trans_type);
-			else
-				ret = kvx_dma_init_tx_queues(c->phy);
-
-			if (ret) {
-				dev_err(dev, "Unable to init queues\n");
-				kvx_dma_release_phy(d, c->phy);
-				goto err_hw_init;
-			}
-		}
-		if (desc->dir == DMA_MEM_TO_DEV) {
-			if (kvx_dma_setup_route(c))
-				goto err;
-		}
-	}
-
-	desc->phy = c->phy;
-	desc->txd_nb = sg_len;
-	for_each_sg(sgl, sgent, sg_len, i) {
-		txd = &desc->txd[i];
-		txd->src_dma_addr = sg_dma_address(sgent);
-		txd->dst_dma_addr = 0;
-		txd->len = sg_dma_len(sgent);
-		txd->nb = 1;
-		txd->comp_q_id = desc->phy->hw_id;
-		txd->route_id = c->cfg.route_id;
-		txd->fence_before = 1;
-		dev_dbg(dev, "%s txd.base: 0x%llx .len: %lld\n",
-			__func__, txd->src_dma_addr, txd->len);
-	}
-	if (desc->phy->dir == KVX_DMA_DIR_TYPE_RX &&
-			c->cfg.trans_type == KVX_DMA_TYPE_MEM2NOC) {
-		dev_dbg(dev, "Finishing alloc RX channel[%d] paddr: 0x%llx\n",
-				c->phy->hw_id, sg_dma_address(sgl));
-		if (kvx_dma_fifo_rx_channel_queue_post_init(desc->phy,
-							sg_dma_address(sgl),
-							sg_dma_len(sgl)) != 0) {
-			dev_err(dev, "Unable to alloc RX channel\n");
-			goto err;
-		}
-	}
-
-	return vchan_tx_prep(vc, &desc->vd, tx_flags);
-
-err_hw_init:
-	clear_bit(KVX_DMA_HW_INIT_DONE, &c->state);
-err:
-	kvx_dma_release_desc(&desc->vd);
-	return NULL;
-}
-
-/**
  * kvx_dma_chan_init - Allocates and init kvx_dma_chan channel
  * @dev: Current device
  *
@@ -861,11 +738,25 @@ static void kvx_dma_free_phy(struct kvx_dma_dev *dev)
 	for (dir = 0; dir < KVX_DMA_DIR_TYPE_MAX; ++dir) {
 		p = dev->phy[dir];
 		for (i = 0; i < kvx_dma_get_phy_nb(dir); ++i) {
-			refcount_set(&p[i].used, 0);
+			refcount_set(&p[i].used, 1);
 			kvx_dma_free_irq(&p[i]);
 		}
 	}
 	spin_unlock(&dev->lock);
+}
+
+/**
+ * kvx_dma_comp_task() - Handles completion for each channel linked with hw chan
+ *
+ * @arg: hw channel
+ */
+void kvx_dma_comp_task(unsigned long arg)
+{
+	struct kvx_dma_phy *phy = (struct kvx_dma_phy *)arg;
+	struct kvx_dma_channel *c;
+
+	list_for_each_entry(c, &phy->chan_list, node)
+		c->irq_handler(c->irq_data);
 }
 
 /**
@@ -891,11 +782,14 @@ static int kvx_dma_allocate_phy(struct kvx_dma_dev *dev)
 			p->max_desc = dev->dma_requests;
 			p->base = dev->iobase;
 			p->dir = j;
-			refcount_set(&p->used, 0);
+			refcount_set(&p->used, 1);
 			p->dev = dev->dma.dev;
 			p->asn = dev->asn;
 			p->vchan = dev->vchan;
 			p->msi_cfg.ptr = (void *)&dev->completion_task;
+			INIT_LIST_HEAD(&p->chan_list);
+			tasklet_init(&p->comp_task, kvx_dma_comp_task,
+				     (unsigned long)p);
 
 			if (kvx_dma_dbg_init(p, dev->dbg))
 				dev_warn(dev->dma.dev, "Failed to init debugfs\n");
@@ -1147,9 +1041,6 @@ static int kvx_dma_probe(struct platform_device *pdev)
 	dma->device_free_chan_resources  = kvx_dma_free_chan_resources;
 	dma->device_tx_status            = kvx_dma_tx_status;
 	dma->device_issue_pending        = kvx_dma_issue_pending;
-	/* Fill DMA_SLAVE fields */
-	dma->device_prep_slave_sg        = kvx_dma_prep_slave_sg;
-	dma->device_config               = kvx_dma_slave_config;
 	/* memcpy */
 	dma->device_prep_dma_memcpy      = kvx_prep_dma_memcpy;
 

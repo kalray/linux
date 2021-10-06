@@ -131,6 +131,12 @@ struct msi_cfg {
 	void *ptr;
 };
 
+struct kvx_dma_channel {
+	struct list_head node;
+	void (*irq_handler)(void *data);
+	void *irq_data;
+};
+
 /**
  * struct kvx_dma_phy - HW description, limited to one transfer type
  * @dev: This device
@@ -170,8 +176,8 @@ struct kvx_dma_phy {
 	u32 vchan;
 	u32 fifo_size;
 	u32 fifo_size_mask;
-	void (*irq_handler)(void *data);
-	void *irq_data;
+	struct list_head chan_list;
+	struct tasklet_struct comp_task;
 };
 
 /*
@@ -199,6 +205,7 @@ void kvx_dma_free_irq(struct kvx_dma_phy *phy);
 irqreturn_t kvx_dma_err_irq_handler(int irq, void *data);
 
 /* RX queues */
+inline u64 kvx_dma_compq_readq(struct kvx_dma_phy *phy, u64 off);
 int kvx_dma_pkt_rx_queue_push_desc(struct kvx_dma_phy *phy, u64 pkt_paddr,
 				   u64 pkt_len);
 void kvx_dma_pkt_rx_queue_flush(struct kvx_dma_phy *phy);
@@ -223,6 +230,7 @@ int kvx_dma_pkt_tx_acquire_jobs(struct kvx_dma_phy *phy, u64 nb_jobs, u64 *t);
 void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
 				      struct kvx_dma_tx_job *tx_job, u64 eot);
 int kvx_dma_pkt_tx_submit_jobs(struct kvx_dma_phy *phy, u64 t, u64 nb_job);
+void kvx_dma_dump_tx_jobq(struct kvx_dma_phy *phy);
 int kvx_dma_pkt_tx_push(struct kvx_dma_phy *phy,
 			struct kvx_dma_tx_job *tx_job, u64 eot,
 			u64 *hw_job_id);
