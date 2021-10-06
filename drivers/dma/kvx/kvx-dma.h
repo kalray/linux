@@ -17,6 +17,7 @@
 
 #include "../virt-dma.h"
 #include "kvx-dma-hw.h"
+#include <linux/dma/kvx-dma.h>
 
 #define KVX_STR_LEN               (32)
 
@@ -180,6 +181,8 @@ int kvx_dma_sysfs_init(struct dma_device *dma);
 void kvx_dma_sysfs_remove(struct dma_device *dma);
 
 int kvx_dma_dbg_init(struct kvx_dma_phy *phy, struct dentry *dbg);
-void kvx_dma_release_phy(struct kvx_dma_dev *dev, struct kvx_dma_phy *phy);
+int kvx_dma_add_route(struct kvx_dma_dev *d, struct kvx_dma_phy *phy,
+		      struct kvx_dma_param *param);
+
 
 #endif /* ASM_KVX_DMA_H */

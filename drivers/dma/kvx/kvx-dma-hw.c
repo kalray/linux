@@ -177,7 +177,7 @@ static inline u64 kvx_dma_jobq_readq(struct kvx_dma_phy *phy, u64 off)
 	return readq(phy->jobq->base + off);
 }
 
-static inline u64 kvx_dma_compq_readq(struct kvx_dma_phy *phy, u64 off)
+inline u64 kvx_dma_compq_readq(struct kvx_dma_phy *phy, u64 off)
 {
 	return readq(phy->compq.base + off);
 }
@@ -399,7 +399,7 @@ int kvx_dma_pkt_rx_queue_push_desc(struct kvx_dma_phy *phy,
 }
 
 /**
- * kvx_dma_pkt_rx_dequeue() - Increments RX jobq read pointer to valid_wp
+ * kvx_dma_pkt_rx_queue_flush() - Increments RX jobq read pointer to valid_wp
  *
  * Invalidates all pending descriptors
  * @phy: Current phy
@@ -569,7 +569,7 @@ int kvx_dma_init_rx_queues(struct kvx_dma_phy *phy,
 {
 	int ret = 0;
 
-	if (refcount_read(&phy->used) > 1) {
+	if (refcount_read(&phy->used) > 2) {
 		dev_err(phy->dev, "Can not re-init RX queues\n");
 		return -EINVAL;
 	}
@@ -596,7 +596,7 @@ int kvx_dma_init_tx_queues(struct kvx_dma_phy *phy)
 	int ret = 0;
 
 	/* Init done only once (as tx fifo may be used by multiple chan) */
-	if (refcount_read(&phy->used) > 1)
+	if (refcount_read(&phy->used) > 2)
 		return ret;
 	kvx_dma_stop_queues(phy);
 	ret = kvx_dma_tx_job_queue_init(phy);
@@ -1107,15 +1107,15 @@ int kvx_dma_pkt_tx_acquire_jobs(struct kvx_dma_phy *phy, u64 nb_jobs,
 
 	ret = readq_poll_timeout_atomic(phy->jobq->base +
 					KVX_DMA_TX_JOB_Q_RP_OFFSET,
-			   rp, (next_value < rp + phy->fifo_size), 0,
+			   rp, (next_value <= rp + phy->fifo_size), 0,
 			   JOB_ACQUIRE_TIMEOUT_IN_US);
 	if (ret)
 		return ret;
 
+	*ticket = current_value;
 	dev_dbg(phy->dev, "%s queue[%d] ticket: %lld nb_jobs: %lld rp: %lld\n",
 		 __func__, phy->hw_id, *ticket, nb_jobs, rp);
 
-	*ticket = current_value;
 	return 0;
 }
 
@@ -1161,15 +1161,44 @@ void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
  */
 int kvx_dma_pkt_tx_submit_jobs(struct kvx_dma_phy *phy, u64 t, u64 nb_jobs)
 {
-	u64 wp;
+	u64 wp, next_value = t + nb_jobs;
 	int ret = readq_poll_timeout_atomic(phy->jobq->base +
 				KVX_DMA_TX_JOB_Q_VALID_WP_OFFSET,
 				wp, (wp == t), 0, JOB_ACQUIRE_TIMEOUT_IN_US);
-	if (ret)
+	if (ret) {
+		dev_err(phy->dev, "%s valid_wp: %lld t: %lld\n", __func__, wp, t);
 		return ret;
-	kvx_dma_jobq_writeq(phy, t + nb_jobs, KVX_DMA_TX_JOB_Q_VALID_WP_OFFSET);
+	}
 
-	return 0;
+	kvx_dma_jobq_writeq(phy, next_value, KVX_DMA_TX_JOB_Q_VALID_WP_OFFSET);
+	__builtin_kvx_fence();
+
+	return next_value;
+}
+
+void kvx_dma_dump_tx_jobq(struct kvx_dma_phy *phy)
+{
+	u64 rp = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_RP_OFFSET);
+	u64 wp = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_WP_OFFSET);
+	u64 valid_wp = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_VALID_WP_OFFSET);
+	struct kvx_dma_tx_job_desc *tx_jobq =
+		(struct kvx_dma_tx_job_desc *)phy->jobq->vaddr;
+	struct kvx_dma_tx_job_desc *job = &tx_jobq[rp & phy->fifo_size_mask];
+	int i;
+
+	dev_err(phy->dev, "tx[0] tx batched_wp: %lld rp: %lld wp: %lld valid_wp: %lld\n",
+		phy->jobq->batched_wp, rp, wp, valid_wp);
+
+	rp = 0;
+	while (rp < phy->fifo_size) {
+		job = &tx_jobq[rp & phy->fifo_size_mask];
+		for (i = 0; i < 2 /*KVX_DMA_UC_NB_PARAMS*/; i++) {
+			dev_err(phy->dev, "Tx jobq[%d][%lld] job param[%d]: 0x%llx\n",
+			       phy->hw_id, rp & phy->fifo_size_mask, i, job->param[i]);
+		}
+		dev_err(phy->dev, "tx[0] config: 0x%llx\n", job->config);
+		rp++;
+	}
 }
 
 /**
