@@ -32,6 +32,7 @@ enum kvx_dma_transfer_type {
  * @route_id: Transfer route id in hw tx route table (assuming 1 route per chan)
  * @noc_route: Transfer route
  * @qos_id: qos
+ * @rx_tag: channel selector
  * @rx_cache_id: Rx cache associated to rx job queue [0, 3]
  */
 struct kvx_dma_slave_cfg {
@@ -43,6 +44,26 @@ struct kvx_dma_slave_cfg {
 	u8  rx_tag;
 	u8  qos_id;
 	u8  rx_cache_id;
+};
+
+/**
+ * struct kvx_dma_param - dma additional parameters
+ *
+ * @noc_route: NOC route
+ * @route_id: Transfer route id in hw tx route table (assuming 1 route per chan)
+ * @noc_route: Transfer route
+ * @qos_id: qos
+ * @rx_tag: channel selector
+ * @rx_cache_id: Rx cache associated to rx job queue [0, 3]
+ * @chan: opaque pointer to chan
+ */
+struct kvx_dma_param {
+	u64 noc_route;
+	u16 route_id;
+	u8  rx_tag;
+	u8  qos_id;
+	u8  rx_cache_id;
+	void *chan;
 };
 
 /**

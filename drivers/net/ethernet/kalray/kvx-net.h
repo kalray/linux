@@ -46,22 +46,26 @@ struct kvx_eth_dev {
 	struct kvx_eth_type *type;
 };
 
-/* TX buffer descriptor */
+/*
+ * struct kvx_eth_netdev_tx - TX buffer descriptor
+ * @skb:     skb pointer
+ * @sg:      sg list for fragments
+ * @sg_len:  sg number of elements
+ * @len:     total size in bytes
+ * @job_idx: descriptor hw id
+ */
 struct kvx_eth_netdev_tx {
-	struct kvx_eth_netdev *ndev;
 	struct sk_buff *skb;
 	struct scatterlist sg[MAX_SKB_FRAGS + 1];
-	u32 sg_len;             /* SG number of elements */
-	size_t len;             /* tx size in bytes */
-	dma_cookie_t cookie;
-	struct kvx_callback_param cb_p;
+	size_t sg_len;
+	size_t len;
+	u64 job_idx;
 };
 
 struct kvx_eth_ring {
 	struct net_device *netdev;
-	struct dma_chan *chan;
-	void *rx_dma_chan;
-	struct kvx_dma_slave_cfg config;
+	void *dma_chan;
+	struct kvx_dma_param param;
 	union {
 		struct kvx_buf_pool pool;
 		struct kvx_eth_netdev_tx *tx_buf;
@@ -73,6 +77,7 @@ struct kvx_eth_ring {
 	u16 next_to_clean;
 	u16 refill_thres;
 	int qidx;
+	bool init_done;
 };
 
 struct kvx_eth_node_id {

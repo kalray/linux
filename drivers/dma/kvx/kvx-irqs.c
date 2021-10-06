@@ -80,13 +80,11 @@ static irqreturn_t kvx_dma_irq_handler(int chirq, void *arg)
 	struct kvx_dma_phy *phy = (struct kvx_dma_phy *)arg;
 	struct tasklet_struct *task = (struct tasklet_struct *)phy->msi_cfg.ptr;
 
-	if (phy->irq_handler) {
-		phy->irq_handler(phy->irq_data);
-	} else if (task) {
-		dev_dbg(phy->dev, "%s TX\n", __func__);
-		/* Schedule completion tasklet */
+	/* Schedule completion tasklet */
+	if (likely(!list_empty(&phy->chan_list)))
+		tasklet_schedule(&phy->comp_task);
+	else if (task)
 		tasklet_schedule(task);
-	}
 
 	return IRQ_HANDLED;
 }
