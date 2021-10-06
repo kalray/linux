@@ -9,6 +9,7 @@
 
 #include <linux/msi.h>
 #include <linux/interrupt.h>
+#include <linux/scatterlist.h>
 #include <linux/dma/kvx-dma-api.h>
 
 #include "kvx-dma.h"
@@ -26,6 +27,19 @@ void *kvx_dma_get_rx_phy(struct platform_device *pdev, unsigned int id)
 }
 EXPORT_SYMBOL_GPL(kvx_dma_get_rx_phy);
 
+void *kvx_dma_get_tx_phy(struct platform_device *pdev, unsigned int id)
+{
+	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
+
+	if (id >= KVX_DMA_TX_JOB_QUEUE_NUMBER) {
+		dev_err(d->dma.dev, "No TX channel with id %d\n", id);
+		return NULL;
+	}
+
+	return &d->phy[KVX_DMA_DIR_TYPE_TX][id];
+}
+EXPORT_SYMBOL_GPL(kvx_dma_get_tx_phy);
+
 int kvx_dma_get_max_nb_desc(struct platform_device *pdev)
 {
 	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
@@ -34,22 +48,61 @@ int kvx_dma_get_max_nb_desc(struct platform_device *pdev)
 }
 EXPORT_SYMBOL_GPL(kvx_dma_get_max_nb_desc);
 
+static int kvx_dma_add_chan(struct kvx_dma_phy *p, struct kvx_dma_param *param,
+			    void (*irq_callback)(void *data), void *data)
+{
+	struct kvx_dma_channel *c = kzalloc(sizeof(*c), GFP_KERNEL);
+
+	if (!c)
+		return -ENOMEM;
+	INIT_LIST_HEAD(&c->node);
+	c->irq_handler = irq_callback;
+	c->irq_data = data;
+	param->chan = c;
+	/* Prevent scheduling wrong BH */
+	p->msi_cfg.ptr = NULL;
+	list_add_tail(&c->node, &p->chan_list);
+	if (!refcount_inc_not_zero(&p->used))
+		return -EINVAL;
+
+	return 0;
+}
+
+static int kvx_dma_del_chan(struct kvx_dma_phy *p, struct kvx_dma_param *param)
+{
+	struct kvx_dma_channel *c, *tmp_c;
+
+	list_for_each_entry_safe(c, tmp_c, &p->chan_list, node) {
+		if (c == param->chan) {
+			list_del_init(&c->node);
+			kfree(c);
+			param->chan = NULL;
+			if (!refcount_dec_not_one(&p->used))
+				return -EINVAL;
+			return 0;
+		}
+	}
+	return -EINVAL;
+}
+
 /**
  * kvx_dma_release_phy() - release hw_queues associated to phy
  * @dev: Current device
  * @phy: phy to release
  */
-void kvx_dma_release_phy(struct kvx_dma_dev *dev, struct kvx_dma_phy *phy)
+static void kvx_dma_release_phy(struct kvx_dma_dev *d, struct kvx_dma_phy *phy,
+				struct kvx_dma_param *param)
 {
 	if (!phy)
 		return;
 
-	dev_dbg(dev->dma.dev, "%s dir: %d hw_id: %d\n", __func__,
+	dev_dbg(d->dma.dev, "%s dir: %d hw_id: %d\n", __func__,
 		phy->dir, phy->hw_id);
-	spin_lock(&dev->lock);
-	kvx_dma_release_queues(phy, &dev->jobq_list);
-	refcount_set(&phy->used, 0);
-	spin_unlock(&dev->lock);
+	spin_lock(&d->lock);
+	kvx_dma_del_chan(phy, param);
+	if (list_empty(&phy->chan_list))
+		kvx_dma_release_queues(phy, &d->jobq_list);
+	spin_unlock(&d->lock);
 }
 
 /**
@@ -61,7 +114,7 @@ void kvx_dma_release_phy(struct kvx_dma_dev *dev, struct kvx_dma_phy *phy)
  * Return: 0 - OK, < 0 - Reserved failed
  */
 int kvx_dma_reserve_rx_chan(struct platform_device *pdev, void *phy,
-			    unsigned int rx_cache_id,
+			    struct kvx_dma_param *param,
 			    void (*irq_callback)(void *data), void *data)
 {
 	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
@@ -69,44 +122,172 @@ int kvx_dma_reserve_rx_chan(struct platform_device *pdev, void *phy,
 	struct device *dev = p->dev;
 	int ret = 0;
 
-	spin_lock_irq(&d->lock);
-	if (refcount_read(&p->used) ||
-	    kvx_dma_check_rx_q_enabled(p, rx_cache_id)) {
-		spin_unlock(&d->lock);
-		dev_err(dev, "RX channel[%d] already in use\n", p->hw_id);
-		return -EINVAL;
-	}
-
-	refcount_set(&p->used, 1);
-	p->rx_cache_id = rx_cache_id;
-	p->irq_handler = irq_callback;
-	p->irq_data = data;
-	spin_unlock_irq(&d->lock);
-
-	ret = kvx_dma_allocate_queues(p, &d->jobq_list, KVX_DMA_TYPE_MEM2ETH);
+	ret = kvx_dma_add_chan(p, param, irq_callback, data);
 	if (ret)
 		return ret;
 
+	p->rx_cache_id = param->rx_cache_id;
+
+	spin_lock(&d->lock);
+	if (refcount_read(&p->used) > 2 ||
+	    kvx_dma_check_rx_q_enabled(p, p->rx_cache_id)) {
+		spin_unlock(&d->lock);
+		return 0;
+	}
+
+	ret = kvx_dma_allocate_queues(p, &d->jobq_list, KVX_DMA_TYPE_MEM2ETH);
+	if (ret) {
+		spin_unlock(&d->lock);
+		goto err;
+	}
+
 	ret = kvx_dma_init_rx_queues(p, KVX_DMA_TYPE_MEM2ETH);
+	spin_unlock(&d->lock);
 	if (ret) {
 		dev_err(dev, "Unable to init RX queues\n");
-		kvx_dma_release_phy(d, p);
-		return ret;
+		goto err;
 	}
 
 	return 0;
+
+err:
+	kvx_dma_release_phy(d, p, param);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(kvx_dma_reserve_rx_chan);
 
-int kvx_dma_release_rx_chan(struct platform_device *pdev, void *phy)
+/**
+ * kvx_dma_reserve_tx_chan() - Reserve tx channel for MEM2ETH use only
+ * Allocates and initialise all required hw TX fifos.
+ *
+ * @irq_callback: callback to called from irq handler (can be NULL)
+ *
+ * Return: 0 - OK, < 0 - Reserved failed
+ */
+int kvx_dma_reserve_tx_chan(struct platform_device *pdev, void *phy,
+			    struct kvx_dma_param *param,
+			    void (*irq_callback)(void *data), void *data)
+{
+	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
+	struct device *dev = p->dev;
+	int ret = 0;
+
+	ret = kvx_dma_add_chan(p, param, irq_callback, data);
+	if (ret)
+		return ret;
+
+	spin_lock(&d->lock);
+	if (refcount_read(&p->used) > 2 || kvx_dma_check_tx_q_enabled(p)) {
+		spin_unlock(&d->lock);
+		goto add_route;
+	}
+
+	ret = kvx_dma_allocate_queues(p, &d->jobq_list, KVX_DMA_TYPE_MEM2ETH);
+	if (ret) {
+		spin_unlock(&d->lock);
+		goto err;
+	}
+
+	ret = kvx_dma_init_tx_queues(p);
+	if (ret) {
+		spin_unlock(&d->lock);
+		dev_err(dev, "Unable to init TX queues\n");
+		goto err;
+	}
+	spin_unlock(&d->lock);
+
+add_route:
+	ret = kvx_dma_add_route(d, p, param);
+	if (ret)
+		goto err;
+
+	return 0;
+err:
+	kvx_dma_release_phy(d, p, param);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(kvx_dma_reserve_tx_chan);
+
+int kvx_dma_release_chan(struct platform_device *pdev, void *phy,
+			 struct kvx_dma_param *param)
 {
 	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
 	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
 
-	kvx_dma_release_phy(d, p);
+	kvx_dma_release_phy(d, p, param);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(kvx_dma_release_rx_chan);
+EXPORT_SYMBOL_GPL(kvx_dma_release_chan);
+
+/**
+ * kvx_dma_prepare_pkt() - Acquire and write N jobs in Tx fifo
+ *
+ * @phy: hw tx channel
+ * @sg: sg list of packet fragments
+ * @sg_len: nb of element of sg list
+ * @route_id: identifier in dma route table
+ * @job_idx: returned job index in job queue
+ *
+ * Return: 0 - OK -EBUSY if job fifo is full
+ */
+int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
+		       u16 route_id, u64 *job_idx)
+{
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
+	struct kvx_dma_tx_job txd;
+	struct scatterlist *sgent;
+	int i, ret = 0;
+	u64 eot, start_ticket;
+
+	ret = kvx_dma_pkt_tx_acquire_jobs(p, sg_len, job_idx);
+	if (ret) {
+		dev_warn_ratelimited(p->dev, "%s Tx jobq[%d] failed to acquire %ld jobs\n",
+				     __func__, p->hw_id, sg_len);
+		return ret;
+	}
+	start_ticket = *job_idx;
+
+	for_each_sg(sg, sgent, sg_len, i) {
+		eot = (i == sg_len - 1 ? 1 : 0);
+		txd.src_dma_addr = sg_dma_address(sgent);
+		txd.dst_dma_addr = 0;
+		txd.len = sg_dma_len(sgent);
+		txd.nb = 1;
+		txd.comp_q_id = p->hw_id;
+		txd.route_id = route_id;
+		txd.fence_before = 1;
+		txd.fence_after = 0;
+		kvx_dma_pkt_tx_write_job(p, start_ticket, &txd, eot);
+		start_ticket++;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(kvx_dma_prepare_pkt);
+
+/**
+ * kvx_dma_submit_pkt() - Submit N previously acquired jobs
+ *
+ * @phy: hw tx channel
+ * @job_idx: returned job index in job queue
+ * @nb: number of jobs to submit
+ *
+ * Return: 0 - OK -EBUSY if job fifo is full
+ */
+int kvx_dma_submit_pkt(void *phy, u64 job_idx, size_t nb)
+{
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
+	int ret = 0;
+
+	ret = kvx_dma_pkt_tx_submit_jobs(p, job_idx, nb);
+	if (ret < 0)
+		dev_warn_ratelimited(p->dev, "%s Tx jobq[%d] failed to submit %ld jobs @%lld\n",
+				     __func__, p->hw_id, nb, job_idx);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(kvx_dma_submit_pkt);
 
 int kvx_dma_enqueue_rx_buffer(void *phy, u64 dma_addr, u64 len)
 {
@@ -146,6 +327,12 @@ int kvx_dma_get_rx_completed(struct platform_device *pdev, void *phy,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(kvx_dma_get_rx_completed);
+
+u64 kvx_dma_get_tx_completed(struct platform_device *pdev, void *phy)
+{
+	return kvx_dma_compq_readq(phy, KVX_DMA_TX_COMP_Q_WP_OFFSET);
+}
+EXPORT_SYMBOL_GPL(kvx_dma_get_tx_completed);
 
 void kvx_dma_enable_irq(void *phy)
 {
