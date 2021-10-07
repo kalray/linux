@@ -23,7 +23,15 @@ void kvx_pwr_ctrl_cpu_poweron(unsigned int cpu);
 #define KVX_PWR_CTRL_RESET_PC_OFFSET               0x2000
 
 /* Power controller global register definitions */
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define KVX_PWR_CTRL_GLOBAL_OFFSET 0x4040
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define KVX_SEC_CLUSTER_ADDR 0xCC2000
+#define KVX_PWR_CTRL_GLOBAL_OFFSET 0x40
+#else
+#error Unsupported arch
+#endif
+
 #define KVX_PWR_CTRL_GLOBAL_SET_OFFSET     0x10
 #define KVX_PWR_CTRL_GLOBAL_SET_PE_EN_SHIFT           0x1
 

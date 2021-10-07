@@ -306,7 +306,15 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	make $r27 = PWR_CTRL_GLOBAL_CONFIG_VALUE
 	;;
 	/* Set PE enable in power controller */
+	#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 	sd PWR_CTRL_GLOBAL_CONFIG_OFFSET[$r26] = $r27
+	#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+	make $r32 = KVX_SEC_CLUSTER_ADDR
+	;;
+	sd PWR_CTRL_GLOBAL_CONFIG_OFFSET[$r32] = $r27
+	#else
+	#error Unsupported arch
+	#endif
 	make $r28 = rm_boot_args
 	;;
 	/* Store parameters for PE0 */
