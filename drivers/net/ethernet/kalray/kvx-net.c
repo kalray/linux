@@ -1370,6 +1370,10 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	}
 	dev_info(&pdev->dev, "parser tictoc: %d\n", dev->hw.parsers_tictoc);
 
+	of_property_read_u32(np, "kalray,limit_rx_pps", &dev->hw.limit_rx_pps);
+	if (dev->hw.limit_rx_pps)
+		dev_warn(&pdev->dev, "!!LIMIT pps %d\n", dev->hw.limit_rx_pps);
+
 	if (of_property_read_u32_array(np, "kalray,dma-rx-chan-error",
 				       (u32 *)&dev->hw.rx_chan_error, 1) != 0)
 		dev->hw.rx_chan_error = 0xFF;
