@@ -781,6 +781,7 @@ struct lt_status {
  *                meaning rx4->tx0, rx3->tx1, etc.
  * @parsers_tictoc: if we need to mirror parsers configuration from top half
  *          to bottom half. aka tictoc patch.
+ * @limit_rx_pps: NOC RX pps limiter (value, 0: disabled)
  * @eth_id: [0, 1] ethernet hw block id
  * @mppa_id: owns ews fuse reg
  * @dev_id: mppa device_id (part of FT fuse reg)
@@ -807,6 +808,7 @@ struct kvx_eth_hw {
 	struct mutex mac_reset_lock;
 	u32 rxtx_crossed;
 	u32 parsers_tictoc;
+	u32 limit_rx_pps;
 	u32 eth_id;
 	u64 mppa_id;
 	u16 dev_id;
