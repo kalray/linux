@@ -41,9 +41,19 @@
 #define HW_PT_CMD_SET_RESERVE	0
 #define HW_PT_CMD_SET_ENABLE	1
 
-#define hw_pt_cmd(addr) ((addr) & 3)
-#define hw_pt_is_bkp(addr) (((addr) & 4) == KVX_HW_BREAKPOINT_TYPE)
-#define get_hw_pt_idx(addr) ((addr) >> 3)
+#define FROM_GDB_CMD_MASK 3
+#define FROM_GDB_HP_TYPE_SHIFT 2
+#define FROM_GDB_HP_TYPE_MASK 4
+#define FROM_GDB_WP_TYPE_SHIFT 3
+#define FROM_GDB_WP_TYPE_MASK 0x18
+#define FROM_GDB_HP_IDX_SHIFT 5
+
+#define hw_pt_cmd(addr) ((addr) & FROM_GDB_CMD_MASK)
+#define hw_pt_is_bkp(addr) ((((addr) & FROM_GDB_HP_TYPE_MASK) >> \
+			     FROM_GDB_HP_TYPE_SHIFT) == KVX_HW_BREAKPOINT_TYPE)
+#define get_hw_pt_wp_type(addr) ((((addr) & FROM_GDB_WP_TYPE_MASK)) >> \
+				 FROM_GDB_WP_TYPE_SHIFT)
+#define get_hw_pt_idx(addr) ((addr) >> FROM_GDB_HP_IDX_SHIFT)
 #define get_hw_pt_addr(data) ((data)[0])
 #define get_hw_pt_len(data) ((data)[1] >> 1)
 #define hw_pt_is_enabled(data) ((data)[1] & 1)
@@ -73,7 +83,7 @@ static void ptrace_hw_pt_triggered(struct perf_event *bp,
 				   struct perf_sample_data *data,
 				   struct pt_regs *regs)
 {
-	int i, id;
+	int i, id = 0;
 	struct arch_hw_breakpoint *bkpt = counter_arch_bp(bp);
 
 	if (bp->attr.bp_type & HW_BREAKPOINT_X) {
@@ -89,7 +99,7 @@ static void ptrace_hw_pt_triggered(struct perf_event *bp,
 	}
 
 	id |= i << 1;
-	force_sig_ptrace_errno_trap(i, (void __user *) bkpt->addr);
+	force_sig_ptrace_errno_trap(id, (void __user *) bkpt->addr);
 }
 
 static struct perf_event *ptrace_hw_pt_create(struct task_struct *tsk, int type)
@@ -194,12 +204,13 @@ static long ptrace_set_hw_pt_regs(struct task_struct *child, long addr,
 		bp_type = HW_BREAKPOINT_X;
 	} else {
 		bp = child->thread.debug.ptrace_hwp[idx];
-		bp_type = HW_BREAKPOINT_W;
+		bp_type = get_hw_pt_wp_type(addr);
+		if (!bp_type)
+			bp_type = HW_BREAKPOINT_W;
 	}
 
 	if (!bp) {
-		bp = ptrace_hw_pt_create(child, bp_type ?
-					 bp_type : HW_BREAKPOINT_RW);
+		bp = ptrace_hw_pt_create(child, bp_type);
 		if (IS_ERR(bp))
 			return PTR_ERR(bp);
 		if (is_breakpoint)
