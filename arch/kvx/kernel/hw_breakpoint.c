@@ -263,8 +263,7 @@ int hw_breakpoint_arch_parse(struct perf_event *bp,
 			     struct arch_hw_breakpoint *hw)
 {
 	/* Type */
-	switch (attr->bp_type) {
-	case HW_BREAKPOINT_X:
+	if (attr->bp_type == HW_BREAKPOINT_X) {
 		if (!attr->disabled) {
 			if (!IS_ALIGNED(attr->bp_addr, HW_BREAKPOINT_SIZE) ||
 			    attr->bp_len != HW_BREAKPOINT_SIZE)
@@ -276,20 +275,27 @@ int hw_breakpoint_arch_parse(struct perf_event *bp,
 #if defined(CONFIG_KVX_SUBARCH_KV3_1)
 		hw->bp.hw_range = HW_BREAKPOINT_RANGE;
 #endif
-		break;
-	case HW_BREAKPOINT_W:
-		hw->type = KVX_HW_WATCHPOINT_TYPE;
+	} else {
 #if defined(CONFIG_KVX_SUBARCH_KV3_1)
-		if (!attr->disabled)
-			compute_hw_watchpoint_range(attr, hw);
+		if (attr->bp_type == HW_BREAKPOINT_W) {
+			hw->type = KVX_HW_WATCHPOINT_TYPE;
+			if (!attr->disabled)
+				compute_hw_watchpoint_range(attr, hw);
+		} else
+			return -EINVAL;
 #elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+		if (attr->bp_type == HW_BREAKPOINT_W)
+			hw->wp.hw_type = WATCHPOINT_TYPE_WRITE;
+		else if (attr->bp_type == HW_BREAKPOINT_R)
+			hw->wp.hw_type = WATCHPOINT_TYPE_READ;
+		else if (attr->bp_type == HW_BREAKPOINT_RW)
+			hw->wp.hw_type = WATCHPOINT_TYPE_ACCESS;
+		else
+			return -EINVAL;
+		hw->type = KVX_HW_WATCHPOINT_TYPE;
 		hw->wp.hw_addr = attr->bp_addr;
 		hw->wp.hw_size = attr->bp_len;
-		hw->wp.hw_type = WATCHPOINT_TYPE_WRITE;
 #endif
-		break;
-	default:
-		return -EINVAL;
 	}
 
 	hw->addr = attr->bp_addr;
@@ -386,6 +392,10 @@ int ptrace_request_hw_watchpoint(int idx)
 {
 	int res;
 
+	if (idx < 0 || idx >= KVX_HW_WATCHPOINT_COUNT)
+		return -EINVAL;
+
+	idx = hw_watchpoint_remap(idx);
 	res = reserve_one_hw_watchpoint(idx);
 #if defined(CONFIG_KVX_SUBARCH_KV3_1)
 	if (res)
