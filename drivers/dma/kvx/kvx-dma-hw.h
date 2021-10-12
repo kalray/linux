@@ -230,10 +230,6 @@ int kvx_dma_pkt_tx_acquire_jobs(struct kvx_dma_phy *phy, u64 nb_jobs, u64 *t);
 void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
 				      struct kvx_dma_tx_job *tx_job, u64 eot);
 int kvx_dma_pkt_tx_submit_jobs(struct kvx_dma_phy *phy, u64 t, u64 nb_job);
-void kvx_dma_dump_tx_jobq(struct kvx_dma_phy *phy);
-int kvx_dma_pkt_tx_push(struct kvx_dma_phy *phy,
-			struct kvx_dma_tx_job *tx_job, u64 eot,
-			u64 *hw_job_id);
 int kvx_dma_noc_tx_push(struct kvx_dma_phy *phy, struct kvx_dma_tx_job *tx_job,
 			u64 eot, u64 *hw_job_id);
 
@@ -254,8 +250,9 @@ int kvx_dma_fifo_rx_channel_queue_post_init(struct kvx_dma_phy *phy,
 void kvx_dma_release_queues(struct kvx_dma_phy *phy,
 			    struct kvx_dma_job_queue_list *jobq_list);
 
+/* Debug */
 int kvx_dma_read_status(struct kvx_dma_phy *phy);
-
+void kvx_dma_dump_tx_jobq(struct kvx_dma_phy *phy);
 int kvx_dma_dbg_get_q_regs(struct kvx_dma_phy *phy, char *buf, size_t buf_size);
 
 #endif /* KVX_DMA_HW_H */

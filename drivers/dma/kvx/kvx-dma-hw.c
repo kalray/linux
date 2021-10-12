@@ -1201,42 +1201,6 @@ void kvx_dma_dump_tx_jobq(struct kvx_dma_phy *phy)
 	}
 }
 
-/**
- * kvx_dma_pkt_tx_push() - Ethernet push transfer descriptor
- * @phy: phy pointer to physical description
- * @tx_job: Generic transfer job description
- * @eot: End of packet marker
- * @hw_job_id: identifier for the hw job
- *
- * Return: 0 - OK -EBUSY if job fifo is full
- */
-int kvx_dma_pkt_tx_push(struct kvx_dma_phy *phy, struct kvx_dma_tx_job *tx_job,
-		    u64 eot, u64 *hw_job_id)
-{
-	const u64 comp_queue_id = tx_job->comp_q_id;
-	const u64 pgrm_id = mem2eth_ucode.pgrm_id;
-	const u64 noc_route_id = tx_job->route_id;
-	const u64 source = tx_job->src_dma_addr;
-	const u64 object_len = tx_job->len;
-
-	struct kvx_dma_tx_job_desc p = {
-		.param = {
-			source, object_len, object_len >> 4,
-			object_len & 0xfULL, eot, 0, 0, 0,
-		},
-		.config = 0ULL |
-			(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
-			(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
-			(pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
-			(noc_route_id << KVX_DMA_ROUTE_ID_SHIFT) |
-			comp_queue_id,
-	};
-	dev_dbg(phy->dev, "%s s: 0x%llx len: %lld comp_q_id: %lld eot: %lld\n",
-		__func__, source, object_len, comp_queue_id, eot);
-
-	return kvx_dma_push_job_fast(phy, &p, hw_job_id);
-}
-
 #define REG64(o) scnprintf(buf + n, buf_size - n, "%-50s: @0x%llx - 0x%llx\n", \
 			   #o, (unsigned long long)o, readq(o))
 int kvx_dma_dbg_get_q_regs(struct kvx_dma_phy *phy, char *buf, size_t buf_size)
