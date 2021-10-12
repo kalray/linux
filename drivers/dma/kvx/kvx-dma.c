@@ -97,50 +97,6 @@ static int kvx_dma_start_sg_noc_tx(struct kvx_dma_desc *desc)
 }
 
 /**
- * kvx_dma_start_sg_eth_tx() - Push a eth TX job descriptor
- *
- * All jobq primitives must be called under lock to prevent preemption by
- * another channel
- * @desc: the job descriptor to start
- *
- * Return: 0 - OK -EBUSY if job fifo is full
- */
-static int kvx_dma_start_sg_eth_tx(struct kvx_dma_desc *desc)
-{
-	size_t txd_size = 0;
-	u64 hw_job_id = 0;
-	int i, ret = 0;
-
-	ret = kvx_dma_pkt_tx_acquire_jobs(desc->phy, desc->txd_nb, &hw_job_id);
-	if (ret) {
-		dev_warn_ratelimited(desc->phy->dev, "%s Tx jobq[%d] failed to acquire %d jobs\n",
-				     __func__, desc->phy->hw_id, desc->txd_nb);
-		goto out;
-	}
-	for (i = 0; i < desc->txd_nb - 1; i++) {
-		kvx_dma_pkt_tx_write_job(desc->phy, hw_job_id + i,
-					 &desc->txd[i], 0);
-		txd_size += (size_t)desc->txd[i].len;
-	}
-	kvx_dma_pkt_tx_write_job(desc->phy, hw_job_id + i, &desc->txd[i], 1);
-	txd_size += (size_t)desc->txd[i].len;
-	ret = kvx_dma_pkt_tx_submit_jobs(desc->phy, hw_job_id, desc->txd_nb);
-	if (ret < 0) {
-		dev_warn_ratelimited(desc->phy->dev, "%s Tx jobq[%d] failed to submit %d jobs\n",
-				     __func__, desc->phy->hw_id, desc->txd_nb);
-		goto out;
-	}
-
-	desc->last_job_id = hw_job_id + desc->txd_nb;
-	desc->size = txd_size;
-	dev_dbg(desc->phy->dev, "%s desc->phy: 0x%lx desc: 0x%lx size:%d\n",
-		 __func__, (uintptr_t)desc->phy,
-		 (uintptr_t)desc, (u32) desc->size);
-out:
-	return 0;
-}
-
-/**
  * kvx_dma_start_desc() - Push job descriptor depending on the job type
  * @desc: the job descriptor to start
  *
@@ -157,9 +113,6 @@ int kvx_dma_start_desc(struct kvx_dma_chan *c, struct kvx_dma_desc *desc)
 
 	if (type == KVX_DMA_TYPE_MEM2MEM) {
 		ret = kvx_dma_start_sg_mem2mem(desc);
-	} else if (type == KVX_DMA_TYPE_MEM2ETH) {
-		if (desc->dir == DMA_MEM_TO_DEV)
-			ret = kvx_dma_start_sg_eth_tx(desc);
 	} else if (type == KVX_DMA_TYPE_MEM2NOC) {
 		if (desc->dir == DMA_MEM_TO_DEV)
 			ret = kvx_dma_start_sg_noc_tx(desc);
