@@ -1311,10 +1311,6 @@ static void kvx_eth_get_module_status(struct net_device *netdev, u8 *eeprom_id)
 		   eeprom_id[SFF8636_TX_APP_SELECT_OFFSET + 3]);
 	netdev_dbg(netdev, "Sfp Tx_cdr: 0x%x\n",
 		   eeprom_id[SFF8636_TX_CDR_OFFSET]);
-	netdev_dbg(netdev, "Sfp Options: 0x%x 0x%x 0x%x\n",
-		   eeprom_id[SFP_OPTIONS], eeprom_id[SFP_OPTIONS + 1],
-		   eeprom_id[SFP_OPTIONS + 2]);
-	netdev_dbg(netdev, "Sfp Ext. Options: 0x%x\n", eeprom_id[SFP_ENHOPTS]);
 }
 
 int kvx_eth_get_module_transceiver(struct net_device *netdev,
@@ -1340,9 +1336,20 @@ int kvx_eth_get_module_transceiver(struct net_device *netdev,
 	if (transceiver->id != 0) {
 		memcpy(transceiver->oui, &id[SFP_VENDOR_OUI], 3);
 		memcpy(transceiver->pn, &id[SFP_VENDOR_PN], 16);
-		netdev_dbg(netdev, "Cable oui: %02x:%02x:%02x pn: %s\n",
+		transceiver->compliance_code = id[SFF8636_COMPLIANCE_CODES_OFFSET];
+		transceiver->nominal_br = id[SFF8636_NOMINAL_BITRATE];
+		if (transceiver->nominal_br == 0xFF) {
+			transceiver->nominal_br =
+				id[SFF8636_NOMINAL_BITRATE_250];
+			transceiver->nominal_br *= 250; /* Units of 250Mbps */
+		} else {
+			transceiver->nominal_br *= 100; /* Units of 100Mbps */
+		}
+		netdev_dbg(netdev, "Cable oui: %02x:%02x:%02x pn: %s comp_codes: 0x%x nominal_br: %dMbps\n",
 			   transceiver->oui[0], transceiver->oui[1],
-			   transceiver->oui[2], transceiver->pn);
+			   transceiver->oui[2], transceiver->pn,
+			   transceiver->compliance_code,
+			   transceiver->nominal_br);
 	}
 
 	if (sfp_is_qsfp_module((struct sfp_eeprom_id *)id)) {
@@ -1353,7 +1360,7 @@ int kvx_eth_get_module_transceiver(struct net_device *netdev,
 				       tech == SFF8636_TRANS_COPPER_LNR_FAR_EQUAL ||
 				       tech == SFF8636_TRANS_COPPER_PAS_EQUAL     ||
 				       tech == SFF8636_TRANS_COPPER_PAS_UNEQUAL);
-		kvx_eth_get_module_status(netdev, id);
+		kvx_eth_get_module_status(netdev, ee.data);
 		netdev_dbg(netdev, "Cable tech : 0x%x copper: %d\n",
 		   tech, transceiver->copper);
 		transceiver->qsfp = 1;
