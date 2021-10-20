@@ -55,8 +55,7 @@
 
 #define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
 
-#define KVX_TEST_BIT(name, bitmap)	test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, \
-				 bitmap)
+#define KVX_TEST_BIT(name, bitmap)  test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, bitmap)
 
 #define RING_INC(r, i) do { i++; i = (i < r->count) ? i : 0; } while (0)
 
@@ -1668,6 +1667,8 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 		bitmap_or(additional_prot, additional_prot, mac_supported,
 			 __ETHTOOL_LINK_MODE_MASK_NBITS);
 	} else if (ndev->cfg.transceiver.qsfp) {
+		u8 c = ndev->cfg.transceiver.compliance_code;
+
 		/*
 		 * Some cable such as mellanox to not indicate their
 		 * full capabilities. As a workaround when a cable support
@@ -1684,6 +1685,48 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 			phylink_set(additional_prot, 10000baseSR_Full);
 		if (KVX_TEST_BIT(40000baseLR4_Full, supported))
 			phylink_set(additional_prot, 10000baseLR_Full);
+		if (c & SFF8636_COMPLIANCE_10GBASE_LRM)
+			phylink_set(additional_prot, 10000baseLRM_Full);
+		if (c & SFF8636_COMPLIANCE_10GBASE_LR)
+			phylink_set(additional_prot, 10000baseLR_Full);
+		if (c & SFF8636_COMPLIANCE_10GBASE_SR)
+			phylink_set(additional_prot, 10000baseSR_Full);
+		if (c & SFF8636_COMPLIANCE_40GBASE_CR4) {
+			phylink_set(additional_prot, 40000baseCR4_Full);
+			phylink_set(additional_prot, 10000baseCR_Full);
+		}
+		if (c & SFF8636_COMPLIANCE_40GBASE_SR4) {
+			phylink_set(additional_prot, 40000baseSR4_Full);
+			phylink_set(additional_prot, 10000baseSR_Full);
+		}
+		if (c & SFF8636_COMPLIANCE_40GBASE_LR4) {
+			phylink_set(additional_prot, 40000baseLR4_Full);
+			phylink_set(additional_prot, 10000baseLR_Full);
+		}
+		/* No compliance code provided (needed for splitted cables) */
+		if (!c && ndev->cfg.transceiver.nominal_br > 25500) {
+			phylink_set(additional_prot, 100000baseCR4_Full);
+			phylink_set(additional_prot, 100000baseSR4_Full);
+			phylink_set(additional_prot, 40000baseCR4_Full);
+			phylink_set(additional_prot, 40000baseSR4_Full);
+			phylink_set(additional_prot, 40000baseLR4_Full);
+		} else if (!c && ndev->cfg.transceiver.nominal_br > 20000) {
+			phylink_set(additional_prot, 25000baseCR_Full);
+			phylink_set(additional_prot, 25000baseKR_Full);
+			phylink_set(additional_prot, 25000baseSR_Full);
+		} else if (!c && ndev->cfg.transceiver.nominal_br > 10000) {
+			phylink_set(additional_prot, 10000baseCR_Full);
+			phylink_set(additional_prot, 10000baseSR_Full);
+			phylink_set(additional_prot, 10000baseLR_Full);
+			phylink_set(additional_prot, 10000baseLRM_Full);
+		}
+
+		/* Phylink uses advertising to select qsfp interface */
+		bitmap_or(state->advertising, state->advertising,
+			  additional_prot, __ETHTOOL_LINK_MODE_MASK_NBITS);
+		netdev_dbg(netdev, "%s: state->speed: %d c: 0x%x nominal_bitrate: %d adv: 0x%lx\n",
+			__func__, state->speed, c,
+			ndev->cfg.transceiver.nominal_br, *state->advertising);
 	}
 
 	bitmap_or(supported, supported, additional_prot, __ETHTOOL_LINK_MODE_MASK_NBITS);
