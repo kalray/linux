@@ -10,7 +10,6 @@
 #ifndef KVX_SFP_H
 #define KVX_SFP_H
 
-#define SFF8636_DEVICE_TECH_OFFSET          19
 #define SFF8636_TX_DIS_OFFSET               86
 #define SFF8636_RX_RATE_SELECT_OFFSET       87
 #define SFF8636_TX_RATE_SELECT_OFFSET       88
@@ -18,6 +17,9 @@
 #define SFF8636_POWER_OFFSET                93
 #define SFF8636_TX_APP_SELECT_OFFSET        94
 #define SFF8636_TX_CDR_OFFSET               98
+
+/* All following offsets are shifted of 128 */
+#define SFF8636_DEVICE_TECH_OFFSET          19
 #define SFF8636_TRANS_TECH_MASK             0xF0
 #define SFF8636_TRANS_COPPER_LNR_EQUAL     (15 << 4)
 #define SFF8636_TRANS_COPPER_NEAR_EQUAL    (14 << 4)
@@ -25,20 +27,34 @@
 #define SFF8636_TRANS_COPPER_LNR_FAR_EQUAL (12 << 4)
 #define SFF8636_TRANS_COPPER_PAS_EQUAL     (11 << 4)
 #define SFF8636_TRANS_COPPER_PAS_UNEQUAL   (10 << 4)
+#define SFF8636_COMPLIANCE_CODES_OFFSET     3
+#define SFF8636_COMPLIANCE_10GBASE_LRM      BIT(6)
+#define SFF8636_COMPLIANCE_10GBASE_LR       BIT(5)
+#define SFF8636_COMPLIANCE_10GBASE_SR       BIT(4)
+#define SFF8636_COMPLIANCE_40GBASE_CR4      BIT(3)
+#define SFF8636_COMPLIANCE_40GBASE_SR4      BIT(2)
+#define SFF8636_COMPLIANCE_40GBASE_LR4      BIT(1)
+#define SFF8636_COMPLIANCE_40G_XLPPI        BIT(0)
+#define SFF8636_NOMINAL_BITRATE             12
+#define SFF8636_NOMINAL_BITRATE_250         94
 
 /** struct kvx_transceiver_type - Transceiver info
  * @oui: Cable constructor OUI
  * @pn: Cable part number
  * @id: sff identifier
+ * @compliance_code: byte 131 of EEPROM
  * @copper: 1 if copper cable, else 0
  * @qsfp: 1 cage is qsfp, else 0
+ * @nominal_br: Nominal bitrate supported by the cable
  */
 struct kvx_transceiver_type {
 	u8 oui[3];
 	u8 pn[16];
 	u8 id;
+	u8 compliance_code;
 	u8 copper;
 	u8 qsfp;
+	u32 nominal_br;
 };
 
 int kvx_eth_get_module_transceiver(struct net_device *netdev,
