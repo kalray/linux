@@ -1515,14 +1515,6 @@ static phys_addr_t kvx_iommu_iova_to_phys(struct iommu_domain *domain,
 	return paddr;
 }
 
-static bool has_one_iommugroup_per_device(struct device *dev)
-{
-	if (IS_ENABLED(CONFIG_KVX_IOMMU_ONEDEVICE_PER_GROUP))
-		return dev_is_pci(dev);
-
-	return false;
-}
-
 /**
  * kvx_iommu_device_group() - return the IOMMU group for a device
  * @dev: the device
@@ -1546,7 +1538,7 @@ static struct iommu_group *kvx_iommu_device_group(struct device *dev)
 
 	mutex_lock(&iommu_dev->lock);
 
-	if (!has_one_iommugroup_per_device(dev)) {
+	if (!acs_on || !dev_is_pci(dev)) {
 		list_for_each_entry(group, &iommu_dev->groups, list)
 			if (group->asn == fwspec->ids[0]) {
 				iommu_group_ref_get(group->group);
