@@ -184,6 +184,9 @@
 #define ERR_INJECT_RATE_MAX		7
 #define ERR_INJECTION_EN		BIT(3)
 
+/* number of lane override on command line support*/
+#define PCIE_NBLANE_UNINIT -1
+
 #ifdef CONFIG_PCIEAER
 #define AER_CAP_ENABLED (CSR_FTL_AER_CAP_ECRC_GEN_CHK_CAPABLE_MASK |\
 			 CSR_FTL_AER_CAP_EN_CORR_INTERNAL_ERROR_MASK |\
@@ -285,6 +288,31 @@ static const uint8_t nfurc_ctrl_lanes[][NB_CORE_CTRL] = {
 	{ 2, 0, 0, 0, 8, 2, 2, 2},
 };
 
+static int pcie_nb_lane = PCIE_NBLANE_UNINIT;
+
+/**
+ * pci_nb_lane_setup - read command line parameter
+ *
+ * This option allows to override the number of lanes used.
+ * This might be usefull when a BP04 is being used.
+ * As the number of lanes cannot be detected at runtime on this board,
+ * setting this parameter allows to limit the number of lanes used
+ * while still keeping a clean device tree for production
+ * configuration.
+ *
+ */
+static int __init pci_nb_lane_setup(char *arg)
+{
+	int nb_lane;
+
+	if (get_option(&arg, &nb_lane)) {
+		pcie_nb_lane = nb_lane;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+early_param("pcie_nb_lane", pci_nb_lane_setup);
 
 static void handle_aer_irq(struct nwl_pcie *pcie);
 static void nwl_pcie_aer_init(struct nwl_pcie *pcie, struct pci_bus *bus);
@@ -1031,6 +1059,10 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 				   &nb_lane);
 	if (ret != 0)
 		nb_lane = max_nb_lane;
+
+	/* has number of lanes been overriden on the command line ? */
+	if (pcie_nb_lane != PCIE_NBLANE_UNINIT)
+		nb_lane = pcie_nb_lane;
 
 	if (nb_lane > max_nb_lane) {
 		dev_err(dev, "At most %d lane can be used on  PCIe RC %d with nfurcation %d\n",
