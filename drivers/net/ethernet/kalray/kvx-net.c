@@ -620,7 +620,7 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
 	struct page *p;
 	int ret = 0;
 
-	while (--unused_desc > rxr->refill_thres && count--) {
+	while (--unused_desc < rxr->count && count--) {
 		qdesc = &rxr->pool.qdesc[rx_w];
 
 		if (!qdesc->dma_addr) {
@@ -761,7 +761,6 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 
 	while (!kvx_dma_get_rx_completed(dma_cfg->pdev, rxr->dma_chan, &pkt)) {
 		work_done++;
-		rx_count++;
 
 		ret = kvx_eth_rx_frame(rxr, rx_r, (dma_addr_t)pkt->base,
 				       (size_t)pkt->byte, pkt->notif);
@@ -771,10 +770,7 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 			rxr->skb = NULL;
 		}
 
-		if (unlikely(rx_count > rxr->refill_thres)) {
-			kvx_eth_alloc_rx_buffers(rxr, rx_count);
-			rx_count = 0;
-		}
+		kvx_eth_alloc_rx_buffers(rxr, 1);
 		RING_INC(rxr, rx_r);
 
 		if (work_done >= work_left)
@@ -1011,7 +1007,7 @@ static void kvx_eth_release_rx_pool(struct kvx_eth_ring *r)
 	kfree(r->pool.qdesc);
 }
 
-#define REFILL_THRES(c) ((3 * (c)) / 4)
+#define REFILL_THRES(c) 1
 
 int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 {
