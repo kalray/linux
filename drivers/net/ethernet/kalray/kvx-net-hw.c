@@ -121,9 +121,7 @@ void kvx_eth_pfc_f_set_default(struct kvx_eth_hw *hw,
 	struct kvx_eth_pfc_f *pfc_f = &hw->lb_f[l].pfc_f;
 	struct kvx_eth_cl_f *cl_f = hw->lb_f[l].cl_f;
 
-	pfc_f->global_drop_level = kvx_eth_readl(hw, off +
-					 RX_PFC_LANE_GLOBAL_DROP_LEVEL_OFFSET);
-
+	pfc_f->global_drop_level = PFC_MAX_LEVEL;
 	pfc_f->global_alert_level = DEFAULT_PFC_ALERT_LEVEL;
 	pfc_f->global_release_level = DEFAULT_PFC_RELEASE_LEVEL;
 	kvx_eth_writel(hw, pfc_f->global_alert_level, off +
@@ -135,8 +133,7 @@ void kvx_eth_pfc_f_set_default(struct kvx_eth_hw *hw,
 		cl_offset = off + RX_PFC_LANE_CLASS_OFFSET +
 			i * RX_PFC_LANE_CLASS_ELEM_SIZE;
 
-		cl_f[i].drop_level = kvx_eth_readl(hw, cl_offset +
-			RX_PFC_LANE_CLASS_DROP_LEVEL_OFFSET);
+		cl_f[i].drop_level = PFC_MAX_LEVEL;
 		cl_f[i].alert_level = DEFAULT_PFC_ALERT_LEVEL;
 		kvx_eth_writel(hw, cl_f[i].alert_level, cl_offset +
 			       RX_PFC_LANE_CLASS_ALERT_LEVEL_OFFSET);
@@ -156,6 +153,10 @@ static void pfc_f_update(void *data)
 
 	p->pause_req_cnt = kvx_eth_readl(p->hw,
 				off + RX_PFC_LANE_GLOBAL_PAUSE_REQ_CNT_OFFSET);
+	p->global_wmark = kvx_eth_readl(p->hw,
+				off + RX_PFC_LANE_GLOBAL_WMARK_OFFSET);
+	p->global_no_pfc_wmark = kvx_eth_readl(p->hw,
+				off + RX_PFC_LANE_GLOBAL_NO_PFC_WMARK_OFFSET);
 }
 
 static void kvx_eth_cl_f_update(void *data)
