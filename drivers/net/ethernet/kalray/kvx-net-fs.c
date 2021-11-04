@@ -257,6 +257,8 @@ FIELD_RW_ENTRY(pfc_f, global_alert_level, 0,
 FIELD_RW_ENTRY(pfc_f, global_pfc_en, 0, 1);
 FIELD_RW_ENTRY(pfc_f, global_pause_en, 0, 1);
 FIELD_R_ENTRY(pfc_f, pause_req_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(pfc_f, global_wmark, 0, U32_MAX);
+FIELD_R_ENTRY(pfc_f, global_no_pfc_wmark, 0, U32_MAX);
 
 static struct attribute *pfc_f_attrs[] = {
 	&pfc_f_global_release_level_attr.attr,
@@ -265,6 +267,8 @@ static struct attribute *pfc_f_attrs[] = {
 	&pfc_f_global_pfc_en_attr.attr,
 	&pfc_f_global_pause_en_attr.attr,
 	&pfc_f_pause_req_cnt_attr.attr,
+	&pfc_f_global_wmark_attr.attr,
+	&pfc_f_global_no_pfc_wmark_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(pfc_f);
