@@ -126,7 +126,7 @@ void kvx_eth_pfc_f_set_default(struct kvx_eth_hw *hw,
 	pfc_f->global_release_level = DEFAULT_PFC_RELEASE_LEVEL;
 	kvx_eth_writel(hw, pfc_f->global_alert_level, off +
 		      RX_PFC_LANE_GLOBAL_ALERT_LEVEL_OFFSET);
-	kvx_eth_writel(hw, pfc_f->global_alert_level, off +
+	kvx_eth_writel(hw, pfc_f->global_release_level, off +
 		      RX_PFC_LANE_GLOBAL_RELEASE_LEVEL_OFFSET);
 
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
