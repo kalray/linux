@@ -231,6 +231,8 @@ struct kvx_eth_pfc_f {
 	int global_drop_level;
 	int global_alert_level;
 	u32 pause_req_cnt;
+	u32 global_wmark;
+	u32 global_no_pfc_wmark;
 	u8 global_pfc_en;
 	u8 global_pause_en;
 	int lane_id;
