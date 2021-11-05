@@ -211,7 +211,7 @@ int ti_rtm_sysfs_init(struct ti_rtm_dev *dev)
 
 fail_bin:
 	i--;
-	for (i; i >= 0; i--)
+	for (; i >= 0; i--)
 		sysfs_remove_bin_file(&dev->eom[i].kobj, &bin_attr_eom_hit_cnt);
 	kset_eom_remove(coef_kset, &dev->eom[0], TI_RTM_NB_LANE);
 fail_eom:
