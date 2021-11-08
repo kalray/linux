@@ -433,14 +433,14 @@ void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	lb_f->default_dispatch_policy = DEFAULT_ROUND_ROBIN;
 	lb_f->store_and_forward = 1;
 	/* 0: Drop, 1: keep all pkt with crc error */
-	lb_f->keep_all_crc_error_pkt = 1;
+	lb_f->keep_all_crc_error_pkt = 0;
 	lb_f->add_header = 0;
 	lb_f->add_footer = 0;
 	for (i = 0; i < NB_CLUSTER; i++) {
-		lb_f->rx_noc[i].vchan0_pps_timer = pps_timer;
-		lb_f->rx_noc[i].vchan0_payload_flit_nb = 16;
-		lb_f->rx_noc[i].vchan1_pps_timer = pps_timer;
-		lb_f->rx_noc[i].vchan1_payload_flit_nb = 16;
+		if (hw->vchan == 1)
+			lb_f->rx_noc[i].vchan1_pps_timer = pps_timer;
+		else
+			lb_f->rx_noc[i].vchan0_pps_timer = pps_timer;
 		kvx_eth_rx_noc_cfg(hw, &lb_f->rx_noc[i]);
 	}
 
@@ -452,17 +452,21 @@ void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc)
 {
 	int lane = rx_noc->lane_id;
 	int fdir = rx_noc->fdir;
-	u32 val = (rx_noc->vchan0_pps_timer <<
-	       RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PPS_TIMER_SHIFT) |
-		((rx_noc->vchan0_payload_flit_nb - 1) <<
-		 RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PAYLOAD_FLIT_NB_MINUS1_SHIFT);
+	u32 val;
 
-	kvx_eth_writel(hw, val, RX_NOC_PKT_LANE(lane, fdir));
-	val = (rx_noc->vchan1_pps_timer <<
-	       RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PPS_TIMER_SHIFT) |
-		((rx_noc->vchan1_payload_flit_nb - 1) <<
-		 RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PAYLOAD_FLIT_NB_MINUS1_SHIFT);
-	kvx_eth_writel(hw, val, RX_NOC_PKT_LANE(lane, fdir) + 4);
+	if (hw->vchan == 0) {
+		val = (rx_noc->vchan0_pps_timer <<
+		       RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PPS_TIMER_SHIFT) |
+			((rx_noc->vchan0_payload_flit_nb - 1) <<
+			 RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PAYLOAD_FLIT_NB_MINUS1_SHIFT);
+		kvx_eth_writel(hw, val, RX_NOC_PKT_LANE(lane, fdir));
+	} else {
+		val = (rx_noc->vchan1_pps_timer <<
+		       RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PPS_TIMER_SHIFT) |
+			((rx_noc->vchan1_payload_flit_nb - 1) <<
+			 RX_NOC_PKT_CTRL_LANE_FDIR_VCHAN_PAYLOAD_FLIT_NB_MINUS1_SHIFT);
+		kvx_eth_writel(hw, val, RX_NOC_PKT_LANE(lane, fdir) + 4);
+	}
 }
 
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
