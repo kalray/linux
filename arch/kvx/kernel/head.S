@@ -45,6 +45,12 @@
 
 #define PCR_WFXM_VALUE	PCR_VAL_WFXM(L1CE, 1)
 
+/* 30 sec for primary watchdog timeout */
+#define PRIMARY_WATCHDOG_VALUE (30000000000UL)
+
+#define TCR_WFXL_VALUE SFR_SET_VAL_WFXL(TCR, WUI, 1) | \
+	SFR_SET_VAL_WFXL(TCR, WCE, 1)
+
 /* Enable STOP in WS */
 #define WS_ENABLE_WU2		(KVX_SFR_WS_WU2_MASK)
 /* We only want to clear bits in ws */
@@ -175,6 +181,17 @@ ENTRY(kvx_start)
 	call asm_rm_cfg_pwr_ctrl
 	;;
 init_core:
+	/**
+	 * Setup watchdog early to catch potential
+	 * crash before watchdog driver probe
+	 */
+	make $r25 = PRIMARY_WATCHDOG_VALUE
+	make $r26 = TCR_WFXL_VALUE
+	;;
+	set $wdv = $r25
+	;;
+	wfxl $tcr, $r26
+	;;
 	call asm_init_mmu
 	;;
 	/* Setup default processor status */
