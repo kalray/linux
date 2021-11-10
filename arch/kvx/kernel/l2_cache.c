@@ -316,6 +316,9 @@ static int __init l2_cache_init_hw(void)
 		return -EINVAL;
 	}
 
+	/* Now write ack to L2 firmware */
+	writeq(status | L2_STATUS_ACK_MASK, l2c_ctrl.regs + L2_STATUS_OFFSET);
+
 	ret = l2_cache_read_queue_size();
 	if (ret)
 		return ret;
