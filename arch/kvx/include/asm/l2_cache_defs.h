@@ -24,6 +24,8 @@ enum l2_api_error {
 #define L2_STATUS_READY_SHIFT                      0x1
 #define L2_STATUS_VALID_MASK                       0x1
 #define L2_STATUS_VALID_SHIFT                      0x0
+#define L2_STATUS_ACK_MASK                         0x80
+#define L2_STATUS_ACK_SHIFT                        0x7
 
 /* L2 Cache error registers definition */
 #define L2_ERROR_OFFSET                            0x20
