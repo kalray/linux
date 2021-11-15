@@ -249,7 +249,7 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 				    KVX_ETH_PKT_ALIGN);
 
 	ndev->cfg.speed = SPEED_UNKNOWN;
-	ndev->cfg.duplex = DUPLEX_UNKNOWN;
+	ndev->cfg.duplex = DUPLEX_FULL;
 	ndev->cfg.fec = 0;
 	kvx_eth_mac_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_dt_f_init(ndev->hw, &ndev->cfg);
@@ -1742,9 +1742,9 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	state->duplex = ndev->cfg.duplex;
 	state->pause = 0;
 	if (ndev->hw->lb_f[ndev->cfg.id].pfc_f.global_pause_en)
-		state->pause = MLO_PAUSE_RX | MLO_PAUSE_TX;
-	netdev_dbg(netdev, "%s link: %d state->speed: %d ndev->speed: %d\n",
-		   __func__, state->link, state->speed, ndev->cfg.speed);
+		state->pause = MLO_PAUSE_TXRX_MASK;
+	netdev_dbg(netdev, "%s link: %d state->speed: %d ndev->speed: %d pause: 0x%x\n",
+		   __func__, state->link, state->speed, ndev->cfg.speed, state->pause);
 }
 
 int kvx_eth_speed_to_nb_lanes(unsigned int speed, unsigned int *lane_speed)
@@ -1859,13 +1859,14 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_pfc_f *pfc_f = &ndev->hw->lb_f[ndev->cfg.id].pfc_f;
 	int an_enabled = state->an_enabled;
-	u8 pause = !!(state->pause & (MLO_PAUSE_RX | MLO_PAUSE_TX));
+	u8 pause = !!(state->pause & MLO_PAUSE_TXRX_MASK);
 	bool update_serdes = false;
 	int speed_fmt, ret = 0;
 	char *unit;
 
-	netdev_dbg(ndev->netdev, "%s state->speed: %d ndev->speed: %d\n",
-		   __func__, state->speed, ndev->cfg.speed);
+	netdev_dbg(ndev->netdev, "%s state->speed: %d ndev->speed: %d pause: 0x%x / 0x%x\n",
+		   __func__, state->speed, ndev->cfg.speed,
+		   pause, pfc_f->global_pause_en);
 
 	if (state->interface == PHY_INTERFACE_MODE_SGMII) {
 		/*
@@ -1908,14 +1909,13 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 
 	if (state->speed != SPEED_UNKNOWN)
 		ndev->cfg.speed = state->speed;
-	if (state->duplex != DUPLEX_UNKNOWN)
-		ndev->cfg.duplex = state->duplex;
-	ndev->cfg.fec = 0;
-
-	if (!(pfc_f->global_pause_en && pause)) {
+	if (pfc_f->global_pause_en != pause) {
 		pfc_f->global_pause_en = pause;
 		kvx_eth_pfc_f_cfg(ndev->hw, pfc_f);
 	}
+	if (state->duplex != DUPLEX_UNKNOWN)
+		ndev->cfg.duplex = state->duplex;
+	ndev->cfg.fec = 0;
 
 	if (an_enabled && !ndev->cfg.mac_f.loopback_mode) {
 		ret = kvx_eth_autoneg(ndev);
