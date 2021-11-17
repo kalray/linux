@@ -115,6 +115,8 @@ config KVX
 	select HAVE_DYNAMIC_FTRACE
 	select GENERIC_SCHED_CLOCK
 	select DMA_VIRT_OPS
+	select WATCHDOG
+	select KVX_WATCHDOG
 
 config PGTABLE_LEVELS
 	int
