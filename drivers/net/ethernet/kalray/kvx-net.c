@@ -647,28 +647,21 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
 	rxr->next_to_use = rx_w;
 }
 
+/**
+ * kvx_eth_rx_hdr() - Extract hw header (assuming header is always enabled)
+ */
 static int kvx_eth_rx_hdr(struct kvx_eth_netdev *ndev, struct sk_buff *skb)
 {
 	struct rx_metadata *hdr = NULL;
 	size_t hdr_size = sizeof(*hdr);
 
-	if (kvx_eth_lb_has_header(ndev->hw, &ndev->cfg)) {
-		netdev_dbg(ndev->netdev, "%s header rx (skb->len: %d data_len: %d)\n",
-			   __func__, skb->len, skb->data_len);
-		hdr = (struct rx_metadata *)skb->data;
-		kvx_eth_dump_rx_hdr(ndev->hw, hdr);
-		skb_pull(skb, hdr_size);
-		skb->ip_summed = CHECKSUM_UNNECESSARY;
-	}
-	if (kvx_eth_lb_has_footer(ndev->hw, &ndev->cfg)) {
-		netdev_dbg(ndev->netdev, "%s footer rx (skb->len: %d data_len: %d)\n",
-			   __func__, skb->len, skb->data_len);
-		hdr = (struct rx_metadata *)(skb_tail_pointer(skb) -
-					     hdr_size);
-		kvx_eth_dump_rx_hdr(ndev->hw, hdr);
-		skb_trim(skb, skb->len - hdr_size);
-		skb->ip_summed = CHECKSUM_UNNECESSARY;
-	}
+	netdev_dbg(ndev->netdev, "%s header rx (skb->len: %d data_len: %d)\n",
+		   __func__, skb->len, skb->data_len);
+	hdr = (struct rx_metadata *)skb->data;
+	kvx_eth_dump_rx_hdr(ndev->hw, hdr);
+	skb_pull(skb, hdr_size);
+	skb->ip_summed = CHECKSUM_UNNECESSARY;
+
 	return 0;
 }
 
@@ -1368,6 +1361,13 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	of_property_read_u32(np, "kalray,limit_rx_pps", &dev->hw.limit_rx_pps);
 	if (dev->hw.limit_rx_pps)
 		dev_warn(&pdev->dev, "!!LIMIT pps %d\n", dev->hw.limit_rx_pps);
+
+	if (of_property_read_u32(np, "kalray,aggregated_only",
+			     &dev->hw.aggregated_only) != 0)
+		dev->hw.aggregated_only = 1;
+
+	if (dev->hw.aggregated_only)
+		dev_warn(&pdev->dev, "Configs 4x1G/4x10G/4x25G not available\n");
 
 	if (of_property_read_u32_array(np, "kalray,dma-rx-chan-error",
 				       (u32 *)&dev->hw.rx_chan_error, 1) != 0)
@@ -2114,7 +2114,7 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	struct kvx_eth_dev *dev = platform_get_drvdata(ppdev);
 	struct kvx_eth_netdev *ndev = NULL;
 	struct platform_device *dma_pdev;
-	int ret = 0;
+	int i, ret = 0;
 
 	/* Check dma noc probed and available */
 	dma_pdev = kvx_eth_check_dma(pdev, &np_dma);
@@ -2134,13 +2134,21 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
-	kvx_eth_lb_set_default(&dev->hw, &ndev->cfg);
+	/**
+	 * MF 1.3 -> do *NOT* change the following settings
+	 * Rx LB ctrl registers for lanes 0/2 must be set the same way
+	 * Program all lane LB accordingly
+	 */
+	for (i = 0; i < KVX_ETH_LANE_NB; i++)
+		kvx_eth_lb_set_default(&dev->hw, i);
 	kvx_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
 
 	kvx_eth_fill_dispatch_table(&dev->hw, &ndev->cfg,
 				    ndev->dma_cfg.rx_chan_id.start);
 	kvx_eth_tx_fifo_cfg(&dev->hw, &ndev->cfg);
-	kvx_eth_lb_f_cfg(&dev->hw, &ndev->hw->lb_f[ndev->cfg.id]);
+
+	for (i = 0; i < KVX_ETH_LANE_NB; i++)
+		kvx_eth_lb_f_cfg(&dev->hw, &ndev->hw->lb_f[i]);
 
 	ret = kvx_eth_netdev_sysfs_init(ndev);
 	if (ret)
