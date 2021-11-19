@@ -434,18 +434,17 @@ int kvx_eth_parsers_init(struct kvx_eth_hw *hw)
 	return 0;
 }
 
-void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, int lane_id)
 {
-	int i, l = cfg->id;
-	struct kvx_eth_lb_f *lb_f = &hw->lb_f[l];
-	/* Due to a HW bug, slow down the pkt rate (only for non MF chips) */
+	struct kvx_eth_lb_f *lb_f = &hw->lb_f[lane_id];
 	int pps_timer = hw->limit_rx_pps;
+	int i;
 
 	lb_f->default_dispatch_policy = DEFAULT_ROUND_ROBIN;
 	lb_f->store_and_forward = 1;
 	/* 0: Drop, 1: keep all pkt with crc error */
 	lb_f->keep_all_crc_error_pkt = 0;
-	lb_f->add_header = 0;
+	lb_f->add_header = 1;
 	lb_f->add_footer = 0;
 	for (i = 0; i < NB_CLUSTER; i++) {
 		if (hw->vchan == 1)
@@ -456,7 +455,8 @@ void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 
 	for (i = 0; i < RX_LB_DEFAULT_RULE_LANE_RR_TARGET_ARRAY_SIZE; ++i)
-		kvx_eth_writel(hw, 0, RX_LB_DEFAULT_RULE_LANE_RR_TARGET(l, i));
+		kvx_eth_writel(hw, 0,
+			       RX_LB_DEFAULT_RULE_LANE_RR_TARGET(lane_id, i));
 }
 
 void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc)
@@ -486,6 +486,10 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 		RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_SHIFT;
 	int lane = lb->id;
 
+	if (!lb->add_header || lb->add_footer || !lb->store_and_forward) {
+		dev_warn(hw->dev, "Unsupported LB setting\n");
+		return;
+	}
 	updatel_bits(hw, ETH, RX_LB_DEFAULT_RULE_LANE_CTRL(lane),
 		    RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_MASK, val);
 
