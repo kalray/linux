@@ -332,7 +332,7 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 }
 
-bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
+static bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
 {
 	u32 v = readl(hw->res[KVX_ETH_RES_MAC].base + MAC_MODE_OFFSET);
 
@@ -384,7 +384,7 @@ int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 	struct pll_cfg *pll = &hw->pll_cfg;
 
 	hw->phy_f.reg_avail = true;
-	if (speed == SPEED_40000 || speed == SPEED_100000)
+	if (kvx_eth_speed_aggregated(speed))
 		memset(pll, 0, sizeof(*pll));
 
 	return 0;
@@ -1091,7 +1091,7 @@ bool kvx_mac_under_reset(struct kvx_eth_hw *hw)
 static int kvx_eth_mac_reset(struct kvx_eth_hw *hw,
 			     struct kvx_eth_lane_cfg *cfg)
 {
-	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
+	bool aggregated_lanes = kvx_eth_speed_aggregated(cfg->speed);
 	u32 mask, val;
 	int ret = 0;
 
