@@ -280,8 +280,8 @@ struct kvx_eth_cl_f {
  * @default_dispatch_policy: Load balancer policy
  * @store_and_forward: Is store and forward enabled
  * @keep_all_crc_error_pkt: Keep all received eth pkts including erroneous ones
- * @add_header: Add metadata to packet header
- * @add_footer: Add metadata to packet footer
+ * @add_header: Add metadata to packet header (*MUST* always be set)
+ * @add_footer: Add metadata to packet footer (always 0)
  * @rx_noc: pps limiter features per direction
  * @cl_f: pfc class features
  * @pfc_f: pfc features
@@ -784,6 +784,7 @@ struct lt_status {
  * @parsers_tictoc: if we need to mirror parsers configuration from top half
  *          to bottom half. aka tictoc patch.
  * @limit_rx_pps: NOC RX pps limiter (value, 0: disabled)
+ * @aggregated_only: if set, 4x1G, 4x10G, 4x25G not available
  * @eth_id: [0, 1] ethernet hw block id
  * @mppa_id: owns ews fuse reg
  * @dev_id: mppa device_id (part of FT fuse reg)
@@ -811,6 +812,7 @@ struct kvx_eth_hw {
 	u32 rxtx_crossed;
 	u32 parsers_tictoc;
 	u32 limit_rx_pps;
+	u32 aggregated_only;
 	u32 eth_id;
 	u64 mppa_id;
 	u16 dev_id;
@@ -1002,7 +1004,7 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
 u32 kvx_eth_lb_has_header(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 u32 kvx_eth_lb_has_footer(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
-void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
+void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, int lane_id);
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_parsers_init(struct kvx_eth_hw *hw);
