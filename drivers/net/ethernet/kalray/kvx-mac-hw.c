@@ -2586,7 +2586,12 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	kvx_mac_writel(hw, val, MAC_SG_OFFSET);
 
 	kvx_eth_tx_f_cfg(hw, &hw->tx_f[cfg->id]);
-	kvx_eth_lb_f_cfg(hw, &hw->lb_f[cfg->id]);
+	if (hw->aggregated_only) {
+		for (i = 0; i < KVX_ETH_LANE_NB; i++)
+			kvx_eth_lb_f_cfg(hw, &hw->lb_f[i]);
+	} else {
+		kvx_eth_lb_f_cfg(hw, &hw->lb_f[cfg->id]);
+	}
 
 	ret = kvx_eth_mac_init(hw, cfg);
 	if (ret) {
