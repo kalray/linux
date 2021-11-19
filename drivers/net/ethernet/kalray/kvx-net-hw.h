@@ -952,6 +952,7 @@ static inline void kvx_mac_writeq(struct kvx_eth_hw *hw, u64 val, u64 off)
 u32 noc_route_c2eth(enum kvx_eth_io eth_id, int cluster_id);
 u32 noc_route_eth2c(enum kvx_eth_io eth_id, int cluster_id);
 void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
+bool kvx_eth_speed_aggregated(const int speed);
 
 /* PHY */
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
