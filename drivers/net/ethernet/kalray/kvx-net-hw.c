@@ -89,6 +89,11 @@ u32 noc_route_eth2c(enum kvx_eth_io eth_id, int cluster_id)
 	return noc_route_table[5 + eth_id][cluster_id];
 }
 
+bool kvx_eth_speed_aggregated(const int speed)
+{
+	return (speed == SPEED_40000 || speed == SPEED_100000);
+}
+
 void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu)
 {
 	updatel_bits(hw, ETH, RX_LB_CTRL(lane), RX_LB_CTRL_MTU_SIZE_MASK, mtu);
