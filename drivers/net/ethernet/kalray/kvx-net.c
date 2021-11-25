@@ -400,7 +400,8 @@ static int kvx_eth_clean_tx_irq(struct kvx_eth_ring *txr)
 		kvx_eth_unmap_skb(ndev->dev, tx);
 		ndev->stats.ring.tx_bytes += tx->len;
 		ndev->stats.ring.tx_pkts++;
-		dev_consume_skb_irq(tx->skb);
+		dev_consume_skb_any(tx->skb);
+		tx->skb = NULL;
 
 		netdev_tx_completed_queue(get_txq(txr), 1, tx->len);
 		memset(tx, 0, sizeof(*tx));
