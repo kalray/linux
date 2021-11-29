@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2017 - 2022 Kalray Inc.
  * Author(s): Clement Leger
+ *            Jules Maselbas
  */
 
 #define pr_fmt(fmt)	"kvx_apic_mailbox: " fmt
@@ -279,10 +280,8 @@ static int kvx_mailbox_set_affinity(struct irq_data *data,
 
 	mb_addr = (u64) kvx_mailbox_get_phys_addr(mb, mb_num);
 	err = iommu_dma_prepare_msi(irq_data_get_msi_desc(data), mb_addr);
-	if (err) {
-		spin_unlock(&mb->mailboxes_lock);
+	if (err)
 		return err;
-	}
 
 	/*
 	 * Update IRQ association now. We can potentially receive a spurious IRQ on
