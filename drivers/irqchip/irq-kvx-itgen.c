@@ -129,9 +129,10 @@ static void kvx_itgen_write_msg(struct msi_desc *desc, struct msi_msg *msg)
 	 * of address.
 	 * We extract these information from mailbox address.
 	 */
-	cfg_val |= ((dest_addr >> MB_ADDR_CLUSTER_SHIFT) &
-		    KVX_ITGEN_CFG_TARGET_CLUSTER_MASK)
-		   << KVX_ITGEN_CFG_TARGET_CLUSTER_SHIFT;
+
+	cfg_val |= (((kvx_sfr_get(PCR) & KVX_SFR_PCR_CID_MASK) >>
+				 KVX_SFR_PCR_CID_SHIFT)
+				<< KVX_ITGEN_CFG_TARGET_CLUSTER_SHIFT);
 	cfg_val |= ((dest_addr >> MB_ADDR_MAILBOX_SHIFT) &
 		     KVX_ITGEN_CFG_TARGET_MAILBOX_MASK)
 		    << KVX_ITGEN_CFG_TARGET_MAILBOX_SHIFT;
