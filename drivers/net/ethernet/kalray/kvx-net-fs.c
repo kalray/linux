@@ -286,6 +286,12 @@ FIELD_RW_ENTRY(tx_f, lane_id, 0, KVX_ETH_LANE_NB - 1);
 FIELD_R_ENTRY(tx_f, drop_cnt, 0, U32_MAX);
 FIELD_R_ENTRY(tx_f, fifo_level, 0, U32_MAX);
 FIELD_R_ENTRY(tx_f, xoff, 0, 1);
+FIELD_R_ENTRY(tx_f, noc_fifo_level, 0, U32_MAX);
+FIELD_R_ENTRY(tx_f, noc_parity_err, 0, U32_MAX);
+FIELD_R_ENTRY(tx_f, noc_crc_err, 0, U32_MAX);
+FIELD_R_ENTRY(tx_f, noc_perm_err, 0, U32_MAX);
+FIELD_R_ENTRY(tx_f, noc_fifo_err, 0, U32_MAX);
+FIELD_R_ENTRY(tx_f, noc_pkt_drop, 0, U32_MAX);
 
 static struct attribute *tx_f_attrs[] = {
 	&tx_f_header_en_attr.attr,
@@ -300,6 +306,12 @@ static struct attribute *tx_f_attrs[] = {
 	&tx_f_drop_cnt_attr.attr,
 	&tx_f_fifo_level_attr.attr,
 	&tx_f_xoff_attr.attr,
+	&tx_f_noc_fifo_level_attr.attr,
+	&tx_f_noc_parity_err_attr.attr,
+	&tx_f_noc_crc_err_attr.attr,
+	&tx_f_noc_perm_err_attr.attr,
+	&tx_f_noc_fifo_err_attr.attr,
+	&tx_f_noc_pkt_drop_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(tx_f);
