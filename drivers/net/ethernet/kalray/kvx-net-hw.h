@@ -388,6 +388,12 @@ struct kvx_eth_tx_f {
 	u16 xoff;
 	u32 fifo_level;
 	u32 drop_cnt;
+	u32 noc_fifo_level;
+	u32 noc_parity_err;
+        u32 noc_crc_err;
+        u32 noc_perm_err;
+        u32 noc_fifo_err;
+        u32 noc_pkt_drop;
 };
 
 /**
