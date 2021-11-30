@@ -1385,8 +1385,6 @@ static int kvx_iommu_map(struct iommu_domain *domain,
 	struct kvx_iommu_domain *kvx_domain;
 	struct kvx_iommu_drvdata *iommu;
 	struct kvx_iommu_hw *iommu_hw[KVX_IOMMU_NB_TYPE];
-	phys_addr_t start;
-	unsigned long num_pages;
 	int i, ret;
 
 	kvx_domain = to_kvx_domain(domain);
@@ -1406,19 +1404,12 @@ static int kvx_iommu_map(struct iommu_domain *domain,
 		}
 	}
 
-	num_pages = iommu_num_pages(paddr, size, size);
-	start = paddr;
-
-	for (i = 0; i < num_pages; i++) {
-		ret = map_page_in_tlb(iommu_hw, start, (dma_addr_t)iova,
-				      kvx_domain->asn, size);
-		if (ret) {
-			pr_err("%s: failed to map 0x%lx -> 0x%lx (err %d)\n",
-			       __func__, iova, (unsigned long)start, ret);
-			return ret;
-		}
-		start += size;
-		iova += size;
+	ret = map_page_in_tlb(iommu_hw, paddr, (dma_addr_t)iova,
+			      kvx_domain->asn, size);
+	if (ret) {
+		pr_err("%s: failed to map 0x%lx -> 0x%lx (err %d)\n",
+		       __func__, iova, (unsigned long)paddr, ret);
+		return ret;
 	}
 
 	return 0;
