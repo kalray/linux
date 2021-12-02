@@ -390,10 +390,10 @@ struct kvx_eth_tx_f {
 	u32 drop_cnt;
 	u32 noc_fifo_level;
 	u32 noc_parity_err;
-        u32 noc_crc_err;
-        u32 noc_perm_err;
-        u32 noc_fifo_err;
-        u32 noc_pkt_drop;
+	u32 noc_crc_err;
+	u32 noc_perm_err;
+	u32 noc_fifo_err;
+	u32 noc_pkt_drop;
 };
 
 /**
@@ -625,6 +625,7 @@ enum lt_ld_states {
  * @mac_f: mac controller features
  * @transceiver: data related to connector
  * @default_dispatch_entry: default dispatch table entry used by current cluster
+ * @mac_cfg_done: true after mac configuration (including autoneg)
  */
 struct kvx_eth_lane_cfg {
 	u32 id;
@@ -641,6 +642,7 @@ struct kvx_eth_lane_cfg {
 	struct kvx_eth_mac_f mac_f;
 	struct kvx_transceiver_type transceiver;
 	u32 default_dispatch_entry;
+	bool mac_cfg_done;
 };
 
 /**
