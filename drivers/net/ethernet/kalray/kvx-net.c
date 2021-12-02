@@ -51,7 +51,7 @@
 #define KVX_MAX_LAST_SEG_SIZE   256
 /* Max segment size sent to DMA */
 #define KVX_SEG_SIZE            1024
-#define LINK_POLL_TIMER_IN_MS   1000
+#define LINK_POLL_TIMER_IN_MS   2000
 
 #define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
 
@@ -134,6 +134,8 @@ static void kvx_eth_poll_link(struct timer_list *t)
 						   link_poll);
 	bool link_los, link;
 
+	if (!ndev->cfg.mac_cfg_done)
+		return;
 	/* No link checks for BERT and SGMII modes (handled @phy/mac level) */
 	if (kvx_eth_phy_is_bert_en(ndev->hw) || ndev->cfg.speed == SPEED_1000 ||
 	    ndev->cfg.transceiver.id == 0)
@@ -195,9 +197,6 @@ static void kvx_eth_up(struct net_device *netdev)
 	}
 
 	netif_tx_start_all_queues(netdev);
-
-	mod_timer(&ndev->link_poll, jiffies +
-		  msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
 }
 
 /* kvx_eth_netdev_open() - Open ops
@@ -1865,6 +1864,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	int speed_fmt, ret = 0;
 	char *unit;
 
+	ndev->cfg.mac_cfg_done = false;
 	netdev_dbg(ndev->netdev, "%s state->speed: %d ndev->speed: %d pause: 0x%x / 0x%x\n",
 		   __func__, state->speed, ndev->cfg.speed,
 		   pause, pfc_f->global_pause_en);
@@ -1892,13 +1892,13 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		if (kvx_eth_get_module_transceiver(netdev,
 						   &ndev->cfg.transceiver)) {
 			netdev_warn(ndev->netdev, "No cable detected\n");
-			return;
+			goto bail;
 		}
 	}
 
 	if (kvx_eth_phy_is_bert_en(ndev->hw)) {
 		netdev_warn(ndev->netdev, "Trying to reconfigure mac while BERT is enabled\n");
-		return;
+		goto bail;
 	}
 
 	if (state->interface != PHY_INTERFACE_MODE_NA)
@@ -1925,7 +1925,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		 * nominal speed
 		 */
 		if (ret == 0)
-			return;
+			goto bail;
 
 		kvx_eth_get_formated_speed(ndev->cfg.speed, &speed_fmt, &unit);
 		netdev_warn(netdev, "Autonegotiation failed, using default speed %i%s\n",
@@ -1936,6 +1936,11 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, update_serdes);
 	/* Force re-assess link state */
 	kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
+
+bail:
+	ndev->cfg.mac_cfg_done = true;
+	mod_timer(&ndev->link_poll, jiffies +
+		  msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
 }
 
 static void kvx_phylink_mac_an_restart(struct phylink_config *cfg)
