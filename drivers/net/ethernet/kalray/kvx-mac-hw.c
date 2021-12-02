@@ -187,21 +187,32 @@ bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 			  struct kvx_eth_lane_cfg *cfg)
 {
 	u32 off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
-	u32 mask, pcs_link, phy_los;
+	u32 mask, pcs_link = true;
+	u32 phy_los = false;
 	unsigned long t;
-	bool ret;
+
+	if (!mutex_trylock(&hw->mac_reset_lock))
+		return false;
+
+	if (kvx_mac_under_reset(hw))
+		goto bail;
 
 	phy_los = kvx_mac_readl(hw, off + PMAC_STATUS_OFFSET);
 	phy_los &= PMAC_STATUS_PHY_LOS_MASK;
 
 	if (cfg->speed == SPEED_100000) {
-		off = PCS_100G_STATUS1_OFFSET;
-		mask = PCS_100G_STATUS1_PCS_RECEIVE_LINK_MASK;
+		/*
+		 * It is *NOT* possible to trust the status in 100G PCS reg:
+		 * PCS_100G_OFFSET + PCS_100G_STATUS1_OFFSET;
+		 */
+		goto bail;
 	} else if (cfg->speed != SPEED_1000) {
-		off = XPCS_ELEM_SIZE * cfg->id + XPCS_STATUS1_OFFSET;
+		/* For 40G, status is on lane 0 */
+		off = XPCS_OFFSET + XPCS_ELEM_SIZE * cfg->id +
+			XPCS_STATUS1_OFFSET;
 		mask = XPCS_STATUS1_PCS_RECEIVE_LINK_MASK;
 	} else {
-		return 0;
+		goto bail;
 	}
 
 	t = jiffies + msecs_to_jiffies(PHY_LOS_TIMEOUT_MS);
@@ -212,9 +223,9 @@ bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 		pcs_link &= mask;
 	} while (pcs_link == 0);
 
-	ret = (phy_los || !pcs_link);
-
-	return ret;
+bail:
+	mutex_unlock(&hw->mac_reset_lock);
+	return (phy_los || !pcs_link);
 }
 
 /**
