@@ -22,14 +22,13 @@
 #define KVX_PHY_RAM_SIZE 0x8000
 
 #define MAC_LOOPBACK_LATENCY  4
-#define MAC_SYNC_TIMEOUT_MS   5000
+#define MAC_SYNC_TIMEOUT_MS   2000
 #define SIGDET_TIMEOUT_MS     1000
 #define SERDES_ACK_TIMEOUT_MS 60
-#define AN_TIMEOUT_MS         6000
+#define AN_TIMEOUT_MS         2000
 #define NONCE                 0x13
 #define MS_COUNT_SHIFT        5
-#define LT_FRAME_LOCK_TIMEOUT_MS 2000
-#define LT_FSM_TIMEOUT_MS     5000
+#define LT_FSM_TIMEOUT_MS     2000
 #define LT_STAT_RECEIVER_READY BIT(15)
 #define PHY_LOS_TIMEOUT_MS    400
 
@@ -2133,10 +2132,9 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 		hw->lt_status[lane].lp_state = LT_LP_STATE_WAIT_COEFF_UPD;
 		m = LT_KR_STATUS_FRAMELOCK_MASK;
 		ret = kvx_poll(kvx_mac_readl, lt_off + LT_KR_STATUS_OFFSET,
-			  m, m, LT_FRAME_LOCK_TIMEOUT_MS);
+			  m, m, LT_FSM_TIMEOUT_MS);
 		if (ret) {
-			dev_err(hw->dev, "Could not get link training frame lock on lane %d\n",
-					lane);
+			dev_err(hw->dev, "LT frame lock lane %d timeout\n", lane);
 			return -EINVAL;
 		}
 	}
