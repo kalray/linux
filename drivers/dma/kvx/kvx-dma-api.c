@@ -221,6 +221,18 @@ int kvx_dma_release_chan(struct platform_device *pdev, void *phy,
 EXPORT_SYMBOL_GPL(kvx_dma_release_chan);
 
 /**
+ * kvx_dma_get_eth_tx_hdr() - return SMEM pointer to eth TX metadata @job_idx
+ */
+void *kvx_dma_get_eth_tx_hdr(void *phy, const u64 job_idx)
+{
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
+	union eth_tx_metadata *q = p->tx_hdr_q.vaddr;
+
+	return &q[job_idx & p->fifo_size_mask];
+}
+EXPORT_SYMBOL_GPL(kvx_dma_get_eth_tx_hdr);
+
+/**
  * kvx_dma_prepare_pkt() - Acquire and write N jobs in Tx fifo
  *
  * @phy: hw tx channel
@@ -232,13 +244,14 @@ EXPORT_SYMBOL_GPL(kvx_dma_release_chan);
  * Return: 0 - OK -EBUSY if job fifo is full
  */
 int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
-		       u16 route_id, u64 *job_idx)
+		     u16 route_id, u64 *job_idx)
 {
 	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
+	union eth_tx_metadata *q = (union eth_tx_metadata *)p->tx_hdr_q.paddr;
 	struct kvx_dma_tx_job txd;
 	struct scatterlist *sgent;
-	int i, ret = 0;
 	u64 eot, start_ticket;
+	int i, ret = 0;
 
 	ret = kvx_dma_pkt_tx_acquire_jobs(p, sg_len, job_idx);
 	if (ret) {
@@ -248,6 +261,7 @@ int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
 	}
 	start_ticket = *job_idx;
 
+	txd.hdr_addr = (u64)&q[start_ticket & p->fifo_size_mask];
 	for_each_sg(sg, sgent, sg_len, i) {
 		eot = (i == sg_len - 1 ? 1 : 0);
 		txd.src_dma_addr = sg_dma_address(sgent);
@@ -259,6 +273,7 @@ int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
 		txd.fence_before = 1;
 		txd.fence_after = 0;
 		kvx_dma_pkt_tx_write_job(p, start_ticket, &txd, eot);
+		txd.hdr_addr = 0;
 		start_ticket++;
 	}
 

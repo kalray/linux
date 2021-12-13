@@ -48,7 +48,7 @@
 
 /* Min/max constraints on last segment for skbuff data */
 #define KVX_MIN_LAST_SEG_SIZE   32
-#define KVX_MAX_LAST_SEG_SIZE   256
+#define KVX_MAX_LAST_SEG_SIZE   220
 /* Max segment size sent to DMA */
 #define KVX_SEG_SIZE            1024
 #define LINK_POLL_TIMER_IN_MS   2000
@@ -391,7 +391,7 @@ static int kvx_eth_clean_tx_irq(struct kvx_eth_ring *txr)
 	while (tx->job_idx + tx->sg_len <= comp) {
 		if (!tx->sg_len || !tx->skb)
 			break;
-		netdev_dbg(netdev, "queue[%d] received skb[%d]: 0x%llx job_idx: %lld sg_len: %ld comp: %lld len: %ld\n",
+		netdev_dbg(netdev, "queue[%d] sent skb[%d]: 0x%llx job_idx: %lld sg_len: %ld comp: %lld len: %ld\n",
 			  txr->qidx, tx_r, (u64)tx->skb,
 			  tx->job_idx, tx->sg_len, comp, tx->len);
 
@@ -463,52 +463,43 @@ static u16 kvx_eth_pseudo_hdr_cks(struct sk_buff *skb)
 	return align_checksum(cks);
 }
 
-/* kvx_eth_tx_add_hdr() - Adds tx header (fill correpsonding metadata)
+/* kvx_eth_tx_add_hdr() - Fill tx header for tx ring descriptor
  * @ndev: Current kvx_eth_netdev
- * @skb: skb to handle
- *
- * Return: skb on success, NULL on error.
+ * @tx: Corresponding tx descriptor
  */
-static struct sk_buff *kvx_eth_tx_add_hdr(struct kvx_eth_netdev *ndev,
-					  struct sk_buff *skb)
+static void kvx_eth_fill_tx_hdr(struct kvx_eth_netdev *ndev,
+			       struct kvx_eth_netdev_tx *tx)
 {
-	union tx_metadata *hdr, h;
-	size_t hdr_len = sizeof(h);
+	struct sk_buff *skb = tx->skb;
+	int qidx = skb_get_queue_mapping(skb);
+	struct kvx_eth_ring *txr = &ndev->tx_ring[qidx];
 	struct ethhdr *eth_h = eth_hdr(skb);
 	struct iphdr *iph = ip_hdr(skb);
 	enum tx_ip_mode ip_mode = NO_IP_MODE;
 	enum tx_crc_mode crc_mode = NO_CRC_MODE;
 	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
-	int pkt_size;
+	union eth_tx_metadata *h =
+		kvx_dma_get_eth_tx_hdr(txr->dma_chan, tx->job_idx);
 
-	memset(&h, 0, hdr_len);
-	if (skb_headroom(skb) < hdr_len) {
-		struct sk_buff *skb_new = skb_realloc_headroom(skb, hdr_len);
-
-		dev_kfree_skb_any(skb);
-		if (!skb_new)
-			return NULL;
-		skb = skb_new;
-		eth_h = eth_hdr(skb);
-		iph = ip_hdr(skb);
-	}
+	h->dword[0] = 0;
+	h->dword[1] = 0;
+	if (unlikely(!ndev->hw->tx_f[cfg->tx_fifo_id].header_en))
+		goto bail;
 
 	/* Packet size without tx metadata */
-	pkt_size = skb_pagelen(skb);
-	hdr = (union tx_metadata *)skb_push(skb, hdr_len);
-	h._.pkt_size = pkt_size;
-	h._.lane = cfg->id;
-	h._.nocx_en = ndev->hw->tx_f[ndev->cfg.tx_fifo_id].nocx_en;
+	h->pkt_size = tx->len;
+	h->lane = cfg->id;
+	h->nocx_en = ndev->hw->tx_f[cfg->tx_fifo_id].nocx_en;
 
 	if (skb->ip_summed != CHECKSUM_PARTIAL)
-		goto exit;
+		goto bail;
 
 	if (eth_h->h_proto == ETH_P_IP)
 		ip_mode = IP_V4_MODE;
 	else if (eth_h->h_proto == ETH_P_IPV6)
 		ip_mode = IP_V6_MODE;
 
-	if (iph && ndev->hw->tx_f[ndev->cfg.tx_fifo_id].crc_en) {
+	if (iph && ndev->hw->tx_f[cfg->tx_fifo_id].crc_en) {
 		if (iph->protocol == IPPROTO_TCP)
 			crc_mode = TCP_MODE;
 		else if ((iph->protocol == IPPROTO_UDP) ||
@@ -516,19 +507,17 @@ static struct sk_buff *kvx_eth_tx_add_hdr(struct kvx_eth_netdev *ndev,
 			crc_mode = UDP_MODE;
 	}
 	if (ip_mode && crc_mode) {
-		h._.ip_mode  = ip_mode;
-		h._.crc_mode = crc_mode;
-		h._.index    = (u16)skb->transport_header;
-		h._.udp_tcp_cksum = kvx_eth_pseudo_hdr_cks(skb);
+		h->ip_mode  = ip_mode;
+		h->crc_mode = crc_mode;
+		h->index    = (u16)skb->transport_header;
+		h->udp_tcp_cksum = kvx_eth_pseudo_hdr_cks(skb);
 	} else {
 		skb_checksum_help(skb);
 	}
 
-exit:
-	put_unaligned(h.dword[0], &hdr->dword[0]);
-	put_unaligned(h.dword[1], &hdr->dword[1]);
-
-	return skb;
+bail:
+	/* Expect tx hdr has been written */
+	wmb();
 }
 
 /* kvx_eth_netdev_start_xmit() - xmit ops
@@ -557,12 +546,6 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 		return NETDEV_TX_OK;
 	}
 
-	if (likely(ndev->hw->tx_f[ndev->cfg.tx_fifo_id].header_en)) {
-		skb = kvx_eth_tx_add_hdr(ndev, skb);
-		if (!skb)
-			return NETDEV_TX_OK;
-	}
-
 	if (kvx_eth_desc_unused(txr) == 0) {
 		netdev_warn(netdev, "Tx ring full\n");
 		goto busy;
@@ -582,6 +565,8 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 		kvx_eth_unmap_skb(dev, tx);
 		goto busy;
 	}
+
+	kvx_eth_fill_tx_hdr(ndev, tx);
 
 	netdev_dbg(netdev, "Sending skb[%d]: 0x%llx len: %d/%d qidx: %d job_idx: %lld\n",
 		    tx_w, (u64)tx->skb, (int)tx->len, skb->len,
