@@ -23,6 +23,30 @@ struct kvx_dma_pkt_full_desc {
 	u64 notif;
 } __aligned(16);
 
+/**
+ * union tx_metadata
+ */
+union eth_tx_metadata {
+	struct {
+		u64 pkt_size    : 16; // 0 ->15
+		u64 lane        : 2;  // 16->17
+		u64 reserved0   : 6;  // 18->23
+		u64 ip_mode     : 2;  // 24->25
+		u64 crc_mode    : 3;  // 26->28
+		u64 reserved1   : 3;  // 29->31
+		u64 nocx_en     : 1;  // 32->32
+		u64 nocx_vchan  : 1;  // 33->33
+		u64 nocx_pkt_nb : 12; // 34->45
+		u64 reserved2   : 2; // 46->47
+		u64 udp_tcp_cksum : 16; // 48->63
+		u64 index       : 16;
+		u64 ptp_en      : 1;
+		u64 ptp_id      : 4;
+		u64 reserved    : 43;
+	};
+	u64 dword[2];
+} __packed;
+
 void *kvx_dma_get_rx_phy(struct platform_device *pdev, unsigned int id);
 void *kvx_dma_get_tx_phy(struct platform_device *pdev, unsigned int id);
 int kvx_dma_get_max_nb_desc(struct platform_device *pdev);
@@ -38,8 +62,9 @@ int kvx_dma_reserve_tx_chan(struct platform_device *pdev, void *phy,
 int kvx_dma_release_chan(struct platform_device *pdev, void *phy,
 			 struct kvx_dma_param *param);
 int kvx_dma_enqueue_rx_buffer(void *phy, u64 dma_addr, u64 len);
+void *kvx_dma_get_eth_tx_hdr(void *phy, const u64 job_idx);
 int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
-		       u16 route_id, u64 *job_idx);
+		     u16 route_id, u64 *job_idx);
 int kvx_dma_submit_pkt(void *phy, u64 job_idx, size_t nb);
 void kvx_dma_flush_rx_queue(void *phy);
 int kvx_dma_get_rx_completed(struct platform_device *pdev, void *phy,
