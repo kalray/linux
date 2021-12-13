@@ -108,7 +108,7 @@ static int kvx_dma_alloc_queue(struct kvx_dma_phy *phy,
 }
 
 /**
- * kvx_dma_release_queue() - Free allocated queue memory
+ * kvx_dma_release_queue() - Free queue memory
  * @phy: Current phy
  * @q: Current queue
  */
@@ -278,7 +278,7 @@ static int kvx_dma_pkt_rx_channel_queue_init(struct kvx_dma_phy *phy)
 	kvx_dma_q_writeq_relaxed(phy, 0, KVX_DMA_RX_CHAN_BUF_SIZE_OFFSET);
 
 	kvx_dma_q_writeq_relaxed(phy, KVX_DMA_RX_COMP_Q_CFG_EN_MASK |
-		(phy->rx_cache_id << KVX_DMA_RX_COMP_Q_CFG_FIELD_SEL_SHIFT),
+		(0 << KVX_DMA_RX_COMP_Q_CFG_FIELD_SEL_SHIFT),
 		KVX_DMA_RX_CHAN_JOB_Q_CFG_OFFSET);
 	kvx_dma_q_writeq_relaxed(phy, 0, KVX_DMA_RX_CHAN_CUR_OFFSET);
 	kvx_dma_q_writeq_relaxed(phy, 0, KVX_DMA_RX_CHAN_BYTE_CNT_OFFSET);
@@ -705,6 +705,14 @@ static int kvx_dma_get_job_queue(struct kvx_dma_phy *phy,
 			memset(jobq, 0, sizeof(*jobq));
 			goto err;
 		}
+		size = phy->fifo_size * sizeof(union eth_tx_metadata);
+		ret = kvx_dma_alloc_queue(phy, &phy->tx_hdr_q, size, 0);
+		if (ret) {
+			dev_err(phy->dev, "Unable to alloc tx_hdr queue[%d]\n",
+				phy->hw_id);
+			kvx_dma_release_queue(phy, jobq);
+			goto err;
+		}
 	}
 exit:
 	phy->jobq = jobq;
@@ -735,6 +743,7 @@ static void kvx_dma_release_job_queue(struct kvx_dma_phy *phy,
 		idx = phy->hw_id;
 		kvx_dma_release_queue(phy, &jobq_list->tx[idx]);
 		phy->jobq = NULL;
+		kvx_dma_release_queue(phy, &phy->tx_hdr_q);
 	}
 }
 
@@ -1120,6 +1129,35 @@ int kvx_dma_pkt_tx_acquire_jobs(struct kvx_dma_phy *phy, u64 nb_jobs,
 }
 
 /**
+ * kvx_dma_dump_tx_jobq() - Log last TX dma jobs (DBG)
+ */
+static void kvx_dma_dump_tx_jobq(struct kvx_dma_phy *phy)
+{
+	u64 r, rp = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_RP_OFFSET);
+	u64 wp = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_WP_OFFSET);
+	u64 valid_wp = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_VALID_WP_OFFSET);
+	struct kvx_dma_tx_job_desc *tx_jobq =
+		(struct kvx_dma_tx_job_desc *)phy->jobq->vaddr;
+	struct kvx_dma_tx_job_desc *job = &tx_jobq[rp & phy->fifo_size_mask];
+
+	dev_err(phy->dev, "tx[0] tx batched_wp: %lld rp: %lld wp: %lld valid_wp: %lld\n",
+		phy->jobq->batched_wp, rp, wp, valid_wp);
+
+	r = rp;
+	if (r > 2)
+		r -= 2;
+	while (r <= rp) {
+		job = &tx_jobq[r & phy->fifo_size_mask];
+		dev_dbg(phy->dev, "Tx jobq[%d][%lld] param: 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx\n",
+			phy->hw_id, r & phy->fifo_size_mask,
+			job->param[0], job->param[1], job->param[2],
+			job->param[3], job->param[4], job->param[5],
+			job->param[6], job->param[7], job->config);
+		r++;
+	}
+}
+
+/**
  * kvx_dma_pkt_tx_write_job() - Write a Tx job desc in a TX job queue. Thread safe.
  * This function must NOT be used with other kvx_dma_pkt_tx_push* functions.
  *
@@ -1129,26 +1167,34 @@ int kvx_dma_pkt_tx_acquire_jobs(struct kvx_dma_phy *phy, u64 nb_jobs,
  * @eot: End of packet marker
  */
 void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
-				      struct kvx_dma_tx_job *tx_job, u64 eot)
+			      struct kvx_dma_tx_job *tx_job, u64 eot)
 {
 	const u32 idx = ticket & phy->fifo_size_mask;
 	struct kvx_dma_tx_job_desc *tx_jobq =
 		(struct kvx_dma_tx_job_desc *)phy->jobq->vaddr;
 	struct kvx_dma_tx_job_desc *job = &tx_jobq[idx];
 	const u64 object_len = tx_job->len;
+	u64 hdr_en = !!(tx_job->hdr_addr);
 
+	dev_dbg(phy->dev, "%s queue[%d] ticket: %lld hdr_en:%lld eot:%lld tx_hdr: 0x%llx\n",
+		 __func__, phy->hw_id, ticket, hdr_en, eot, tx_job->hdr_addr);
 	/* Adds new TX job descriptor at ticket position in TX jobq */
-	job->param[0] = tx_job->src_dma_addr;
-	job->param[1] = object_len;
-	job->param[2] = object_len >> 4;
-	job->param[3] = object_len & 0xf;
-	job->param[4] = eot;
+	job->param[0] = 0;
+	job->param[1] = 0;
+	job->param[2] = tx_job->src_dma_addr;
+	job->param[3] = (object_len >> 4) | ((object_len & 0xfULL) << 32);
+	job->param[4] = (hdr_en << 32) | eot;
+	job->param[5] = tx_job->hdr_addr;
+	job->param[6] = 0;
+	job->param[7] = object_len;
 	job->config = 0ULL |
 		(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
 		(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
 		(mem2eth_ucode.pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
 		(tx_job->route_id << KVX_DMA_ROUTE_ID_SHIFT) |
 		tx_job->comp_q_id;
+	/* Expect write done */
+	wmb();
 }
 
 /**
@@ -1167,6 +1213,7 @@ int kvx_dma_pkt_tx_submit_jobs(struct kvx_dma_phy *phy, u64 t, u64 nb_jobs)
 				wp, (wp == t), 0, JOB_ACQUIRE_TIMEOUT_IN_US);
 	if (ret) {
 		dev_err(phy->dev, "%s valid_wp: %lld t: %lld\n", __func__, wp, t);
+		kvx_dma_dump_tx_jobq(phy);
 		return ret;
 	}
 
@@ -1174,31 +1221,6 @@ int kvx_dma_pkt_tx_submit_jobs(struct kvx_dma_phy *phy, u64 t, u64 nb_jobs)
 	__builtin_kvx_fence();
 
 	return next_value;
-}
-
-void kvx_dma_dump_tx_jobq(struct kvx_dma_phy *phy)
-{
-	u64 rp = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_RP_OFFSET);
-	u64 wp = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_WP_OFFSET);
-	u64 valid_wp = kvx_dma_jobq_readq(phy, KVX_DMA_TX_JOB_Q_VALID_WP_OFFSET);
-	struct kvx_dma_tx_job_desc *tx_jobq =
-		(struct kvx_dma_tx_job_desc *)phy->jobq->vaddr;
-	struct kvx_dma_tx_job_desc *job = &tx_jobq[rp & phy->fifo_size_mask];
-	int i;
-
-	dev_err(phy->dev, "tx[0] tx batched_wp: %lld rp: %lld wp: %lld valid_wp: %lld\n",
-		phy->jobq->batched_wp, rp, wp, valid_wp);
-
-	rp = 0;
-	while (rp < phy->fifo_size) {
-		job = &tx_jobq[rp & phy->fifo_size_mask];
-		for (i = 0; i < 2 /*KVX_DMA_UC_NB_PARAMS*/; i++) {
-			dev_err(phy->dev, "Tx jobq[%d][%lld] job param[%d]: 0x%llx\n",
-			       phy->hw_id, rp & phy->fifo_size_mask, i, job->param[i]);
-		}
-		dev_err(phy->dev, "tx[0] config: 0x%llx\n", job->config);
-		rp++;
-	}
 }
 
 #define REG64(o) scnprintf(buf + n, buf_size - n, "%-50s: @0x%llx - 0x%llx\n", \
