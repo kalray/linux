@@ -70,6 +70,7 @@ enum dma_error_bit {
  * @fence_before: Perform fence before launching this job
  * @fence_after: Perform fence after launching this job
  * @eot: Only for MEM2ETH transfer type
+ * @hdr_addr: eth tx header dma_addr
  */
 struct kvx_dma_tx_job {
 	u64 src_dma_addr;
@@ -83,6 +84,7 @@ struct kvx_dma_tx_job {
 	u64 fence_before;
 	u64 fence_after;
 	u64 eot;
+	u64 hdr_addr;
 } __packed __aligned(8);
 
 /**
@@ -148,6 +150,7 @@ struct kvx_dma_channel {
  * @jobq: Job queue (for rx, only for eth usecase. Typically, 2 must be assigned
  *        to 1 rx_cache_id: 1 for soft rx buffer provisioning + 1 for HW refill
  * @compq: Completion queue
+ * @tx_hdr_q: Optional queue for ethernet TX headers
  * @dir: Direction
  * @used: Refcounter for RX/TX fifo (for RX limited to 1),
  * @hw_id: default: -1, [0, 63] if assigned
@@ -168,6 +171,7 @@ struct kvx_dma_phy {
 	struct kvx_dma_hw_queue q;
 	struct kvx_dma_hw_queue compq;
 	struct kvx_dma_hw_queue *jobq;
+	struct kvx_dma_hw_queue tx_hdr_q;
 	enum kvx_dma_dir_type dir;
 	refcount_t used;
 	int hw_id;
@@ -252,7 +256,6 @@ void kvx_dma_release_queues(struct kvx_dma_phy *phy,
 
 /* Debug */
 int kvx_dma_read_status(struct kvx_dma_phy *phy);
-void kvx_dma_dump_tx_jobq(struct kvx_dma_phy *phy);
 int kvx_dma_dbg_get_q_regs(struct kvx_dma_phy *phy, char *buf, size_t buf_size);
 
 #endif /* KVX_DMA_HW_H */
