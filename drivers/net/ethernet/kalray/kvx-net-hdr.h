@@ -74,30 +74,6 @@ struct rx_metadata {
 } __packed;
 
 /**
- * union tx_metadata
- */
-union tx_metadata {
-	u64 dword[2];
-	struct {
-		u64 pkt_size    : 16; // 0 ->15
-		u64 lane        : 2;  // 16->17
-		u64 reserved0   : 6;  // 18->23
-		u64 ip_mode     : 2;  // 24->25
-		u64 crc_mode    : 3;  // 26->28
-		u64 reserved1   : 3;  // 29->31
-		u64 nocx_en     : 1;  // 32->32
-		u64 nocx_vchan  : 1;  // 33->33
-		u64 nocx_pkt_nb : 12; // 34->45
-		u64 reserved2   : 2; // 46->47
-		u64 udp_tcp_cksum : 16; // 48->63
-		u64 index       : 16;
-		u64 ptp_en      : 1;
-		u64 ptp_id      : 4;
-		u64 reserved    : 43;
-	} __packed _;
-};
-
-/**
  * Parser rules description
  * All unions must be multiple of 32 bits words
  */
