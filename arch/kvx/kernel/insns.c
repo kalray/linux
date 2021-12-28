@@ -133,8 +133,7 @@ int kvx_insns_write(u32 *insns, unsigned long insns_len, u32 *addr)
 	 * stop_machine, this function does not stop the machine per se
 	 * but execute the provided function on all CPU in a safe state.
 	 */
-	return stop_machine_cpuslocked(patch_insns_percpu,
-				&ip, NULL);
+	return stop_machine(patch_insns_percpu, &ip, cpu_online_mask);
 }
 
 int kvx_insns_read(u32 *insns, unsigned long insns_len, u32 *addr)
