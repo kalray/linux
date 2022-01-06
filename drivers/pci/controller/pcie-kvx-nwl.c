@@ -170,7 +170,7 @@
 #define CFG_DMA_REG_BAR			GENMASK(2, 0)
 
 /* Parameters for the waiting for link up routine */
-#define LINK_WAIT_MAX_RETRIES          10
+#define LINK_WAIT_MAX_RETRIES          600 /*1 mn*/
 #define LINK_WAIT_USLEEP_MIN           90000
 #define LINK_WAIT_USLEEP_MAX           100000
 
@@ -203,6 +203,18 @@
 
 /**
  * struct nwl_pcie
+ * @pcie: pointer to nwl_pcie controller instance
+ * @bridge: pointer to bridge
+ * @job: back ground work object
+ */
+struct nwl_work {
+	struct nwl_pcie *pcie;
+	struct pci_host_bridge *bridge;
+	struct work_struct job;
+};
+
+/**
+ * struct nwl_pcie
  * @dev: pointer to root complex device instance
  * @breg_base: virtual address to read/write internal bridge registers
  * @csr_base: virtual address to read/write internal core registers
@@ -224,6 +236,7 @@
  * @root_busno: root bus number
  * @legacy_irq_domain: domain for legacy interrupts
  * @leg_mask_lock: spinlock for legacy interrupt management
+ * @w: allow to wait link up in background (up to 40s linkup time)
  */
 struct nwl_pcie {
 	struct device *dev;
@@ -247,6 +260,7 @@ struct nwl_pcie {
 	u8 root_busno;
 	struct irq_domain *legacy_irq_domain;
 	raw_spinlock_t leg_mask_lock;
+	struct nwl_work w;
 };
 
 /**
@@ -1090,63 +1104,44 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 	return 0;
 }
 
-static const struct of_device_id nwl_pcie_of_match[] = {
-	{ .compatible = "kalray,kvx-pcie-rc", },
-	{}
-};
-
-static int nwl_pcie_probe(struct platform_device *pdev)
+/**
+ * background_init - terminate completion of pcie root complex
+ *
+ * On some platform the link up can be quite long, typically up to 40s.
+ * By waiting for a the link up in a background thread, it allows
+ * the probe function to return sooner and thus allowing the system
+ * to continue the boot process.
+ */
+static void background_init(struct work_struct *work)
 {
-	struct device *dev = &pdev->dev;
-	struct nwl_pcie *pcie;
-	struct pci_bus *bus;
+	struct nwl_work *w = container_of(work, struct nwl_work, job);
+	struct pci_host_bridge *bridge = w->bridge;
+	struct nwl_pcie *pcie = w->pcie;
+	struct device *dev = pcie->dev;
 	struct pci_bus *child;
-	struct pci_host_bridge *bridge;
+	struct pci_bus *bus;
 	int err;
-
-	bridge = devm_pci_alloc_host_bridge(dev, sizeof(*pcie));
-	if (!bridge)
-		return -ENODEV;
-
-	bridge->native_aer = 1;
-	pcie = pci_host_bridge_priv(bridge);
-
-	pcie->dev = dev;
-	dev_set_drvdata(dev, pcie);
-	pcie->ecam_value = NWL_ECAM_VALUE;
-
-	err = nwl_pcie_parse_dt(pcie, pdev);
-	if (err) {
-		dev_err(dev, "Parsing DT failed\n");
-		return err;
-	}
-
-	err = pcie_asn_init(pcie);
-	if (err) {
-		dev_err(dev, "ASN initialization failed\n");
-		return err;
-	}
 
 	err = nwl_pcie_core_init(pcie);
 	if (err) {
 		dev_err(dev, "Core initialization failed\n");
-		return err;
+		return;
 	}
 
 	err = nwl_pcie_bridge_init(pcie);
 	if (err) {
 		dev_err(dev, "HW Initialization failed\n");
-		return err;
+		return;
 	}
 
 	err = nwl_pcie_translation_init(pcie);
 	if (err)
-		return err;
+		return;
 
 	err = nwl_pcie_init_irq_domain(pcie);
 	if (err) {
 		dev_err(dev, "Failed creating IRQ Domain\n");
-		return err;
+		return;
 	}
 
 	bridge->dev.parent = dev;
@@ -1158,7 +1153,7 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 
 	err = pci_scan_root_bus_bridge(bridge);
 	if (err)
-		return err;
+		return;
 
 	pcie->bridge = bridge;
 	bus = bridge->bus;
@@ -1177,9 +1172,49 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 	 */
 	nwl_bridge_writel(pcie, CFG_ENABLE_MSG_FILTER_MASK,
 			  BRCFG_PCIE_RX_MSG_FILTER);
-
 	nwl_pcie_aer_init(pcie, bus);
 
+}
+
+static const struct of_device_id nwl_pcie_of_match[] = {
+	{ .compatible = "kalray,kvx-pcie-rc", },
+	{}
+};
+
+static int nwl_pcie_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct nwl_pcie *pcie;
+	struct pci_host_bridge *bridge;
+	int err;
+
+	bridge = devm_pci_alloc_host_bridge(dev, sizeof(*pcie));
+	if (!bridge)
+		return -ENODEV;
+
+	bridge->native_aer = 1;
+	pcie = pci_host_bridge_priv(bridge);
+	INIT_WORK(&pcie->w.job, background_init);
+	pcie->w.pcie = pcie;
+	pcie->w.bridge = bridge;
+
+	pcie->dev = dev;
+	dev_set_drvdata(dev, pcie);
+	pcie->ecam_value = NWL_ECAM_VALUE;
+
+	err = nwl_pcie_parse_dt(pcie, pdev);
+	if (err) {
+		dev_err(dev, "Parsing DT failed\n");
+		return err;
+	}
+
+	err = pcie_asn_init(pcie);
+	if (err) {
+		dev_err(dev, "ASN initialization failed\n");
+		return err;
+	}
+
+	schedule_work(&pcie->w.job);
 	return 0;
 }
 
