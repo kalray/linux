@@ -487,7 +487,7 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 	int lane = lb->id;
 
 	if (!lb->add_header || lb->add_footer || !lb->store_and_forward) {
-		dev_warn(hw->dev, "Unsupported LB setting\n");
+		dev_warn(hw->dev, "Unsupported LB setting lane[%d]\n", lane);
 		return;
 	}
 	updatel_bits(hw, ETH, RX_LB_DEFAULT_RULE_LANE_CTRL(lane),
