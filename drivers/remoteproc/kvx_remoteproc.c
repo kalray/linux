@@ -339,6 +339,13 @@ static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
 	int ret;
 	unsigned int ctrl_offset = KVX_FTU_CLUSTER_CTRL +
 				kvx_rproc->cluster_id * KVX_FTU_CLUSTER_STRIDE;
+
+	/* Cluster0 can't be reset via the FTU device! */
+	if (kvx_rproc->cluster_id == 0) {
+		dev_err(kvx_rproc->dev, "cluster0 can't be reset!\n");
+		return -EINVAL;
+	}
+
 	struct reg_sequence reset_cluster[] = {
 		/* Enable clock and reset */
 		{ctrl_offset, BIT(KVX_FTU_CLUSTER_CTRL_CLKEN_BIT) |
@@ -1157,6 +1164,12 @@ static int kvx_rproc_probe(struct platform_device *pdev)
 	ret = kvx_rproc_of_get_dev_syscon(pdev, kvx_rproc);
 	if (ret)
 		goto free_rproc;
+
+	if (((kvx_sfr_get(PCR) & KVX_SFR_PCR_CID_MASK) >> KVX_SFR_PCR_CID_SHIFT) ==
+	    kvx_rproc->cluster_id) {
+		dev_err(dev, "current cluster can't be used as remoteproc!\n");
+		goto free_rproc;
+	}
 
 	kvx_rproc_reset(kvx_rproc);
 
