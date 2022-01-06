@@ -569,7 +569,7 @@ int parser_config_wrapper(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 	if (parser_config(hw, cfg, parser_id, policy, prio) != 0)
 		return -EBUSY;
 
-	if (hw->parsers_tictoc) {
+	if (hw->parsers_tictoc && kvx_eth_speed_aggregated(cfg->speed)) {
 		/* Mirror parser configuration to the top half */
 		if (parser_config(hw, cfg, parser_id + KVX_ETH_PARSER_NB,
 				policy, prio) != 0) {
