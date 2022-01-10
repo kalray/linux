@@ -44,8 +44,7 @@ static void update_parser_desc(struct kvx_eth_hw *hw,
  * @hw: this ethernet hw device
  * @parser_id: the parser physical id
  */
-static void clear_parser_f(struct kvx_eth_hw *hw,
-		int parser_id)
+static void clear_parser_f(struct kvx_eth_hw *hw, int parser_id)
 {
 	struct kvx_eth_parser_f *parser_f = &hw->parser_f[parser_id];
 	int i;
@@ -582,3 +581,41 @@ int parser_config_wrapper(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 	return 0;
 }
 
+/**
+ * parser_config_update() - Enable/Disable parser mirror dep. on speed
+ * @hw: this hardware
+ * @cfg: lane configuration
+ *
+ * Return: 0 on success, negative on failure
+ */
+int parser_config_update(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	bool aggregated = kvx_eth_speed_aggregated(cfg->speed);
+	u32 prio, policy, reg, val;
+	int i, parser_id;
+
+	if (!hw->parsers_tictoc)
+		return 0;
+
+	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
+		if (hw->parsing.parsers[i].enabled) {
+			reg = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * i;
+			val = kvx_eth_readl(hw, reg + PARSER_CTRL_CTL);
+			prio = GETF(val, PARSER_CTRL_PRIO);
+			policy = GETF(val, PARSER_CTRL_DISPATCH_POLICY);
+			parser_id = i + KVX_ETH_PARSER_NB;
+			if (aggregated) {
+				/* Mirror parser configuration to the top half */
+				if (parser_config(hw, cfg, parser_id,
+						  policy, prio) != 0) {
+					parser_disable(hw, parser_id);
+					return -EBUSY;
+				}
+			} else {
+				parser_disable(hw, parser_id);
+			}
+		}
+	}
+
+	return 0;
+}
