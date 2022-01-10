@@ -732,11 +732,9 @@ void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr)
 
 static int kvx_eth_get_dt_entry_from_lut(struct kvx_eth_hw *hw, u32 lut_id)
 {
-	u32 off = RX_LB_LUT_OFFSET + RX_LB_LUT_LUT_OFFSET +
-		lut_id * 4;
-	u32 val;
+	u32 off = RX_LB_LUT_OFFSET + RX_LB_LUT_LUT_OFFSET + lut_id * 4;
+	u32 val = kvx_eth_readl(hw, off);
 
-	val = kvx_eth_readl(hw, off);
 	return val & RX_LB_LUT_NOC_TABLE_ID_MASK;
 }
 

@@ -1012,6 +1012,7 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
 u32 kvx_eth_lb_has_header(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 u32 kvx_eth_lb_has_footer(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int parser_config_update(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, int lane_id);
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
