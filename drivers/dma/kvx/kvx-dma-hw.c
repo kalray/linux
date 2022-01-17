@@ -1175,24 +1175,26 @@ void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
 	struct kvx_dma_tx_job_desc *job = &tx_jobq[idx];
 	const u64 object_len = tx_job->len;
 	u64 hdr_en = !!(tx_job->hdr_addr);
-
-	dev_dbg(phy->dev, "%s queue[%d] ticket: %lld hdr_en:%lld eot:%lld tx_hdr: 0x%llx\n",
-		 __func__, phy->hw_id, ticket, hdr_en, eot, tx_job->hdr_addr);
-	/* Adds new TX job descriptor at ticket position in TX jobq */
-	job->param[0] = 0;
-	job->param[1] = 0;
-	job->param[2] = tx_job->src_dma_addr;
-	job->param[3] = (object_len >> 4) | ((object_len & 0xfULL) << 32);
-	job->param[4] = (hdr_en << 32) | eot;
-	job->param[5] = tx_job->hdr_addr;
-	job->param[6] = 0;
-	job->param[7] = object_len;
-	job->config = 0ULL |
+	u64 config = 0ULL |
 		(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
 		(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
 		(mem2eth_ucode.pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
 		(tx_job->route_id << KVX_DMA_ROUTE_ID_SHIFT) |
 		tx_job->comp_q_id;
+
+	dev_dbg(phy->dev, "%s queue[%d] ticket: %lld hdr_en:%lld eot:%lld tx_hdr: 0x%llx\n",
+		 __func__, phy->hw_id, ticket, hdr_en, eot, tx_job->hdr_addr);
+	/* Adds new TX job descriptor at ticket position in TX jobq */
+	writeq_relaxed(0, &job->param[0]);
+	writeq_relaxed(0, &job->param[1]);
+	writeq_relaxed(tx_job->src_dma_addr, &job->param[2]);
+	writeq_relaxed((object_len >> 4) | ((object_len & 0xfULL) << 32),
+		       &job->param[3]);
+	writeq_relaxed((hdr_en << 32) | eot, &job->param[4]);
+	writeq_relaxed(tx_job->hdr_addr, &job->param[5]);
+	writeq_relaxed(0, &job->param[6]);
+	writeq_relaxed(object_len, &job->param[7]);
+	writeq_relaxed(config, &job->config);
 	/* Expect write done */
 	wmb();
 }
