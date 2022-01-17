@@ -155,16 +155,6 @@ static int parser_check(unsigned int parser_id, unsigned int word_index)
 #define RAM(p)      (PARSER_RAM_OFFSET + PARSER_RAM_ELEM_SIZE * (p))
 #define RAM_LINE(l) (PARSER_RAM_LINE + (l) * PARSER_RAM_LINE_ELEM_SIZE)
 
-void parser_disp(struct kvx_eth_hw *hw, unsigned int parser_id)
-{
-	u32 off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * parser_id;
-
-	dev_dbg(hw->dev, "Parser[%d]\n", parser_id);
-	DUMP_REG(hw, ETH, off + PARSER_CTRL_CTL);
-	DUMP_REG(hw, ETH, off + PARSER_CTRL_STATUS);
-	DUMP_REG(hw, ETH, off + PARSER_CTRL_HIT_CNT);
-}
-
 /**
  * parser_commit_filter() - Enables filtering for parser_id
  *  Checks parser alignement and RAM address.
@@ -473,6 +463,8 @@ static int parser_disable(struct kvx_eth_hw *hw, int parser_id)
 		return ret;
 	}
 
+	/* Reset hit_cnt */
+	kvx_eth_readl(hw, off + PARSER_CTRL_HIT_CNT + 4);
 	clear_parser_f(hw, parser_id);
 	return 0;
 }
