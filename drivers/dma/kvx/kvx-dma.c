@@ -814,6 +814,10 @@ struct dma_chan *kvx_dma_xlate(struct of_phandle_args *dma_spec,
 	return dma_request_channel(mask, kvx_dma_filter_fn, &param);
 }
 
+static struct genpool_data_align gp_data = {
+	.align = SZ_16,
+};
+
 /**
  * kvx_dma_parse_dt() - Recovers device properties from DT
  * @pdev: Platform device
@@ -898,6 +902,9 @@ static int kvx_dma_parse_dt(struct platform_device *pdev,
 				dev_err(&pdev->dev, "Unable to alloc dma pool\n");
 				return -ENOMEM;
 			}
+
+			gen_pool_set_algo(dev->dma_pool,
+					  gen_pool_first_fit_align, &gp_data);
 
 			dma_vaddr = devm_memremap(&pdev->dev, rmem->base,
 						  rmem->size, MEMREMAP_WC);

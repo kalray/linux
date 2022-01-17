@@ -45,7 +45,7 @@ union eth_tx_metadata {
 		u64 reserved    : 43;
 	};
 	u64 dword[2];
-} __packed;
+} __packed  __aligned(16);
 
 void *kvx_dma_get_rx_phy(struct platform_device *pdev, unsigned int id);
 void *kvx_dma_get_tx_phy(struct platform_device *pdev, unsigned int id);
