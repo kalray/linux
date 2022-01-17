@@ -346,6 +346,10 @@ struct kvx_eth_parser_f {
 	struct kvx_eth_rule_f rules[KVX_NET_LAYER_NB];
 	bool enable;
 	char desc[PARSER_DESC_LEN];
+	u32 hit_cnt;
+	u32 running;
+	u32 fifo_overflow;
+	int id;
 };
 
 
