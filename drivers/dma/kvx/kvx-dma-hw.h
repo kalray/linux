@@ -192,7 +192,7 @@ struct kvx_dma_tx_comp {
 	u16 rx_job_push_en   : 1;
 	u16 rx_job_queue_id  : 3;
 	u16 reserved         : 4;
-};
+} __aligned(16);
 
 /*
  * struct kvx_dma_tx_job_desc - DMA tx job queue descriptor
@@ -201,7 +201,7 @@ struct kvx_dma_tx_job_desc {
 	u64 param[KVX_DMA_UC_NB_PARAMS];
 	u64 config;
 	u64 reserved;
-} __packed;
+} __packed  __aligned(16);
 
 int is_asn_global(u32 asn);
 int kvx_dma_request_irq(struct kvx_dma_phy *phy);
