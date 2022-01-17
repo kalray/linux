@@ -478,7 +478,7 @@ static void kvx_eth_fill_tx_hdr(struct kvx_eth_netdev *ndev,
 	enum tx_ip_mode ip_mode = NO_IP_MODE;
 	enum tx_crc_mode crc_mode = NO_CRC_MODE;
 	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
-	union eth_tx_metadata *h =
+	volatile union eth_tx_metadata *h =
 		kvx_dma_get_eth_tx_hdr(txr->dma_chan, tx->job_idx);
 
 	h->dword[0] = 0;
