@@ -173,6 +173,10 @@
 #define PARSER_CTRL_HASH_SEED_SHIFT                0x10
 #define PARSER_CTRL_HASH_SEED_MASK                 0xFFFF0000UL
 #define PARSER_CTRL_STATUS                         0x4
+#define PARSER_CTRL_STATUS_RUNNING_SHIFT           0
+#define PARSER_CTRL_STATUS_RUNNING_MASK            0x00000001UL
+#define PARSER_CTRL_STATUS_FIFO_OVERFLOW_SHIFT     1
+#define PARSER_CTRL_STATUS_FIFO_OVERFLOW_MASK      0x00000002UL
 #define PARSER_CTRL_HIT_CNT                        0xC
 #define PARSER_CTRL_RR_TARGET                      0x14
 #define PARSER_CTRL_RR_TARGET_ELEM_SIZE            0x4

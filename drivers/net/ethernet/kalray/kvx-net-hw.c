@@ -337,12 +337,25 @@ void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 }
 
+static void kvx_eth_parser_f_update(void *data)
+{
+	struct kvx_eth_parser_f *p = (struct kvx_eth_parser_f *)data;
+	u32 val, off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * p->id;
+
+	p->hit_cnt = kvx_eth_readl(p->hw, off + PARSER_CTRL_HIT_CNT);
+	val = kvx_eth_readl(p->hw, off + PARSER_CTRL_STATUS);
+	p->running = GETF(val, PARSER_CTRL_STATUS_RUNNING);
+	p->fifo_overflow = GETF(val, PARSER_CTRL_STATUS_FIFO_OVERFLOW);
+}
+
 void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	int i, j;
 
 	for (i = 0; i < KVX_ETH_PARSER_NB; ++i) {
 		hw->parser_f[i].hw = hw;
+		hw->parser_f[i].id = i;
+		hw->parser_f[i].update = kvx_eth_parser_f_update;
 		for (j = 0; j < KVX_NET_LAYER_NB; ++j)
 			hw->parser_f[i].rules[j].hw = hw;
 	}
