@@ -367,10 +367,16 @@ SYSFS_TYPES(dt_acc_f);
 
 DECLARE_SYSFS_ENTRY(parser_f);
 FIELD_R_ENTRY(parser_f, enable, 0, 1);
+FIELD_R_ENTRY(parser_f, hit_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(parser_f, running, 0, 1);
+FIELD_R_ENTRY(parser_f, fifo_overflow, 0, 1);
 FIELD_R_STRING_ENTRY(parser_f, desc, 0, 0);
 static struct attribute *parser_f_attrs[] = {
 	&parser_f_enable_attr.attr,
 	&parser_f_desc_attr.attr,
+	&parser_f_hit_cnt_attr.attr,
+	&parser_f_running_attr.attr,
+	&parser_f_fifo_overflow_attr.attr,
 	NULL,
 };
 
