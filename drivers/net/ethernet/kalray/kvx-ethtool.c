@@ -23,6 +23,8 @@
  */
 #define KVX_ETH_UNICAST_MASK 0x010000000000ULL
 
+#define SFP_PAGE_LEN (SFP_PAGE + 1)
+
 #define STAT(n, m)   { n, sizeof_field(struct kvx_eth_hw_stats, m), \
 	offsetof(struct kvx_eth_hw_stats, m) }
 
@@ -1397,6 +1399,233 @@ int kvx_eth_get_fecparam(struct net_device *netdev,
 	return 0;
 }
 
+static int i2c_read(struct i2c_adapter *i2c, u8 addr, void *buf, size_t len)
+{
+	struct i2c_msg msgs[2];
+	u8 bus_addr = 0x50;
+	size_t this_len;
+	int ret;
+
+	msgs[0].addr = bus_addr;
+	msgs[0].flags = 0;
+	msgs[0].len = 1;
+	msgs[0].buf = &addr;
+	msgs[1].addr = bus_addr;
+	msgs[1].flags = I2C_M_RD;
+	msgs[1].len = len;
+	msgs[1].buf = buf;
+
+	while (len) {
+		this_len = len;
+		if (this_len > 16)
+			this_len = 16;
+
+		msgs[1].len = this_len;
+
+		ret = i2c_transfer(i2c, msgs, ARRAY_SIZE(msgs));
+		if (ret < 0)
+			return ret;
+
+		if (ret != ARRAY_SIZE(msgs))
+			break;
+
+		msgs[1].buf += this_len;
+		addr += this_len;
+		len -= this_len;
+	}
+
+	return msgs[1].buf - (u8 *)buf;
+}
+
+static int i2c_write(struct i2c_adapter *i2c, u8 addr,
+		     const void *buf, size_t len)
+{
+	struct i2c_msg msgs[1];
+	u8 bus_addr = 0x50;
+	int ret;
+
+	msgs[0].addr = bus_addr;
+	msgs[0].flags = 0;
+	msgs[0].len = 1 + len;
+	msgs[0].buf = kmalloc(1 + len, GFP_KERNEL);
+	if (!msgs[0].buf)
+		return -ENOMEM;
+
+	msgs[0].buf[0] = addr;
+	memcpy(&msgs[0].buf[1], buf, len);
+
+	ret = i2c_transfer(i2c, msgs, ARRAY_SIZE(msgs));
+
+	kfree(msgs[0].buf);
+
+	if (ret < 0)
+		return ret;
+
+	return ret == ARRAY_SIZE(msgs) ? len : 0;
+}
+
+static int kvx_eth_get_eeprom_len(struct net_device *netdev)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct ethtool_modinfo mod_info;
+	int ret = sfp_get_module_info(netdev->sfp_bus, &mod_info);
+
+	if (ndev->cfg.transceiver.qsfp)
+		mod_info.eeprom_len = ETH_MODULE_SFF_8636_MAX_LEN;
+
+	return ((ret == 0) ? mod_info.eeprom_len : ret);
+}
+
+static int ee_select_page(struct i2c_adapter *i2c, const u8 *page)
+{
+	int ret = i2c_write(i2c, SFP_PAGE, page, sizeof(*page));
+
+	if (ret != sizeof(*page)) {
+		if (*page)
+			dev_warn(&i2c->dev, "Unable to change eeprom page(%d)\n",
+				 *page);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+/* ee_get_page_offset() - update eeprom page based on offset
+ *
+ * @i2c: i2c adapter of QSFP eeprom
+ * @page: current page (will be updated based on offset)
+ * @offset: current byte offset (will be updated depending on page)
+ *         [0; 255] for page 0, [128, 255] for other pages
+ * @len: remaining length (will be updated depending on page + offset)
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+static int ee_get_page_offset(struct i2c_adapter *i2c, u8 *page,
+			      int *offset, size_t *len)
+{
+	int ret, off = *offset;
+	u8 p = *page;
+	size_t l;
+
+	if (off >= ETH_MODULE_SFF_8636_LEN) {
+		if (p == 0) {
+			p = (off - SFP_PAGE) / SFP_PAGE_LEN;
+			/*  Offset is 0-255 for page 0 and 128-255 for others */
+			off -= (p * SFP_PAGE_LEN);
+		} else {
+			p++;
+			off -= SFP_PAGE_LEN;
+		}
+		ret = ee_select_page(i2c, &p);
+		/* Pages > 0 are optional */
+		if (ret && p)
+			return -EINVAL;
+	} else {
+		p = 0;
+	}
+
+	l = ETH_MODULE_SFF_8636_LEN - off;
+	l = min(l, *len);
+	if (off + l >= ETH_MODULE_SFF_8636_LEN)
+		l = ETH_MODULE_SFF_8636_LEN - off;
+
+	*page = p;
+	*len = l;
+	*offset = off;
+
+	return 0;
+}
+
+static u64 kvx_eth_get_id(struct kvx_eth_hw *hw)
+{
+	return hw->mppa_id | (hw->dev_id << 32);
+}
+
+static int kvx_eth_get_eeprom(struct net_device *netdev,
+			  struct ethtool_eeprom *ee, u8 *data)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	u8 *buf = kmalloc(ee->len * sizeof(*buf), GFP_KERNEL);
+	size_t l, len = ee->len;
+	int ret, off = ee->offset;
+	u8 page = 0;
+
+	if (!ndev->qsfp_i2c) {
+		netdev_err(netdev, "Unable to get QSFP EEPROM I2C adapter\n");
+		return -EINVAL;
+	}
+	if (!buf)
+		return 0;
+
+	netdev_dbg(netdev, "mppa_id: 0x%llx dev_id: 0x%x magic: 0x%llx\n",
+		ndev->hw->mppa_id, ndev->hw->dev_id, kvx_eth_get_id(ndev->hw));
+	l = 0;
+	while (l < ee->len) {
+		ret = ee_get_page_offset(ndev->qsfp_i2c, &page, &off, &len);
+		if (ret)
+			break;
+
+		netdev_dbg(netdev, "%s off: %d len: %ld page: %d\n",
+			    __func__, off, len, page);
+
+		ret = i2c_read(ndev->qsfp_i2c, off, buf + l, len);
+		if (ret < 0) {
+			netdev_err(ndev->netdev, "Failed to read eeprom @0x%x page %d\n",
+				   off, page);
+			return -EINVAL;
+		}
+		l += ret;
+		off += ret;
+	}
+
+	ret = 0;
+	if (l != ee->len)
+		ret = -EINVAL;
+	page = 0;
+	ee_select_page(ndev->qsfp_i2c, &page);
+	ee->len = l;
+	memcpy(data, buf, l);
+	kfree(buf);
+
+	return ret;
+}
+
+static int kvx_eth_set_eeprom(struct net_device *netdev,
+			struct ethtool_eeprom *ee, u8 *data)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	size_t l, len = ee->len;
+	int ret, off = ee->offset;
+	u8 page = 0;
+
+	if (!ndev->qsfp_i2c) {
+		netdev_err(netdev, "Unable to get QSFP EEPROM I2C adapter\n");
+		return -EINVAL;
+	}
+
+	if (len != 1) {
+		netdev_warn(netdev, "Eeprom write limited to 1 byte only\n");
+		return -EINVAL;
+	}
+
+	ret = ee_get_page_offset(ndev->qsfp_i2c, &page, &off, &len);
+	if (ret)
+		return -EINVAL;
+
+	netdev_dbg(netdev, "%s off: %d len: %ld page: %d data: 0x%x\n",
+		    __func__, off, len, page, *data);
+
+	ret = i2c_write(ndev->qsfp_i2c, off, data, len);
+	if (ret < 0) {
+		netdev_err(ndev->netdev, "Failed to write eeprom @0x%x page %d\n",
+			   off, page);
+		return -EINVAL;
+	}
+
+	page = 0;
+	ee_select_page(ndev->qsfp_i2c, &page);
+
+	return 0;
+}
 
 static const struct ethtool_ops kvx_ethtool_ops = {
 	.get_drvinfo         = kvx_eth_get_drvinfo,
@@ -1415,6 +1644,9 @@ static const struct ethtool_ops kvx_ethtool_ops = {
 	.get_pauseparam      = kvx_eth_get_pauseparam,
 	.set_pauseparam      = kvx_eth_set_pauseparam,
 	.get_fecparam        = kvx_eth_get_fecparam,
+	.get_eeprom_len      = kvx_eth_get_eeprom_len,
+	.get_eeprom          = kvx_eth_get_eeprom,
+	.set_eeprom          = kvx_eth_set_eeprom,
 };
 
 void kvx_set_ethtool_ops(struct net_device *netdev)

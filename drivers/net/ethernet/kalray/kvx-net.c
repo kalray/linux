@@ -1452,6 +1452,7 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 {
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct device_node *np = pdev->dev.of_node;
+	struct device_node *sfp_node, *i2c_node;
 	struct device_node *np_dma;
 	char pname[20];
 	int i, ret = 0;
@@ -1537,6 +1538,11 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 					(u32 *)&ndev->hw->phy_f.param[i], 3))
 			ndev->hw->phy_f.param[i].ovrd_en = true;
 	}
+
+	sfp_node = of_parse_phandle(np, "sfp", 0);
+	i2c_node = of_parse_phandle(sfp_node, "i2c-bus", 0);
+	ndev->qsfp_i2c = of_find_i2c_adapter_by_node(i2c_node);
+	of_node_put(sfp_node);
 
 	return 0;
 }

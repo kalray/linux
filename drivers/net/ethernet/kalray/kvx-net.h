@@ -112,6 +112,7 @@ extern const union roce_filter_desc roce_filter_default;
  * @hw: pointer to hw resources
  * @phylink: phy pointer
  * @phylink_cfg: phylink config
+ * @qsfp_i2c: pointer to i2c adapter of qsfp eeprom
  * @cfg: lane config parameters
  * @napi: napi struct
  * @node: node in kvx_eth_dev list
@@ -128,6 +129,7 @@ struct kvx_eth_netdev {
 	/* Connection to PHY device */
 	struct phylink *phylink;
 	struct phylink_config phylink_cfg;
+	struct i2c_adapter *qsfp_i2c;
 	struct kvx_eth_lane_cfg cfg;
 	struct kvx_dma_config dma_cfg;
 	struct list_head node;
