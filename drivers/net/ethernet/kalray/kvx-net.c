@@ -356,8 +356,8 @@ static int kvx_eth_map_skb(struct device *dev, struct kvx_eth_netdev_tx *tx)
 	}
 	sg_mark_end(&tx->sg[count - 1]);
 	tx->sg_len = count;
-	dev_dbg(dev, "%s tx->len=%d= %d - %d si->nr_frags: %d\n", __func__,
-		(int)tx->len, (int)tx->len, tx->skb->len, si->nr_frags);
+	dev_dbg(dev, "%s tx->len=%d - skblen %d sg_len:%d si->nr_frags: %d\n", __func__,
+		(int)tx->len, tx->skb->len, tx->sg_len, si->nr_frags);
 	return 0;
 
 unwind:
