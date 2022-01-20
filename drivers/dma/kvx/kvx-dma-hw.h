@@ -110,10 +110,12 @@ struct kvx_dma_hw_queue {
  * All access on kvx_dma_job_queue_list must be locked with kvx_dma_dev->lock
  * @rx: list of RX jobq
  * @tx: list of TX jobq
+ * @tx_refcount: ref counter for TX job queues
  * @rx_refcount: ref counter for RX job queues
  */
 struct kvx_dma_job_queue_list {
 	struct kvx_dma_hw_queue tx[KVX_DMA_TX_JOB_QUEUE_NUMBER];
+	atomic_t tx_refcount[KVX_DMA_TX_JOB_QUEUE_NUMBER];
 	struct kvx_dma_hw_queue rx[KVX_DMA_RX_JOB_QUEUE_NUMBER];
 	atomic_t rx_refcount[KVX_DMA_RX_JOB_QUEUE_NUMBER];
 };
