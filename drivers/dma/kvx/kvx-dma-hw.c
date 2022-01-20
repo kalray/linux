@@ -278,7 +278,7 @@ static int kvx_dma_pkt_rx_channel_queue_init(struct kvx_dma_phy *phy)
 	kvx_dma_q_writeq_relaxed(phy, 0, KVX_DMA_RX_CHAN_BUF_SIZE_OFFSET);
 
 	kvx_dma_q_writeq_relaxed(phy, KVX_DMA_RX_COMP_Q_CFG_EN_MASK |
-		(0 << KVX_DMA_RX_COMP_Q_CFG_FIELD_SEL_SHIFT),
+		(phy->rx_cache_id << KVX_DMA_RX_COMP_Q_CFG_FIELD_SEL_SHIFT),
 		KVX_DMA_RX_CHAN_JOB_Q_CFG_OFFSET);
 	kvx_dma_q_writeq_relaxed(phy, 0, KVX_DMA_RX_CHAN_CUR_OFFSET);
 	kvx_dma_q_writeq_relaxed(phy, 0, KVX_DMA_RX_CHAN_BYTE_CNT_OFFSET);
@@ -690,7 +690,7 @@ static int kvx_dma_get_job_queue(struct kvx_dma_phy *phy,
 	} else {
 		idx = phy->hw_id;
 		jobq = &jobq_list->tx[idx];
-		if (jobq->vaddr || jobq->size) {
+		if (atomic_fetch_inc(&jobq_list->tx_refcount[idx])) {
 			dev_dbg(phy->dev, "TX job_queue[%d] already allocated\n",
 				phy->hw_id);
 			goto exit;
@@ -703,6 +703,7 @@ static int kvx_dma_get_job_queue(struct kvx_dma_phy *phy,
 			dev_err(phy->dev, "Unable to alloc TX job_queue[%d]\n",
 				phy->hw_id);
 			memset(jobq, 0, sizeof(*jobq));
+			atomic_dec(&jobq_list->tx_refcount[idx]);
 			goto err;
 		}
 		size = phy->fifo_size * sizeof(union eth_tx_metadata);
@@ -711,6 +712,7 @@ static int kvx_dma_get_job_queue(struct kvx_dma_phy *phy,
 			dev_err(phy->dev, "Unable to alloc tx_hdr queue[%d]\n",
 				phy->hw_id);
 			kvx_dma_release_queue(phy, jobq);
+			atomic_dec(&jobq_list->tx_refcount[idx]);
 			goto err;
 		}
 	}
@@ -741,9 +743,14 @@ static void kvx_dma_release_job_queue(struct kvx_dma_phy *phy,
 		phy->jobq = NULL;
 	} else if (phy->dir == KVX_DMA_DIR_TYPE_TX) {
 		idx = phy->hw_id;
-		kvx_dma_release_queue(phy, &jobq_list->tx[idx]);
-		phy->jobq = NULL;
-		kvx_dma_release_queue(phy, &phy->tx_hdr_q);
+		jobq = &jobq_list->tx[idx];
+		if (jobq->vaddr && jobq->size) {
+			if (atomic_dec_and_test(&jobq_list->tx_refcount[idx])) {
+				kvx_dma_release_queue(phy, jobq);
+				phy->jobq = NULL;
+				kvx_dma_release_queue(phy, &phy->tx_hdr_q);
+			}
+		}
 	}
 }
 
@@ -1182,8 +1189,9 @@ void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
 		(tx_job->route_id << KVX_DMA_ROUTE_ID_SHIFT) |
 		tx_job->comp_q_id;
 
-	dev_dbg(phy->dev, "%s queue[%d] ticket: %lld hdr_en:%lld eot:%lld tx_hdr: 0x%llx\n",
-		 __func__, phy->hw_id, ticket, hdr_en, eot, tx_job->hdr_addr);
+	dev_dbg(phy->dev, "%s queue[%d] ticket: %lld route: 0x%llx hdr_en:%lld eot:%lld tx_hdr: 0x%llx\n",
+		 __func__, phy->hw_id, ticket, tx_job->route_id,
+		 hdr_en, eot, tx_job->hdr_addr);
 	/* Adds new TX job descriptor at ticket position in TX jobq */
 	writeq_relaxed(0, &job->param[0]);
 	writeq_relaxed(0, &job->param[1]);
