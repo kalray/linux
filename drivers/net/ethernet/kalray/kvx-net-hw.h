@@ -827,7 +827,7 @@ struct kvx_eth_hw {
 	u32 aggregated_only;
 	u32 eth_id;
 	u64 mppa_id;
-	u16 dev_id;
+	u64 dev_id;
 	struct pll_cfg pll_cfg;
 	u32 asn;
 	u32 vchan;
