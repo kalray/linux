@@ -1556,7 +1556,7 @@ static int kvx_eth_get_eeprom(struct net_device *netdev,
 	if (!buf)
 		return 0;
 
-	netdev_dbg(netdev, "mppa_id: 0x%llx dev_id: 0x%x magic: 0x%llx\n",
+	netdev_dbg(netdev, "mppa_id: 0x%llx dev_id: 0x%llx magic: 0x%llx\n",
 		ndev->hw->mppa_id, ndev->hw->dev_id, kvx_eth_get_id(ndev->hw));
 	l = 0;
 	while (l < ee->len) {
@@ -1593,7 +1593,7 @@ static int kvx_eth_set_eeprom(struct net_device *netdev,
 			struct ethtool_eeprom *ee, u8 *data)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	size_t l, len = ee->len;
+	size_t len = ee->len;
 	int ret, off = ee->offset;
 	u8 page = 0;
 

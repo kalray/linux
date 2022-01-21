@@ -24,6 +24,7 @@ struct ti_rtm_params {
 	s8 post;
 };
 
+extern void ti_retimer_reset_chan_reg(struct i2c_client *client);
 extern int ti_retimer_set_speed(struct i2c_client *client, u8 lane,
 		unsigned int speed);
 extern int ti_retimer_get_tx_coef(struct i2c_client *client, u8 lane,
