@@ -17,6 +17,10 @@
 #define EOM_ROWS       64
 #define EOM_COLS       64
 
+#define RESET_CHAN_REG      0x0
+#define RESET_CHAN_MASK     0x4
+#define CDR_RESET_REG       0xA
+#define CDR_RESET_MASK      0xC
 #define RX_ADAPT_REG        0x31
 #define RX_ADAPT_MODE_MASK  0x60
 #define PRE_REG             0x3E
@@ -90,6 +94,7 @@ struct ti_rtm_eom {
  * @reg_init: reg initialization structure
  * @eeprom_np: eeprom node
  * @coef: pre, post, swing per lane
+ * @lock; i2c lock (lane/channel settings are shared between clients)
  */
 struct ti_rtm_dev {
 	struct i2c_client *client;
@@ -100,6 +105,7 @@ struct ti_rtm_dev {
 	struct device_node *eeprom_np;
 	struct ti_rtm_coef coef[TI_RTM_NB_LANE];
 	struct ti_rtm_eom  eom[TI_RTM_NB_LANE];
+	spinlock_t lock;
 };
 
 int ti_rtm_sysfs_init(struct ti_rtm_dev *dev);
