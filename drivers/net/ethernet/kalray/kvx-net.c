@@ -356,7 +356,7 @@ static int kvx_eth_map_skb(struct device *dev, struct kvx_eth_netdev_tx *tx)
 	}
 	sg_mark_end(&tx->sg[count - 1]);
 	tx->sg_len = count;
-	dev_dbg(dev, "%s tx->len=%d - skblen %d sg_len:%d si->nr_frags: %d\n", __func__,
+	dev_dbg(dev, "%s tx->len=%d - skblen %d sg_len:%ld si->nr_frags: %d\n", __func__,
 		(int)tx->len, tx->skb->len, tx->sg_len, si->nr_frags);
 	return 0;
 
@@ -1795,8 +1795,13 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 		  unsigned int rtm, unsigned int speed)
 {
 	struct kvx_eth_rtm_params *params = &hw->rtm_params[rtm];
-	int i, lane_speed, rtm_speed_idx;
-	int nb_lanes, lane;
+	int i, lane, ret, lane_speed;
+	int nb_lanes = kvx_eth_speed_to_nb_lanes(speed, &lane_speed);
+
+	if (nb_lanes < 0) {
+		dev_err(hw->dev, "Unsupported speed %d\n", speed);
+		return -EINVAL;
+	}
 
 	if (rtm > RTM_NB) {
 		dev_err(hw->dev, "Unknown retimer id %d\n", rtm);
@@ -1807,13 +1812,8 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 		return 0;
 	}
 
-	nb_lanes = kvx_eth_speed_to_nb_lanes(speed, &lane_speed);
-	if (nb_lanes < 0) {
-		dev_err(hw->dev, "Unsupported speed %d\n", speed);
-		return -EINVAL;
-	}
-	rtm_speed_idx = speed_to_rtm_speed_index(speed);
-	if (rtm_speed_idx < 0) {
+	ret = speed_to_rtm_speed_index(speed);
+	if (ret < 0) {
 		dev_err(hw->dev, "Speed %d not supported by retimer\n", speed);
 		return -EINVAL;
 	}
@@ -1821,7 +1821,6 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 
 	for (i = lane_id; i < nb_lanes; i++) {
 		lane = params->channels[i];
-
 		ti_retimer_set_speed(params->rtm, lane, lane_speed);
 	}
 
