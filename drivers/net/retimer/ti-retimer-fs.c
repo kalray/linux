@@ -126,6 +126,23 @@ struct kobj_type eom_ktype = {
 	.sysfs_ops = &eom_sysfs_ops,
 };
 
+ssize_t reset_chan_store(struct device *dev, struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct i2c_client *client = container_of(dev, struct i2c_client, dev);
+	int val;
+	int ret = kstrtoint(buf, 0, &val);
+
+	if (ret)
+		return ret;
+
+	if (val)
+		ti_retimer_reset_chan_reg(client);
+
+	return count;
+}
+static DEVICE_ATTR_WO(reset_chan);
+
 static void ti_rtm_init_kobj(struct ti_rtm_dev *dev)
 {
 	int i = 0;
@@ -207,6 +224,10 @@ int ti_rtm_sysfs_init(struct ti_rtm_dev *dev)
 			goto fail_bin;
 	}
 
+	ret = sysfs_create_file(&dev->client->dev.kobj, &dev_attr_reset_chan.attr);
+	if (ret)
+		goto fail_bin;
+
 	return 0;
 
 fail_bin:
@@ -224,6 +245,7 @@ void ti_rtm_sysfs_uninit(struct ti_rtm_dev *dev)
 {
 	int i;
 
+	sysfs_remove_file(&dev->client->dev.kobj, &dev_attr_reset_chan.attr);
 	kset_coef_remove(coef_kset, &dev->coef[0], TI_RTM_NB_LANE);
 	for (i = 0; i < TI_RTM_NB_LANE; i++)
 		sysfs_remove_bin_file(&dev->eom[i].kobj, &bin_attr_eom_hit_cnt);
