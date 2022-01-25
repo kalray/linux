@@ -1371,32 +1371,45 @@ int kvx_eth_get_module_transceiver(struct net_device *netdev,
 	return 0;
 }
 
-int kvx_eth_get_fecparam(struct net_device *netdev,
-		struct ethtool_fecparam *param)
+static int kvx_eth_get_fecparam(struct net_device *netdev,
+				struct ethtool_fecparam *param)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	unsigned int fec = ndev->cfg.fec;
 
-	/* No FEC if link is down */
-	if (!kvx_eth_mac_getlink(ndev->hw, &ndev->cfg))
-		return -EINVAL;
+	param->fec = ETHTOOL_FEC_AUTO | ETHTOOL_FEC_RS | ETHTOOL_FEC_BASER;
+	param->active_fec = ETHTOOL_FEC_OFF;
 
-	/* Not configurable for now */
-	param->fec = ETHTOOL_FEC_AUTO;
-
-	switch (kvx_eth_mac_getfec(ndev->hw, &ndev->cfg)) {
-	case FEC_25G_RS_REQUESTED:
+	if (fec & FEC_25G_RS_REQUESTED)
 		param->active_fec = ETHTOOL_FEC_RS;
-		break;
-	case FEC_25G_BASE_R_REQUESTED:
-	case FEC_10G_FEC_REQUESTED:
+	else if (fec & (FEC_25G_BASE_R_REQUESTED | FEC_10G_FEC_REQUESTED))
 		param->active_fec = ETHTOOL_FEC_BASER;
-		break;
-	default:
-		param->active_fec = ETHTOOL_FEC_OFF;
-		break;
-	}
 
+	netdev_dbg(netdev, "FEC: 0x%x (configured: 0x%x)\n", param->fec, fec);
 	return 0;
+}
+
+static int kvx_eth_set_fecparam(struct net_device *netdev,
+				struct ethtool_fecparam *param)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	int ret = 0;
+
+	netdev_dbg(netdev, "FEC: %d\n", param->fec);
+	if (param->fec & ETHTOOL_FEC_AUTO)
+		ndev->cfg.fec = FEC_10G_FEC_REQUESTED |
+			FEC_25G_BASE_R_REQUESTED | FEC_25G_RS_REQUESTED;
+	else if (param->fec & ETHTOOL_FEC_RS)
+		ndev->cfg.fec = FEC_25G_RS_REQUESTED;
+	else if (param->fec & ETHTOOL_FEC_BASER)
+		ndev->cfg.fec = FEC_10G_FEC_REQUESTED |
+			FEC_25G_BASE_R_REQUESTED;
+	else
+		ndev->cfg.fec = 0;
+
+	ret = kvx_eth_mac_cfg(ndev->hw, &ndev->cfg);
+
+	return ret;
 }
 
 static int i2c_read(struct i2c_adapter *i2c, u8 addr, void *buf, size_t len)
@@ -1644,6 +1657,7 @@ static const struct ethtool_ops kvx_ethtool_ops = {
 	.get_pauseparam      = kvx_eth_get_pauseparam,
 	.set_pauseparam      = kvx_eth_set_pauseparam,
 	.get_fecparam        = kvx_eth_get_fecparam,
+	.set_fecparam        = kvx_eth_set_fecparam,
 	.get_eeprom_len      = kvx_eth_get_eeprom_len,
 	.get_eeprom          = kvx_eth_get_eeprom,
 	.set_eeprom          = kvx_eth_set_eeprom,
