@@ -14,8 +14,8 @@ OBJCOPYFLAGS := -O binary -R .comment -R .note -R .bootloader -S
 # Link with libgcc to get __div* builtins.
 LIBGCC	:= $(shell $(CC) $(KBUILD_CFLAGS) --print-libgcc-file-name)
 
-kvx-march-$(CONFIG_SUBARCH_KV3_1) := -march=kv3-1
-kvx-march-$(CONFIG_SUBARCH_KV3_2) := -march=kv3-2
+kvx-march-$(CONFIG_KVX_SUBARCH_KV3_1) := -march=kv3-1
+kvx-march-$(CONFIG_KVX_SUBARCH_KV3_2) := -march=kv3-2
 
 DEFAULT_OPTS := -nostdlib -fno-builtin $(kvx-march-y)
 KBUILD_CFLAGS += $(DEFAULT_OPTS)
