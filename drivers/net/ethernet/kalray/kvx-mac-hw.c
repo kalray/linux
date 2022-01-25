@@ -1287,7 +1287,7 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 			     PMAC_XIF_XGMII_EN_MASK, PMAC_XIF_XGMII_EN_MASK);
 		update_set_vendor_xpcs_vl(hw, lane_id, XPCS_RATE_25G);
 
-		if (cfg->fec) {
+		if (cfg->fec & FEC_25G_RS_REQUESTED) {
 			update_set_vendor_cl_intvl(hw, lane_id, mc);
 			update_ipg_len_compensation(hw, lane_id, mc);
 
@@ -1346,7 +1346,7 @@ static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
 		break;
 	case SPEED_50000:
 		s = 2 * lane_id;
-		if (cfg->fec) {
+		if (cfg->fec & FEC_25G_RS_REQUESTED) {
 			mc = MARKER_COMP_25G;
 			update_set_vendor_cl_intvl(hw, s, mc);
 			update_set_vendor_cl_intvl(hw, s + 1, mc);
@@ -1524,11 +1524,6 @@ int kvx_eth_mac_getlink(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 
 	return !!v;
-}
-
-int kvx_eth_mac_getfec(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
-{
-	return cfg->fec;
 }
 
 static int kvx_eth_mac_setup_fec(struct kvx_eth_hw *hw,
@@ -2253,7 +2248,8 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 			RATE_40GBASE_KR4 | RATE_40GBASE_CR4 |
 			RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S |
 			RATE_10GBASE_KR);
-	cfg->lc.fec = FEC_25G_RS_REQUESTED;
+	cfg->lc.fec = FEC_10G_FEC_REQUESTED | FEC_25G_BASE_R_REQUESTED |
+		FEC_25G_RS_REQUESTED;
 	cfg->lc.pause = 1;
 
 	/* disable AN */
@@ -2284,7 +2280,10 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 	kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_1_OFFSET);
 
 	/* Write FEC ability */
-	val = (cfg->lc.fec << AN_KXAN_ABILITY_2_25G_RS_FEC_REQ_SHIFT);
+	val = (AN_KXAN_ABILITY_2_25G_RS_FEC_REQ_MASK |
+	       AN_KXAN_ABILITY_2_25G_BASER_FEC_REQ_MASK |
+	       AN_KXAN_ABILITY_2_10G_FEC_ABILITY_MASK |
+	       AN_KXAN_ABILITY_2_10G_FEC_REQ_MASK);
 	kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_2_OFFSET);
 
 	/* Find number of cycles to wait 1 ms */
@@ -2616,7 +2615,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	 * but is mandatory according to 802.3. Force it as needed for most
 	 * link partners.
 	 */
-	if (cfg->speed == SPEED_100000) {
+	if (!kvx_eth_phy_is_bert_en(hw) || cfg->speed == SPEED_100000) {
 		dev_dbg(hw->dev, "Forcing 25G RS-FEC\n");
 		cfg->fec = FEC_25G_RS_REQUESTED;
 	}
