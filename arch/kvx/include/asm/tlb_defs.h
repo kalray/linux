@@ -36,6 +36,7 @@
 #define TLB_ES_MODIFIED   2
 #define TLB_ES_A_MODIFIED 3
 
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 /* TLB: Cache Policy - First value is for data, the second is for instruction
  * Symbols are
  *   D: device
@@ -47,6 +48,27 @@
 #define TLB_CP_U_U 1
 #define TLB_CP_W_C 2
 #define TLB_CP_U_C 3
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+/* TLB: Cache Policy - First value is for L1 data, second is for L2 data and
+ * third is for instruction
+ * Symbols are
+ *   D: device
+ *   U: uncached
+ *   W: write through
+ *   C: cache enabled
+ */
+#define TLB_CP_U_U_U 0
+#define TLB_CP_U_U_C 1
+#define TLB_CP_U_C_U 2
+#define TLB_CP_U_C_C 3
+#define TLB_CP_C_U_U 4
+#define TLB_CP_C_U_C 5
+#define TLB_CP_C_C_U 6
+#define TLB_CP_W_W_C 7 /* Write Through */
+#define TLB_CP_D_D_U 8 /* Device memory */
+#else
+#error Unsupported arch
+#endif
 
 /* TLB: Protection Attributes: First value is when PM=0, second is when PM=1
  * Symbols are:
@@ -96,12 +118,24 @@
 /* Refill routine related defines */
 #define REFILL_PERF_ENTRIES	4
 #define REFILL_PERF_PAGE_SIZE	SZ_512M
+
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 /* paddr will be inserted in assembly code */
 #define REFILL_PERF_TEL_VAL \
 	TLB_MK_TEL_ENTRY(0, TLB_PS_512M, TLB_ES_A_MODIFIED, TLB_CP_W_C, \
 			 TLB_PA_NA_RWX)
 /* vaddr will be inserted in assembly code */
 #define REFILL_PERF_TEH_VAL	TLB_MK_TEH_ENTRY(0, 0, TLB_G_GLOBAL, 0)
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+/* paddr will be inserted in assembly code */
+#define REFILL_PERF_TEL_VAL \
+	TLB_MK_TEL_ENTRY(0, TLB_PS_512M, TLB_ES_A_MODIFIED, TLB_CP_W_W_C, \
+			 TLB_PA_NA_RWX)
+/* vaddr will be inserted in assembly code */
+#define REFILL_PERF_TEH_VAL	TLB_MK_TEH_ENTRY(0, 0, TLB_G_GLOBAL, 0)
+#else
+#error Unsupported arch
+#endif
 
 /*
  * LTLB fixed entry index
