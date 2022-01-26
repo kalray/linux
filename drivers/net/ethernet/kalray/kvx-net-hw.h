@@ -751,7 +751,7 @@ struct kvx_buf_pool {
  */
 struct kvx_eth_rtm_params {
 	struct i2c_client *rtm;
-	int channels[KVX_ETH_LANE_NB];
+	u32 channels[KVX_ETH_LANE_NB];
 };
 
 /**

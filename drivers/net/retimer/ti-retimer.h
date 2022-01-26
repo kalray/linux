@@ -30,6 +30,7 @@
 #define TX_SIGN_MASK        0x40
 #define SIG_DET_REG         0x78
 #define RATE_REG            0x2F
+#define RATE_MASK           0xF0
 #define EOM_CNT_MSB_REG     0x25
 #define EOM_CNT_LSB_REG     0x26
 #define HEO_REG             0x27
@@ -60,11 +61,11 @@ struct ti_rtm_reg_init {
  * @lane: retimer channel/lane id
  */
 struct ti_rtm_coef {
-	struct ti_rtm_params p;
 	struct kobject kobj;
+	struct ti_rtm_params p;
 	void *i2c_client;
 	int lane;
-};
+} __packed;
 
 /**
  * struct ti_rtm_eom - TI retimer EOM in sysfs
@@ -74,11 +75,11 @@ struct ti_rtm_coef {
  * @lane: retimer channel/lane id
  */
 struct ti_rtm_eom {
-	u16 hit_cnt[EOM_ROWS][EOM_COLS];
 	struct kobject kobj;
+	u16 hit_cnt[EOM_ROWS][EOM_COLS];
 	void *i2c_client;
 	int lane;
-};
+} __packed;
 
 /**
  * struct ti_rtm_dev - TI retimer priv
@@ -108,6 +109,9 @@ struct ti_rtm_dev {
 	struct mutex lock;
 };
 
+u8 ti_retimer_get_cdr_lock(struct i2c_client *client, u8 lane);
+u8 ti_retimer_get_sig_det(struct i2c_client *client, u8 lane);
+u8 ti_retimer_get_rate(struct i2c_client *client, u8 lane);
 int ti_rtm_sysfs_init(struct ti_rtm_dev *dev);
 void ti_rtm_sysfs_uninit(struct ti_rtm_dev *dev);
 int ti_retimer_req_eom(struct i2c_client *client, u8 lane);
