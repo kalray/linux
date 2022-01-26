@@ -143,6 +143,47 @@ ssize_t reset_chan_store(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_WO(reset_chan);
 
+static ssize_t cdr_lock_show(struct kobject *kobj, struct kobj_attribute *attr,
+			     char *buf)
+{
+	struct ti_rtm_coef *p = (struct ti_rtm_coef *)kobj;
+	u8 val = ti_retimer_get_cdr_lock(p->i2c_client, p->lane);
+
+	return scnprintf(buf, STR_LEN, "%i\n", val);
+}
+static struct kobj_attribute attr_cdr_lock = __ATTR_RO(cdr_lock);
+
+static ssize_t sig_det_show(struct kobject *kobj, struct kobj_attribute *attr,
+			     char *buf)
+{
+	struct ti_rtm_coef *p = (struct ti_rtm_coef *)kobj;
+	u8 val = ti_retimer_get_sig_det(p->i2c_client, p->lane);
+
+	return scnprintf(buf, STR_LEN, "%i\n", val);
+}
+static struct kobj_attribute attr_sig_det = __ATTR_RO(sig_det);
+
+static ssize_t rate_show(struct kobject *kobj, struct kobj_attribute *attr,
+			     char *buf)
+{
+	struct ti_rtm_coef *p = (struct ti_rtm_coef *)kobj;
+	u8 val = ti_retimer_get_rate(p->i2c_client, p->lane);
+
+	return scnprintf(buf, STR_LEN, "%i\n", val);
+}
+static struct kobj_attribute attr_rate = __ATTR_RO(rate);
+
+static struct attribute *attrs[] = {
+	&attr_cdr_lock.attr,
+	&attr_sig_det.attr,
+	&attr_rate.attr,
+	NULL,
+};
+
+static struct attribute_group attr_group = {
+	.attrs = attrs,
+};
+
 static void ti_rtm_init_kobj(struct ti_rtm_dev *dev)
 {
 	int i = 0;
@@ -220,6 +261,9 @@ int ti_rtm_sysfs_init(struct ti_rtm_dev *dev)
 
 	for (i = 0; i < TI_RTM_NB_LANE; i++) {
 		ret = sysfs_create_bin_file(&dev->eom[i].kobj, &bin_attr_eom_hit_cnt);
+		if (ret)
+			goto fail_bin;
+		ret = sysfs_create_group(&dev->coef[i].kobj, &attr_group);
 		if (ret)
 			goto fail_bin;
 	}

@@ -1796,8 +1796,10 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 		  unsigned int rtm, unsigned int speed)
 {
 	struct kvx_eth_rtm_params *params = &hw->rtm_params[rtm];
-	int i, lane, ret, lane_speed;
+	unsigned int lane_speed;
 	int nb_lanes = kvx_eth_speed_to_nb_lanes(speed, &lane_speed);
+	int i, ret;
+	u8 lane;
 
 	if (nb_lanes < 0) {
 		dev_err(hw->dev, "Unsupported speed %d\n", speed);
@@ -1821,7 +1823,7 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 	dev_dbg(hw->dev, "Setting retimer%d speed to %d\n", rtm, speed);
 
 	for (i = lane_id; i < nb_lanes; i++) {
-		lane = params->channels[i];
+		lane = (u8)params->channels[i];
 		ti_retimer_set_speed(params->rtm, lane, lane_speed);
 	}
 
