@@ -261,16 +261,20 @@ void ti_retimer_reset_chan_reg(struct i2c_client *client)
 }
 EXPORT_SYMBOL(ti_retimer_reset_chan_reg);
 
-static inline int speed_to_rtm_reg_value(int speed)
+static inline int speed_to_rtm_reg_value(int speed, u8 *speed_val)
 {
 	switch (speed) {
 	case SPEED_25000:
-		return 0x50;
+		*speed_val = 0x50;
+		break;
 	case SPEED_10000:
-		return 0x00;
+		*speed_val = 0x0;
+		break;
 	default:
 		return -EINVAL;
 	}
+
+	return 0;
 }
 
 /**
@@ -283,24 +287,24 @@ static inline int speed_to_rtm_reg_value(int speed)
 int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
 {
 	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
-	u8 speed_val = speed_to_rtm_reg_value(speed);
+	struct device *dev = &client->dev;
+	u8 speed_val = 0;
+	int ret = speed_to_rtm_reg_value(speed, &speed_val);
 	struct seq_args speed_set_seq[] = {
 		/* CDR reset */
 		{.reg = CDR_RESET_REG, .offset = 0x00,
 			.mask = CDR_RESET_MASK, .value = CDR_RESET_MASK},
 		/* Write data rate value */
-		{.reg = RATE_REG, .offset = 0x00, .mask = 0xf0,
+		{.reg = RATE_REG, .offset = 0x00, .mask = RATE_MASK,
 			.value = speed_val},
 		/* Release CDR reset */
 		{.reg = CDR_RESET_REG, .offset = 0x00,
 			.mask = CDR_RESET_MASK, .value = 0x00},
 	};
-	struct device *dev = &client->dev;
-	int ret = 0;
 
-	if (speed_val < 0) {
+	if (ret) {
 		dev_err(dev, "Unsupported speed %d\n", speed);
-		return speed_val;
+		return ret;
 	}
 
 	mutex_lock(&rtm->lock);
@@ -416,12 +420,11 @@ exit:
 	return -EINVAL;
 }
 
-
-int ti_retimer_get_status(struct i2c_client *client, u8 lane)
+static u8 get_sig_det(struct i2c_client *client, u8 lane)
 {
 	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
-	u8 buf, rate;
 	int ret = 0;
+	u8 buf;
 
 	mutex_lock(&rtm->lock);
 	ret = ti_retimer_select_lane(client, lane);
@@ -433,19 +436,47 @@ int ti_retimer_get_status(struct i2c_client *client, u8 lane)
 		dev_err(&client->dev, "Unable to read sigdet reg\n");
 		goto bail;
 	}
+
+bail:
+	mutex_unlock(&rtm->lock);
+	return buf;
+}
+
+u8 ti_retimer_get_cdr_lock(struct i2c_client *client, u8 lane)
+{
+	u8 buf = get_sig_det(client, lane);
+
+	return !!(buf & BIT(4));
+}
+
+u8 ti_retimer_get_sig_det(struct i2c_client *client, u8 lane)
+{
+	u8 buf = get_sig_det(client, lane);
+
+	return !!(buf & BIT(5));
+}
+
+u8 ti_retimer_get_rate(struct i2c_client *client, u8 lane)
+{
+	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
+	int ret = 0;
+	u8 rate;
+
+	mutex_lock(&rtm->lock);
+	ret = ti_retimer_select_lane(client, lane);
+	if (ret < 0)
+		goto bail;
+
 	ret = ti_rtm_i2c_read(client, RATE_REG, &rate, 1);
 	if (ret < 0) {
 		dev_err(&client->dev, "Unable to read rate reg\n");
 		goto bail;
 	}
-	dev_dbg(&client->dev, "lane[%d]:  0x%x CDR_LOCK: %d, SIGDET: %d rate: 0x%x\n",
-		lane, buf, !!(buf & BIT(4)), !!(buf & BIT(5)), rate & 0xF0);
 
 bail:
 	mutex_unlock(&rtm->lock);
-	return ret;
+	return (rate & RATE_MASK);
 }
-EXPORT_SYMBOL(ti_retimer_get_status);
 
 static int retimer_cfg(struct ti_rtm_dev *rtm)
 {
