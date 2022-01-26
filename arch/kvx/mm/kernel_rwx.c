@@ -44,7 +44,13 @@ static void map_exception_only_in_ltlb(void)
 		TLB_PS_4K,
 		TLB_G_GLOBAL,
 		TLB_PA_NA_RX,
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 		TLB_CP_W_C,
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+		TLB_CP_W_W_C,
+#else
+#error Unsupported arch
+#endif
 		0,
 		TLB_ES_A_MODIFIED);
 
@@ -63,7 +69,13 @@ static void map_kernel_in_ltlb(void)
 		TLB_PS_512M,
 		TLB_G_GLOBAL,
 		TLB_PA_NA_RWX,
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 		TLB_CP_W_C,
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+		TLB_CP_W_W_C,
+#else
+#error Unsupported arch
+#endif
 		0,
 		TLB_ES_A_MODIFIED);
 
