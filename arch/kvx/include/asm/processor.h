@@ -139,7 +139,7 @@ void release_thread(struct task_struct *t);
 
 void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp);
 
-unsigned long get_wchan(struct task_struct *p);
+unsigned long __get_wchan(struct task_struct *p);
 
 extern void ret_from_kernel_thread(void);
 
