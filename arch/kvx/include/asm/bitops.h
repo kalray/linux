@@ -18,10 +18,9 @@
 static inline unsigned long __ffs(unsigned long word);
 
 #include <asm-generic/bitops/const_hweight.h>
-#include <asm-generic/bitops/find.h>
+#include <asm-generic/bitops/ffz.h>
 #include <asm-generic/bitops/non-atomic.h>
 #include <asm-generic/bitops/lock.h>
-#include <asm-generic/bitops/ffz.h>
 #include <asm-generic/bitops/sched.h>
 
 static inline int fls(int x)
@@ -213,6 +212,7 @@ static inline void change_bit(int nr, volatile unsigned long *addr)
 #include <asm-generic/bitops/non-atomic.h>
 #include <asm-generic/bitops/le.h>
 #include <asm-generic/bitops/ext2-atomic.h>
+#include <asm-generic/bitops/find.h>
 
 #endif
 
