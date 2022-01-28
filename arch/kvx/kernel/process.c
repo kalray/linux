@@ -186,15 +186,12 @@ static bool find_wchan(unsigned long pc, void *arg)
 }
 
 /*
- * get_wchan is called to obtain "schedule()" caller function address.
+ * __get_wchan is called to obtain "schedule()" caller function address.
  */
-unsigned long get_wchan(struct task_struct *p)
+unsigned long __get_wchan(struct task_struct *p)
 {
 	unsigned long pc = 0;
 	struct stackframe frame;
-
-	if (!p || p == current || p->state == TASK_RUNNING)
-		return 0;
 
 	/*
 	 * We need to obtain the task stack since we don't want the stack to
