@@ -61,7 +61,7 @@
 	(__ro);								\
 })
 
-#define cmpxchg(ptr, o, n)						\
+#define arch_cmpxchg(ptr, o, n)						\
 ({									\
 	unsigned long __ret;						\
 	BUILD_BUG_ON(sizeof(*(ptr)) != 4 && sizeof(*(ptr)) != 8);	\
@@ -176,7 +176,7 @@ static inline unsigned long __xchg(volatile void *ptr, unsigned long val,
 	return val;
 }
 
-#define xchg(ptr, with)							\
+#define arch_xchg(ptr, with)						\
 	({								\
 		(__typeof__(*(ptr))) __xchg((ptr),			\
 					    (unsigned long)(with),	\
