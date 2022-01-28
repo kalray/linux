@@ -18,4 +18,3 @@ generic-y += stat.h
 generic-y += statfs.h
 generic-y += ucontext.h
 generic-y += user.h
-generic-y += local64.h
