@@ -229,9 +229,9 @@ static inline struct page *pmd_page(pmd_t pmd)
 #define pmd_ERROR(e) \
 	pr_err("%s:%d: bad pmd %016lx.\n", __FILE__, __LINE__, pmd_val(e))
 
-static inline unsigned long pud_page_vaddr(pud_t pud)
+static inline pmd_t *pud_pgtable(pud_t pud)
 {
-	return (unsigned long)pfn_to_virt(pud_val(pud) >> PAGE_SHIFT);
+	return (pmd_t *)pfn_to_virt(pud_val(pud) >> PAGE_SHIFT);
 }
 
 /**********************
