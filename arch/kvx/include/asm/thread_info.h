@@ -66,6 +66,9 @@
 struct thread_info {
 	unsigned long flags;				/* low level flags */
 	int preempt_count;
+#ifdef CONFIG_SMP
+	u32 cpu;					/* current CPU */
+#endif
 };
 
 #define INIT_THREAD_INFO(tsk)			\
