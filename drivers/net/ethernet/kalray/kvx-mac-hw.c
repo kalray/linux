@@ -2615,9 +2615,22 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	 * but is mandatory according to 802.3. Force it as needed for most
 	 * link partners.
 	 */
-	if (!kvx_eth_phy_is_bert_en(hw) || cfg->speed == SPEED_100000) {
-		dev_dbg(hw->dev, "Forcing 25G RS-FEC\n");
-		cfg->fec = FEC_25G_RS_REQUESTED;
+	if (!kvx_eth_phy_is_bert_en(hw)) {
+		switch (cfg->speed) {
+		case SPEED_100000:
+			dev_dbg(hw->dev, "Forcing 25G RS-FEC\n");
+			cfg->fec = FEC_25G_RS_REQUESTED;
+			break;
+		case (SPEED_10000):
+		case (SPEED_40000):
+			cfg->fec &= ~((unsigned int)FEC_25G_RS_REQUESTED);
+			break;
+		case SPEED_1000:
+			cfg->fec = 0;
+			break;
+		default:
+			break;
+		}
 	}
 
 	kvx_eth_mac_setup_fec(hw, cfg);
