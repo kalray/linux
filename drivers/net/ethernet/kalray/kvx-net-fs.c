@@ -111,6 +111,29 @@ static ssize_t s##_##f##_store(struct kvx_eth_##s *p, const char *buf, \
 static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0644, \
 		NULL, s##_##f##_store) \
 
+static ssize_t qsfp_reset_store(struct kobject *kobj, struct kobj_attribute *a,
+				const char *buf, size_t count)
+{
+	struct net_device *netdev = container_of(kobj, struct net_device,
+						 dev.kobj);
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	kvx_eth_reset_qsfp(ndev->hw);
+	msleep(2000);
+
+	return count;
+}
+static struct kobj_attribute attr_qsfp_reset = __ATTR_WO(qsfp_reset);
+
+static struct attribute *attrs[] = {
+	&attr_qsfp_reset.attr,
+	NULL,
+};
+
+static struct attribute_group attr_group = {
+	.attrs = attrs,
+};
+
 DECLARE_SYSFS_ENTRY(mac_f);
 FIELD_RW_ENTRY(mac_f, loopback_mode, 0, MAC_RX2TX_LOOPBACK);
 FIELD_RW_ENTRY(mac_f, tx_fcs_offload, 0, 1);
@@ -638,6 +661,10 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 		if (ret)
 			goto err;
 	}
+
+	ret = sysfs_create_group(&ndev->netdev->dev.kobj, &attr_group);
+	if (ret)
+		goto err;
 
 	return ret;
 
