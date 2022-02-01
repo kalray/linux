@@ -121,7 +121,6 @@ void __init start_kernel_secondary(void)
 
 	local_flush_tlb_all();
 
-	preempt_disable();
 	local_irq_enable();
 	cpu_startup_entry(CPUHP_AP_ONLINE_IDLE);
 }
