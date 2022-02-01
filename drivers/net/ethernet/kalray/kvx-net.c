@@ -1341,7 +1341,8 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 		dev_err(&pdev->dev, "kalray,parsers_tictoc property not found but required\n");
 		return -EINVAL;
 	}
-	dev_info(&pdev->dev, "parser tictoc: %d\n", dev->hw.parsers_tictoc);
+	dev_info(&pdev->dev, "parser tictoc (only in aggregated mode): %d\n",
+		 dev->hw.parsers_tictoc);
 
 	of_property_read_u32(np, "kalray,limit_rx_pps", &dev->hw.limit_rx_pps);
 	if (dev->hw.limit_rx_pps)
@@ -1907,7 +1908,6 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	}
 	if (state->duplex != DUPLEX_UNKNOWN)
 		ndev->cfg.duplex = state->duplex;
-	ndev->cfg.fec = 0;
 
 	if (an_enabled && !ndev->cfg.mac_f.loopback_mode) {
 		ret = kvx_eth_autoneg(ndev);
