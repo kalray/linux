@@ -489,12 +489,10 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 		} while (!gpiod_get_value(rtm->all_done_gpio));
 	}
 
-	spin_lock(&rtm->lock);
 	write_i2c_regs(rtm->client, rtm->reg_init.seq, rtm->reg_init.size);
 
 	for (i = 0; i < TI_RTM_NB_LANE; i++)
 		ti_retimer_set_rx_adapt_mode(rtm->client, i, 2);
-	spin_unlock(&rtm->lock);
 
 	return 0;
 
