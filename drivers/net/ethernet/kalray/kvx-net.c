@@ -1393,6 +1393,11 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	if (of_property_read_u8(np, "kalray,fom_thres", &dev->hw.fom_thres))
 		dev->hw.fom_thres = FOM_THRESHOLD;
 
+	dev->hw.gpio_qsfp_reset = devm_gpiod_get_optional(&pdev->dev,
+						  "qsfp-reset", GPIOD_ASIS);
+	if (IS_ERR(dev->hw.gpio_qsfp_reset))
+		dev_warn(&pdev->dev, "Failed to get qsfp-reset gpio\n");
+
 	return ret;
 }
 
@@ -2287,6 +2292,8 @@ static int kvx_eth_probe(struct platform_device *pdev)
 		goto err;
 
 	dev->hw.dev = &pdev->dev;
+
+	kvx_eth_reset_qsfp(&dev->hw);
 
 	if (dev->type->phy_init) {
 		ret = dev->type->phy_init(&dev->hw, SPEED_UNKNOWN);
