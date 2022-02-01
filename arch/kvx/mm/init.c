@@ -445,12 +445,7 @@ void __init setup_arch_memory(void)
 
 void __init mem_init(void)
 {
-	unsigned long pr;
-
-	pr = memblock_free_all();
-	pr_info("%s: %lu (%lu Mo) pages released\n",
-		__func__, pr, (pr << PAGE_SHIFT) >> 20);
-	mem_init_print_info(NULL);
+	memblock_free_all();
 
 	/* allocate the zero page */
 	empty_zero_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
