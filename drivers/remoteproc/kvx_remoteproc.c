@@ -493,7 +493,7 @@ static void kvx_rproc_kick(struct rproc *rproc, int vqid)
 	mbox_client_txdone(chan, 0);
 }
 
-static void *kvx_rproc_da_to_va(struct rproc *rproc, u64 da, size_t len)
+static void *kvx_rproc_da_to_va(struct rproc *rproc, u64 da, size_t len, bool *io_mem)
 {
 	int i;
 	size_t size;
