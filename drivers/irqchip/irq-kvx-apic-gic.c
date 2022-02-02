@@ -60,7 +60,7 @@ struct gic_in_irq_line {
  * @input_irq: Array of input irq lines
  */
 struct kvx_apic_gic {
-	spinlock_t lock;
+	raw_spinlock_t lock;
 	void __iomem *base;
 	struct irq_domain *domain;
 	uint32_t input_nr_irqs;
@@ -96,10 +96,10 @@ static void kvx_apic_gic_set_line(struct irq_data *data, int enable)
 	struct gic_in_irq_line *in_line = &gic->input_irq[in_irq];
 	struct gic_out_irq_line *out_line = in_line->out_line;
 
-	spin_lock(&gic->lock);
+	raw_spin_lock(&gic->lock);
 	/* Set line enable on currently assigned cpu */
 	irq_line_set_enable(out_line, in_line, enable);
-	spin_unlock(&gic->lock);
+	raw_spin_unlock(&gic->lock);
 }
 
 static void kvx_apic_gic_mask(struct irq_data *data)
@@ -128,7 +128,7 @@ static int kvx_apic_gic_set_affinity(struct irq_data *d,
 	new_cpu = cpumask_first(cpumask);
 	new_out_line = &gic->output_irq[new_cpu];
 
-	spin_lock(&gic->lock);
+	raw_spin_lock(&gic->lock);
 
 	/* Nothing to do, line is the same */
 	if (new_out_line == input_line->out_line)
@@ -147,7 +147,7 @@ static int kvx_apic_gic_set_affinity(struct irq_data *d,
 	input_line->out_line = new_out_line;
 
 out:
-	spin_unlock(&gic->lock);
+	raw_spin_unlock(&gic->lock);
 
 	irq_data_update_effective_affinity(d, cpumask_of(new_cpu));
 
@@ -299,7 +299,7 @@ kvx_init_apic_gic(struct device_node *node, struct device_node *parent)
 		goto err_kfree;
 	}
 
-	spin_lock_init(&gic->lock);
+	raw_spin_lock_init(&gic->lock);
 	apic_gic_init(gic);
 
 	gic->domain = irq_domain_add_linear(node,
