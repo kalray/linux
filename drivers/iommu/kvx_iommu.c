@@ -1854,10 +1854,7 @@ static int kvx_iommu_probe(struct platform_device *pdev)
 			kvx_iommu_groups,
 			dev_name(drvdata->dev));
 
-	iommu_device_set_ops(&drvdata->iommu, &kvx_iommu_ops);
-	iommu_device_set_fwnode(&drvdata->iommu, &dev->of_node->fwnode);
-
-	ret = iommu_device_register(&drvdata->iommu);
+	ret = iommu_device_register(&drvdata->iommu, &kvx_iommu_ops, dev);
 	if (ret) {
 		dev_err(dev, "failed to register IOMMU\n");
 		return ret;
