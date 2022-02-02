@@ -13,6 +13,7 @@
 #include <linux/i2c.h>
 #include <linux/gpio/consumer.h>
 #include <linux/ethtool.h>
+#include <linux/mutex.h>
 
 #include <linux/ti-retimer.h>
 #include "ti-retimer.h"
@@ -159,7 +160,7 @@ int ti_retimer_get_tx_coef(struct i2c_client *client, u8 lane,
 	u8 read_buf;
 	int ret;
 
-	spin_lock(&rtm->lock);
+	mutex_lock(&rtm->lock);
 	ret = ti_retimer_select_lane(client, lane);
 	if (ret < 0)
 		goto exit;
@@ -189,7 +190,7 @@ int ti_retimer_get_tx_coef(struct i2c_client *client, u8 lane,
 	params->post = (read_buf & TX_SIGN_MASK ? -params->post : params->post);
 
 exit:
-	spin_unlock(&rtm->lock);
+	mutex_unlock(&rtm->lock);
 	return ret;
 }
 EXPORT_SYMBOL(ti_retimer_get_tx_coef);
@@ -234,7 +235,7 @@ int ti_retimer_set_tx_coef(struct i2c_client *client, u8 lane,
 	};
 	int ret = 0;
 
-	spin_lock(&rtm->lock);
+	mutex_lock(&rtm->lock);
 	ret = ti_retimer_select_lane(client, lane);
 
 	if (ret < 0)
@@ -242,7 +243,7 @@ int ti_retimer_set_tx_coef(struct i2c_client *client, u8 lane,
 
 	write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq));
 bail:
-	spin_unlock(&rtm->lock);
+	mutex_unlock(&rtm->lock);
 	return ret;
 }
 EXPORT_SYMBOL(ti_retimer_set_tx_coef);
@@ -302,7 +303,7 @@ int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
 		return speed_val;
 	}
 
-	spin_lock(&rtm->lock);
+	mutex_lock(&rtm->lock);
 	ret = ti_retimer_select_lane(client, lane);
 	if (ret < 0)
 		goto bail;
@@ -310,7 +311,7 @@ int ti_retimer_set_speed(struct i2c_client *client, u8 lane, unsigned int speed)
 	write_i2c_regs(client, speed_set_seq, ARRAY_SIZE(speed_set_seq));
 
 bail:
-	spin_unlock(&rtm->lock);
+	mutex_unlock(&rtm->lock);
 	return ret;
 }
 EXPORT_SYMBOL(ti_retimer_set_speed);
@@ -376,7 +377,7 @@ int ti_retimer_req_eom(struct i2c_client *client, u8 lane)
 	u8  buf;
 	u16 v;
 
-	spin_lock(&rtm->lock);
+	mutex_lock(&rtm->lock);
 	ret = ti_retimer_select_lane(client, lane);
 	if (ret < 0)
 		goto exit;
@@ -405,12 +406,12 @@ int ti_retimer_req_eom(struct i2c_client *client, u8 lane)
 	}
 
 	write_i2c_regs(client, seq2, ARRAY_SIZE(seq2));
-	spin_unlock(&rtm->lock);
+	mutex_unlock(&rtm->lock);
 
 	return 0;
 
 exit:
-	spin_unlock(&rtm->lock);
+	mutex_unlock(&rtm->lock);
 	dev_err(dev, "Failed to read EOM hit counters\n");
 	return -EINVAL;
 }
@@ -422,7 +423,7 @@ int ti_retimer_get_status(struct i2c_client *client, u8 lane)
 	u8 buf, rate;
 	int ret = 0;
 
-	spin_lock(&rtm->lock);
+	mutex_lock(&rtm->lock);
 	ret = ti_retimer_select_lane(client, lane);
 	if (ret < 0)
 		goto bail;
@@ -441,7 +442,7 @@ int ti_retimer_get_status(struct i2c_client *client, u8 lane)
 		lane, buf, !!(buf & BIT(4)), !!(buf & BIT(5)), rate & 0xF0);
 
 bail:
-	spin_unlock(&rtm->lock);
+	mutex_unlock(&rtm->lock);
 	return ret;
 }
 EXPORT_SYMBOL(ti_retimer_get_status);
@@ -611,7 +612,7 @@ static int ti_rtm_probe(struct i2c_client *client,
 	if (!rtm)
 		return -ENODEV;
 	rtm->client = client;
-	spin_lock_init(&rtm->lock);
+	mutex_init(&rtm->lock);
 
 	ret = parse_dt(rtm);
 	if (ret)
