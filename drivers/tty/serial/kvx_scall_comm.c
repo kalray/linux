@@ -84,7 +84,7 @@ iss_tty_write(struct tty_struct *tty, const unsigned char *buf, int count)
 	return count;
 }
 
-static int iss_tty_write_room(struct tty_struct *tty)
+static unsigned int iss_tty_write_room(struct tty_struct *tty)
 {
 	/* We can accept anything but we say that we accept 1K */
 	return 1024;
@@ -107,9 +107,9 @@ static int iss_tty_init(void)
 {
 	int ret;
 
-	iss_tty_driver = alloc_tty_driver(ISS_SERIAL_MAX_NUM_LINES);
-	if (!iss_tty_driver)
-		return -ENOMEM;
+	iss_tty_driver = tty_alloc_driver(ISS_SERIAL_MAX_NUM_LINES, 0);
+	if (IS_ERR(iss_tty_driver))
+		return PTR_ERR(iss_tty_driver);
 
 	/* Initialize the tty_driver structure */
 	iss_tty_driver->owner = THIS_MODULE;
@@ -132,7 +132,7 @@ static int iss_tty_init(void)
 	ret = tty_register_driver(iss_tty_driver);
 	if (ret) {
 		pr_err("failed to register %s driver", ISS_TTY_DRIVER_NAME);
-		put_tty_driver(iss_tty_driver);
+		tty_driver_kref_put(iss_tty_driver);
 		tty_port_destroy(&iss_tty_port);
 		return ret;
 	}
