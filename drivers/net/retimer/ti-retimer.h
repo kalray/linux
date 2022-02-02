@@ -105,7 +105,7 @@ struct ti_rtm_dev {
 	struct device_node *eeprom_np;
 	struct ti_rtm_coef coef[TI_RTM_NB_LANE];
 	struct ti_rtm_eom  eom[TI_RTM_NB_LANE];
-	spinlock_t lock;
+	struct mutex lock;
 };
 
 int ti_rtm_sysfs_init(struct ti_rtm_dev *dev);
