@@ -234,6 +234,11 @@ static inline pmd_t *pud_pgtable(pud_t pud)
 	return (pmd_t *)pfn_to_virt(pud_val(pud) >> PAGE_SHIFT);
 }
 
+static inline struct page *pud_page(pud_t pud)
+{
+	return pfn_to_page(pud_val(pud) >> PAGE_SHIFT);
+}
+
 /**********************
  * PTE definitions:
  *   - set_pte
