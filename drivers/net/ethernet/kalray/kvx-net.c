@@ -1416,15 +1416,16 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
  */
 static void kvx_eth_netdev_set_hw_addr(struct kvx_eth_netdev *ndev)
 {
-	const void *addr = NULL;
+	u8 addr[ETH_ALEN];
 	struct net_device *netdev = ndev->netdev;
 	struct kvx_eth_dev *dev = KVX_DEV(ndev);
 	struct device *d = &dev->pdev->dev;
 	u8 *a, tmp[6];
 	u64 h;
+	int err;
 
-	addr = of_get_mac_address(ndev->netdev->dev.of_node);
-	if (!IS_ERR(addr) && addr) {
+	err = of_get_mac_address(ndev->netdev->dev.of_node, addr);
+	if (!err) {
 		a = (u8 *)addr;
 		/* set local assignment bit (IEEE802) */
 		a[0] |= 0x02;
