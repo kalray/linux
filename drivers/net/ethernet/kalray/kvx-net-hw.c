@@ -497,7 +497,7 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 {
 	u32 val = lb->default_dispatch_policy <<
 		RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_SHIFT;
-	int lane = lb->id;
+	int l, lane = lb->id;
 
 	if (!lb->add_header || lb->add_footer || !lb->store_and_forward) {
 		dev_warn(hw->dev, "Unsupported LB setting lane[%d]\n", lane);
@@ -505,6 +505,11 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 	}
 	updatel_bits(hw, ETH, RX_LB_DEFAULT_RULE_LANE_CTRL(lane),
 		    RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_MASK, val);
+	if (hw->parsers_tictoc && hw->aggregated_only) {
+		l = (lane < 2) ? lane + 2 : lane - 2;
+		updatel_bits(hw, ETH, RX_LB_DEFAULT_RULE_LANE_CTRL(l),
+			     RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_MASK, val);
+	}
 
 	val = kvx_eth_readl(hw, RX_LB_CTRL(lane));
 	val &= ~(RX_LB_CTRL_MTU_SIZE_MASK | RX_LB_CTRL_STORE_AND_FORWARD_MASK |
@@ -517,6 +522,11 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 		(lb->add_header << RX_LB_CTRL_ADD_HEADER_SHIFT) |
 		(lb->add_footer << RX_LB_CTRL_ADD_FOOTER_SHIFT);
 	kvx_eth_writel(hw, val, RX_LB_CTRL(lane));
+
+	if (hw->parsers_tictoc && hw->aggregated_only) {
+		l = (lane < 2) ? lane + 2 : lane - 2;
+		kvx_eth_writel(hw, val, RX_LB_CTRL(l));
+	}
 }
 
 /**
