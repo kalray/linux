@@ -328,10 +328,6 @@ int ftrace_make_nop(struct module *mod, struct dyn_ftrace *rec,
 	return write_insns_and_check(&nop, INSN_NOP_SYLLABLE_SIZE, (void *)ip);
 }
 
-int __init ftrace_dyn_arch_init(void)
-{
-		return 0;
-}
 #endif /* CONFIG_DYNAMIC_FTRACE */
 
 /* __mcount is defined in mcount.S */
