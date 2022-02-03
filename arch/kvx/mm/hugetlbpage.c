@@ -183,7 +183,7 @@ pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
 	return __pte(ptev);
 }
 
-pte_t *huge_pte_alloc(struct mm_struct *mm,
+pte_t *huge_pte_alloc(struct mm_struct *mm, struct vm_area_struct *vma,
 		      unsigned long addr,
 		      unsigned long size)
 {
