@@ -71,11 +71,6 @@ extern pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
 
 #define USER_PTRS_PER_PGD    (TASK_SIZE/PGDIR_SIZE)
 
-/**
- * Do not allow any user stuff below that limit
- */
-#define FIRST_USER_ADDRESS 0UL
-
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
 /* Page protection bits */
