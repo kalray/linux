@@ -2144,7 +2144,8 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 				    ndev->dma_cfg.rx_chan_id.start);
 	kvx_eth_tx_fifo_cfg(&dev->hw, &ndev->cfg);
 
-	kvx_eth_lb_f_cfg(&dev->hw, &ndev->hw->lb_f[i]);
+	for (i = 0; i < KVX_ETH_LANE_NB; i++)
+		kvx_eth_lb_f_cfg(&dev->hw, &ndev->hw->lb_f[i]);
 
 	ret = kvx_eth_netdev_sysfs_init(ndev);
 	if (ret)
