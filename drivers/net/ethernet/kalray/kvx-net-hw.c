@@ -505,7 +505,7 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 	}
 	updatel_bits(hw, ETH, RX_LB_DEFAULT_RULE_LANE_CTRL(lane),
 		    RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_MASK, val);
-	if (hw->parsers_tictoc && hw->aggregated_only) {
+	if (hw->aggregated_only) {
 		l = (lane < 2) ? lane + 2 : lane - 2;
 		updatel_bits(hw, ETH, RX_LB_DEFAULT_RULE_LANE_CTRL(l),
 			     RX_LB_DEFAULT_RULE_LANE_CTRL_DISPATCH_POLICY_MASK, val);
@@ -523,7 +523,7 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 		(lb->add_footer << RX_LB_CTRL_ADD_FOOTER_SHIFT);
 	kvx_eth_writel(hw, val, RX_LB_CTRL(lane));
 
-	if (hw->parsers_tictoc && hw->aggregated_only) {
+	if (hw->aggregated_only) {
 		l = (lane < 2) ? lane + 2 : lane - 2;
 		kvx_eth_writel(hw, val, RX_LB_CTRL(l));
 	}
