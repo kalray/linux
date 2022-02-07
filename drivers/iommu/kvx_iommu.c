@@ -1244,12 +1244,6 @@ static struct iommu_domain *kvx_iommu_domain_alloc(unsigned int type)
 	if (!kvx_domain)
 		return NULL;
 
-	if (type == IOMMU_DOMAIN_DMA &&
-	    iommu_get_dma_cookie(&kvx_domain->domain) != 0) {
-		kfree(kvx_domain);
-		return NULL;
-	}
-
 	spin_lock_init(&kvx_domain->lock);
 
 	return &kvx_domain->domain;
@@ -1262,8 +1256,6 @@ static struct iommu_domain *kvx_iommu_domain_alloc(unsigned int type)
 static void kvx_iommu_domain_free(struct iommu_domain *domain)
 {
 	struct kvx_iommu_domain *kvx_domain = to_kvx_domain(domain);
-
-	iommu_put_dma_cookie(&kvx_domain->domain);
 
 	kfree(kvx_domain);
 }
