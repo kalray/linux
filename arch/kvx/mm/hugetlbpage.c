@@ -156,11 +156,10 @@ void huge_ptep_clear_flush(struct vm_area_struct *vma,
 		flush_tlb_page(vma, addr);
 }
 
-pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
-			 struct page *page, int writable)
+pte_t arch_make_huge_pte(pte_t entry, unsigned int shift,
+			 vm_flags_t flags)
 {
 	unsigned long ptev;
-	unsigned int shift = huge_page_shift(hstate_vma(vma));
 
 	ptev = pte_val(entry) & ~(KVX_PAGE_SZ_MASK);
 
