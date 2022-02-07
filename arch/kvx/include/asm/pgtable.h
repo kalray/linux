@@ -38,8 +38,8 @@ struct vm_area_struct;
 #define HPAGE_MASK		(~(HPAGE_SIZE - 1))
 #define HUGETLB_PAGE_ORDER	(HPAGE_SHIFT - PAGE_SHIFT)
 
-extern pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
-				struct page *page, int writable);
+extern pte_t arch_make_huge_pte(pte_t entry, unsigned int shift,
+				vm_flags_t flags);
 #define arch_make_huge_pte arch_make_huge_pte
 
 /* Vmalloc definitions */

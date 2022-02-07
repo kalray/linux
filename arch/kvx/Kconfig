@@ -15,9 +15,6 @@ config FIX_EARLYCON_MEM
 config MMU
 	def_bool y
 
-config SYS_SUPPORTS_HUGETLBFS
-	def_bool y
-
 config KALLSYMS_BASE_RELATIVE
         def_bool n
 
@@ -110,6 +107,7 @@ config KVX
 	select WATCHDOG
 	select KVX_WATCHDOG
 	select TRACE_IRQFLAGS_SUPPORT
+	select ARCH_SUPPORTS_HUGETLBFS
 
 config PGTABLE_LEVELS
 	int
