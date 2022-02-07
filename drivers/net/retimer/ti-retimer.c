@@ -113,8 +113,7 @@ static void write_i2c_regs(struct i2c_client *client, struct seq_args seq[],
 			break;
 		}
 
-		write_buf = ((read_buf & (~mask)) |
-			((value << offset) & mask));
+		write_buf = ((read_buf & (~mask)) | ((value << offset) & mask));
 		ret = ti_rtm_i2c_write(client, reg, &write_buf, 1);
 		if (ret < 0) {
 			dev_warn(dev, "Fail to i2c reg-init write access 0x%x error %d (reg: 0x%x)\n",
@@ -333,6 +332,12 @@ static int ti_retimer_set_rx_adapt_mode(struct i2c_client *client, u8 lane, u8 r
 		/* Write data rate value */
 		{.reg = RX_ADAPT_REG, .offset = 0x5, .mask = RX_ADAPT_MODE_MASK,
 			.value = rx_adapt},
+		{.reg = OVRD_REG, .offset = 0, .mask = DFE_OVRD_MASK,
+			.value = DFE_OVRD_MASK},
+		/* Force DFE enabled (this is *NOT* the reset value) */
+		{.reg = CTRL_REG, .offset = 0,
+			.mask = EN_PARTIAL_DFE_MASK | DFE_PD_MASK,
+			.value = EN_PARTIAL_DFE_MASK},
 	};
 	int ret = ti_retimer_select_lane(client, lane);
 
