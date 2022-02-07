@@ -31,6 +31,11 @@
 #define SIG_DET_REG         0x78
 #define RATE_REG            0x2F
 #define RATE_MASK           0xF0
+#define OVRD_REG            0x23
+#define DFE_OVRD_MASK       BIT(6)
+#define CTRL_REG            0x1E
+#define EN_PARTIAL_DFE_MASK BIT(1)
+#define DFE_PD_MASK         BIT(3)
 #define EOM_CNT_MSB_REG     0x25
 #define EOM_CNT_LSB_REG     0x26
 #define HEO_REG             0x27
