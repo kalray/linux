@@ -28,6 +28,11 @@
 #define INDEX_TO_LAYER(l)             ((l)+2)
 #define MAX_NB_RXQ                    (NB_PE * (NB_CLUSTER - 1))
 
+enum rx_ring_type {
+	DDR_POOL = 0,
+	NB_RX_RING,
+};
+
 struct kvx_eth_type {
 	int (*phy_init)(struct kvx_eth_hw *hw, unsigned int speed);
 	int (*phy_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
@@ -62,9 +67,27 @@ struct kvx_eth_netdev_tx {
 	u64 job_idx;
 };
 
+/**
+ * struct kvx_eth_ring - RX/TX ring
+ * @netdev: back pointer to netdev
+ * @dma_chan: opaque pointer to dma RX/TX channel
+ * @rx_jobq: opaque pointer to rx jobq reserved
+ * @param: dma channel configuration
+ * @pool: rx buffer pool
+ * @tx_buf: tx descriptor ring
+ * @napi: pointer to napi
+ * @skb: current rx skb
+ * @count: number of desc in ring
+ * @next_to_use: write pointer
+ * @next_to_clean: read pointer
+ * @qidx: queue index
+ * @init_done: ring init done
+ * @type: pool mem type
+ */
 struct kvx_eth_ring {
 	struct net_device *netdev;
 	void *dma_chan;
+	void *rx_jobq;
 	struct kvx_dma_param param;
 	union {
 		struct kvx_buf_pool pool;
@@ -72,12 +95,12 @@ struct kvx_eth_ring {
 	};
 	struct napi_struct napi;
 	struct sk_buff *skb;
-	u16 count;          /* Number of desc in ring */
+	u16 count;
 	u16 next_to_use;
 	u16 next_to_clean;
-	u16 refill_thres;
 	int qidx;
 	bool init_done;
+	enum rx_ring_type type;
 };
 
 struct kvx_eth_node_id {
@@ -116,7 +139,7 @@ extern const union roce_filter_desc roce_filter_default;
  * @cfg: lane config parameters
  * @napi: napi struct
  * @node: node in kvx_eth_dev list
- * @rx_ring: RX buffer ring (may need 2 chans for rx_split feature)
+ * @rx_ring: RX buffer ring
  * @rx_buffer_len: RX buffer length
  * @tx_ring: TX buffer ring
  * @stats: hardware statistics
@@ -133,7 +156,7 @@ struct kvx_eth_netdev {
 	struct kvx_eth_lane_cfg cfg;
 	struct kvx_dma_config dma_cfg;
 	struct list_head node;
-	struct kvx_eth_ring rx_ring[NB_PE];
+	struct kvx_eth_ring rx_ring[NB_RX_RING];
 	u16    rx_buffer_len;
 	struct kvx_eth_ring tx_ring[TX_FIFO_NB];
 	struct kvx_eth_hw_stats stats;
