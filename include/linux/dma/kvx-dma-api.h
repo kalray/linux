@@ -61,12 +61,16 @@ int kvx_dma_reserve_tx_chan(struct platform_device *pdev, void *phy,
 
 int kvx_dma_release_chan(struct platform_device *pdev, void *phy,
 			 struct kvx_dma_param *param);
-int kvx_dma_enqueue_rx_buffer(void *phy, u64 dma_addr, u64 len);
+int kvx_dma_reserve_rx_jobq(struct platform_device *pdev, void **jobq,
+			    int jobq_id, int cache_id, int prio);
+void kvx_dma_release_rx_jobq(struct platform_device *pdev, void *jobq);
+
+int kvx_dma_enqueue_rx_buffer(void *jobq, u64 dma_addr, u64 len);
 void *kvx_dma_get_eth_tx_hdr(void *phy, const u64 job_idx);
 int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
 		     u16 route_id, u64 *job_idx);
 int kvx_dma_submit_pkt(void *phy, u64 job_idx, size_t nb);
-void kvx_dma_flush_rx_queue(void *phy);
+void kvx_dma_flush_rx_jobq(void *jobq);
 int kvx_dma_get_rx_completed(struct platform_device *pdev, void *phy,
 			     struct kvx_dma_pkt_full_desc **pkt);
 u64 kvx_dma_get_tx_completed(struct platform_device *pdev, void *phy);

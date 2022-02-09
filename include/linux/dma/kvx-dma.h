@@ -55,7 +55,7 @@ struct kvx_dma_slave_cfg {
  * @qos_id: qos
  * @rx_tag: channel selector
  * @rx_cache_id: Rx cache associated to rx job queue [0, 3]
- * @chan: opaque pointer to chan
+ * @chan: opaque pointer to chan (TX channel can be shared among netdev)
  */
 struct kvx_dma_param {
 	u64 noc_route;

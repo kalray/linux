@@ -105,6 +105,35 @@ static void kvx_dma_release_phy(struct kvx_dma_dev *d, struct kvx_dma_phy *phy,
 	spin_unlock(&d->lock);
 }
 
+int kvx_dma_reserve_rx_jobq(struct platform_device *pdev, void **jobq,
+			    int jobq_id, int cache_id, int prio)
+{
+	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
+	struct kvx_dma_hw_queue *q = NULL;
+	int ret = kvx_dma_get_rx_jobq(&q, &d->jobq_list, jobq_id);
+
+	if (ret) {
+		dev_err(d->dma.dev, "%s failed (jobq_id: %d)\n",
+			__func__, jobq_id);
+		return ret;
+	}
+
+	ret = kvx_dma_pkt_rx_jobq_init(q, d->asn, cache_id, prio);
+
+	*jobq = q;
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(kvx_dma_reserve_rx_jobq);
+
+void kvx_dma_release_rx_jobq(struct platform_device *pdev, void *jobq)
+{
+	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
+
+	kvx_dma_release_rx_job_queue(jobq, &d->jobq_list);
+}
+EXPORT_SYMBOL_GPL(kvx_dma_release_rx_jobq);
+
 /**
  * kvx_dma_reserve_rx_chan() - Reserve rx channel for MEM2ETH use only
  * Allocates and initialise all required hw RX fifos.
@@ -126,11 +155,9 @@ int kvx_dma_reserve_rx_chan(struct platform_device *pdev, void *phy,
 	if (ret)
 		return ret;
 
-	p->rx_cache_id = param->rx_cache_id;
-
 	spin_lock(&d->lock);
 	if (refcount_read(&p->used) > 2 ||
-	    kvx_dma_check_rx_q_enabled(p, p->rx_cache_id)) {
+	    kvx_dma_check_rx_q_enabled(p)) {
 		spin_unlock(&d->lock);
 		return 0;
 	}
@@ -141,10 +168,10 @@ int kvx_dma_reserve_rx_chan(struct platform_device *pdev, void *phy,
 		goto err;
 	}
 
-	ret = kvx_dma_init_rx_queues(p, KVX_DMA_TYPE_MEM2ETH);
+	ret = kvx_dma_pkt_rx_channel_queue_init(p, param->rx_cache_id);
 	spin_unlock(&d->lock);
 	if (ret) {
-		dev_err(dev, "Unable to init RX queues\n");
+		dev_err(dev, "Unable to init RX completion queue\n");
 		goto err;
 	}
 
@@ -228,7 +255,7 @@ void *kvx_dma_get_eth_tx_hdr(void *phy, const u64 job_idx)
 	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
 	union eth_tx_metadata *q = p->tx_hdr_q.vaddr;
 
-	return &q[job_idx & p->fifo_size_mask];
+	return &q[job_idx & p->tx_hdr_q.size_mask];
 }
 EXPORT_SYMBOL_GPL(kvx_dma_get_eth_tx_hdr);
 
@@ -261,7 +288,7 @@ int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
 	}
 	start_ticket = *job_idx;
 
-	txd.hdr_addr = (u64)&q[start_ticket & p->fifo_size_mask];
+	txd.hdr_addr = (u64)&q[start_ticket & p->jobq->size_mask];
 	for_each_sg(sg, sgent, sg_len, i) {
 		eot = (i == sg_len - 1 ? 1 : 0);
 		txd.src_dma_addr = sg_dma_address(sgent);
@@ -304,21 +331,21 @@ int kvx_dma_submit_pkt(void *phy, u64 job_idx, size_t nb)
 }
 EXPORT_SYMBOL_GPL(kvx_dma_submit_pkt);
 
-int kvx_dma_enqueue_rx_buffer(void *phy, u64 dma_addr, u64 len)
+int kvx_dma_enqueue_rx_buffer(void *jobq, u64 dma_addr, u64 len)
 {
-	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
+	struct kvx_dma_hw_queue *q = (struct kvx_dma_hw_queue *)jobq;
 
-	return kvx_dma_pkt_rx_queue_push_desc(p, dma_addr, len);
+	return kvx_dma_pkt_rx_queue_push_desc(q, dma_addr, len);
 }
 EXPORT_SYMBOL_GPL(kvx_dma_enqueue_rx_buffer);
 
-void kvx_dma_flush_rx_queue(void *phy)
+void kvx_dma_flush_rx_jobq(void *jobq)
 {
-	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
+	struct kvx_dma_hw_queue *q = (struct kvx_dma_hw_queue *)jobq;
 
-	kvx_dma_pkt_rx_queue_flush(p);
+	kvx_dma_pkt_rx_queue_flush(q);
 }
-EXPORT_SYMBOL_GPL(kvx_dma_flush_rx_queue);
+EXPORT_SYMBOL_GPL(kvx_dma_flush_rx_jobq);
 
 int kvx_dma_get_rx_completed(struct platform_device *pdev, void *phy,
 			     struct kvx_dma_pkt_full_desc **pkt)
