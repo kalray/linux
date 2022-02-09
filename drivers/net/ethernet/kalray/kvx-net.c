@@ -52,6 +52,7 @@
 /* Max segment size sent to DMA */
 #define KVX_SEG_SIZE            1024
 #define LINK_POLL_TIMER_IN_MS   2000
+#define REFILL_THRES            1
 
 #define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
 
@@ -74,6 +75,9 @@ static const char *rtm_channels_prop_name[RTM_NB] = {
 	[RTM_TX] = "kalray,rtmtx-channels",
 };
 
+static int rx_jobq_prio[] = {
+	[DDR_POOL] = 1,
+};
 
 static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *ring, int count);
 
@@ -190,8 +194,10 @@ static void kvx_eth_up(struct net_device *netdev)
 	int i;
 
 	phylink_start(ndev->phylink);
-	for (i = 0; i < ndev->dma_cfg.rx_chan_id.nb; i++) {
+
+	for (i = 0; i < NB_RX_RING; i++) {
 		r = &ndev->rx_ring[i];
+		r->type = i;
 		kvx_eth_alloc_rx_buffers(r, kvx_eth_desc_unused(r));
 		napi_enable(&r->napi);
 	}
@@ -619,7 +625,7 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
 			qdesc->dma_addr = page_pool_get_dma_addr(p) +
 				KVX_RX_HEADROOM;
 		}
-		ret = kvx_dma_enqueue_rx_buffer(rxr->dma_chan,
+		ret = kvx_dma_enqueue_rx_buffer(rxr->rx_jobq,
 					  qdesc->dma_addr, KVX_MAX_RX_BUF_SIZE);
 		if (ret) {
 			netdev_err(netdev, "Failed to enqueue buffer in rx chan[%d]: %d\n",
@@ -756,7 +762,7 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 	}
 	rxr->next_to_clean = rx_r;
 	rx_count = kvx_eth_desc_unused(rxr);
-	if (rx_count > rxr->refill_thres)
+	if (rx_count > REFILL_THRES)
 		kvx_eth_alloc_rx_buffers(rxr, rx_count);
 
 	return work_done;
@@ -947,7 +953,7 @@ static struct page_pool *kvx_eth_create_rx_pool(struct kvx_eth_netdev *ndev,
 }
 
 static int kvx_eth_alloc_rx_pool(struct kvx_eth_netdev *ndev,
-			       struct kvx_eth_ring *r, int cache_id)
+			       struct kvx_eth_ring *r)
 {
 	struct kvx_buf_pool *rx_pool = &r->pool;
 
@@ -970,7 +976,7 @@ static void kvx_eth_release_rx_pool(struct kvx_eth_ring *r)
 	u32 rx_r = r->next_to_clean;
 	struct kvx_qdesc *qdesc;
 
-	kvx_dma_flush_rx_queue(r->dma_chan);
+	kvx_dma_flush_rx_jobq(r->dma_chan);
 	while (--unused_desc) {
 		qdesc = &r->pool.qdesc[rx_r];
 
@@ -985,19 +991,16 @@ static void kvx_eth_release_rx_pool(struct kvx_eth_ring *r)
 	kfree(r->pool.qdesc);
 }
 
-#define REFILL_THRES(c) 1
-
 int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 {
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct kvx_eth_dt_f dt;
-	int ret = 0;
+	int rx_chan, ret = 0;
 
 	r->count = kvx_dma_get_max_nb_desc(dma_cfg->pdev);
-	r->refill_thres = REFILL_THRES(r->count);
 	kvx_eth_reset_ring(r);
 
-	ret = kvx_eth_alloc_rx_pool(ndev, r, dma_cfg->rx_cache_id);
+	ret = kvx_eth_alloc_rx_pool(ndev, r);
 	if (ret) {
 		netdev_err(ndev->netdev, "Failed to get RX pool\n");
 		goto exit;
@@ -1010,22 +1013,22 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	/* Reserve channel only once */
 	if (!r->init_done) {
 		memset(&r->param, 0, sizeof(r->param));
-		r->param.rx_cache_id = (dma_cfg->rx_cache_id + r->qidx) %
-					RX_CACHE_NB;
+		r->param.rx_cache_id = (dma_cfg->rx_cache_id + r->qidx) % RX_CACHE_NB;
+		rx_chan = dma_cfg->rx_chan_id.start + r->qidx;
 
-		r->dma_chan = kvx_dma_get_rx_phy(dma_cfg->pdev,
-					dma_cfg->rx_chan_id.start + r->qidx);
+		r->dma_chan = kvx_dma_get_rx_phy(dma_cfg->pdev, rx_chan);
 		ret = kvx_dma_reserve_rx_chan(dma_cfg->pdev, r->dma_chan,
 					      &r->param, kvx_eth_dma_irq_rx, r);
 		if (ret)
 			goto chan_failed;
-		/* Only RX_CACHE_NB can be used and 1 rx_cache per queue */
-		if (dma_cfg->rx_cache_id + r->qidx >= RX_CACHE_NB) {
-			netdev_err(ndev->netdev, "Unable to get cache id\n");
-			goto chan_failed;
-		}
+		ret = kvx_dma_reserve_rx_jobq(dma_cfg->pdev, &r->rx_jobq,
+					      rx_chan, r->param.rx_cache_id,
+					      rx_jobq_prio[r->type]);
+		if (ret)
+			goto jobq_failed;
+
 		dt.cluster_id = kvx_cluster_id();
-		dt.rx_channel = dma_cfg->rx_chan_id.start + r->qidx;
+		dt.rx_channel = rx_chan;
 		dt.split_trigger = 0;
 		dt.vchan = ndev->hw->vchan;
 		kvx_eth_add_dispatch_table_entry(ndev->hw, &ndev->cfg, &dt,
@@ -1034,6 +1037,8 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	}
 	return 0;
 
+jobq_failed:
+	kvx_dma_release_chan(dma_cfg->pdev, r->dma_chan, &r->param);
 chan_failed:
 	netif_napi_del(&r->napi);
 	kvx_eth_release_rx_pool(r);
@@ -1055,6 +1060,7 @@ void kvx_eth_release_rx_ring(struct kvx_eth_ring *r, int keep_dma_chan)
 	netif_napi_del(&r->napi);
 	kvx_eth_release_rx_pool(r);
 	if (!keep_dma_chan) {
+		kvx_dma_release_rx_jobq(dma_cfg->pdev, r->rx_jobq);
 		kvx_dma_release_chan(dma_cfg->pdev, r->dma_chan, &r->param);
 		r->init_done = false;
 	}
