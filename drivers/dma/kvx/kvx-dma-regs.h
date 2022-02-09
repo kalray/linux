@@ -68,6 +68,9 @@
 #define KVX_DMA_RX_JOB_Q_ACTIVATE_OFFSET           0x50
 #define KVX_DMA_RX_JOB_Q_STATUS_OFFSET             0x60
 #define KVX_DMA_RX_JOB_Q_CACHE_ID_OFFSET           0x70
+#define KVX_DMA_RX_JOB_Q_CACHE_ID_CACHE_ID_SHIFT   0
+#define KVX_DMA_RX_JOB_Q_CACHE_ID_PRIO_SHIFT       8
+
 #define KVX_DMA_RX_JOB_Q_ASN_OFFSET                0x78
 
 /* RX job cache */
