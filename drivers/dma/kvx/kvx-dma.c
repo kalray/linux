@@ -313,8 +313,7 @@ struct kvx_dma_phy *kvx_dma_get_phy(struct kvx_dma_dev *dev,
 			/* rx_tag is equivalent to Rx fifo id */
 			if (refcount_read(&p->used) <= 1 &&
 			    p->hw_id == c->cfg.rx_tag) {
-				if (kvx_dma_check_rx_q_enabled(p,
-							c->cfg.rx_cache_id)) {
+				if (kvx_dma_check_rx_q_enabled(p)) {
 					dev_err(d, "RX channel[%d] already in use\n",
 						p->hw_id);
 					goto out;
@@ -343,8 +342,6 @@ struct kvx_dma_phy *kvx_dma_get_phy(struct kvx_dma_dev *dev,
 		dev_dbg(d, "%s dir: %d hw_id: %d\n", __func__, dir, phy->hw_id);
 		if (!refcount_inc_not_zero(&phy->used))
 			refcount_set(&phy->used, 1);
-
-		phy->rx_cache_id = c->cfg.rx_cache_id;
 	}
 out:
 	spin_unlock(&dev->lock);
@@ -732,7 +729,6 @@ static int kvx_dma_allocate_phy(struct kvx_dma_dev *dev)
 			struct kvx_dma_phy *p = &phy[i];
 
 			p->hw_id = i;
-			p->max_desc = dev->dma_requests;
 			p->base = dev->iobase;
 			p->dir = j;
 			refcount_set(&p->used, 1);

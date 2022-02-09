@@ -92,16 +92,23 @@ struct kvx_dma_tx_job {
  *        Lock free implementation as R/W pointers are atomically
  *        incremented in HW
  * @base: Base addr of DMA queue
+ * @id: hw queue index
  * @vaddr: virtual addr
  * @paddr: dma address of the queue buffer
  * @size: total aligned size of the queue buffer
+ * @size_log2: log2 channel fifo size
+ * @size: aligned size of fifo (nb of elements)
+ * @size_mask: mask on size to avoid modulo
  * @batched_wp: current wp pointer (used for batched jobs)
  */
 struct kvx_dma_hw_queue {
 	void __iomem *base;
+	unsigned int id;
 	void *vaddr;
 	dma_addr_t paddr;
 	size_t size;
+	u16 size_log2;
+	u16 size_mask;
 	u64 batched_wp;
 };
 
@@ -119,6 +126,7 @@ struct kvx_dma_job_queue_list {
 	struct kvx_dma_hw_queue rx[KVX_DMA_RX_JOB_QUEUE_NUMBER];
 	atomic_t rx_refcount[KVX_DMA_RX_JOB_QUEUE_NUMBER];
 };
+
 /**
  * struct msi_cfg - MSI setup for phy
  * @msi_mb_dmaaddr: Mailbox dma mapped addr for DMA IT
@@ -146,8 +154,6 @@ struct kvx_dma_channel {
  * @dev: This device
  * @base: Base addr of DMA device
  * @msi_data: MSI related data
- * @max_desc: Max fifo size (= dma_requests)
- * @size_log2: log2 channel fifo size
  * @q: Channel queue
  * @jobq: Job queue (for rx, only for eth usecase. Typically, 2 must be assigned
  *        to 1 rx_cache_id: 1 for soft rx buffer provisioning + 1 for HW refill
@@ -156,11 +162,8 @@ struct kvx_dma_channel {
  * @dir: Direction
  * @used: Refcounter for RX/TX fifo (for RX limited to 1),
  * @hw_id: default: -1, [0, 63] if assigned
- * @rx_cache_id: rx cache associated to rx job queue [0, 3]
  * @asn: device specific asn for iommu / hw
  * @vchan: device specific vchan for hw
- * @fifo_size: aligned size of fifo (nb of elements)
- * @fifo_size_mask: mask on size to avoid modulo
  * @irq_handler: External callback
  * @irq_data: Callback data
  */
@@ -168,8 +171,6 @@ struct kvx_dma_phy {
 	struct device *dev;
 	void __iomem *base;
 	struct msi_cfg msi_cfg;
-	u16 max_desc;
-	u16 size_log2;
 	struct kvx_dma_hw_queue q;
 	struct kvx_dma_hw_queue compq;
 	struct kvx_dma_hw_queue *jobq;
@@ -177,11 +178,8 @@ struct kvx_dma_phy {
 	enum kvx_dma_dir_type dir;
 	refcount_t used;
 	int hw_id;
-	int rx_cache_id;
 	u32 asn;
 	u32 vchan;
-	u32 fifo_size;
-	u32 fifo_size_mask;
 	struct list_head chan_list;
 	struct tasklet_struct comp_task;
 };
@@ -212,9 +210,9 @@ irqreturn_t kvx_dma_err_irq_handler(int irq, void *data);
 
 /* RX queues */
 inline u64 kvx_dma_compq_readq(struct kvx_dma_phy *phy, u64 off);
-int kvx_dma_pkt_rx_queue_push_desc(struct kvx_dma_phy *phy, u64 pkt_paddr,
+int kvx_dma_pkt_rx_queue_push_desc(struct kvx_dma_hw_queue *jobq, u64 pkt_paddr,
 				   u64 pkt_len);
-void kvx_dma_pkt_rx_queue_flush(struct kvx_dma_phy *phy);
+void kvx_dma_pkt_rx_queue_flush(struct kvx_dma_hw_queue *jobq);
 
 /* Get completion count */
 u64 kvx_dma_get_comp_count(struct kvx_dma_phy *phy);
@@ -239,20 +237,25 @@ int kvx_dma_pkt_tx_submit_jobs(struct kvx_dma_phy *phy, u64 t, u64 nb_job);
 int kvx_dma_noc_tx_push(struct kvx_dma_phy *phy, struct kvx_dma_tx_job *tx_job,
 			u64 eot, u64 *hw_job_id);
 
-int kvx_dma_check_rx_q_enabled(struct kvx_dma_phy *phy, int rx_cache_id);
+int kvx_dma_check_rx_q_enabled(struct kvx_dma_phy *phy);
 int kvx_dma_check_tx_q_enabled(struct kvx_dma_phy *phy);
 void kvx_dma_stop_queues(struct kvx_dma_phy *phy);
 int kvx_dma_allocate_queues(struct kvx_dma_phy *phy,
 			    struct kvx_dma_job_queue_list *jobq_list,
 			    enum kvx_dma_transfer_type trans_type);
 
+int kvx_dma_pkt_rx_channel_queue_init(struct kvx_dma_phy *phy, int rx_cache_id);
+int kvx_dma_get_rx_jobq(struct kvx_dma_hw_queue **jobq,
+			struct kvx_dma_job_queue_list *jobq_list,
+			unsigned int rx_jobq_id);
+int kvx_dma_pkt_rx_jobq_init(struct kvx_dma_hw_queue *jobq, u32 asn,
+				  u32 cache_id, u32 prio);
 int kvx_dma_init_rx_queues(struct kvx_dma_phy *phy,
 		enum kvx_dma_transfer_type trans_type);
 int kvx_dma_init_tx_queues(struct kvx_dma_phy *phy);
 
-int kvx_dma_fifo_rx_channel_queue_post_init(struct kvx_dma_phy *phy,
-					    u64 buf_paddr, u64 buf_size);
-
+void kvx_dma_release_rx_job_queue(struct kvx_dma_hw_queue *jobq,
+				  struct kvx_dma_job_queue_list *q_list);
 void kvx_dma_release_queues(struct kvx_dma_phy *phy,
 			    struct kvx_dma_job_queue_list *jobq_list);
 
