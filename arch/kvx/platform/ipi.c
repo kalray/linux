@@ -93,7 +93,7 @@ int __init kvx_ipi_ctrl_probe(irqreturn_t (*ipi_irq_handler)(int, void *))
 	}
 	kvx_ipi_controller.ipi_irq = ipi_irq;
 
-	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
+	ret = cpuhp_setup_state(CPUHP_AP_IRQ_KVX_STARTING,
 				"kvx/ipi:online",
 				kvx_ipi_starting_cpu,
 				kvx_ipi_dying_cpu);
