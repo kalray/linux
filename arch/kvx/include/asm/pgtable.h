@@ -125,9 +125,29 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 extern struct page *empty_zero_page;
 #define ZERO_PAGE(vaddr)       (empty_zero_page)
 
-#define __swp_type(x)           (0)
-#define __swp_offset(x)         (0)
-#define __swp_entry(typ, off)   ((swp_entry_t) { ((typ) | ((off) << 7)) })
+
+/*
+ * Encode and decode a swap entry
+ *
+ * Format of swap PTE:
+ *      bit            0:       _PAGE_PRESENT (zero)
+ *      bit            1:       _PAGE_PROT_NONE (zero)
+ *      bits      2 to 6:       swap type
+ *      bits 7 to XLEN-1:       swap offset
+ */
+#define __SWP_TYPE_SHIFT        2
+#define __SWP_TYPE_BITS         5
+#define __SWP_TYPE_MASK         ((1UL << __SWP_TYPE_BITS) - 1)
+#define __SWP_OFFSET_SHIFT      (__SWP_TYPE_BITS + __SWP_TYPE_SHIFT)
+
+#define MAX_SWAPFILES_CHECK()   \
+	BUILD_BUG_ON(MAX_SWAPFILES_SHIFT > __SWP_TYPE_BITS)
+
+#define __swp_type(x)   (((x).val >> __SWP_TYPE_SHIFT) & __SWP_TYPE_MASK)
+#define __swp_offset(x) ((x).val >> __SWP_OFFSET_SHIFT)
+#define __swp_entry(type, offset) ((swp_entry_t) \
+	{ ((type) << __SWP_TYPE_SHIFT) | ((offset) << __SWP_OFFSET_SHIFT) })
+
 #define __pte_to_swp_entry(pte) ((swp_entry_t) { pte_val(pte) })
 #define __swp_entry_to_pte(x)   ((pte_t) { (x).val })
 
