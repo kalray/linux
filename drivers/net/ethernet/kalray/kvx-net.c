@@ -650,6 +650,13 @@ static int kvx_eth_rx_hdr(struct kvx_eth_netdev *ndev, struct sk_buff *skb)
 		   __func__, skb->len, skb->data_len);
 	hdr = (struct rx_metadata *)skb->data;
 	kvx_eth_dump_rx_hdr(ndev->hw, hdr);
+
+	if (hdr->f.fcs_errors)
+		ndev->stats.ring.skb_fcs_err++;
+
+	if (hdr->f.crc_errors)
+		ndev->stats.ring.skb_crc_err++;
+
 	skb_pull(skb, hdr_size);
 	skb->ip_summed = CHECKSUM_UNNECESSARY;
 
