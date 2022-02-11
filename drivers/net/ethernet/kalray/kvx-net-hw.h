@@ -891,6 +891,8 @@ struct kvx_eth_hw_tx_stats {
 } __packed;
 
 struct ring_stats {
+	u64 skb_fcs_err;
+	u64 skb_crc_err;
 	u64 skb_alloc_err;
 	u64 skb_rx_frag_missed;
 	u64 rx_pkts;
