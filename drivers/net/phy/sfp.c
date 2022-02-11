@@ -636,6 +636,19 @@ static int sfp_write(struct sfp *sfp, bool a2, u8 addr, void *buf, size_t len)
 	return sfp->write(sfp, a2, addr, buf, len);
 }
 
+static int sfp_page_select(struct sfp *sfp, u8 page_id)
+{
+	int ret = sfp_write(sfp, false, SFP_PAGE, &page_id, sizeof(page_id));
+
+	if (ret != sizeof(page_id)) {
+		dev_dbg(sfp->dev, "Failed to select EEPROM page[%d]: %d\n",
+			page_id, ret);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static unsigned int sfp_soft_get_state(struct sfp *sfp)
 {
 	unsigned int state = 0;
@@ -1809,9 +1822,21 @@ static int sfp_sm_probe_for_phy(struct sfp *sfp)
 static int qsfp_module_parse_power(struct sfp *sfp)
 {
 	u32 power_mW = 2000;
-	u8 c14 = sfp->id.base.phys_ext_id & SFF8636_EXT_ID_POWER_CLASS_14;
-	u8 c57 = (sfp->id.base.phys_ext_id & SFF8636_EXT_ID_POWER_CLASS_57) >> 6;
+	u8 c14, c57, val = 0;
+	int ret = sfp_page_select(sfp, 0);
 
+	if (ret)
+		return 0;
+
+	ret = sfp_read(sfp, false, SFF8636_EXT_ID_REG, &val, sizeof(val));
+	if (ret != sizeof(val)) {
+		dev_err(sfp->dev, "Failed to read EEPROM: %d (l.%d)\n",
+			ret, __LINE__);
+	}
+
+	c14 = (val & SFF8636_EXT_ID_POWER_CLASS_14) >> 6;
+	c57 = (val & SFF8636_EXT_ID_POWER_CLASS_57);
+	dev_warn(sfp->dev, "c14: 0x%x c57: 0x%x val: 0x%x\n", c14, c57, val);
 	if (c57 == 0) {
 		switch (c14) {
 		case 0: /* Power class 1 */
@@ -2077,19 +2102,6 @@ static int sfp_cotsworks_fixup_check(struct sfp *sfp, struct sfp_eeprom_id *id)
 			return err;
 		}
 	}
-	return 0;
-}
-
-static int sfp_page_select(struct sfp *sfp, u8 page_id)
-{
-	int ret = sfp_write(sfp, false, SFP_PAGE, &page_id, sizeof(page_id));
-
-	if (ret != sizeof(page_id)) {
-		dev_dbg(sfp->dev, "Failed to select EEPROM page[%d]: %d\n",
-			page_id, ret);
-		return -EINVAL;
-	}
-
 	return 0;
 }
 
