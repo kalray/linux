@@ -567,13 +567,13 @@ enum {
 	SFF8636_POWER_SW_RESET              = BIT(7),
 	SFF8636_CDR_REG                     = 98,
 	SFF8636_MAX_POWER_REG               = 107,
+	SFF8636_EXT_ID_REG                  = 129,
 	SFF8636_EXT_ID_POWER_CLASS_57       = 0x3,
 	SFF8636_EXT_ID_POWER_CLASS_14       = 0xC0,
 	SFF8636_ENH_OPTS_REG                = 221,
 	SFF8636_ENH_OPTS_RESET_IMPL         = BIT(0),
 	SFF8636_RX_DIFF_AMP_REG1            = 238,
 	SFF8636_RX_DIFF_AMP_REG2            = 239,
-	
 };
 
 struct fwnode_handle;
