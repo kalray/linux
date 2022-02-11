@@ -95,8 +95,10 @@ static struct kvx_stats kvx_str_stats[] = {
 	STAT("TX cbfcpauseframes[6]       ", tx.cbfcpauseframestransmitted[6]),
 	STAT("TX cbfcpauseframes[7]       ", tx.cbfcpauseframestransmitted[7]),
 	STAT("TX macctrlframes            ", tx.maccontrolframestransmitted),
-	STAT("RX ring alloc error         ", ring.skb_alloc_err),
-	STAT("RX ring skb frag missed     ", ring.skb_rx_frag_missed),
+	STAT("RX alloc errors             ", ring.skb_alloc_err),
+	STAT("RX skb frag missed          ", ring.skb_rx_frag_missed),
+	STAT("RX skb crc errors           ", ring.skb_crc_err),
+	STAT("RX skb fcs errors           ", ring.skb_fcs_err),
 };
 
 #define KVX_STATS_LEN   ARRAY_SIZE(kvx_str_stats)
