@@ -558,6 +558,7 @@ enum {
 enum {
 	SFF8636_STATUS_REG1                 = 1,
 	SFF8636_STATUS_REG2                 = 2,
+	SFF8636_IRQ_FLAGS                   = 3,
 	SFF8636_TX_DISABLE_REG              = 86,
 	SFF8636_POWER_REG                   = 93,
 	SFF8636_POWER_OVRD                  = BIT(0),

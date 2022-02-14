@@ -47,7 +47,6 @@
 
 #define PCS_STATUS1_PCS_RECEIVE_LINK_MASK  0x4
 
-#define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
 #define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 
 #define kvx_poll(read, reg, mask, exp, timeout_in_ms) \
@@ -182,12 +181,20 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 	return ret;
 }
 
+u32 kvx_mac_get_phylos(struct kvx_eth_hw *hw, int lane_id)
+{
+	u32 off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * lane_id;
+	u32 phy_los = kvx_mac_readl(hw, off + PMAC_STATUS_OFFSET);
+
+	return (phy_los & PMAC_STATUS_PHY_LOS_MASK);
+}
+
 bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 			  struct kvx_eth_lane_cfg *cfg)
 {
 	u32 off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	u32 mask, pcs_link = true;
-	u32 phy_los = false;
+	u32 phy_los = 0;
 	unsigned long t;
 
 	if (!mutex_trylock(&hw->mac_reset_lock))
@@ -196,8 +203,7 @@ bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 	if (kvx_mac_under_reset(hw))
 		goto bail;
 
-	phy_los = kvx_mac_readl(hw, off + PMAC_STATUS_OFFSET);
-	phy_los &= PMAC_STATUS_PHY_LOS_MASK;
+	phy_los = kvx_mac_get_phylos(hw, cfg->id);
 
 	if (cfg->speed == SPEED_100000) {
 		/*
@@ -224,7 +230,7 @@ bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 
 bail:
 	mutex_unlock(&hw->mac_reset_lock);
-	return (phy_los || !pcs_link);
+	return !!(phy_los || !pcs_link);
 }
 
 /**
