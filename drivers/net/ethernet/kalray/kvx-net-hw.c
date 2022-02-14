@@ -775,13 +775,3 @@ int kvx_eth_hw_get_lut_indir(struct kvx_eth_hw *hw, u32 lut_id,
 	*rx_channel = hw->dt_f[dt_id].rx_channel;
 	return dt_id;
 }
-
-void kvx_eth_reset_qsfp(struct kvx_eth_hw *hw)
-{
-	if (hw->gpio_qsfp_reset) {
-		gpiod_direction_output(hw->gpio_qsfp_reset, 0);
-		usleep_range(10000, 20000);
-		gpiod_set_value(hw->gpio_qsfp_reset, 1);
-		dev_info(hw->dev, "QSFP reset done\n");
-	}
-}

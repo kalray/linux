@@ -38,6 +38,9 @@
 #define SFF8636_NOMINAL_BITRATE             12
 #define SFF8636_NOMINAL_BITRATE_250         94
 
+struct kvx_eth_netdev;
+struct kvx_eth_hw;
+
 /** struct kvx_transceiver_type - Transceiver info
  * @oui: Cable constructor OUI
  * @pn: Cable part number
@@ -57,6 +60,12 @@ struct kvx_transceiver_type {
 	u32 nominal_br;
 };
 
+int ee_select_page(struct i2c_adapter *i2c, u8 page);
+int kvx_eth_qsfp_ee_read(struct i2c_adapter *i2c, u8 *buf, u8 *page,
+			 int *off, size_t l);
+int kvx_eth_qsfp_ee_writeb(struct i2c_adapter *i2c, int offset, u8 v);
+void kvx_eth_qsfp_monitor(struct kvx_eth_netdev *ndev);
+void kvx_eth_qsfp_reset(struct kvx_eth_hw *hw);
 int kvx_eth_get_module_transceiver(struct net_device *netdev,
 				   struct kvx_transceiver_type *transceiver);
 
