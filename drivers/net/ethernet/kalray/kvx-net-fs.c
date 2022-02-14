@@ -118,15 +118,43 @@ static ssize_t qsfp_reset_store(struct kobject *kobj, struct kobj_attribute *a,
 						 dev.kobj);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	kvx_eth_reset_qsfp(ndev->hw);
+	kvx_eth_qsfp_reset(ndev->hw);
 	msleep(2000);
 
 	return count;
 }
+
+static ssize_t qsfp_monitor_show(struct kobject *kobj,
+				 struct kobj_attribute *attr, char *buf)
+{
+	struct net_device *netdev = container_of(kobj, struct net_device,
+						 dev.kobj);
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	return scnprintf(buf, STR_LEN, "%i\n", ndev->hw->qsfp.monitor);
+}
+static ssize_t qsfp_monitor_store(struct kobject *kobj, struct kobj_attribute *a,
+				const char *buf, size_t count)
+{
+	struct net_device *netdev = container_of(kobj, struct net_device,
+						 dev.kobj);
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	int ret = kstrtouint(buf, 0, &ndev->hw->qsfp.monitor);
+
+	if (ret)
+		return ret;
+
+	mod_delayed_work(system_wq, &ndev->qsfp_poll,
+			 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
+
+	return count;
+}
 static struct kobj_attribute attr_qsfp_reset = __ATTR_WO(qsfp_reset);
+static struct kobj_attribute attr_qsfp_monitor = __ATTR_RW(qsfp_monitor);
 
 static struct attribute *attrs[] = {
 	&attr_qsfp_reset.attr,
+	&attr_qsfp_monitor.attr,
 	NULL,
 };
 
