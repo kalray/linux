@@ -161,6 +161,10 @@
 #define KVX_DMA_NOC_RT_VCHAN_MASK                  0x1000000000000000
 #define KVX_DMA_NOC_RT_VALID_SHIFT                 0x3d
 #define KVX_DMA_NOC_RT_VALID_MASK                  0x2000000000000000
+#ifndef CONFIG_KVX_SUBARCH_KV3_1
+#define KVX_DMA_NOC_RT_CACHE_ID_SHIFT              0x3e
+#define KVX_DMA_NOC_RT_CACHE_ID_MASK               0xc000000000000000
+#endif
 
 /* Program table */
 #define KVX_DMA_TX_PGRM_TAB_OFFSET                 0x65000

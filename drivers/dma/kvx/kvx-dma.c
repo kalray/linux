@@ -517,7 +517,11 @@ int kvx_dma_add_route(struct kvx_dma_dev *d, struct kvx_dma_phy *phy,
 		((u64)(phy->asn & KVX_DMA_ASN_MASK) <<
 		 KVX_DMA_NOC_RT_ASN_SHIFT) |
 		((u64)(phy->vchan & 0x1)     << KVX_DMA_NOC_RT_VCHAN_SHIFT)  |
-		((u64)(1)                    << KVX_DMA_NOC_RT_VALID_SHIFT);
+		((u64)(1)                    << KVX_DMA_NOC_RT_VALID_SHIFT)
+#ifndef CONFIG_KVX_SUBARCH_KV3_1
+		| ((u64)(param->rx_cache_id)    << KVX_DMA_NOC_RT_CACHE_ID_SHIFT)
+#endif
+		;
 	spin_lock(&d->lock);
 	ret = kvx_dma_get_route_id(d, route, &param->route_id);
 	spin_unlock(&d->lock);
