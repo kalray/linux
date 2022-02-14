@@ -1836,7 +1836,6 @@ static int qsfp_module_parse_power(struct sfp *sfp)
 
 	c14 = (val & SFF8636_EXT_ID_POWER_CLASS_14) >> 6;
 	c57 = (val & SFF8636_EXT_ID_POWER_CLASS_57);
-	dev_warn(sfp->dev, "c14: 0x%x c57: 0x%x val: 0x%x\n", c14, c57, val);
 	if (c57 == 0) {
 		switch (c14) {
 		case 0: /* Power class 1 */
