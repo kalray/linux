@@ -54,8 +54,6 @@
 #define LINK_POLL_TIMER_IN_MS   2000
 #define REFILL_THRES            1
 
-#define KVX_DEV(ndev) container_of(ndev->hw, struct kvx_eth_dev, hw)
-
 #define KVX_TEST_BIT(name, bitmap)  test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, bitmap)
 
 #define RING_INC(r, i) do { i++; i = (i < r->count) ? i : 0; } while (0)
@@ -1336,6 +1334,7 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	u32 tmp_rx_polarities[KVX_ETH_LANE_NB] = {0};
 	u32 tmp_tx_polarities[KVX_ETH_LANE_NB] = {0};
 	struct nvmem_cell *cell;
+	struct kvx_eth_qsfp *qsfp = &dev->hw.qsfp;
 	int i, ret = 0;
 	u8 *cell_data;
 	size_t len;
@@ -1406,10 +1405,15 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	if (of_property_read_u8(np, "kalray,fom_thres", &dev->hw.fom_thres))
 		dev->hw.fom_thres = FOM_THRESHOLD;
 
-	dev->hw.gpio_qsfp_reset = devm_gpiod_get_optional(&pdev->dev,
+	qsfp->gpio_reset = devm_gpiod_get_optional(&pdev->dev,
 						  "qsfp-reset", GPIOD_ASIS);
-	if (IS_ERR(dev->hw.gpio_qsfp_reset))
+	if (IS_ERR(qsfp->gpio_reset))
 		dev_warn(&pdev->dev, "Failed to get qsfp-reset gpio\n");
+
+	qsfp->gpio_intl = devm_gpiod_get_optional(&pdev->dev,
+						"qsfp-intl", GPIOD_IN);
+	if (IS_ERR(qsfp->gpio_intl))
+		dev_warn(&pdev->dev, "Failed to get qsfp-intl gpio\n");
 
 	return ret;
 }
@@ -1420,10 +1424,11 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
  */
 static void kvx_eth_netdev_set_hw_addr(struct kvx_eth_netdev *ndev)
 {
-	u8 addr[ETH_ALEN];
 	struct net_device *netdev = ndev->netdev;
-	struct kvx_eth_dev *dev = KVX_DEV(ndev);
+	struct kvx_eth_hw *hw = ndev->hw;
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 	struct device *d = &dev->pdev->dev;
+	u8 addr[ETH_ALEN];
 	u8 *a, tmp[6];
 	u64 h;
 	int err;
@@ -1527,7 +1532,7 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 	}
 
 	if (of_property_read_u32_array(np, "kalray,default-dispatch-entry",
-			(u32 *)&ndev->cfg.default_dispatch_entry, 1) != 0)
+				(u32 *)&ndev->cfg.default_dispatch_entry, 1))
 	     ndev->cfg.default_dispatch_entry = KVX_ETH_DEFAULT_RULE_DTABLE_IDX;
 
 	if (of_property_read_u32(np, "kalray,lane", &ndev->cfg.id)) {
@@ -1853,7 +1858,8 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
  */
 static int kvx_eth_autoneg(struct kvx_eth_netdev *ndev)
 {
-	struct kvx_eth_dev *dev = KVX_DEV(ndev);
+	struct kvx_eth_hw *hw = ndev->hw;
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 
 	if (dev->hw.rxtx_crossed) {
 		netdev_err(ndev->netdev, "Autonegotiation is not supported with inverted lanes\n");
@@ -1971,6 +1977,7 @@ static void kvx_phylink_mac_link_down(struct phylink_config *config,
 
 	netdev_dbg(netdev, "%s carrier: %d\n", __func__,
 		   netif_carrier_ok(netdev));
+	cancel_delayed_work_sync(&ndev->qsfp_poll);
 	for (qidx = 0; qidx < ndev->dma_cfg.tx_chan_id.nb; qidx++) {
 		txr = &ndev->tx_ring[qidx];
 		t = jiffies + msecs_to_jiffies(10);
@@ -1990,8 +1997,12 @@ static void kvx_phylink_mac_link_up(struct phylink_config *config,
 				    int duplex, bool tx_pause, bool rx_pause)
 {
 	struct net_device *netdev = to_net_dev(config->dev);
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
 	netif_tx_start_all_queues(netdev);
+
+	mod_delayed_work(system_wq, &ndev->qsfp_poll,
+			 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
 	netdev_dbg(netdev, "%s carrier: %d\n", __func__,
 		   netif_carrier_ok(netdev));
 }
@@ -2004,6 +2015,18 @@ const static struct phylink_mac_ops kvx_phylink_ops = {
 	.mac_link_down     = kvx_phylink_mac_link_down,
 	.mac_link_up       = kvx_phylink_mac_link_up,
 };
+
+static void kvx_eth_qsfp_poll(struct work_struct *work)
+{
+	struct kvx_eth_netdev *ndev = container_of(work,
+				struct kvx_eth_netdev, qsfp_poll.work);
+
+	if (ndev->cfg.id == 0) {
+		kvx_eth_qsfp_monitor(ndev);
+		mod_delayed_work(system_wq, &ndev->qsfp_poll,
+				 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
+	}
+}
 
 /* kvx_eth_create_netdev() - Create new netdev
  * @pdev: Platform device
@@ -2090,6 +2113,7 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	/* Populate list of netdev */
 	INIT_LIST_HEAD(&ndev->node);
 	list_add(&ndev->node, &dev->list);
+	INIT_DELAYED_WORK(&ndev->qsfp_poll, kvx_eth_qsfp_poll);
 
 	return ndev;
 
@@ -2306,7 +2330,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 
 	dev->hw.dev = &pdev->dev;
 
-	kvx_eth_reset_qsfp(&dev->hw);
+	kvx_eth_qsfp_reset(&dev->hw);
 
 	if (dev->type->phy_init) {
 		ret = dev->type->phy_init(&dev->hw, SPEED_UNKNOWN);
@@ -2328,6 +2352,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	kvx_eth_parsers_init(&dev->hw);
 	kvx_eth_phy_f_init(&dev->hw);
 	kvx_eth_hw_sysfs_init(&dev->hw);
+
 	dev_info(&pdev->dev, "KVX network driver\n");
 	return devm_of_platform_populate(&pdev->dev);
 
@@ -2386,7 +2411,7 @@ static void kvx_eth_exit(void)
 module_exit(kvx_eth_exit);
 
 /* kvx_eth_get_lut_indir() - Get LUT indirection
- * A LUT entry points to a dispatch entry entry (dt).
+ * A LUT entry points to a dispatch entry (dt).
  * This dt entry is a route to a cluster_id / rx_channel pair.
  *
  * @netdev: Current netdev

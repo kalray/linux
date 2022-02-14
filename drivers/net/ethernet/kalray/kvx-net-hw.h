@@ -29,7 +29,8 @@
 #define KVX_ETH_RX_TAG_NB          64
 #define KVX_ETH_PARSERS_MAX_PRIO   7
 #define RX_CACHE_NB                4
-#define FOM_THRESHOLD             140
+#define FOM_THRESHOLD              140
+#define QSFP_IRQ_FLAGS_NB          11
 
 /* Use last 64 entries for current cluster */
 #define RX_DISPATCH_TABLE_ACCELERATION_NB 256
@@ -783,6 +784,21 @@ struct lt_status {
 	struct lt_saturate saturate;
 };
 
+/* struct kvx_eth_qsfp
+ * @gpio_reset: reset qsfp gpio
+ * @gpio_intl: intl qsfp gpio monitoring
+ * @irq: gpio irq id
+ * @irq_flags: gpio irq flags
+ * @monitor: enable/disable monitoring
+ */
+struct kvx_eth_qsfp {
+	struct gpio_desc *gpio_reset;
+	struct gpio_desc *gpio_intl;
+	int irq;
+	u8  irq_flags[QSFP_IRQ_FLAGS_NB];
+	u32 monitor;
+};
+
 /**
  * struct kvx_eth_hw - HW adapter
  * @dev: device
@@ -791,7 +807,7 @@ struct lt_status {
  * @rtm_params: retimer relative parameters
  * @lt_status: link training fsm status structure
  * @mac_reset_lock: MAC reset critical section
- * @gpio_qsfp_reset: reset qsfp gpio
+ * @qsfp: qsfp stuff
  * @rxtx_crossed: are rx lanes crossed with tx ones
  *                meaning rx4->tx0, rx3->tx1, etc.
  * @parsers_tictoc: if we need to mirror parsers configuration from top half
@@ -822,7 +838,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_rtm_params rtm_params[RTM_NB];
 	struct lt_status lt_status[KVX_ETH_LANE_NB];
 	struct mutex mac_reset_lock;
-	struct gpio_desc *gpio_qsfp_reset;
+	struct kvx_eth_qsfp qsfp;
 	u32 rxtx_crossed;
 	u32 parsers_tictoc;
 	u32 limit_rx_pps;
@@ -992,7 +1008,6 @@ void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
 int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw_data);
-void kvx_eth_reset_qsfp(struct kvx_eth_hw *hw);
 
 /* MAC */
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
@@ -1010,6 +1025,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
 int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+u32 kvx_mac_get_phylos(struct kvx_eth_hw *hw, int lane_id);
 bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_mac_getlink(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_pcs_status(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c);
