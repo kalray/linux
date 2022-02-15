@@ -124,6 +124,13 @@ enum {
 	RTM_SPEED_NB,
 };
 
+enum qsfp_params {
+	QSFP_TX_EQ_IN = 0,
+	QSFP_RX_EMPH,
+	QSFP_RX_AMP,
+	QSFP_NB_PARAMS
+};
+
 enum default_dispatch_policy {
 	DEFAULT_DROP = 0x0,
 	DEFAULT_ROUND_ROBIN = 0x1,
@@ -784,11 +791,20 @@ struct lt_status {
 	struct lt_saturate saturate;
 };
 
+struct qsfp_param {
+	u32 page;
+	u32 offset;
+	u32 value;
+};
+
 /* struct kvx_eth_qsfp
  * @gpio_reset: reset qsfp gpio
  * @gpio_intl: intl qsfp gpio monitoring
  * @irq: gpio irq id
  * @irq_flags: gpio irq flags
+ * @param: eeprom parameters {}
+ * @param_count: nb of parameters to update in qsfp eeprom
+ * @lock: lock for i2c lane selection + reg update
  * @monitor: enable/disable monitoring
  */
 struct kvx_eth_qsfp {
@@ -796,6 +812,9 @@ struct kvx_eth_qsfp {
 	struct gpio_desc *gpio_intl;
 	int irq;
 	u8  irq_flags[QSFP_IRQ_FLAGS_NB];
+	struct qsfp_param *param;
+	int param_count;
+	struct mutex lock;
 	u32 monitor;
 };
 
