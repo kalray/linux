@@ -14,6 +14,8 @@ Optional properties:
 - kalray,rtmtx-channels: retimer tx channels connected to this interface
 - kalray,rxtx-crossed: RX/TX lanes crossed
 - kalray,rx_chan_error: rx dma channel used to generate RX_CHAN_CLOSED interrupt
+- qsfp-reset-gpios: qsfp reset gpio (to force reset for QSFP not implementing this in EEPROM
+- kalray,qsfp-param: <page offset value ...> table for qsfp eeprom
 
 * Kalray netdev
 
