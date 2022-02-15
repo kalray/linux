@@ -161,7 +161,7 @@ static int __init kvx_setup_core_timer(struct device_node *np)
 		return err;
 	}
 
-	err = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
+	err = cpuhp_setup_state(CPUHP_AP_KVX_TIMER_STARTING,
 				"kvx/time:online",
 				kvx_timer_starting_cpu,
 				kvx_timer_dying_cpu);
