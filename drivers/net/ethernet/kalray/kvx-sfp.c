@@ -143,7 +143,7 @@ int kvx_eth_qsfp_ee_read(struct i2c_adapter *i2c, u8 *buf,
 	int ret = ee_get_page_offset(i2c, page, off, &l);
 
 	if (ret)
-		return 0;
+		return ret;
 
 	pr_debug("%s off: %d len: %ld page: %d\n", __func__, *off, l, *page);
 
@@ -164,7 +164,7 @@ int kvx_eth_qsfp_ee_writeb(struct i2c_adapter *i2c, int offset, u8 v)
 	int ret = ee_get_page_offset(i2c, &page, &off, &len);
 
 	if (ret)
-		return -EINVAL;
+		return ret;
 
 	ret = i2c_write(i2c, off, &v, len);
 	if (ret < 0) {
@@ -202,6 +202,38 @@ void kvx_eth_qsfp_monitor(struct kvx_eth_netdev *ndev)
 	memcpy(qsfp->irq_flags, irqs, sizeof(irqs));
 }
 
+/**
+ * ee_read_and_updateb() - read and update byte in qsfp eeprom (if needed)
+ **/
+static int ee_read_and_updateb(struct i2c_adapter *i2c, u8 page, int off, u8 v)
+{
+	int ret, retry = 2;
+	int len = 1;
+	u8 val;
+
+	do {
+		ret = ee_select_page(i2c, page);
+	} while (ret < 0 && retry--);
+	if (ret < 0) {
+		pr_debug("Failed to change eeprom page (%d)\n", page);
+		return ret;
+	}
+
+	retry = 2;
+	do {
+		pr_debug("write eeprom @0x%x page %d val: 0x%x\n", off, page, v);
+		ret = i2c_write(i2c, off, &v, len);
+		if (ret < 0)
+			pr_debug("Failed to write eeprom @0x%x page %d\n", off, page);
+		i2c_read(i2c, off, &val, len);
+	} while (v != val && retry--);
+
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
 void kvx_eth_qsfp_reset(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_qsfp *qsfp = &hw->qsfp;
@@ -212,4 +244,19 @@ void kvx_eth_qsfp_reset(struct kvx_eth_hw *hw)
 		gpiod_set_value(qsfp->gpio_reset, 1);
 		dev_dbg(hw->dev, "QSFP reset done\n");
 	}
+}
+
+void kvx_eth_qsfp_tune(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_qsfp *qsfp = &ndev->hw->qsfp;
+	int i;
+
+	if (!ndev->qsfp_i2c || !qsfp->param)
+		return;
+
+	mutex_lock(&qsfp->lock);
+	for (i = 0; i < qsfp->param_count; i++)
+		ee_read_and_updateb(ndev->qsfp_i2c, qsfp->param[i].page,
+				qsfp->param[i].offset, qsfp->param[i].value);
+	mutex_unlock(&qsfp->lock);
 }

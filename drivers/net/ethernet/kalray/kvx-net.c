@@ -1415,6 +1415,18 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	if (IS_ERR(qsfp->gpio_intl))
 		dev_warn(&pdev->dev, "Failed to get qsfp-intl gpio\n");
 
+	qsfp->param_count = of_property_count_u32_elems(np, "kalray,qsfp-param");
+	if (qsfp->param_count > 0) {
+		qsfp->param = devm_kzalloc(&pdev->dev,
+				qsfp->param_count * sizeof(u32), GFP_KERNEL);
+		if (qsfp->param) {
+			if (of_property_read_u32_array(np, "kalray,qsfp-param",
+					(u32 *)qsfp->param, qsfp->param_count))
+				dev_dbg(&pdev->dev, "No QSFP tuning\n");
+			qsfp->param_count /= (sizeof(*qsfp->param) / sizeof(u32));
+		}
+	}
+
 	return ret;
 }
 
@@ -2175,6 +2187,10 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
+	/* Called once */
+	if (ndev->cfg.id == 0)
+		kvx_eth_qsfp_tune(ndev);
+
 	/**
 	 * MF 1.3 -> do *NOT* change the following settings
 	 * Rx LB ctrl registers for lanes 0/2 must be set the same way
@@ -2299,6 +2315,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	dev->type = &kvx_eth_data;
 	INIT_LIST_HEAD(&dev->list);
 	mutex_init(&dev->hw.mac_reset_lock);
+	mutex_init(&dev->hw.qsfp.lock);
 
 	if (of_machine_is_compatible("kalray,haps"))
 		dev->type = &kvx_haps_data;
