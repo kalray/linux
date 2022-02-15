@@ -66,6 +66,7 @@ int kvx_eth_qsfp_ee_read(struct i2c_adapter *i2c, u8 *buf, u8 *page,
 int kvx_eth_qsfp_ee_writeb(struct i2c_adapter *i2c, int offset, u8 v);
 void kvx_eth_qsfp_monitor(struct kvx_eth_netdev *ndev);
 void kvx_eth_qsfp_reset(struct kvx_eth_hw *hw);
+void kvx_eth_qsfp_tune(struct kvx_eth_netdev *ndev);
 int kvx_eth_get_module_transceiver(struct net_device *netdev,
 				   struct kvx_transceiver_type *transceiver);
 
