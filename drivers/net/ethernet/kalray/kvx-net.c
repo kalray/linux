@@ -2012,7 +2012,6 @@ static void kvx_phylink_mac_link_up(struct phylink_config *config,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
 	netif_tx_start_all_queues(netdev);
-
 	mod_delayed_work(system_wq, &ndev->qsfp_poll,
 			 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
 	netdev_dbg(netdev, "%s carrier: %d\n", __func__,
@@ -2033,7 +2032,7 @@ static void kvx_eth_qsfp_poll(struct work_struct *work)
 	struct kvx_eth_netdev *ndev = container_of(work,
 				struct kvx_eth_netdev, qsfp_poll.work);
 
-	if (ndev->cfg.id == 0) {
+	if (ndev->cfg.id == 0 && ndev->cfg.speed >= SPEED_10000) {
 		kvx_eth_qsfp_monitor(ndev);
 		mod_delayed_work(system_wq, &ndev->qsfp_poll,
 				 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
@@ -2081,6 +2080,7 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	ndev->phylink_cfg.pcs_poll = false;
 	INIT_LIST_HEAD(&ndev->cfg.tx_fifo_list);
 	timer_setup(&ndev->link_poll, kvx_eth_poll_link, 0);
+	INIT_DELAYED_WORK(&ndev->qsfp_poll, kvx_eth_qsfp_poll);
 
 	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
 	if (phy_mode < 0) {
@@ -2125,7 +2125,6 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	/* Populate list of netdev */
 	INIT_LIST_HEAD(&ndev->node);
 	list_add(&ndev->node, &dev->list);
-	INIT_DELAYED_WORK(&ndev->qsfp_poll, kvx_eth_qsfp_poll);
 
 	return ndev;
 
