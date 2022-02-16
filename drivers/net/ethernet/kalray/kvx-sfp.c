@@ -198,7 +198,7 @@ void kvx_eth_qsfp_monitor(struct kvx_eth_netdev *ndev)
 	if (!memcmp(qsfp->irq_flags, irqs, sizeof(irqs)))
 		return;
 
-	dev_dbg(ndev->hw->dev, "QSFP irqs: %*ph\n", (int)sizeof(irqs), irqs);
+	dev_info(ndev->hw->dev, "QSFP irqs: %*ph\n", (int)sizeof(irqs), irqs);
 	memcpy(qsfp->irq_flags, irqs, sizeof(irqs));
 }
 
@@ -207,7 +207,7 @@ void kvx_eth_qsfp_monitor(struct kvx_eth_netdev *ndev)
  **/
 static int ee_read_and_updateb(struct i2c_adapter *i2c, u8 page, int off, u8 v)
 {
-	int ret, retry = 2;
+	int ret, retry = 3;
 	int len = 1;
 	u8 val;
 
@@ -219,7 +219,7 @@ static int ee_read_and_updateb(struct i2c_adapter *i2c, u8 page, int off, u8 v)
 		return ret;
 	}
 
-	retry = 2;
+	retry = 3;
 	do {
 		pr_debug("write eeprom @0x%x page %d val: 0x%x\n", off, page, v);
 		ret = i2c_write(i2c, off, &v, len);
