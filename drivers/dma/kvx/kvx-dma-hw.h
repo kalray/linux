@@ -258,7 +258,7 @@ void kvx_dma_release_rx_job_queue(struct kvx_dma_hw_queue *jobq,
 				  struct kvx_dma_job_queue_list *q_list);
 void kvx_dma_release_queues(struct kvx_dma_phy *phy,
 			    struct kvx_dma_job_queue_list *jobq_list);
-
+int kvx_dma_pop_desc_from_cache(struct kvx_dma_phy *phy, int cache_id, u64 *buf_addr);
 /* Debug */
 int kvx_dma_read_status(struct kvx_dma_phy *phy);
 int kvx_dma_dbg_get_q_regs(struct kvx_dma_phy *phy, char *buf, size_t buf_size);

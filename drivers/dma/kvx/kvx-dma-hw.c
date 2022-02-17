@@ -1227,3 +1227,18 @@ int kvx_dma_dbg_get_q_regs(struct kvx_dma_phy *phy, char *buf, size_t buf_size)
 
 	return n;
 }
+/**
+ * kvx_dma_pop_desc_from_cache() - pop job descriptor from the content of the cache.
+ * a.k.a job stealing
+ *
+ * @phy: phy pointer to physical description
+ * @cache_id: cache from which job descriptor should be popped
+ * @buf_addr: (output) address of the buffer pointed by the descriptor
+ */
+int kvx_dma_pop_desc_from_cache(struct kvx_dma_phy *phy, int cache_id, u64 *buf_addr)
+{
+	if (cache_id >= KVX_DMA_RX_JOB_CACHE_NUMBER)
+		return -EINVAL;
+	*buf_addr = readq(phy->base + RX_JOB_CACHE_OFFSET + RX_JOB_CACHE_POP + (cache_id * RX_JOB_CACHE_ELEM_SIZE));
+	return 0;
+}
