@@ -85,6 +85,7 @@
 #define RX_JOB_CACHE_EMPTY_NOTIF_ARG_INDEX_MASK    0x3F
 #define RX_JOB_CACHE_EMPTY_NOTIF_EN                0x18
 #define RX_JOB_CACHE_EMPTY_NOTIF_ASN               0x20
+#define RX_JOB_CACHE_POP                           0x30
 
 /* TX job queues */
 #define KVX_DMA_TX_JOB_Q_OFFSET                    0x80000
