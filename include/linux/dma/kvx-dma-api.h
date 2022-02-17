@@ -74,6 +74,7 @@ void kvx_dma_flush_rx_jobq(void *jobq);
 int kvx_dma_get_rx_completed(struct platform_device *pdev, void *phy,
 			     struct kvx_dma_pkt_full_desc **pkt);
 u64 kvx_dma_get_tx_completed(struct platform_device *pdev, void *phy);
+int kvx_dma_pop_jdesc_from_cache(void *phy, int cache_id, u64 *buf_addr);
 
 void kvx_dma_enable_irq(void *phy);
 void kvx_dma_disable_irq(void *phy);
