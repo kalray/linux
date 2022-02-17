@@ -375,6 +375,13 @@ u64 kvx_dma_get_tx_completed(struct platform_device *pdev, void *phy)
 	return kvx_dma_compq_readq(phy, KVX_DMA_TX_COMP_Q_WP_OFFSET);
 }
 EXPORT_SYMBOL_GPL(kvx_dma_get_tx_completed);
+int kvx_dma_pop_jdesc_from_cache(void *phy, int cache_id, u64 *buf_addr)
+{
+	struct kvx_dma_phy *p = (struct kvx_dma_phy *)phy;
+
+	return kvx_dma_pop_desc_from_cache(p, cache_id, buf_addr);
+}
+EXPORT_SYMBOL_GPL(kvx_dma_pop_jdesc_from_cache);
 
 void kvx_dma_enable_irq(void *phy)
 {
