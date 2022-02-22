@@ -131,6 +131,8 @@ typedef struct page *pgtable_t;
 #define __pte(x)	((pte_t) { (x) })
 #define __pgprot(x)	((pgprot_t) { (x) })
 
+#define pte_pgprot(x)	__pgprot(pte_val(x) & ~KVX_PFN_MASK)
+
 #define __pa(x)	((unsigned long)(x) + VA_TO_PA_OFFSET)
 #define __va(x)	((void *)((unsigned long) (x) + PA_TO_VA_OFFSET))
 
