@@ -109,7 +109,7 @@ int kvx_dma_ucode_load(struct kvx_dma_dev *dev,
 		KVX_DMA_TX_PGRM_TAB_PM_START_ADDR_SHIFT);
 	val |= (ucode->tab.transfer_mode <<
 		KVX_DMA_TX_PGRM_TAB_TRANSFER_MODE_SHIFT);
-	val |= (is_asn_global(dev->asn) << KVX_DMA_TX_PGRM_TAB_GLOBAL_SHIFT);
+	val |= (1ul << KVX_DMA_TX_PGRM_TAB_GLOBAL_SHIFT);
 	val |= (dev->asn << KVX_DMA_TX_PGRM_TAB_ASN_SHIFT);
 	val |= (ucode->tab.valid << KVX_DMA_TX_PGRM_TAB_VALID_SHIFT);
 
