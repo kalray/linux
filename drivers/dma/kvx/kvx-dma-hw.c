@@ -966,13 +966,16 @@ int kvx_dma_rdma_tx_push_mem2mem(struct kvx_dma_phy *phy,
 	const u64 object_len = tx_job->len;
 	const u64 object_len_16_bytes = object_len >> 4;
 	const u64 object_len_1_bytes = object_len & 0xfULL;
+	const u64 object_len_p = (object_len_1_bytes<<32) | object_len_16_bytes;
+	const u64 nb_object_dim2 = 1ULL<<32;
 
 	struct kvx_dma_tx_job_desc p = {
 		.param = {
-			source, dest, object_len_16_bytes,
-			object_len_1_bytes, tx_job->nb,
+			source, dest, object_len_p,
+			tx_job->nb | nb_object_dim2,
 			tx_job->lstride-object_len,
-			tx_job->rstride-object_len, 0
+			tx_job->rstride-object_len,
+			0, 0,
 		},
 		.config = 0ULL |
 			(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
@@ -1011,13 +1014,16 @@ int kvx_dma_rdma_tx_push_mem2noc(struct kvx_dma_phy *phy,
 	const u64 object_len = tx_job->len;
 	const u64 object_len_16_bytes = object_len >> 4;
 	const u64 object_len_1_bytes = object_len & 0xfULL;
+	const u64 object_len_p = (object_len_1_bytes<<32) | object_len_16_bytes;
+	const u64 nb_object_dim2 = 1ULL<<32;
 
 	struct kvx_dma_tx_job_desc p = {
 		.param = {
-			source, offset, object_len_16_bytes,
-			object_len_1_bytes, tx_job->nb,
+			source, offset, object_len_p,
+			tx_job->nb | nb_object_dim2,
 			tx_job->lstride-object_len,
-			tx_job->rstride-object_len, 0,
+			tx_job->rstride-object_len,
+			0, 0,
 		},
 		.config = 0ULL |
 			(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
