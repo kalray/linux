@@ -16,7 +16,7 @@ config MMU
 	def_bool y
 
 config KALLSYMS_BASE_RELATIVE
-        def_bool n
+	def_bool n
 
 config GENERIC_CSUM
 	def_bool y
@@ -107,6 +107,7 @@ config KVX
 	select KVX_WATCHDOG
 	select TRACE_IRQFLAGS_SUPPORT
 	select ARCH_SUPPORTS_HUGETLBFS
+	select HAVE_FUTEX_CMPXCHG if FUTEX
 
 config PGTABLE_LEVELS
 	int
@@ -120,8 +121,8 @@ menu "System setup"
 config POISON_INITMEM
 	bool "Enable to poison freed initmem"
 	default y
-        help
-          In order to debug initmem, using poison allows to verify if
+	help
+	  In order to debug initmem, using poison allows to verify if
 	  some data/code is stille using them. Enable this for debug
 	  purposes
 
@@ -247,13 +248,13 @@ config KVX_PAGE_SHIFT
 	default 12
 
 config CMDLINE
-        string "Default kernel command string"
-        default ""
-        help
-          On some architectures there is currently no way for the boot loader
-          to pass arguments to the kernel. For these architectures, you should
-          supply some command-line options at build time by entering them
-          here.
+	string "Default kernel command string"
+	default ""
+	help
+	  On some architectures there is currently no way for the boot loader
+	  to pass arguments to the kernel. For these architectures, you should
+	  supply some command-line options at build time by entering them
+	  here.
 
 endmenu
 
