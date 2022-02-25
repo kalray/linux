@@ -118,6 +118,7 @@ config KVX
 	select DMA_VIRT_OPS
 	select WATCHDOG
 	select KVX_WATCHDOG
+	select HAVE_FUTEX_CMPXCHG if FUTEX
 
 config PGTABLE_LEVELS
 	int
