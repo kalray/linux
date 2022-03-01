@@ -1284,94 +1284,6 @@ int kvx_eth_set_pauseparam(struct net_device *netdev,
 	return phylink_ethtool_set_pauseparam(ndev->phylink, pause);
 }
 
-static void kvx_eth_get_module_status(struct net_device *netdev, u8 *eeprom_id)
-{
-	u8 sfp_status = eeprom_id[SFP_STATUS];
-
-	netdev_dbg(netdev, "Sfp status: Tx_dis: %d Tx_fault: %d Rx_los: %d\n",
-		   sfp_status & SFP_STATUS_TX_DISABLE,
-		   sfp_status & SFP_STATUS_TX_FAULT,
-		   sfp_status & SFP_STATUS_RX_LOS);
-
-	netdev_dbg(netdev, "Sfp Tx_dis: 0x%x\n",
-		   eeprom_id[SFF8636_TX_DIS_OFFSET]);
-	netdev_dbg(netdev, "Sfp Rx_rate_select: 0x%x\n",
-		   eeprom_id[SFF8636_RX_RATE_SELECT_OFFSET]);
-	netdev_dbg(netdev, "Sfp Tx_rate_select: 0x%x\n",
-		   eeprom_id[SFF8636_TX_RATE_SELECT_OFFSET]);
-	netdev_dbg(netdev, "Sfp Rx_app_select: 0x%x 0x%x 0x%x 0x%x\n",
-		   eeprom_id[SFF8636_RX_APP_SELECT_OFFSET],
-		   eeprom_id[SFF8636_RX_APP_SELECT_OFFSET + 1],
-		   eeprom_id[SFF8636_RX_APP_SELECT_OFFSET + 2],
-		   eeprom_id[SFF8636_RX_APP_SELECT_OFFSET + 3]);
-
-	netdev_dbg(netdev, "Sfp power: 0x%x\n",
-		   eeprom_id[SFF8636_POWER_OFFSET]);
-	netdev_dbg(netdev, "Sfp Tx_app_select: 0x%x 0x%x 0x%x 0x%x\n",
-		   eeprom_id[SFF8636_TX_APP_SELECT_OFFSET],
-		   eeprom_id[SFF8636_TX_APP_SELECT_OFFSET + 1],
-		   eeprom_id[SFF8636_TX_APP_SELECT_OFFSET + 2],
-		   eeprom_id[SFF8636_TX_APP_SELECT_OFFSET + 3]);
-	netdev_dbg(netdev, "Sfp Tx_cdr: 0x%x\n",
-		   eeprom_id[SFF8636_TX_CDR_OFFSET]);
-}
-
-int kvx_eth_get_module_transceiver(struct net_device *netdev,
-				   struct kvx_transceiver_type *transceiver)
-{
-	u8 data[ETH_MODULE_SFF_8636_MAX_LEN] = {0};
-	struct ethtool_eeprom ee = {
-		.cmd = ETHTOOL_GEEPROM,
-		.len = 256,
-		.offset = 0,
-	};
-	u8 *id, tech;
-	int ret = 0;
-
-	if (netdev->sfp_bus) {
-		ret = sfp_get_module_eeprom(netdev->sfp_bus, &ee, data);
-		if (ret < 0)
-			return ret;
-	}
-
-	id = ee.data;
-	transceiver->id = id[SFP_PHYS_ID];
-	if (transceiver->id != 0) {
-		memcpy(transceiver->oui, &id[SFP_VENDOR_OUI], 3);
-		memcpy(transceiver->pn, &id[SFP_VENDOR_PN], 16);
-		transceiver->compliance_code = id[SFF8636_COMPLIANCE_CODES_OFFSET];
-		transceiver->nominal_br = id[SFF8636_NOMINAL_BITRATE];
-		if (transceiver->nominal_br == 0xFF) {
-			transceiver->nominal_br =
-				id[SFF8636_NOMINAL_BITRATE_250];
-			transceiver->nominal_br *= 250; /* Units of 250Mbps */
-		} else {
-			transceiver->nominal_br *= 100; /* Units of 100Mbps */
-		}
-		netdev_dbg(netdev, "Cable oui: %02x:%02x:%02x pn: %s comp_codes: 0x%x nominal_br: %dMbps\n",
-			   transceiver->oui[0], transceiver->oui[1],
-			   transceiver->oui[2], transceiver->pn,
-			   transceiver->compliance_code,
-			   transceiver->nominal_br);
-	}
-
-	if (sfp_is_qsfp_module((struct sfp_eeprom_id *)id)) {
-		tech = id[SFF8636_DEVICE_TECH_OFFSET] & SFF8636_TRANS_TECH_MASK;
-		transceiver->copper = (tech == SFF8636_TRANS_COPPER_LNR_EQUAL ||
-				       tech == SFF8636_TRANS_COPPER_NEAR_EQUAL    ||
-				       tech == SFF8636_TRANS_COPPER_FAR_EQUAL     ||
-				       tech == SFF8636_TRANS_COPPER_LNR_FAR_EQUAL ||
-				       tech == SFF8636_TRANS_COPPER_PAS_EQUAL     ||
-				       tech == SFF8636_TRANS_COPPER_PAS_UNEQUAL);
-		kvx_eth_get_module_status(netdev, ee.data);
-		netdev_dbg(netdev, "Cable tech : 0x%x copper: %d\n",
-		   tech, transceiver->copper);
-		transceiver->qsfp = 1;
-	}
-
-	return 0;
-}
-
 static int kvx_eth_get_fecparam(struct net_device *netdev,
 				struct ethtool_fecparam *param)
 {
@@ -1413,7 +1325,6 @@ static int kvx_eth_set_fecparam(struct net_device *netdev,
 	return ret;
 }
 
-
 static int kvx_eth_get_eeprom_len(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
@@ -1435,40 +1346,48 @@ static int kvx_eth_get_eeprom(struct net_device *netdev,
 			  struct ethtool_eeprom *ee, u8 *data)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	u8 *buf = kmalloc(ee->len * sizeof(*buf), GFP_KERNEL);
 	size_t l, len = ee->len;
 	int ret, off = ee->offset;
 	u8 page = 0;
 
+	if (!is_cable_connected(&ndev->cfg.transceiver)) {
+		netdev_warn(netdev, "No cable connected\n");
+		ret = -EINVAL;
+		goto bail;
+	}
+
 	if (!ndev->qsfp_i2c) {
 		netdev_err(netdev, "Unable to get QSFP EEPROM I2C adapter\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto bail;
 	}
-	if (!buf)
-		return 0;
+
+	if (is_cable_copper(&ndev->cfg.transceiver)) {
+		if (off > 256)
+			return -EINVAL;
+		len = 256 - off;
+	}
 
 	netdev_dbg(netdev, "mppa_id: 0x%llx dev_id: 0x%llx magic: 0x%llx\n",
 		ndev->hw->mppa_id, ndev->hw->dev_id, kvx_eth_get_id(ndev->hw));
 	l = 0;
-	while (l < ee->len) {
-		ret = kvx_eth_qsfp_ee_read(ndev->qsfp_i2c, buf + l,
+	while (l < len) {
+		ret = kvx_eth_qsfp_ee_read(ndev->qsfp_i2c, data + l,
 					   &page, &off, len);
 		if (ret < 0)
-			return -EINVAL;
+			goto bail;
 
 		l += ret;
 		off += ret;
 	}
 
 	ret = 0;
-	if (l != ee->len)
+	if (l != len)
 		ret = -EINVAL;
+
+bail:
 	page = 0;
 	ee_select_page(ndev->qsfp_i2c, page);
-	ee->len = l;
-	memcpy(data, buf, l);
-	kfree(buf);
-
 	return ret;
 }
 

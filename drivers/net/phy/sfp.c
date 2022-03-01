@@ -2163,10 +2163,8 @@ static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
 
 	if (sfp_is_qsfp_module(&id)) {
 		ret = qsfp_read_eeprom_id(sfp, &id, report);
-		if (ret) {
-			dev_err(sfp->dev, "Unable to read EEPROM id (%d)", ret);
+		if (ret)
 			return ret;
-		}
 		goto bail;
 	}
 
