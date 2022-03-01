@@ -81,12 +81,24 @@ static int i2c_write(struct i2c_adapter *i2c, u8 addr,
 
 int ee_select_page(struct i2c_adapter *i2c, u8 page)
 {
-	int ret = i2c_write(i2c, SFP_PAGE, &page, sizeof(page));
+	int ret = 0;
+	u8 p, sts[2];
 
+	ret = i2c_read(i2c, SFF8436_STATUS, sts, ARRAY_SIZE(sts));
+	if (ret == ARRAY_SIZE(sts)) {
+		if (sts[1] & SFF8436_STATUS_DATA_NOT_READY)
+			return -EAGAIN;
+		if (sts[1] & SFF8436_STATUS_FLAT_MEM)
+			return 0;
+	}
+
+	ret = i2c_read(i2c, SFP_PAGE, &p, sizeof(p));
+	if (ret == sizeof(p) && p == page)
+		return 0;
+
+	ret = i2c_write(i2c, SFP_PAGE, &page, sizeof(page));
 	if (ret != sizeof(page)) {
-		if (page)
-			dev_warn(&i2c->dev, "Unable to change eeprom page(%d)\n",
-				 page);
+		dev_warn(&i2c->dev, "Unable to change eeprom page(%d)\n", page);
 		return -EINVAL;
 	}
 	return 0;
@@ -149,7 +161,8 @@ int kvx_eth_qsfp_ee_read(struct i2c_adapter *i2c, u8 *buf,
 
 	ret = i2c_read(i2c, *off, buf, l);
 	if (ret < 0) {
-		pr_err("Failed to read eeprom @0x%x page %d\n", *off, *page);
+		pr_err("Failed to read eeprom @0x%x page %d (%d)\n",
+		       *off, *page, ret);
 		return -EINVAL;
 	}
 
@@ -202,6 +215,25 @@ void kvx_eth_qsfp_monitor(struct kvx_eth_netdev *ndev)
 	memcpy(qsfp->irq_flags, irqs, sizeof(irqs));
 }
 
+bool is_cable_connected(struct kvx_transceiver_type *t)
+{
+	u8 tt[16] = {0};
+
+	return !!(t->id || memcmp(t->pn, tt, 16));
+}
+
+bool is_cable_copper(struct kvx_transceiver_type *t)
+{
+	u8 tech = t->tech & SFF8636_TRANS_TECH_MASK;
+
+	return (tech == SFF8636_TRANS_COPPER_LNR_EQUAL ||
+		tech == SFF8636_TRANS_COPPER_NEAR_EQUAL    ||
+		tech == SFF8636_TRANS_COPPER_FAR_EQUAL     ||
+		tech == SFF8636_TRANS_COPPER_LNR_FAR_EQUAL ||
+		tech == SFF8636_TRANS_COPPER_PAS_EQUAL     ||
+		tech == SFF8636_TRANS_COPPER_PAS_UNEQUAL);
+}
+
 /**
  * ee_read_and_updateb() - read and update byte in qsfp eeprom (if needed)
  **/
@@ -214,10 +246,8 @@ static int ee_read_and_updateb(struct i2c_adapter *i2c, u8 page, int off, u8 v)
 	do {
 		ret = ee_select_page(i2c, page);
 	} while (ret < 0 && retry--);
-	if (ret < 0) {
-		pr_debug("Failed to change eeprom page (%d)\n", page);
+	if (ret < 0)
 		return ret;
-	}
 
 	retry = 3;
 	do {
@@ -234,6 +264,96 @@ static int ee_read_and_updateb(struct i2c_adapter *i2c, u8 page, int off, u8 v)
 	return 0;
 }
 
+static void kvx_eth_get_module_status(struct net_device *netdev, u8 *ee)
+{
+	u8 sfp_status = ee[SFP_STATUS];
+
+	netdev_dbg(netdev, "Sfp status: Tx_dis: %d Tx_fault: %d Rx_los: %d\n",
+		   sfp_status & SFP_STATUS_TX_DISABLE,
+		   sfp_status & SFP_STATUS_TX_FAULT,
+		   sfp_status & SFP_STATUS_RX_LOS);
+
+	netdev_dbg(netdev, "Sfp Tx_dis: 0x%x\n", ee[SFF8636_TX_DIS_OFFSET]);
+	netdev_dbg(netdev, "Sfp Rx_rate_select: 0x%x\n",
+		   ee[SFF8636_RX_RATE_SELECT_OFFSET]);
+	netdev_dbg(netdev, "Sfp Tx_rate_select: 0x%x\n",
+		   ee[SFF8636_TX_RATE_SELECT_OFFSET]);
+	netdev_dbg(netdev, "Sfp Rx_app_select: 0x%x 0x%x 0x%x 0x%x\n",
+		   ee[SFF8636_RX_APP_SELECT_OFFSET],
+		   ee[SFF8636_RX_APP_SELECT_OFFSET + 1],
+		   ee[SFF8636_RX_APP_SELECT_OFFSET + 2],
+		   ee[SFF8636_RX_APP_SELECT_OFFSET + 3]);
+
+	netdev_dbg(netdev, "Sfp power: 0x%x\n", ee[SFF8636_POWER_OFFSET]);
+	netdev_dbg(netdev, "Sfp Tx_app_select: 0x%x 0x%x 0x%x 0x%x\n",
+		   ee[SFF8636_TX_APP_SELECT_OFFSET],
+		   ee[SFF8636_TX_APP_SELECT_OFFSET + 1],
+		   ee[SFF8636_TX_APP_SELECT_OFFSET + 2],
+		   ee[SFF8636_TX_APP_SELECT_OFFSET + 3]);
+	netdev_dbg(netdev, "Sfp Tx_cdr: 0x%x\n", ee[SFF8636_TX_CDR_OFFSET]);
+}
+
+int kvx_eth_get_module_transceiver(struct net_device *netdev,
+				   struct kvx_transceiver_type *transceiver)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct ethtool_eeprom ee = {
+		.cmd = ETHTOOL_GEEPROM,
+		.len = 256,
+		.offset = 0,
+	};
+	int ret = 0;
+	u8 buf[16];
+	u8 *data;
+
+	if (!netdev->sfp_bus)
+		return -EINVAL;
+
+	if (transceiver->id) {
+		i2c_read(ndev->qsfp_i2c, SFF8636_VENDOR_PN_OFFSET, buf, 16);
+		if (!memcmp(transceiver->pn, buf, 16))
+			return 0;
+	}
+
+	data = kzalloc(ee.len * sizeof(*data), GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
+	ret = sfp_get_module_eeprom(netdev->sfp_bus, &ee, data);
+	if (ret < 0)
+		goto bail;
+
+	transceiver->id = data[SFF8636_DEVICE_ID_OFFSET];
+	memcpy(transceiver->oui, &data[SFF8636_VENDOR_OUI_OFFSET], 3);
+	memcpy(transceiver->sn, &data[SFF8636_VENDOR_SN_OFFSET], 16);
+	memcpy(transceiver->pn, &data[SFF8636_VENDOR_PN_OFFSET], 16);
+	transceiver->compliance_code = data[SFF8636_COMPLIANCE_CODES_OFFSET];
+	transceiver->nominal_br = data[SFF8636_NOMINAL_BITRATE];
+	if (transceiver->nominal_br == 0xFF) {
+		transceiver->nominal_br = data[SFF8636_NOMINAL_BITRATE_250];
+		transceiver->nominal_br *= 250; /* Units of 250Mbps */
+	} else {
+		transceiver->nominal_br *= 100; /* Units of 100Mbps */
+	}
+	netdev_dbg(netdev, "Cable oui: %02x:%02x:%02x pn: %s sn: %s comp_codes: 0x%x nominal_br: %dMbps\n",
+		   transceiver->oui[0], transceiver->oui[1],
+		   transceiver->oui[2], transceiver->pn, transceiver->sn,
+		   transceiver->compliance_code,
+		   transceiver->nominal_br);
+
+	if (sfp_is_qsfp_module((struct sfp_eeprom_id *)data)) {
+		transceiver->tech = data[SFF8636_DEVICE_TECH_OFFSET];
+		kvx_eth_get_module_status(netdev, data);
+		netdev_dbg(netdev, "Cable tech : 0x%x copper: %d\n",
+			   transceiver->tech, is_cable_copper(transceiver));
+		transceiver->qsfp = 1;
+	}
+
+bail:
+	kfree(data);
+	return ret;
+}
+
 void kvx_eth_qsfp_reset(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_qsfp *qsfp = &hw->qsfp;
@@ -242,21 +362,35 @@ void kvx_eth_qsfp_reset(struct kvx_eth_hw *hw)
 		gpiod_direction_output(qsfp->gpio_reset, 0);
 		usleep_range(10000, 20000);
 		gpiod_set_value(qsfp->gpio_reset, 1);
-		dev_dbg(hw->dev, "QSFP reset done\n");
+		dev_info(hw->dev, "QSFP reset done\n");
 	}
 }
 
 void kvx_eth_qsfp_tune(struct kvx_eth_netdev *ndev)
 {
 	struct kvx_eth_qsfp *qsfp = &ndev->hw->qsfp;
-	int i;
+	int i, ret = 0;
+	int retry = 2;
 
 	if (!ndev->qsfp_i2c || !qsfp->param)
 		return;
 
+	kvx_eth_get_module_transceiver(ndev->netdev, &ndev->cfg.transceiver);
+	/* Only tune fiber cable */
+	if (is_cable_copper(&ndev->cfg.transceiver)) {
+		netdev_warn(ndev->netdev, "QSFP param NOT tunable on copper cable\n");
+		return;
+	}
+
 	mutex_lock(&qsfp->lock);
-	for (i = 0; i < qsfp->param_count; i++)
-		ee_read_and_updateb(ndev->qsfp_i2c, qsfp->param[i].page,
-				qsfp->param[i].offset, qsfp->param[i].value);
+	do {
+		ret = 0;
+		for (i = 0; i < qsfp->param_count; i++)
+			ret |= ee_read_and_updateb(ndev->qsfp_i2c,
+				qsfp->param[i].page, qsfp->param[i].offset,
+				qsfp->param[i].value);
+	} while (ret && retry--);
 	mutex_unlock(&qsfp->lock);
+	if (ret)
+		netdev_warn(ndev->netdev, "QSFP param tuning failed\n");
 }
