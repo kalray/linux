@@ -191,6 +191,10 @@ static void kvx_eth_up(struct net_device *netdev)
 	struct kvx_eth_ring *r;
 	int i;
 
+	netdev_dbg(netdev, "%s\n", __func__);
+	if (ndev->cfg.id == 0)
+		kvx_eth_qsfp_tune(ndev);
+
 	phylink_start(ndev->phylink);
 
 	for (i = 0; i < NB_RX_RING; i++) {
@@ -1593,9 +1597,6 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv) = { 0, };
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(additional_prot) = { 0, };
 
-	if (kvx_eth_get_module_transceiver(netdev, &ndev->cfg.transceiver))
-		return;
-
 	/*
 	 * Indicate all capabilities supported by the MAC
 	 * The type of media (fiber/copper/...) is dependant
@@ -1918,12 +1919,9 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		update_serdes = true;
 	}
 	/* Check if a sfp/qsfp module is inserted */
-	else if (ndev->cfg.transceiver.id == 0) {
-		if (kvx_eth_get_module_transceiver(netdev,
-						   &ndev->cfg.transceiver)) {
-			netdev_warn(ndev->netdev, "No cable detected\n");
-			goto bail;
-		}
+	else if (!is_cable_connected(&ndev->cfg.transceiver)) {
+		netdev_warn(netdev, "No cable connected\n");
+		goto bail;
 	}
 
 	if (kvx_eth_phy_is_bert_en(ndev->hw)) {
@@ -2185,10 +2183,6 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	ret = kvx_eth_init_netdev(ndev);
 	if (ret)
 		goto err;
-
-	/* Called once */
-	if (ndev->cfg.id == 0)
-		kvx_eth_qsfp_tune(ndev);
 
 	/**
 	 * MF 1.3 -> do *NOT* change the following settings
