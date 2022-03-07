@@ -75,7 +75,7 @@ static u64 l2_cache_get_cmd_idx(unsigned int cmd_count)
 	u64 *read_idx_ptr = cmd_regs + L2_CMD_READ_IDX_OFFSET;
 
 	/* Grab a commands tickets */
-	cmd_idx = __builtin_kvx_afaddd(write_idx_ptr, cmd_count);
+	cmd_idx = __builtin_kvx_aladdd(write_idx_ptr, cmd_count);
 
 	/* Wait until there is room in command fifo to enqueue commands */
 	while ((cmd_idx + cmd_count) >=
