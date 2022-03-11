@@ -1,8 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Based on arch/arm64/mm/mmap.c
+ * derived from arch/arm64/mm/mmap.c
  *
- * Copyright (C) 2020 kalray
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Authors: Clement Leger
  */
 
 #ifdef CONFIG_STRICT_DEVMEM
