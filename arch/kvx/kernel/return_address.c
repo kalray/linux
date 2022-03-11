@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
- * This code is taken from arm64 port
+ * derived from arch/arm64/kernel/return_address.c
  *
- * Copyright (C) 2013 Linaro Limited
- * Author: AKASHI Takahiro <takahiro.akashi@linaro.org>
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Authors: Clement Leger
  */
 
 #include <linux/export.h>
