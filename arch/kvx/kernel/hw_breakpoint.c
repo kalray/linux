@@ -1,9 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2019-2020 Kalray Inc.
- * Authors:
- *	Clement Leger
- *	Marius Gligor
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Authors: Marius Gligor
+ *          Clement Leger
  */
 
 #include <linux/hw_breakpoint.h>

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
- * Copyright (C) 2018-2020 Kalray Inc.
- * Author: Clement Leger
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Authors: Clement Leger
  */
 
 #ifndef _UAPI_ASM_KVX_SIGCONTEXT_H
