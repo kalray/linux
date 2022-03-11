@@ -1,8 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Based on arch/arm/kernel/io.c
+ * derived from arch/arm/kernel/io.c
  *
- * Copyright (C) 2012 ARM Ltd.
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Authors: Clement Leger
  */
 
 #include <linux/export.h>
