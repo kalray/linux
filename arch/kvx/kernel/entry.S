@@ -1,10 +1,11 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2018-2020 Kalray Inc
- * Authors:
- *	Clement Leger
- *	Guillaume Thouvenin
- *	Marius Gligor
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Authors: Clement Leger
+ *          Guillaume Thouvenin
+ *          Marius Gligor
+ *          Yann Sionneau
+ *          Julien Villette
  */
 
 #include <linux/linkage.h>

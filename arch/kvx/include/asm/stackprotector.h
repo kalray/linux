@@ -1,7 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2018-2020 Kalray Inc.
- * Author: Yann Sionneau
+ * derived from arch/mips/include/asm/stackprotector.h
+ *
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Authors: Clement Leger
  */
 
 /*

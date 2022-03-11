@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Authors: Yann Sionneau
+ */
 
 #include <linux/of.h>
 #include <asm/sfr_defs.h>
