@@ -1,15 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2010 Tilera Corporation. All Rights Reserved.
- * Copyright 2015 Regents of the University of California
- * Copyright 2017 SiFive
- * Copyright (C) 2018-2020 Kalray Inc.
- * Authors:
- *	Marius Gligor
- *	Clement Leger
+ * derived from arch/riscv/kernel/ptrace.c
  *
- * Partially copied from arch/riscv/kernel/ptrace.c
- *
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Authors: Marius Gligor
+ *          Clement Leger
  */
 
 #include <linux/sched.h>
