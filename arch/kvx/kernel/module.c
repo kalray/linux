@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2019-2020 Kalray Inc.
- * Author: Yann Sionneau
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Authors: Yann Sionneau
+ *          Clement Leger
  */
 
 #include <linux/elf.h>
