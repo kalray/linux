@@ -121,8 +121,11 @@ static inline int init_new_context(struct task_struct *tsk,
 static inline void destroy_context(struct mm_struct *mm)
 {
 	int cpu = smp_processor_id();
+	unsigned long flags;
 
+	local_irq_save(flags);
 	mm_asn(mm, cpu) = MM_CTXT_NO_ASN;
+	local_irq_restore(flags);
 }
 
 static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
