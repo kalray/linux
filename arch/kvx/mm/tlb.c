@@ -189,15 +189,15 @@ void local_flush_tlb_page(struct vm_area_struct *vma,
 	struct mm_struct *mm;
 	unsigned long flags;
 
+	local_irq_save(flags);
+
 	mm = vma->vm_mm;
 	current_asn = mm_asn(mm, cpu);
 
 	/* If mm has no context there is nothing to do */
-	if (current_asn == MM_CTXT_NO_ASN)
-		return;
+	if (current_asn != MM_CTXT_NO_ASN)
+		clear_jtlb_entry(addr, TLB_G_USE_ASN, current_asn);
 
-	local_irq_save(flags);
-	clear_jtlb_entry(addr, TLB_G_USE_ASN, current_asn);
 	local_irq_restore(flags);
 }
 
