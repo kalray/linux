@@ -10,7 +10,9 @@
 #include <linux/cdev.h>
 #include <linux/atomic.h>
 #include <linux/kfifo.h>
+#include <linux/i2c.h>
 
+#define SMBUS_BLOCK_WRITE_MAX (roundup_pow_of_two(I2C_SMBUS_BLOCK_MAX + 1))
 #define BUFFER_SIZE 128
 #define CMD_CODE_GET_FIFO_LEN (1)
 #define CMD_CODE_GET_FIFO_DATA (2)
@@ -27,6 +29,7 @@ struct slave_data {
 	atomic_t open_rc;
 	DECLARE_KFIFO(read_fifo, unsigned char, BUFFER_SIZE);
 	DECLARE_KFIFO(write_fifo, unsigned char, BUFFER_SIZE);
+	DECLARE_KFIFO(tmp_write_fifo, unsigned char, SMBUS_BLOCK_WRITE_MAX);
 	wait_queue_head_t read_wait_queue;
 	wait_queue_head_t write_wait_queue;
 	u8 command_code_received;
@@ -36,6 +39,72 @@ struct slave_data {
 };
 
 static struct class *i2c_slave_class;
+
+static void commit_tmp_write_fifo(struct i2c_client *client)
+{
+	struct slave_data *slave = i2c_get_clientdata(client);
+	struct device *dev = &client->dev;
+	u8 cmd_code;
+	u8 byte_count;
+	int tmp_fifo_len = kfifo_len(&slave->tmp_write_fifo);
+	int out;
+	u8 buff[I2C_SMBUS_BLOCK_MAX];
+
+	/* nothing to commit, most likely a STOP of a READ-only transaction */
+	if (!tmp_fifo_len)
+		return;
+
+	if (tmp_fifo_len < 2) {
+		dev_err(dev, "STOP received but incomplete smbus frame size %d\n", tmp_fifo_len);
+		goto err;
+	}
+
+	out = kfifo_out(&slave->tmp_write_fifo, &cmd_code, 1);
+	if (out != 1) {
+		dev_err(dev, "issue while poping cmd code from tmp kfifo during commit: %d\n", out);
+		goto err;
+	}
+
+	out = kfifo_out(&slave->tmp_write_fifo, &byte_count, 1);
+	if (out != 1) {
+		dev_err(dev, "issue while poping byte count from tmp kfifo during commit: %d\n", out);
+		goto err;
+	}
+
+	if (tmp_fifo_len != byte_count + 2) {
+		dev_err(dev, "STOP received but smbus frame length different from byte count. Expecting %d but got %d\n", byte_count, tmp_fifo_len - 2);
+		goto err;
+	}
+
+	out = kfifo_out(&slave->tmp_write_fifo, buff, tmp_fifo_len - 2);
+	if (out != tmp_fifo_len - 2) {
+		dev_err(dev, "issue while poping data from tmp kfifo during commit: %d instead of %d\n", out, tmp_fifo_len - 2);
+		goto err;
+	}
+
+	out = kfifo_in(&slave->write_fifo, &cmd_code, 1);
+	if (out != 1) {
+		dev_err(dev, "issue while inserting cmd code into write kfifo during commit: %d\n", out);
+		goto err;
+	}
+
+	out = kfifo_in(&slave->write_fifo, &byte_count, 1);
+	if (out != 1) {
+		dev_err(dev, "issue while inserting byte count into write kfifo during commit: %d\n", out);
+		goto err;
+	}
+
+	out = kfifo_in(&slave->write_fifo, buff, tmp_fifo_len - 2);
+	if (out != tmp_fifo_len - 2) {
+		dev_err(dev, "issue while inserting data into write fifo: %d\n", out);
+		goto err;
+	}
+
+	wake_up_interruptible(&slave->write_wait_queue);
+	return;
+err:
+	kfifo_reset(&slave->tmp_write_fifo);
+}
 
 static int i2c_slave_generic_slave_cb(struct i2c_client *client,
 				      enum i2c_slave_event event, u8 *val)
@@ -53,12 +122,12 @@ static int i2c_slave_generic_slave_cb(struct i2c_client *client,
 			} else if (slave->current_command_code == CMD_CODE_FLUSH_FIFOS) {
 				kfifo_reset(&slave->read_fifo);
 				kfifo_reset(&slave->write_fifo);
+				kfifo_reset(&slave->tmp_write_fifo);
 			}
 		}
 		if (!DRIVER_HANDLED_CMD_CODE(slave->current_command_code)) {
-			if (!kfifo_is_full(&slave->write_fifo)) {
-				kfifo_in(&slave->write_fifo, val, 1);
-				wake_up_interruptible(&slave->write_wait_queue);
+			if (!kfifo_is_full(&slave->tmp_write_fifo)) {
+				kfifo_in(&slave->tmp_write_fifo, val, 1);
 			} else {
 				dev_err(dev, "i2c data lost %02x, write fifo is full\n", *val);
 				return -ENOMEM;
@@ -107,6 +176,7 @@ static int i2c_slave_generic_slave_cb(struct i2c_client *client,
 
 	case I2C_SLAVE_STOP:
 		dev_dbg(dev, "STOP received\n");
+		commit_tmp_write_fifo(client);
 		slave->command_code_received = 0;
 		slave->current_command_code = 0xff;
 		slave->get_fifo_len_index = 0;
@@ -223,6 +293,7 @@ static int i2c_slave_generic_probe(struct i2c_client *client, const struct i2c_d
 	init_waitqueue_head(&slave->write_wait_queue);
 	INIT_KFIFO(slave->read_fifo);
 	INIT_KFIFO(slave->write_fifo);
+	INIT_KFIFO(slave->tmp_write_fifo);
 	slave->command_code_received = 0;
 	slave->current_command_code = 0xff;
 	slave->get_fifo_len_answer[0] = 1;
