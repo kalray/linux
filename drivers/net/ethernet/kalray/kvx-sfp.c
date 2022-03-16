@@ -376,6 +376,8 @@ void kvx_eth_qsfp_tune(struct kvx_eth_netdev *ndev)
 		return;
 
 	kvx_eth_get_module_transceiver(ndev->netdev, &ndev->cfg.transceiver);
+	if (!is_cable_connected(&ndev->cfg.transceiver))
+		return;
 	/* Only tune fiber cable */
 	if (is_cable_copper(&ndev->cfg.transceiver)) {
 		netdev_warn(ndev->netdev, "QSFP param NOT tunable on copper cable\n");
