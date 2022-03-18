@@ -1,7 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2018 Kalray Inc.
- * Author: Clement Leger
+ * Copyright (c) 2017 - 2022 Kalray Inc.
+ * Author(s): Clement Leger
+ *            Julian Vetter
+ *            Vincent Chardon
  */
 
 #include <linux/irqchip/irq-kvx-itgen.h>
