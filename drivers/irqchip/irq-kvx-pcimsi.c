@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2019 Kalray Inc.
- * Author: Vincent Chardon
+ * Copyright (c) 2017 - 2022 Kalray Inc.
+ * Author(s): Vincent Chardon
+ *            Clement Leger
  */
 
 #include <linux/irqchip/chained_irq.h>
