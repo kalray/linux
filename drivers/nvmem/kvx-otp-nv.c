@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * Copyright (C) 2015 Stefan Wahren <stefan.wahren@i2se.com>
+ * Copyright (c) 2017 - 2022 Kalray Inc.
+ * Author(s): Clement Leger
  */
 
 #include <linux/clk.h>

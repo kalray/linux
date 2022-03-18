@@ -1,10 +1,12 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * This file is subject to the terms and conditions of the GNU General Public
- * License.  See the file "COPYING" in the main directory of this archive
- * for more details.
+ * derived from drivers/pci/controller/pcie-xilinx-nwl.c
  *
- * Copyright (C) 2019 Kalray Inc.
+ * Copyright (c) 2017 - 2022 Kalray Inc.
+ * Author(s): Vincent Chardon
+ *            Clement Leger
+ *
+ * PCIe host controller driver for NWL PCIe Bridge
  */
 
 #include <linux/delay.h>

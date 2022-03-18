@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * KVX spi-mem operations
+ * Copyright (c) 2017 - 2022 Kalray Inc.
+ * Author(s): Clement Leger
  *
- * Copyright (c) 2020 Kalray Inc.
- * Author: Clement Leger
+ * KVX spi-mem operations
  */
 
 #include <linux/clk.h>
