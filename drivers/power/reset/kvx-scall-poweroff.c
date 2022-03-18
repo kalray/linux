@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * Copyright (C) 2020 Kalray Inc.
+ * Copyright (c) 2017 - 2022 Kalray Inc.
+ * Author(s): Clement Leger
  */
 
 #include <linux/pm.h>
