@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * This file is subject to the terms and conditions of the GNU General Public
- * License.  See the file "COPYING" in the main directory of this archive
- * for more details.
- *
- * Copyright (C) 2019 Kalray Inc.
+ * Copyright (c) 2017 - 2022 Kalray Inc.
+ * Author(s): Thomas Costis
+ *            Clement Leger
+ *            Guillaume Pommeret
+ *            Benjamin Mugnier
  */
 #include <linux/types.h>
 #include <linux/errno.h>
