@@ -1,6 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2019 Kalray Inc.
+ * Copyright (c) 2017 - 2022 Kalray Inc.
+ * Author(s): Clement Leger
  */
 
 #ifndef ASM_KVX_IOMMU_H
