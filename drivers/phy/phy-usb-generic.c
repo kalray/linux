@@ -202,27 +202,29 @@ static int phy_usb_generic_probe(struct platform_device *pdev)
 			return err;
 		}
 	}
-
+dev_err(dev, "Ppppppppppppppppppppppppproute\n");
 	phy = devm_phy_create(dev, NULL, &phy_usb_generic_ops);
 	if (IS_ERR(phy)) {
 		err = PTR_ERR(phy);
 		dev_err(dev, "Failed to create PHY: %d\n", err);
 		return err;
 	}
+dev_err(dev, "fifi\n");
 	phy_set_drvdata(phy, priv);
-
+dev_err(dev, "riri\n");
 	provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
 	if (IS_ERR(provider)) {
 		err = PTR_ERR(provider);
 		dev_err(dev, "Failed to register PHY provider: %d\n", err);
 		return err;
 	}
-
+dev_err(dev, "Probe OK PHY registed\n");
 	return 0;
 }
 
 static const struct of_device_id phy_usb_nop_dt_ids[] = {
 	{ .compatible = "phy-usb-generic" },
+	{ .compatible = "usb-nop-xceiv" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, phy_usb_nop_dt_ids);
