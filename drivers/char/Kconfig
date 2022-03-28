@@ -471,6 +471,14 @@ config ADI
 	  and SSM (Silicon Secured Memory).  Intended consumers of this
 	  driver include crash and makedumpfile.
 
+config SCDEV
+	tristate "Simple char device"
+	default n
+	help
+		Simple char device mostly used for testing purposes.
+		It creates a char device /dev/scdev that can be written or read
+		from /proc/scdev. It can be used to inject or capture data.
+
 endmenu
 
 config RANDOM_TRUST_CPU
