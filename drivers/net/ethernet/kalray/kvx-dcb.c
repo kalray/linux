@@ -196,11 +196,23 @@ static int kvx_net_dcbnl_ieee_getpfc(struct net_device *netdev,
 				     struct ieee_pfc *pfc)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
 	int i;
 
 	netdev_dbg(netdev, "%s\n", __func__);
 	pfc->pfc_cap = KVX_ETH_PFC_CLASS_NB;
-	pfc->pfc_en = kvx_net_dcbnl_getpfcstate(netdev);
+	if (lb_f->pfc_f.global_pause_en) {
+		pfc->pfc_en = 0;
+	} else if (lb_f->pfc_f.global_pfc_en) {
+		pfc->pfc_en = (1 << KVX_ETH_PFC_CLASS_NB) - 1;
+	} else {
+		pfc->pfc_en = 0;
+		for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
+			if (lb_f->cl_f[i].pfc_ena)
+				pfc->pfc_en |= 1 << i;
+		}
+	}
 
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++) {
 		pfc->requests[i] = ndev->stats.rx.cbfcpauseframesreceived[i];
