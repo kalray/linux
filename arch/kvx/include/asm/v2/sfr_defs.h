@@ -1,9 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (C) 2017-2022 Kalray Inc.
- * Authors: Clement Leger
- *          Marius Gligor
- *          Julian Vetter
+ * Author(s): Clement Leger
+ *            Marius Gligor
+ *            Julian Vetter
  */
 
 #ifndef _ASM_KVX_SFR_DEFS_H

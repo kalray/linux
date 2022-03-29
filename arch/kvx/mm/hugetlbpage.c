@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2017-2022 Kalray Inc.
- * Authors: Guillaume Thouvenin
- *          Clement Leger
- *          Jean-Christophe Pince
+ * Author(s): Guillaume Thouvenin
+ *            Clement Leger
+ *            Jean-Christophe Pince
  */
 
 #include <asm/page.h>
