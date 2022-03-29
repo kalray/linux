@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * derived from arch/riscv/kernel/ptrace.c
  *
  * Copyright (C) 2017-2022 Kalray Inc.
- * Authors: Marius Gligor
- *          Clement Leger
+ * Author(s): Marius Gligor
+ *            Clement Leger
  */
 
 #include <linux/sched.h>

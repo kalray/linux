@@ -1,8 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
+/* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (C) 2017-2022 Kalray Inc.
- * Authors: Clement Leger
- *          Yann Sionneau
+ * Author(s): Clement Leger
+ *            Yann Sionneau
  */
 
 #ifndef _UAPI_ASM_KVX_PTRACE_H
