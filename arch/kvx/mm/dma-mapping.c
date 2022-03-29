@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2017-2022 Kalray Inc.
- * Authors: Clement Leger
- *          Guillaume Thouvenin
- *          Jules Maselbas
+ * Author(s): Clement Leger
+ *            Guillaume Thouvenin
+ *            Jules Maselbas
  */
 
 #include <linux/dma-mapping.h>

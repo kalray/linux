@@ -1,9 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (C) 2017-2022 Kalray Inc.
- * Authors: Guillaume Thouvenin
- *          Clement Leger
- *          Julian Vetter
+ * Author(s): Guillaume Thouvenin
+ *            Clement Leger
+ *            Julian Vetter
  */
 
 #ifndef _ASM_KVX_PGTABLE_BITS_H
