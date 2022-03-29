@@ -130,11 +130,16 @@ static struct netdev_queue *get_txq(const struct kvx_eth_ring *ring)
 	return netdev_get_tx_queue(ring->netdev, ring->qidx);
 }
 
+static bool kvx_eth_link(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	return kvx_phy_sigdet(hw, cfg) && !kvx_eth_pmac_linklos(hw, cfg);
+}
+
 static void kvx_eth_poll_link(struct timer_list *t)
 {
 	struct kvx_eth_netdev *ndev = container_of(t, struct kvx_eth_netdev,
 						   link_poll);
-	bool link_los, link;
+	bool link;
 
 	if (!ndev->cfg.mac_cfg_done)
 		return;
@@ -142,15 +147,26 @@ static void kvx_eth_poll_link(struct timer_list *t)
 	if (kvx_eth_phy_is_bert_en(ndev->hw) || ndev->cfg.speed == SPEED_1000 ||
 	    ndev->cfg.transceiver.id == 0)
 		goto exit;
-	link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
-	if (link != netif_carrier_ok(ndev->netdev)) {
+	link = kvx_eth_link(ndev->hw, &ndev->cfg);
+	if (!netif_carrier_ok(ndev->netdev))
+		netdev_dbg(ndev->netdev, "carrier: %d sigdet: %d pmac_linklos: %d phylos: %d link: %d\n",
+			   netif_carrier_ok(ndev->netdev),
+			   kvx_phy_sigdet(ndev->hw, &ndev->cfg),
+			   kvx_eth_pmac_linklos(ndev->hw, &ndev->cfg),
+			   kvx_mac_get_phylos(ndev->hw, ndev->cfg.id), link);
+
+	/* Try to reconfigure MAC/PHY */
+	if (kvx_phy_sigdet(ndev->hw, &ndev->cfg) != netif_carrier_ok(ndev->netdev)) {
+		if (ndev->cfg.mac_cfg_done) {
+			phylink_mac_change(ndev->phylink, false);
+			ndev->cfg.restart_serdes = true;
+			queue_work(system_power_efficient_wq, &ndev->link_cfg);
+			return;
+		}
+	}
+	if (link != netif_carrier_ok(ndev->netdev))
 		/* Reschedule mac config (consider link down) */
 		phylink_mac_change(ndev->phylink, link);
-	} else {
-		link_los = kvx_eth_pmac_linklos(ndev->hw, &ndev->cfg);
-		if (link_los)
-			phylink_mac_change(ndev->phylink, false);
-	}
 
 exit:
 	mod_timer(t, jiffies + msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
@@ -1766,7 +1782,7 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	if (kvx_eth_phy_is_bert_en(ndev->hw))
 		state->link = false;
 	else
-		state->link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
+		state->link = kvx_eth_link(ndev->hw, &ndev->cfg);
 	state->speed = ndev->cfg.speed;
 	state->duplex = ndev->cfg.duplex;
 	state->pause = 0;
@@ -1889,16 +1905,14 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_pfc_f *pfc_f = &ndev->hw->lb_f[ndev->cfg.id].pfc_f;
-	int an_enabled = state->an_enabled;
 	u8 pause = !!(state->pause & MLO_PAUSE_TXRX_MASK);
-	bool update_serdes = false;
-	int speed_fmt, ret = 0;
-	char *unit;
 
-	ndev->cfg.mac_cfg_done = false;
 	netdev_dbg(ndev->netdev, "%s state->speed: %d ndev->speed: %d pause: 0x%x / 0x%x\n",
 		   __func__, state->speed, ndev->cfg.speed,
 		   pause, pfc_f->global_pause_en);
+	ndev->cfg.restart_an = state->an_enabled;
+	ndev->cfg.restart_serdes = false;
+	ndev->cfg.mac_cfg_done = false;
 
 	if (state->interface == PHY_INTERFACE_MODE_SGMII) {
 		/*
@@ -1915,26 +1929,26 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		 * SGMII autoneg is based on clause 37 (not clause 73).
 		 * This avoid a timeout and make link up faster.
 		 */
-		an_enabled = false;
-		update_serdes = true;
+		ndev->cfg.restart_an = false;
+		ndev->cfg.restart_serdes = true;
 	}
 	/* Check if a sfp/qsfp module is inserted */
 	else if (!is_cable_connected(&ndev->cfg.transceiver)) {
 		netdev_warn(netdev, "No cable connected\n");
-		goto bail;
+		return;
 	}
 
 	if (kvx_eth_phy_is_bert_en(ndev->hw)) {
 		netdev_warn(ndev->netdev, "Trying to reconfigure mac while BERT is enabled\n");
-		goto bail;
+		return;
 	}
 
 	if (state->interface != PHY_INTERFACE_MODE_NA)
 		ndev->cfg.phy_mode = state->interface;
 	ndev->cfg.an_mode = an_mode;
 
-	update_serdes = (ndev->cfg.speed != state->speed ||
-			 ndev->cfg.duplex != state->duplex);
+	ndev->cfg.restart_serdes = (ndev->cfg.speed != state->speed ||
+				    ndev->cfg.duplex != state->duplex);
 
 	if (state->speed != SPEED_UNKNOWN)
 		ndev->cfg.speed = state->speed;
@@ -1945,7 +1959,19 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 	if (state->duplex != DUPLEX_UNKNOWN)
 		ndev->cfg.duplex = state->duplex;
 
-	if (an_enabled && !ndev->cfg.mac_f.loopback_mode) {
+	queue_work(system_power_efficient_wq, &ndev->link_cfg);
+	flush_work(&ndev->link_cfg);
+}
+
+static void kvx_eth_link_cfg(struct work_struct *w)
+{
+	struct kvx_eth_netdev *ndev =
+		container_of(w, struct kvx_eth_netdev, link_cfg);
+	int speed_fmt, ret = 0;
+	char *unit;
+
+	ndev->cfg.mac_cfg_done = false;
+	if (ndev->cfg.restart_an && !ndev->cfg.mac_f.loopback_mode) {
 		ret = kvx_eth_autoneg(ndev);
 		/* If AN is successful MAC/PHY are already configured on
 		 * correct mode as link training requires to be performed at
@@ -1955,17 +1981,19 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 			goto bail;
 
 		kvx_eth_get_formated_speed(ndev->cfg.speed, &speed_fmt, &unit);
-		netdev_warn(netdev, "Autonegotiation failed, using default speed %i%s\n",
+		netdev_warn(ndev->netdev, "Autonegotiation failed, using default speed %i%s\n",
 				speed_fmt, unit);
-		update_serdes = true;
+		ndev->cfg.restart_serdes = true;
 	}
 
-	kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, update_serdes);
-	/* Force re-assess link state */
-	kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
+	ret = kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg,
+					    ndev->cfg.restart_serdes);
 
 bail:
 	ndev->cfg.mac_cfg_done = true;
+	ndev->cfg.restart_serdes = false;
+	ndev->cfg.restart_an = false;
+
 	mod_timer(&ndev->link_poll, jiffies +
 		  msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
 }
@@ -2079,6 +2107,7 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	INIT_LIST_HEAD(&ndev->cfg.tx_fifo_list);
 	timer_setup(&ndev->link_poll, kvx_eth_poll_link, 0);
 	INIT_DELAYED_WORK(&ndev->qsfp_poll, kvx_eth_qsfp_poll);
+	INIT_WORK(&ndev->link_cfg, kvx_eth_link_cfg);
 
 	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
 	if (phy_mode < 0) {
