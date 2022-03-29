@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * derived from arch/nios2/kernel/nios2_ksyms.c
  *
  * Copyright (C) 2017-2022 Kalray Inc.
- * Authors: Clement Leger
- *          Yann Sionneau
+ * Author(s): Clement Leger
+ *            Yann Sionneau
  */
 
 #include <linux/kernel.h>
