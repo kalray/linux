@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * derived from arch/riscv/kernel/syscall_table.c
  *
  * Copyright (C) 2017-2022 Kalray Inc.
- * Authors: Clement Leger
+ * Author(s): Clement Leger
  */
 
 #include <linux/syscalls.h>
