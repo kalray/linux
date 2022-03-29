@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2017-2022 Kalray Inc.
- * Authors: Clement Leger
- *          Vincent Chardon
+ * Author(s): Clement Leger
+ *            Vincent Chardon
  */
 
 #include <linux/context_tracking.h>
