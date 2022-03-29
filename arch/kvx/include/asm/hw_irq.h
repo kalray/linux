@@ -1,9 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * derived from arch/mips/include/asm/ide.h
  *
  * Copyright (C) 2017-2022 Kalray Inc.
- * Authors: Clement Leger
+ * Author(s): Clement Leger
  */
 
 #ifndef _ASM_KVX_HW_IRQ_H
