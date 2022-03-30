@@ -212,31 +212,37 @@ static int i2c_slave_generic_slave_cb(struct i2c_client *client,
 static ssize_t slave_read(struct file *file, char __user *buf, size_t len, loff_t *ppos)
 {
 	struct slave_data *slave = file->private_data;
-	unsigned int copied;
+	unsigned int copied = 0;
 	int ret;
 
-	if (kfifo_is_empty(&slave->write_fifo)) {
-		if (file->f_flags & O_NONBLOCK)
+	do {
+		if (kfifo_is_empty(&slave->write_fifo)) {
+			if (file->f_flags & O_NONBLOCK)
+				return -EAGAIN;
+
+			if (wait_event_interruptible(slave->write_wait_queue, !kfifo_is_empty(&slave->write_fifo)))
+				return -ERESTARTSYS;
+		}
+
+		spin_lock(&slave->wfifo_lock);
+		ret = kfifo_to_user(&slave->write_fifo, buf, len, &copied);
+		spin_unlock(&slave->wfifo_lock);
+
+		if (ret)
+			return ret;
+
+		if (copied == 0 && (file->f_flags & O_NONBLOCK))
 			return -EAGAIN;
 
-		if (wait_event_interruptible(slave->write_wait_queue, !kfifo_is_empty(&slave->write_fifo)))
-			return -ERESTARTSYS;
-	}
+	} while (copied == 0);
 
-	spin_lock(&slave->wfifo_lock);
-	ret = kfifo_to_user(&slave->write_fifo, buf, len, &copied);
-	spin_unlock(&slave->wfifo_lock);
-
-	if (ret == 0)
-		ret = copied;
-
-	return ret;
+	return copied;
 }
 
 static ssize_t slave_write(struct file *file, const char __user *data, size_t len, loff_t *ppos)
 {
 	struct slave_data *slave = file->private_data;
-	unsigned int copied;
+	unsigned int copied = 0;
 	int ret;
 
 	if (kfifo_is_full(&slave->read_fifo)) {
@@ -251,10 +257,10 @@ static ssize_t slave_write(struct file *file, const char __user *data, size_t le
 	ret = kfifo_from_user(&slave->read_fifo, data, len, &copied);
 	spin_unlock(&slave->rfifo_lock);
 
-	if (ret == 0)
-		ret = copied;
+	if (ret)
+		return ret;
 
-	return ret;
+	return copied;
 }
 
 
