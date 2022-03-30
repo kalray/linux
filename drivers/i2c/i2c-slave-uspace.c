@@ -30,6 +30,8 @@ struct slave_data {
 	DECLARE_KFIFO(read_fifo, unsigned char, BUFFER_SIZE);
 	DECLARE_KFIFO(write_fifo, unsigned char, BUFFER_SIZE);
 	DECLARE_KFIFO(tmp_write_fifo, unsigned char, SMBUS_BLOCK_WRITE_MAX);
+	spinlock_t rfifo_lock;
+	spinlock_t wfifo_lock;
 	wait_queue_head_t read_wait_queue;
 	wait_queue_head_t write_wait_queue;
 	u8 command_code_received;
@@ -40,6 +42,7 @@ struct slave_data {
 
 static struct class *i2c_slave_class;
 
+/* This runs in IRQ context */
 static void commit_tmp_write_fifo(struct i2c_client *client)
 {
 	struct slave_data *slave = i2c_get_clientdata(client);
@@ -82,35 +85,42 @@ static void commit_tmp_write_fifo(struct i2c_client *client)
 		goto err;
 	}
 
+	spin_lock(&slave->wfifo_lock);
 	out = kfifo_in(&slave->write_fifo, &cmd_code, 1);
 	if (out != 1) {
 		dev_err(dev, "issue while inserting cmd code into write kfifo during commit: %d\n", out);
-		goto err;
+		goto err_unlock;
 	}
 
 	out = kfifo_in(&slave->write_fifo, &byte_count, 1);
 	if (out != 1) {
 		dev_err(dev, "issue while inserting byte count into write kfifo during commit: %d\n", out);
-		goto err;
+		goto err_unlock;
 	}
 
 	out = kfifo_in(&slave->write_fifo, buff, tmp_fifo_len - 2);
 	if (out != tmp_fifo_len - 2) {
 		dev_err(dev, "issue while inserting data into write fifo: %d\n", out);
-		goto err;
+		goto err_unlock;
 	}
 
+	spin_unlock(&slave->wfifo_lock);
 	wake_up_interruptible(&slave->write_wait_queue);
 	return;
+
+err_unlock:
+	spin_unlock(&slave->wfifo_lock);
 err:
 	kfifo_reset(&slave->tmp_write_fifo);
 }
 
+/* This runs in IRQ context */
 static int i2c_slave_generic_slave_cb(struct i2c_client *client,
 				      enum i2c_slave_event event, u8 *val)
 {
 	struct slave_data *slave = i2c_get_clientdata(client);
 	struct device *dev = &client->dev;
+	int ret;
 
 	switch (event) {
 	case I2C_SLAVE_WRITE_RECEIVED:
@@ -120,14 +130,20 @@ static int i2c_slave_generic_slave_cb(struct i2c_client *client,
 			if (slave->current_command_code == CMD_CODE_GET_FIFO_LEN) {
 				slave->get_fifo_len_answer[1] = kfifo_len(&slave->read_fifo);
 			} else if (slave->current_command_code == CMD_CODE_FLUSH_FIFOS) {
+				spin_lock(&slave->rfifo_lock);
+				spin_lock(&slave->wfifo_lock);
 				kfifo_reset(&slave->read_fifo);
 				kfifo_reset(&slave->write_fifo);
-				kfifo_reset(&slave->tmp_write_fifo);
+				spin_unlock(&slave->wfifo_lock);
+				spin_unlock(&slave->rfifo_lock);
+				dev_dbg(dev, "resetting fifos\n");
 			}
 		}
 		if (!DRIVER_HANDLED_CMD_CODE(slave->current_command_code)) {
 			if (!kfifo_is_full(&slave->tmp_write_fifo)) {
-				kfifo_in(&slave->tmp_write_fifo, val, 1);
+				ret = kfifo_in(&slave->tmp_write_fifo, val, 1);
+				if (ret != 1)
+					dev_err(dev, "i2c data lost %02x, kfifo_in returned %d\n", *val, ret);
 			} else {
 				dev_err(dev, "i2c data lost %02x, write fifo is full\n", *val);
 				return -ENOMEM;
@@ -207,7 +223,10 @@ static ssize_t slave_read(struct file *file, char __user *buf, size_t len, loff_
 			return -ERESTARTSYS;
 	}
 
+	spin_lock(&slave->wfifo_lock);
 	ret = kfifo_to_user(&slave->write_fifo, buf, len, &copied);
+	spin_unlock(&slave->wfifo_lock);
+
 	if (ret == 0)
 		ret = copied;
 
@@ -228,7 +247,10 @@ static ssize_t slave_write(struct file *file, const char __user *data, size_t le
 			return -ERESTARTSYS;
 	}
 
+	spin_lock(&slave->rfifo_lock);
 	ret = kfifo_from_user(&slave->read_fifo, data, len, &copied);
+	spin_unlock(&slave->rfifo_lock);
+
 	if (ret == 0)
 		ret = copied;
 
@@ -298,6 +320,8 @@ static int i2c_slave_generic_probe(struct i2c_client *client, const struct i2c_d
 	slave->current_command_code = 0xff;
 	slave->get_fifo_len_answer[0] = 1;
 	slave->get_fifo_len_index = 0;
+	spin_lock_init(&slave->rfifo_lock);
+	spin_lock_init(&slave->wfifo_lock);
 
 	ret = i2c_slave_register(client, i2c_slave_generic_slave_cb);
 	if (ret) {
