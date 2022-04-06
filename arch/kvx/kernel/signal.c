@@ -179,13 +179,12 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 		case -ERESTARTNOHAND:
 			regs->r0 = -EINTR;
 			break;
-
 		case -ERESTARTSYS:
 			if (!(ksig->ka.sa.sa_flags & SA_RESTART)) {
 				regs->r0 = -EINTR;
 				break;
 			}
-			/* fallthrough */
+			fallthrough;
 		case -ERESTARTNOINTR:
 			regs->r0 = regs->orig_r0;
 			regs->spc -= 0x4;
@@ -217,7 +216,7 @@ asmlinkage void do_signal(struct pt_regs *regs)
 		case -ERESTART_RESTARTBLOCK:
 			/* Modify the syscall number in order to restart it */
 			regs->r6 = __NR_restart_syscall;
-			/* fallthrough */
+			fallthrough;
 		case -ERESTARTNOHAND:
 		case -ERESTARTSYS:
 		case -ERESTARTNOINTR:
