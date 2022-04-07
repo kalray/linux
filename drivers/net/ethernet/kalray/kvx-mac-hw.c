@@ -2583,7 +2583,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
 	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
-	int lane_fom_ok, fom_retry = 4;
+	int lane_fom_ok, fom_retry = 10;
 	u32 off, mask, val = 0;
 	int i, ret;
 
@@ -2686,13 +2686,10 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	do {
 		lane_fom_ok = 0;
 		for (i = cfg->id; i < cfg->id + lane_nb; i++) {
-			if (hw->phy_f.rx_ber[i].rx_mode == BERT_DISABLED &&
-			    hw->phy_f.tx_ber[i].tx_mode == BERT_DISABLED) {
-				if (lane_fom[i] < hw->fom_thres)
-					lane_fom[i] = kvx_phy_rx_adapt(hw, i);
-				else
-					lane_fom_ok++;
-			}
+			if (lane_fom[i] < hw->fom_thres)
+				lane_fom[i] = kvx_phy_rx_adapt(hw, i);
+			else
+				lane_fom_ok++;
 		}
 	} while (fom_retry-- && lane_fom_ok < lane_nb);
 
