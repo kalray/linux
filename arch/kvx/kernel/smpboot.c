@@ -66,7 +66,7 @@ void __init smp_init_cpus(void)
 			continue;
 
 		cpu_num = be32_to_cpup(reg);
-		if (cpu_num >= NR_CPUS)
+		if (cpu_num >= nr_cpu_ids)
 			continue;
 
 		nr_cpus++;
