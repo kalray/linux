@@ -2686,10 +2686,13 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	do {
 		lane_fom_ok = 0;
 		for (i = cfg->id; i < cfg->id + lane_nb; i++) {
-			if (lane_fom[i] < hw->fom_thres)
-				lane_fom[i] = kvx_phy_rx_adapt(hw, i);
-			else
-				lane_fom_ok++;
+			if (hw->phy_f.rx_ber[i].rx_mode == BERT_DISABLED &&
+			    hw->phy_f.tx_ber[i].tx_mode == BERT_DISABLED) {
+				if (lane_fom[i] < hw->fom_thres)
+					lane_fom[i] = kvx_phy_rx_adapt(hw, i);
+				else
+					lane_fom_ok++;
+			}
 		}
 	} while (fom_retry-- && lane_fom_ok < lane_nb);
 

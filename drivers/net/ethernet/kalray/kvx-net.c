@@ -1779,6 +1779,11 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
+	/* Prevent returning too early while config/AN is pending */
+	if (!ndev->cfg.mac_cfg_done) {
+		state->link = false;
+		return;
+	}
 	if (kvx_eth_phy_is_bert_en(ndev->hw))
 		state->link = false;
 	else
