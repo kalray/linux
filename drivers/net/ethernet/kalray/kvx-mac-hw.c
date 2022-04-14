@@ -423,14 +423,9 @@ int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 
 int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 {
-	int ret = kvx_eth_phy_init(hw, speed);
-
 	hw->phy_f.reg_avail = false;
-	updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
-		     PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK,
-		     PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK);
-
-	return ret;
+	kvx_phy_reset(hw);
+	return 0;
 }
 
 /**
@@ -1005,13 +1000,6 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 
 
 	dump_phy_status(hw);
-
-	return 0;
-}
-
-int kvx_eth_haps_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
-{
-	kvx_mac_phy_serdes_cfg(hw, cfg);
 
 	return 0;
 }
@@ -2574,18 +2562,61 @@ int kvx_eth_mac_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	return kvx_eth_pmac_init(hw, cfg);
 }
 
+void kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
+	u32 off, mask, val = 0;
+	int i, ret;
+
+	mask = serdes_mask << PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT;
+	ret = kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, mask,
+		     mask, SIGDET_TIMEOUT_MS);
+	if (ret)
+		dev_err(hw->dev, "Signal detection timeout.\n");
+
+	for (i = cfg->id; i < cfg->id + lane_nb; i++) {
+		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
+		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		val |= BIT(PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_SHIFT);
+		kvx_phy_writel(hw, val, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+		dev_dbg(hw->dev, "PHY_LANE_RX_SERDES_STATUS[%d] (data_en): 0x%x\n",
+			i, val);
+	}
+}
+
+void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	int lane_fom_ok, fom_retry = 10;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
+	int i;
+
+	do {
+		lane_fom_ok = 0;
+		for (i = cfg->id; i < cfg->id + lane_nb; i++) {
+			if (hw->phy_f.rx_ber[i].rx_mode == BERT_DISABLED &&
+			    hw->phy_f.tx_ber[i].tx_mode == BERT_DISABLED) {
+				if (lane_fom[i] < hw->fom_thres)
+					lane_fom[i] = kvx_phy_rx_adapt(hw, i);
+				else
+					lane_fom_ok++;
+			}
+		}
+	} while (fom_retry-- && lane_fom_ok < lane_nb);
+}
+
+
 /**
  * kvx_eth_mac_cfg() - MAC configuration
  */
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
-	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
-	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
-	int lane_fom_ok, fom_retry = 10;
-	u32 off, mask, val = 0;
+	u32 val = 0;
 	int i, ret;
+	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
 
 	kvx_mac_restore_default(hw, cfg, aggregated_lanes);
 	ret = kvx_eth_mac_reset(hw, cfg);
@@ -2663,38 +2694,15 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		return ret;
 	}
 
-	mask = serdes_mask << PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT;
-	ret = kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, mask,
-		     mask, SIGDET_TIMEOUT_MS);
-	if (ret)
-		dev_err(hw->dev, "Signal detection timeout.\n");
-
-	for (i = cfg->id; i < cfg->id + lane_nb; i++) {
-		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
-		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
-		val |= BIT(PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_SHIFT);
-		kvx_phy_writel(hw, val, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
-		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
-		dev_dbg(hw->dev, "PHY_LANE_RX_SERDES_STATUS[%d] (data_en): 0x%x\n",
-			i, val);
-	}
+	if (dev->type->phy_lane_rx_serdes_data_enable)
+		dev->type->phy_lane_rx_serdes_data_enable(hw, cfg);
 
 	/* Do not process rx adaptation while in loopback */
 	if (cfg->mac_f.loopback_mode != NO_LOOPBACK)
 		return 0;
 
-	do {
-		lane_fom_ok = 0;
-		for (i = cfg->id; i < cfg->id + lane_nb; i++) {
-			if (hw->phy_f.rx_ber[i].rx_mode == BERT_DISABLED &&
-			    hw->phy_f.tx_ber[i].tx_mode == BERT_DISABLED) {
-				if (lane_fom[i] < hw->fom_thres)
-					lane_fom[i] = kvx_phy_rx_adapt(hw, i);
-				else
-					lane_fom_ok++;
-			}
-		}
-	} while (fom_retry-- && lane_fom_ok < lane_nb);
+	if (dev->type->phy_rx_adaptation)
+		dev->type->phy_rx_adaptation(hw, cfg);
 
 	return 0;
 }

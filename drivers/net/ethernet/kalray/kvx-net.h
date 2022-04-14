@@ -39,6 +39,9 @@ enum rx_ring_type {
 struct kvx_eth_type {
 	int (*phy_init)(struct kvx_eth_hw *hw, unsigned int speed);
 	int (*phy_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+	int (*phy_fw_update)(struct platform_device *pdev);
+	void (*phy_lane_rx_serdes_data_enable)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+	void (*phy_rx_adaptation)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 };
 
 /**
