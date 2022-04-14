@@ -2314,12 +2314,15 @@ static const char *kvx_eth_res_names[KVX_ETH_NUM_RES] = {
 
 static struct kvx_eth_type kvx_haps_data = {
 	.phy_init = kvx_eth_haps_phy_init,
-	.phy_cfg = kvx_eth_haps_phy_cfg,
+
 };
 
 static struct kvx_eth_type kvx_eth_data = {
 	.phy_init = kvx_eth_phy_init,
 	.phy_cfg = kvx_eth_phy_cfg,
+	.phy_fw_update = kvx_eth_phy_fw_update,
+	.phy_lane_rx_serdes_data_enable = kvx_eth_phy_lane_rx_serdes_data_enable,
+	.phy_rx_adaptation = kvx_eth_phy_rx_adaptation
 };
 
 /* kvx_eth_probe() - Probe generic device
@@ -2386,9 +2389,11 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	}
 
 	/* Try loading phy firmware */
-	ret = kvx_eth_phy_fw_update(pdev);
-	if (ret)
-		kvx_phy_reset(&dev->hw);
+	if (dev->type->phy_fw_update) {
+		ret = dev->type->phy_fw_update(pdev);
+		if (ret)
+			kvx_phy_reset(&dev->hw);
+	}
 
 	kvx_eth_init_dispatch_table(&dev->hw, 0,
 			RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
