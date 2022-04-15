@@ -117,7 +117,7 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define __S110	PAGE_READ_WRITE_EXEC
 #define __S111	PAGE_READ_WRITE_EXEC
 
-#define pgprot_noncached(prot)	(__pgprot(pgprot_val(prot) | _PAGE_UNCACHED))
+#define pgprot_noncached(prot)	(__pgprot((pgprot_val(prot) & ~KVX_PAGE_CP_MASK) | _PAGE_UNCACHED))
 
 /*
  * ZERO_PAGE is a global shared page that is always zero: used
