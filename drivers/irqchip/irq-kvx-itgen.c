@@ -94,7 +94,7 @@ static int kvx_itgen_domain_alloc(struct irq_domain *domain, unsigned int virq,
 
 	WARN_ON(type & ITGEN_UNSUPPORTED_TYPES);
 
-	err = platform_msi_domain_alloc(domain, virq, nr_irqs);
+	err = platform_msi_device_domain_alloc(domain, virq, nr_irqs);
 	if (err)
 		return err;
 

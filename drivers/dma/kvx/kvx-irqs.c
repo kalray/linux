@@ -10,33 +10,6 @@
 #include "kvx-dma.h"
 #include "kvx-dma-regs.h"
 
-/* Returns phy with id and type from msi_index starting from 0
- * Assuming phy_id RX [0, KVX_DMA_RX_CHANNEL_NUMBER - 1]
- * phy_id TX [KVX_DMA_RX_CHANNEL_NUMBER,
- *            KVX_DMA_RX_CHANNEL_NUMBER + KVX_DMA_TX_JOB_QUEUE_NUMBER - 1]
- */
-static struct kvx_dma_phy *kvx_dma_get_phy_id(struct msi_desc *msi)
-{
-	struct device *dev = msi_desc_to_dev(msi);
-	struct kvx_dma_dev *d = dev_get_drvdata(dev);
-	enum kvx_dma_dir_type type;
-	int idx;
-
-	if (msi->platform.msi_index > KVX_DMA_RX_CHANNEL_NUMBER +
-					    KVX_DMA_TX_JOB_QUEUE_NUMBER) {
-		dev_err(dev, "msi_index exceeds allowed value\n");
-		return NULL;
-	}
-	idx = msi->platform.msi_index;
-	type = KVX_DMA_DIR_TYPE_RX;
-	if (idx >= KVX_DMA_RX_CHANNEL_NUMBER) {
-		idx -= KVX_DMA_RX_CHANNEL_NUMBER;
-		type = KVX_DMA_DIR_TYPE_TX;
-	}
-
-	return &d->phy[type][idx];
-}
-
 static void kvx_dma_write_msi_msg(struct msi_desc *msi, struct msi_msg *msg)
 {
 	struct device *dev = msi_desc_to_dev(msi);
@@ -47,18 +20,18 @@ static void kvx_dma_write_msi_msg(struct msi_desc *msi, struct msi_msg *msg)
 
 	for (i = 0; i < KVX_DMA_RX_CHANNEL_NUMBER; ++i) {
 		phy = &d->phy[KVX_DMA_DIR_TYPE_RX][i];
-		if (phy->msi_cfg.msi_index == msi->platform.msi_index)
+		if (phy->msi_cfg.msi_index == msi->msi_index)
 			break;
 	}
 	if (i == KVX_DMA_RX_CHANNEL_NUMBER) {
 		for (i = 0; i < KVX_DMA_TX_JOB_QUEUE_NUMBER; ++i) {
 			phy = &d->phy[KVX_DMA_DIR_TYPE_TX][i];
-			if (phy->msi_cfg.msi_index == msi->platform.msi_index)
+			if (phy->msi_cfg.msi_index == msi->msi_index)
 				break;
 		}
 	}
 
-	if (phy->msi_cfg.msi_index == msi->platform.msi_index) {
+	if (phy->msi_cfg.msi_index == msi->msi_index) {
 		mb_dmaaddr = (u64)(msg->address_hi) << 32 | msg->address_lo;
 		/* Called from devm_free_irq */
 		if (!mb_dmaaddr)
@@ -115,6 +88,7 @@ int kvx_dma_request_msi(struct platform_device *pdev)
 	struct kvx_dma_phy *phy;
 	struct msi_desc *msi;
 	int rc;
+	int msi_idx;
 
 	if (!dev)
 		return -EINVAL;
@@ -129,10 +103,17 @@ int kvx_dma_request_msi(struct platform_device *pdev)
 			 "platform_msi_domain_alloc_irqs failed\n");
 		return rc;
 	}
-	for_each_msi_entry(msi, &pdev->dev) {
-		phy = kvx_dma_get_phy_id(msi);
-		phy->msi_cfg.irq = msi->irq;
-		phy->msi_cfg.msi_index = msi->platform.msi_index;
+	for (msi_idx = 0; msi_idx < KVX_DMA_RX_CHANNEL_NUMBER + KVX_DMA_TX_JOB_QUEUE_NUMBER; ++msi_idx) {
+		int idx = msi_idx;
+		enum kvx_dma_dir_type type = KVX_DMA_DIR_TYPE_RX;
+
+		if (idx >= KVX_DMA_RX_CHANNEL_NUMBER) {
+			idx -= KVX_DMA_RX_CHANNEL_NUMBER;
+			type = KVX_DMA_DIR_TYPE_TX;
+		}
+		phy = &dev->phy[type][idx];
+		phy->msi_cfg.irq = msi_get_virq(&pdev->dev, msi_idx);
+		phy->msi_cfg.msi_index = msi_idx;
 		rc = kvx_dma_request_irq(phy);
 		if (rc) {
 			dev_err(dev->dma.dev, "Failed to request irq[%d]\n",
