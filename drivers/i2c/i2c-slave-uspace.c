@@ -86,6 +86,17 @@ static void commit_tmp_write_fifo(struct i2c_client *client)
 	}
 
 	spin_lock(&slave->wfifo_lock);
+
+	/*
+	 * We don't support having several simultaneously
+	 * in-flight commands.
+	 * So we can empty the FIFO before pushing a new command.
+	 * This has the advantage of preventing this FIFO
+	 * from overflowing at boot time or if something
+	 * wrong happens with bmccom daemon.
+	 */
+	kfifo_reset(&slave->write_fifo);
+
 	out = kfifo_in(&slave->write_fifo, &cmd_code, 1);
 	if (out != 1) {
 		dev_err(dev, "issue while inserting cmd code into write kfifo during commit: %d\n", out);
