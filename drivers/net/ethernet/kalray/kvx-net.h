@@ -170,7 +170,6 @@ struct kvx_eth_netdev {
 	struct timer_list link_poll;
 	struct kbx_dcb_cfg dcb_cfg;
 	struct delayed_work qsfp_poll;
-	struct work_struct link_cfg;
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
