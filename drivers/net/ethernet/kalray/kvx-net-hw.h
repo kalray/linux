@@ -645,8 +645,6 @@ enum lt_ld_states {
  * @transceiver: data related to connector
  * @default_dispatch_entry: default dispatch table entry used by current cluster
  * @mac_cfg_done: true after mac configuration (including autoneg)
- * @restart_an: relaunch autoneg needed
- * @restart_serdes: relaunch serdes cfg needed
  */
 struct kvx_eth_lane_cfg {
 	u32 id;
@@ -664,8 +662,6 @@ struct kvx_eth_lane_cfg {
 	struct kvx_transceiver_type transceiver;
 	u32 default_dispatch_entry;
 	bool mac_cfg_done;
-	bool restart_serdes;
-	bool restart_an;
 };
 
 /**
@@ -1059,7 +1055,6 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
 int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
-bool kvx_phy_sigdet(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 u32 kvx_mac_get_phylos(struct kvx_eth_hw *hw, int lane_id);
 bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_mac_getlink(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
