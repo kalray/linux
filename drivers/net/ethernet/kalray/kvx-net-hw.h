@@ -401,12 +401,19 @@ struct kvx_eth_tx_f {
 	u16 xoff;
 	u32 fifo_level;
 	u32 drop_cnt;
-	u32 noc_fifo_level;
-	u32 noc_parity_err;
-	u32 noc_crc_err;
-	u32 noc_perm_err;
-	u32 noc_fifo_err;
-	u32 noc_pkt_drop;
+};
+
+struct kvx_eth_tx_noc_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int cid;
+	u32 fifo_level;
+	u32 parity_err;
+	u32 crc_err;
+	u32 perm_err;
+	u32 fifo_err;
+	u32 pkt_drop;
 };
 
 /**
@@ -827,6 +834,7 @@ struct kvx_eth_qsfp {
  * @dev: device
  * @res: HW resource tuple {phy, phymac, mac, eth}
  * @tx_f: tx features for all tx fifos
+ * @tx_noc_f: tx NOC features for all clusters
  * @rtm_params: retimer relative parameters
  * @lt_status: link training fsm status structure
  * @mac_reset_lock: MAC reset critical section
@@ -854,6 +862,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_parser_f parser_f[KVX_ETH_PHYS_PARSER_NB];
 	struct kvx_eth_lut_f lut_f;
 	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
+	struct kvx_eth_tx_noc_f tx_noc_f[NB_CLUSTER];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
 	struct kvx_eth_dt_acc_f dt_acc_f;
 	struct kvx_eth_lut_entry_f lut_entry_f[RX_LB_LUT_ARRAY_SIZE];
