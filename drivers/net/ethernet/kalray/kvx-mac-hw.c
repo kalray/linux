@@ -181,21 +181,6 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 	return ret;
 }
 
-bool kvx_phy_sigdet(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
-{
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
-	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
-	u32 mask = serdes_mask << PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT;
-	u32 off = PHY_LANE_OFFSET + cfg->id * PHY_LANE_ELEM_SIZE;
-	u32 val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
-
-	if (GETF(val, PHY_LANE_RX_SERDES_CFG_PSTATE) != PSTATE_P0)
-		return false;
-	val = kvx_phy_readl(hw, PHY_SERDES_STATUS_OFFSET);
-
-	return !!(val & mask);
-}
-
 u32 kvx_mac_get_phylos(struct kvx_eth_hw *hw, int lane_id)
 {
 	u32 off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * lane_id;
@@ -2588,7 +2573,7 @@ void kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_et
 
 void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	int lane_fom_ok, fom_retry = 10;
+	int lane_fom_ok, fom_retry = 4;
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
 	int i;
@@ -2614,9 +2599,9 @@ void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
+	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
 	u32 val = 0;
 	int i, ret;
-	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
 
 	kvx_mac_restore_default(hw, cfg, aggregated_lanes);
 	ret = kvx_eth_mac_reset(hw, cfg);
