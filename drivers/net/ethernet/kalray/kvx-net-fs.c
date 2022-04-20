@@ -337,12 +337,6 @@ FIELD_RW_ENTRY(tx_f, lane_id, 0, KVX_ETH_LANE_NB - 1);
 FIELD_R_ENTRY(tx_f, drop_cnt, 0, U32_MAX);
 FIELD_R_ENTRY(tx_f, fifo_level, 0, U32_MAX);
 FIELD_R_ENTRY(tx_f, xoff, 0, 1);
-FIELD_R_ENTRY(tx_f, noc_fifo_level, 0, U32_MAX);
-FIELD_R_ENTRY(tx_f, noc_parity_err, 0, U32_MAX);
-FIELD_R_ENTRY(tx_f, noc_crc_err, 0, U32_MAX);
-FIELD_R_ENTRY(tx_f, noc_perm_err, 0, U32_MAX);
-FIELD_R_ENTRY(tx_f, noc_fifo_err, 0, U32_MAX);
-FIELD_R_ENTRY(tx_f, noc_pkt_drop, 0, U32_MAX);
 
 static struct attribute *tx_f_attrs[] = {
 	&tx_f_header_en_attr.attr,
@@ -357,15 +351,28 @@ static struct attribute *tx_f_attrs[] = {
 	&tx_f_drop_cnt_attr.attr,
 	&tx_f_fifo_level_attr.attr,
 	&tx_f_xoff_attr.attr,
-	&tx_f_noc_fifo_level_attr.attr,
-	&tx_f_noc_parity_err_attr.attr,
-	&tx_f_noc_crc_err_attr.attr,
-	&tx_f_noc_perm_err_attr.attr,
-	&tx_f_noc_fifo_err_attr.attr,
-	&tx_f_noc_pkt_drop_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(tx_f);
+
+DECLARE_SYSFS_ENTRY(tx_noc_f);
+FIELD_R_ENTRY(tx_noc_f, fifo_level, 0, U32_MAX);
+FIELD_R_ENTRY(tx_noc_f, parity_err, 0, U32_MAX);
+FIELD_R_ENTRY(tx_noc_f, crc_err, 0, U32_MAX);
+FIELD_R_ENTRY(tx_noc_f, perm_err, 0, U32_MAX);
+FIELD_R_ENTRY(tx_noc_f, fifo_err, 0, U32_MAX);
+FIELD_R_ENTRY(tx_noc_f, pkt_drop, 0, U32_MAX);
+
+static struct attribute *tx_noc_f_attrs[] = {
+	&tx_noc_f_fifo_level_attr.attr,
+	&tx_noc_f_parity_err_attr.attr,
+	&tx_noc_f_crc_err_attr.attr,
+	&tx_noc_f_perm_err_attr.attr,
+	&tx_noc_f_fifo_err_attr.attr,
+	&tx_noc_f_pkt_drop_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(tx_noc_f);
 
 DECLARE_SYSFS_ENTRY(cl_f);
 FIELD_RW_ENTRY(cl_f, quanta, 0, U16_MAX);
@@ -492,6 +499,7 @@ static void kvx_eth_kobject_del(struct kvx_eth_lane_cfg *cfg,
 static struct kset *lb_kset;
 static struct kset *rx_noc_kset;
 static struct kset *tx_kset;
+static struct kset *tx_noc_kset;
 static struct kset *dt_kset;
 static struct kset *lut_entry_kset;
 static struct kset *parser_kset;
@@ -549,6 +557,7 @@ void kvx_kset_##s##_remove(struct kvx_eth_netdev *ndev, struct kset *k, \
 kvx_declare_kset(lb_f, "lb")
 kvx_declare_kset(rx_noc, "rx_noc")
 kvx_declare_kset(tx_f, "tx")
+kvx_declare_kset(tx_noc_f, "tx_noc")
 kvx_declare_kset(cl_f, "pfc_cl")
 kvx_declare_kset(dt_f, "dispatch_table")
 kvx_declare_kset(lut_entry_f, "lut_entries")
@@ -581,6 +590,8 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 
 	for (i = 0; i < TX_FIFO_NB; i++)
 		kobject_init(&hw->tx_f[i].kobj, &tx_f_ktype);
+	for (j = 0; j < NB_CLUSTER; j++)
+		kobject_init(&hw->tx_noc_f[j].kobj, &tx_noc_f_ktype);
 
 	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; i++)
 		kobject_init(&hw->dt_f[i].kobj, &dt_f_ktype);
@@ -667,6 +678,10 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
+	ret = kvx_kset_tx_noc_f_create(ndev, &ndev->netdev->dev.kobj, tx_noc_kset,
+				   &hw->tx_noc_f[0], NB_CLUSTER);
+	if (ret)
+		goto err;
 
 	ret = kvx_kset_dt_f_create(ndev, &ndev->netdev->dev.kobj, dt_kset,
 			&hw->dt_f[0], RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
@@ -719,6 +734,8 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 			RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 	kvx_kset_lut_entry_f_remove(ndev, lut_entry_kset, &ndev->hw->lut_entry_f[0],
 			RX_LB_LUT_ARRAY_SIZE);
+	kvx_kset_tx_noc_f_remove(ndev, tx_noc_kset, &ndev->hw->tx_noc_f[0],
+				 NB_CLUSTER);
 	kvx_kset_tx_f_remove(ndev, tx_kset, &ndev->hw->tx_f[0], TX_FIFO_NB);
 	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
 		kvx_kset_rx_noc_remove(ndev, rx_noc_kset,

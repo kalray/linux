@@ -19,27 +19,33 @@ static void kvx_eth_tx_f_update(void *data)
 	struct kvx_eth_tx_f *f = (struct kvx_eth_tx_f *)data;
 	u32 off = TX_FIFO(f->fifo_id);
 	u32 val = kvx_eth_readl(f->hw, off + TX_FIFO_STATUS_OFFSET);
-	u32 cid = kvx_cluster_id();
 
 	f->fifo_level = GETF(val, TX_FIFO_LEVEL);
 	f->xoff = GETF(val, TX_FIFO_XOFF);
 	f->drop_cnt = kvx_eth_readl(f->hw, off + TX_FIFO_DROP_CNT_OFFSET);
+}
+
+static void kvx_eth_tx_noc_f_update(void *data)
+{
+	struct kvx_eth_tx_noc_f *f = (struct kvx_eth_tx_noc_f *)data;
+	u32 off;
 
 	off = TX_OFFSET + TX_FIFO_OFFSET + TX_NOC_IF_OFFSET +
-		cid * TX_NOC_IF_ELEM_SIZE;
-	f->noc_fifo_level = kvx_eth_readl(f->hw, off +
-					  TX_NOC_IF_VCHAN_FIFO_MONITORING);
-	f->noc_fifo_level &= 0xFFFFU;
-	f->noc_parity_err = kvx_eth_readl(f->hw, off + TX_NOC_IF_PARITY_ERR_CNT);
-	f->noc_crc_err = kvx_eth_readl(f->hw, off + TX_NOC_IF_CRC_ERR_CNT);
-	f->noc_perm_err = kvx_eth_readl(f->hw, off + TX_NOC_IF_PERM_ERR_CNT);
-	f->noc_fifo_err = kvx_eth_readl(f->hw, off + TX_NOC_IF_FIFO_ERR_CNT);
-	f->noc_pkt_drop = kvx_eth_readl(f->hw, off + TX_NOC_IF_NOC_PKT_DROP_CNT);
+		f->cid * TX_NOC_IF_ELEM_SIZE;
+	f->fifo_level = kvx_eth_readl(f->hw, off +
+				      TX_NOC_IF_VCHAN_FIFO_MONITORING);
+	f->fifo_level &= 0xFFFFU;
+	f->parity_err = kvx_eth_readl(f->hw, off + TX_NOC_IF_PARITY_ERR_CNT);
+	f->crc_err = kvx_eth_readl(f->hw, off + TX_NOC_IF_CRC_ERR_CNT);
+	f->perm_err = kvx_eth_readl(f->hw, off + TX_NOC_IF_PERM_ERR_CNT);
+	f->fifo_err = kvx_eth_readl(f->hw, off + TX_NOC_IF_FIFO_ERR_CNT);
+	f->pkt_drop = kvx_eth_readl(f->hw, off + TX_NOC_IF_NOC_PKT_DROP_CNT);
 }
 
 void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_tx_f *f;
+	struct kvx_eth_tx_noc_f *nf;
 	int i;
 
 	for (i = 0; i < TX_FIFO_NB; ++i) {
@@ -51,6 +57,12 @@ void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 		f->rr_trigger = 1;
 		f->header_en = 1;
 		f->crc_en = 0; /* CRC offload disabled */
+	}
+	for (i = 0; i < NB_CLUSTER; ++i) {
+		nf = &hw->tx_noc_f[i];
+		nf->hw = hw;
+		nf->update = kvx_eth_tx_noc_f_update;
+		nf->cid = i;
 	}
 }
 
