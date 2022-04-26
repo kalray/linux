@@ -41,84 +41,85 @@
 
 /* Following shift are used in ASM to easily extract bit */
 #if defined(CONFIG_KVX_SUBARCH_KV3_1)
-#define _PAGE_PERMS_SHIFT	5
-#define _PAGE_GLOBAL_SHIFT	8
-#define _PAGE_HUGE_SHIFT	9
+#define _PAGE_PERMS_SHIFT      5
+#define _PAGE_GLOBAL_SHIFT     8
+#define _PAGE_HUGE_SHIFT       9
 #elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-#define _PAGE_HUGE_SHIFT	1
-#define _PAGE_PERMS_SHIFT	6
-#define _PAGE_GLOBAL_SHIFT	9
+#define _PAGE_HUGE_SHIFT       1
+#define _PAGE_PERMS_SHIFT      6
+#define _PAGE_GLOBAL_SHIFT     9
 #else
 #error Unsupported arch
 #endif
 
 
-#define _PAGE_PRESENT   (1 << 0)    /* Present */
+#define _PAGE_PRESENT  (1 << 0)    /* Present */
 #if defined(CONFIG_KVX_SUBARCH_KV3_1)
-#define _PAGE_ACCESSED  (1 << 1)    /* Set by tlb refill code on any access */
+#define _PAGE_ACCESSED (1 << 1)    /* Set by tlb refill code on any access */
 /* Bits 2 - 3 reserved for cache policy */
-#define _PAGE_DIRTY     (1 << 4)    /* Set by tlb refill code on any write */
-#define _PAGE_READ      (1 << _PAGE_PERMS_SHIFT)    /* Readable */
-#define _PAGE_WRITE     (1 << 6)    /* Writable */
-#define _PAGE_EXEC      (1 << 7)    /* Executable */
-#define _PAGE_GLOBAL    (1 << _PAGE_GLOBAL_SHIFT)  /* Global */
-#define _PAGE_HUGE      (1 << _PAGE_HUGE_SHIFT)    /* Huge page */
+#define _PAGE_DIRTY    (1 << 4)    /* Set by tlb refill code on any write */
+#define _PAGE_READ     (1 << _PAGE_PERMS_SHIFT)    /* Readable */
+#define _PAGE_WRITE    (1 << 6)    /* Writable */
+#define _PAGE_EXEC     (1 << 7)    /* Executable */
+#define _PAGE_GLOBAL   (1 << _PAGE_GLOBAL_SHIFT)   /* Global */
+#define _PAGE_HUGE     (1 << _PAGE_HUGE_SHIFT)     /* Huge page */
 /* Bits 10 - 11 reserved for page size */
-#define _PAGE_SOFT      (1 << 12)   /* Reserved for software */
+#define _PAGE_SOFT     (1 << 12)   /* Reserved for software */
 #elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-#define _PAGE_HUGE	(1 << _PAGE_HUGE_SHIFT)    /* Huge page */
+#define _PAGE_HUGE     (1 << _PAGE_HUGE_SHIFT)     /* Huge page */
 /* Bits 2 - 5 reserved for cache policy */
-#define _PAGE_READ	(1 << _PAGE_PERMS_SHIFT)    /* Readable */
-#define _PAGE_WRITE	(1 << 7)    /* Writable */
-#define _PAGE_EXEC	(1 << 8)    /* Executable */
-#define _PAGE_GLOBAL	(1 << _PAGE_GLOBAL_SHIFT)  /* Global */
+#define _PAGE_READ     (1 << _PAGE_PERMS_SHIFT)    /* Readable */
+#define _PAGE_WRITE    (1 << 7)    /* Writable */
+#define _PAGE_EXEC     (1 << 8)    /* Executable */
+#define _PAGE_GLOBAL   (1 << _PAGE_GLOBAL_SHIFT)   /* Global */
 /* Bits 10 - 11 reserved for page size */
-#define _PAGE_SOFT	(1 << 12)   /* Reserved for software */
-#define _PAGE_DIRTY	(1 << 13)    /* Set by tlb refill code on any write */
-#define _PAGE_ACCESSED  (1 << 14)    /* Set by tlb refill code on any access */
+#define _PAGE_SOFT     (1 << 12)   /* Reserved for software */
+#define _PAGE_DIRTY    (1 << 13)   /* Set by tlb refill code on any write */
+#define _PAGE_ACCESSED (1 << 14)   /* Set by tlb refill code on any access */
 #else
 #error Unsupported arch
 #endif
-#define _PAGE_SZ_64K		(TLB_PS_64K << KVX_PAGE_SZ_SHIFT)
-#define _PAGE_SZ_2M		(TLB_PS_2M << KVX_PAGE_SZ_SHIFT)
-#define _PAGE_SZ_512M		(TLB_PS_512M << KVX_PAGE_SZ_SHIFT)
 
-#define _PAGE_SPECIAL   _PAGE_SOFT
+#define _PAGE_SZ_64K           (TLB_PS_64K << KVX_PAGE_SZ_SHIFT)
+#define _PAGE_SZ_2M            (TLB_PS_2M << KVX_PAGE_SZ_SHIFT)
+#define _PAGE_SZ_512M          (TLB_PS_512M << KVX_PAGE_SZ_SHIFT)
+
+#define _PAGE_SPECIAL          _PAGE_SOFT
 
 
 /* Note: mask used in assembly cannot be generated with GENMASK */
-#define KVX_PFN_SHIFT	23
-#define KVX_PFN_MASK	(~(((1 << KVX_PFN_SHIFT) - 1)))
+#define KVX_PFN_SHIFT          23
+#define KVX_PFN_MASK           (~(((1 << KVX_PFN_SHIFT) - 1)))
 
-#define KVX_PAGE_SZ_SHIFT	10
-#define KVX_PAGE_SZ_MASK	KVX_SFR_TEL_PS_MASK
+#define KVX_PAGE_SZ_SHIFT      10
+#define KVX_PAGE_SZ_MASK       KVX_SFR_TEL_PS_MASK
 
 /* Huge page of 64K are hold in PTE table */
-#define KVX_PAGE_64K_NR_CONT	(1UL << (KVX_PAGE_64K_SHIFT - PAGE_SHIFT))
+#define KVX_PAGE_64K_NR_CONT   (1UL << (KVX_PAGE_64K_SHIFT - PAGE_SHIFT))
 /* Huge page of 512M are hold in PMD table */
-#define KVX_PAGE_512M_NR_CONT	(1UL << (KVX_PAGE_512M_SHIFT - PMD_SHIFT))
+#define KVX_PAGE_512M_NR_CONT  (1UL << (KVX_PAGE_512M_SHIFT - PMD_SHIFT))
 
-#define KVX_PAGE_CP_SHIFT	2
-#define KVX_PAGE_CP_MASK	KVX_SFR_TEL_CP_MASK
+#define KVX_PAGE_CP_SHIFT      2
+#define KVX_PAGE_CP_MASK       KVX_SFR_TEL_CP_MASK
 
 
 #if defined(CONFIG_KVX_SUBARCH_KV3_1)
-#define _PAGE_CACHED	(TLB_CP_W_C << KVX_PAGE_CP_SHIFT)
-#define _PAGE_UNCACHED	(TLB_CP_U_U << KVX_PAGE_CP_SHIFT)
-#define _PAGE_DEVICE	(TLB_CP_D_U << KVX_PAGE_CP_SHIFT)
+#define _PAGE_CACHED   (TLB_CP_W_C << KVX_PAGE_CP_SHIFT)
+#define _PAGE_UNCACHED (TLB_CP_U_U << KVX_PAGE_CP_SHIFT)
+#define _PAGE_DEVICE   (TLB_CP_D_U << KVX_PAGE_CP_SHIFT)
 #elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-#define _PAGE_CACHED	(TLB_CP_W_W_C << KVX_PAGE_CP_SHIFT)
-#define _PAGE_UNCACHED	(TLB_CP_U_U_U << KVX_PAGE_CP_SHIFT)
-#define _PAGE_DEVICE	(TLB_CP_D_D_U << KVX_PAGE_CP_SHIFT)
+#define _PAGE_CACHED   (TLB_CP_W_W_C << KVX_PAGE_CP_SHIFT)
+#define _PAGE_UNCACHED (TLB_CP_U_U_U << KVX_PAGE_CP_SHIFT)
+#define _PAGE_DEVICE   (TLB_CP_D_D_U << KVX_PAGE_CP_SHIFT)
 #else
 #error Unsupported arch
 #endif
 
-#define KVX_ACCESS_PERMS_BITS	4
-#define KVX_ACCESS_PERMS_OFFSET	_PAGE_PERMS_SHIFT
-#define KVX_ACCESS_PERMS_SIZE	(1 << KVX_ACCESS_PERMS_BITS)
+#define KVX_ACCESS_PERMS_BITS     4
+#define KVX_ACCESS_PERMS_OFFSET   _PAGE_PERMS_SHIFT
+#define KVX_ACCESS_PERMS_SIZE     (1 << KVX_ACCESS_PERMS_BITS)
 
-#define KVX_ACCESS_PERM_START_BIT	KVX_ACCESS_PERMS_OFFSET
+#define KVX_ACCESS_PERM_START_BIT KVX_ACCESS_PERMS_OFFSET
 #define KVX_ACCESS_PERM_STOP_BIT \
 	(KVX_ACCESS_PERMS_OFFSET + KVX_ACCESS_PERMS_BITS - 1)
 #define KVX_ACCESS_PERMS_MASK \
