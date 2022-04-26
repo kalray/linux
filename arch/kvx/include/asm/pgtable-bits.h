@@ -86,6 +86,12 @@
 
 #define _PAGE_SPECIAL          _PAGE_SOFT
 
+/*
+ * If _PAGE_PRESENT is clear because the user mapped it with PROT_NONE
+ * pte_present still gives true. Bit[15] of the PTE is used since its unused
+ * for a PTE entry for both kv3-1 and kv3-2 (see above)
+ */
+#define _PAGE_NONE             (1 << 15)
 
 /* Note: mask used in assembly cannot be generated with GENMASK */
 #define KVX_PFN_SHIFT          23

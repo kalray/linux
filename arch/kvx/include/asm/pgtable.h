@@ -83,7 +83,7 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define _PAGE_KERNEL_DEVICE	(_PAGE_KERNEL | _PAGE_DEVICE)
 #define _PAGE_KERNEL_NOCACHE	(_PAGE_KERNEL | _PAGE_UNCACHED)
 
-#define PAGE_NONE		__pgprot(0)
+#define PAGE_NONE		__pgprot(_PAGE_NONE)
 #define PAGE_READ		__pgprot(_PAGE_BASE | _PAGE_READ)
 #define PAGE_READ_WRITE		__pgprot(_PAGE_BASE | _PAGE_READ | _PAGE_WRITE)
 #define PAGE_READ_EXEC		__pgprot(_PAGE_BASE | _PAGE_READ | _PAGE_EXEC)
@@ -128,18 +128,20 @@ extern struct page *empty_zero_page;
 
 
 /*
- * Encode and decode a swap entry
+ * Encode and decode a swap entry. Swap entries are encoded in an arch
+ * dependent format as follows:
  *
- * Format of swap PTE:
- *      bit            0:       _PAGE_PRESENT (zero)
- *      bit            1:       _PAGE_PROT_NONE (zero)
- *      bits      2 to 6:       swap type
- *      bits 7 to XLEN-1:       swap offset
+ *  +--------+----+-------+------+---+---+
+ *  | 63..16 | 15 | 14..7 | 6..2 | 1 | 0 |
+ *  +--------+----+-------+------+---+---+
+ *    offset   0      0     type   0   0
+ *
+ * This allows for up to 31 swap files and 1PB per swap file.
  */
 #define __SWP_TYPE_SHIFT        2
 #define __SWP_TYPE_BITS         5
 #define __SWP_TYPE_MASK         ((1UL << __SWP_TYPE_BITS) - 1)
-#define __SWP_OFFSET_SHIFT      (__SWP_TYPE_BITS + __SWP_TYPE_SHIFT)
+#define __SWP_OFFSET_SHIFT      16
 
 #define MAX_SWAPFILES_CHECK()   \
 	BUILD_BUG_ON(MAX_SWAPFILES_SHIFT > __SWP_TYPE_BITS)
@@ -323,7 +325,7 @@ static inline unsigned long pte_pfn(pte_t pte)
 
 static inline int pte_present(pte_t pte)
 {
-	return (pte_val(pte) & _PAGE_PRESENT);
+	return (pte_val(pte) & (_PAGE_PRESENT | _PAGE_NONE));
 }
 
 static inline int pte_none(pte_t pte)
