@@ -51,7 +51,7 @@
 #define KVX_MAX_LAST_SEG_SIZE   220
 /* Max segment size sent to DMA */
 #define KVX_SEG_SIZE            1024
-#define LINK_POLL_TIMER_IN_MS   2000
+#define LINK_POLL_TIMER_IN_MS   1000
 #define REFILL_THRES            1
 
 #define KVX_TEST_BIT(name, bitmap)  test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, bitmap)
