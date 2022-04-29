@@ -87,7 +87,11 @@
 #define RX_JOB_CACHE_POP                           0x30
 
 /* TX job queues */
+#if defined(__kvxarch_kv3_1)
 #define KVX_DMA_TX_JOB_Q_OFFSET                    0x80000
+#elif defined(__kvxarch_kv3_2)
+#define KVX_DMA_TX_JOB_Q_OFFSET                    0x70000
+#endif
 #define KVX_DMA_TX_JOB_Q_ELEM_SIZE                 0x1000
 #define KVX_DMA_TX_JOB_Q_SA_OFFSET                 0x0
 #define KVX_DMA_TX_JOB_Q_NB_LOG2_OFFSET            0x8
@@ -105,7 +109,11 @@
 #define KVX_DMA_TX_JOB_Q_ON_GOING_JOB_CNT_OFFSET   0x78
 
 /* TX completion queues */
+#if defined(__kvxarch_kv3_1)
 #define KVX_DMA_TX_COMP_Q_OFFSET                   0xC0000
+#elif defined(__kvxarch_kv3_2)
+#define KVX_DMA_TX_COMP_Q_OFFSET                   0xB8000
+#endif
 #define KVX_DMA_TX_COMP_Q_ELEM_SIZE                0x1000
 #define KVX_DMA_TX_COMP_Q_MODE_OFFSET              0x0
 #define KVX_DMA_TX_COMP_Q_SA_OFFSET                0x8
