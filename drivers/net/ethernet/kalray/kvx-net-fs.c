@@ -163,7 +163,7 @@ static struct attribute_group attr_group = {
 };
 
 DECLARE_SYSFS_ENTRY(mac_f);
-FIELD_RW_ENTRY(mac_f, loopback_mode, 0, MAC_RX2TX_LOOPBACK);
+FIELD_RW_ENTRY(mac_f, loopback_mode, 0, MAC_ETH_LOOPBACK);
 FIELD_RW_ENTRY(mac_f, tx_fcs_offload, 0, 1);
 FIELD_R_ENTRY(mac_f, pfc_mode, 0, MAC_PAUSE);
 
