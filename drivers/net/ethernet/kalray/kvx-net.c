@@ -142,6 +142,12 @@ static void kvx_eth_poll_link(struct timer_list *t)
 	if (kvx_eth_phy_is_bert_en(ndev->hw) || ndev->cfg.speed == SPEED_1000 ||
 	    ndev->cfg.transceiver.id == 0)
 		goto exit;
+
+	if (ndev->cfg.mac_f.loopback_mode) {
+		phylink_mac_change(ndev->phylink, true);
+		goto exit;
+	}
+
 	link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
 	if (link != netif_carrier_ok(ndev->netdev)) {
 		/* Reschedule mac config (consider link down) */
@@ -1765,6 +1771,8 @@ static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
 
 	if (kvx_eth_phy_is_bert_en(ndev->hw))
 		state->link = false;
+	else if (ndev->cfg.mac_f.loopback_mode)
+		state->link = true;
 	else
 		state->link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
 	state->speed = ndev->cfg.speed;

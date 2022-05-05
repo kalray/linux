@@ -318,19 +318,11 @@ static void kvx_phy_loopback(struct kvx_eth_hw *hw, int lane_id, bool enable)
 
 int kvx_serdes_loopback(struct kvx_eth_hw *hw, int lane, int lane_nb)
 {
-	u32 serdes_mask = get_serdes_mask(lane, lane_nb);
 	int ret = NO_LOOPBACK;
 	int i = lane;
-	u32 val;
 
 	/* Must be set in pstate P0 */
-	if (hw->phy_f.loopback_mode == MAC_SERDES_LOOPBACK) {
-		dev_info(hw->dev, "Mac serdes TX2RX loopback\n");
-		val = serdes_mask << PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT;
-		updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET,
-			     PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK, val);
-		ret = MAC_SERDES_LOOPBACK;
-	} else if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK) {
+	if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK) {
 		dev_info(hw->dev, "Phy TX2RX loopback\n");
 		for (i = lane; i < lane + lane_nb; i++)
 			kvx_phy_loopback(hw, i, true);
