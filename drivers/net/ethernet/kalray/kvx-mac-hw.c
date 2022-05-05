@@ -2600,6 +2600,8 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
 	u32 val = 0;
 	int i, ret;
 
@@ -2681,6 +2683,16 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 	if (dev->type->phy_lane_rx_serdes_data_enable)
 		dev->type->phy_lane_rx_serdes_data_enable(hw, cfg);
+
+	val = MAC_LOOPBACK_LATENCY << MAC_BYPASS_LOOPBACK_LATENCY_SHIFT;
+	if (cfg->mac_f.loopback_mode == MAC_SERDES_LOOPBACK) {
+		dev_info(hw->dev, "Mac out loopback\n");
+		val |= serdes_mask << MAC_BYPASS_MAC_OUT_LOOPBACK_SHIFT;
+	} else if (cfg->mac_f.loopback_mode == MAC_ETH_LOOPBACK) {
+		dev_info(hw->dev, "Mac eth loopback\n");
+		val |= MAC_BYPASS_ETH_LOOPBACK_MASK;
+	}
+	kvx_mac_writel(hw, val, MAC_BYPASS_OFFSET);
 
 	/* Do not process rx adaptation while in loopback */
 	if (cfg->mac_f.loopback_mode != NO_LOOPBACK)

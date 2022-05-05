@@ -88,6 +88,8 @@ enum kvx_eth_loopback_mode {
 	PHY_RX2TX_LOOPBACK,
 	/* MAC data loopback (host loopback) */
 	MAC_RX2TX_LOOPBACK,
+	/* MAC ethernet loopback */
+	MAC_ETH_LOOPBACK,
 };
 
 enum kvx_eth_serdes {
