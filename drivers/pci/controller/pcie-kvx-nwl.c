@@ -172,7 +172,6 @@
 #define CFG_DMA_REG_BAR			GENMASK(2, 0)
 
 /* Parameters for the waiting for link up routine */
-#define LINK_WAIT_MAX_RETRIES          600 /*1 mn*/
 #define LINK_WAIT_USLEEP_MIN           90000
 #define LINK_WAIT_USLEEP_MAX           100000
 
@@ -202,18 +201,6 @@
 #else
 #define AER_CAP_ENABLED (0)
 #endif /* CONFIG_PCIEAER */
-
-/**
- * struct nwl_pcie
- * @pcie: pointer to nwl_pcie controller instance
- * @bridge: pointer to bridge
- * @job: back ground work object
- */
-struct nwl_work {
-	struct nwl_pcie *pcie;
-	struct pci_host_bridge *bridge;
-	struct work_struct job;
-};
 
 /**
  * struct nwl_pcie
@@ -262,7 +249,6 @@ struct nwl_pcie {
 	u8 root_busno;
 	struct irq_domain *legacy_irq_domain;
 	raw_spinlock_t leg_mask_lock;
-	struct nwl_work w;
 };
 
 /**
@@ -317,7 +303,7 @@ static int pcie_nb_lane = PCIE_NBLANE_UNINIT;
  * configuration.
  *
  */
-static int __init pci_nb_lane_setup(char *arg)
+static int __init parse_pcie_nb_lane_setup(char *arg)
 {
 	int nb_lane;
 
@@ -328,7 +314,21 @@ static int __init pci_nb_lane_setup(char *arg)
 
 	return -EINVAL;
 }
-early_param("pcie_nb_lane", pci_nb_lane_setup);
+early_param("pcie_nb_lane", parse_pcie_nb_lane_setup);
+
+static int pcie_probe_timeout = 10; /* should be set to 600 for Flashbox */
+static int __init parse_pcie_probe_timeout(char *arg)
+{
+	int probe_timeout;
+
+	if (get_option(&arg, &probe_timeout)) {
+		pcie_probe_timeout = probe_timeout;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+early_param("pcie_probe_timeout", parse_pcie_probe_timeout);
 
 static void handle_aer_irq(struct nwl_pcie *pcie);
 static void nwl_pcie_aer_init(struct nwl_pcie *pcie, struct pci_bus *bus);
@@ -402,7 +402,7 @@ static int nwl_wait_for_link(struct nwl_pcie *pcie)
 	int retries;
 
 	/* check if the link is up or not */
-	for (retries = 0; retries < LINK_WAIT_MAX_RETRIES; retries++) {
+	for (retries = 0; retries < pcie_probe_timeout; retries++) {
 		if (nwl_phy_link_up(pcie))
 			return 0;
 		usleep_range(LINK_WAIT_USLEEP_MIN, LINK_WAIT_USLEEP_MAX);
@@ -1106,78 +1106,6 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 	return 0;
 }
 
-/**
- * background_init - terminate completion of pcie root complex
- *
- * On some platform the link up can be quite long, typically up to 40s.
- * By waiting for a the link up in a background thread, it allows
- * the probe function to return sooner and thus allowing the system
- * to continue the boot process.
- */
-static void background_init(struct work_struct *work)
-{
-	struct nwl_work *w = container_of(work, struct nwl_work, job);
-	struct pci_host_bridge *bridge = w->bridge;
-	struct nwl_pcie *pcie = w->pcie;
-	struct device *dev = pcie->dev;
-	struct pci_bus *child;
-	struct pci_bus *bus;
-	int err;
-
-	err = nwl_pcie_core_init(pcie);
-	if (err) {
-		dev_err(dev, "Core initialization failed\n");
-		return;
-	}
-
-	err = nwl_pcie_bridge_init(pcie);
-	if (err) {
-		dev_err(dev, "HW Initialization failed\n");
-		return;
-	}
-
-	err = nwl_pcie_translation_init(pcie);
-	if (err)
-		return;
-
-	err = nwl_pcie_init_irq_domain(pcie);
-	if (err) {
-		dev_err(dev, "Failed creating IRQ Domain\n");
-		return;
-	}
-
-	bridge->dev.parent = dev;
-	bridge->sysdata = pcie;
-	bridge->busnr = pcie->root_busno;
-	bridge->ops = &nwl_pcie_ops;
-	bridge->map_irq = of_irq_parse_and_map_pci;
-	bridge->swizzle_irq = pci_common_swizzle;
-
-	err = pci_scan_root_bus_bridge(bridge);
-	if (err)
-		return;
-
-	pcie->bridge = bridge;
-	bus = bridge->bus;
-
-	pci_assign_unassigned_bus_resources(bus);
-	list_for_each_entry(child, &bus->children, node)
-		pcie_bus_configure_settings(child);
-	pci_bus_add_devices(bus);
-
-	/*
-	 * Enable msg filtering details
-	 * This will enable legacy interrupt support.
-	 * In order not to enter an infinite loop any driver
-	 * using legacy interrupts shall be loaded before
-	 * interrupt activation
-	 */
-	nwl_bridge_writel(pcie, CFG_ENABLE_MSG_FILTER_MASK,
-			  BRCFG_PCIE_RX_MSG_FILTER);
-	nwl_pcie_aer_init(pcie, bus);
-
-}
-
 static const struct of_device_id nwl_pcie_of_match[] = {
 	{ .compatible = "kalray,kvx-pcie-rc", },
 	{}
@@ -1196,9 +1124,6 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 
 	bridge->native_aer = 1;
 	pcie = pci_host_bridge_priv(bridge);
-	INIT_WORK(&pcie->w.job, background_init);
-	pcie->w.pcie = pcie;
-	pcie->w.bridge = bridge;
 
 	pcie->dev = dev;
 	dev_set_drvdata(dev, pcie);
@@ -1216,7 +1141,54 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	schedule_work(&pcie->w.job);
+	err = nwl_pcie_core_init(pcie);
+	if (err) {
+		dev_err(dev, "Core initialization failed\n");
+		return err;
+	}
+
+	err = nwl_pcie_bridge_init(pcie);
+	if (err) {
+		dev_err(dev, "HW Initialization failed\n");
+		return err;
+	}
+
+	err = nwl_pcie_translation_init(pcie);
+	if (err)
+		return err;
+
+	err = nwl_pcie_init_irq_domain(pcie);
+	if (err) {
+		dev_err(dev, "Failed creating IRQ Domain\n");
+		return err;
+	}
+
+	bridge->dev.parent = dev;
+	bridge->sysdata = pcie;
+	bridge->busnr = pcie->root_busno;
+	bridge->ops = &nwl_pcie_ops;
+	bridge->map_irq = of_irq_parse_and_map_pci;
+	bridge->swizzle_irq = pci_common_swizzle;
+
+	pcie->bridge = bridge;
+
+	err = pci_host_probe(bridge);
+	if (err) {
+		dev_err(dev, "pci_host_probe failed with %d\n", err);
+		return err;
+	}
+
+	/*
+	 * Enable msg filtering details
+	 * This will enable legacy interrupt support.
+	 * In order not to enter an infinite loop any driver
+	 * using legacy interrupts shall be loaded before
+	 * interrupt activation
+	 */
+	nwl_bridge_writel(pcie, CFG_ENABLE_MSG_FILTER_MASK,
+			  BRCFG_PCIE_RX_MSG_FILTER);
+	nwl_pcie_aer_init(pcie, bridge->bus);
+
 	return 0;
 }
 
