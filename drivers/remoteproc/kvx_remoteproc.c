@@ -4,6 +4,7 @@
  * Author(s): Clement Leger
  *            Louis Morhet
  *            Julian Vetter
+ *            Jules Maselbas
  */
 
 #include <linux/slab.h>
@@ -299,7 +300,6 @@ static int kvx_rproc_start(struct rproc *rproc)
 				kvx_rproc->cluster_id * KVX_FTU_CLUSTER_STRIDE;
 	unsigned int ctrl_offset = KVX_FTU_CLUSTER_CTRL +
 				kvx_rproc->cluster_id * KVX_FTU_CLUSTER_STRIDE;
-	/* Reset sequence */
 	struct reg_sequence start_cluster[] = {
 		/* Set boot address */
 		{boot_offset, boot_addr},
@@ -341,13 +341,6 @@ static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
 	int ret;
 	unsigned int ctrl_offset = KVX_FTU_CLUSTER_CTRL +
 				kvx_rproc->cluster_id * KVX_FTU_CLUSTER_STRIDE;
-
-	/* Cluster0 can't be reset via the FTU device! */
-	if (kvx_rproc->cluster_id == 0) {
-		dev_err(kvx_rproc->dev, "cluster0 can't be reset!\n");
-		return -EINVAL;
-	}
-
 	struct reg_sequence reset_cluster[] = {
 		/* Enable clock and reset */
 		{ctrl_offset, BIT(KVX_FTU_CLUSTER_CTRL_CLKEN_BIT) |
@@ -355,6 +348,12 @@ static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
 		/* Release reset */
 		{ctrl_offset, BIT(KVX_FTU_CLUSTER_CTRL_CLKEN_BIT), 1},
 	};
+
+	/* Cluster0 can't be reset via the FTU device! */
+	if (kvx_rproc->cluster_id == 0) {
+		dev_err(kvx_rproc->dev, "cluster0 can't be reset!\n");
+		return -EINVAL;
+	}
 
 	ret = regmap_multi_reg_write(kvx_rproc->ftu_regmap, reset_cluster,
 				     ARRAY_SIZE(reset_cluster));
