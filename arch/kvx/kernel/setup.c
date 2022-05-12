@@ -122,8 +122,17 @@ void __init setup_processor(void)
 	setup_cpuinfo();
 }
 
+static char builtin_cmdline[COMMAND_LINE_SIZE] __initdata = CONFIG_CMDLINE;
+
 void __init setup_arch(char **cmdline_p)
 {
+	if (builtin_cmdline[0]) {
+		/* append boot loader cmdline to builtin */
+		strlcat(builtin_cmdline, " ", COMMAND_LINE_SIZE);
+		strlcat(builtin_cmdline, boot_command_line, COMMAND_LINE_SIZE);
+		strlcpy(boot_command_line, builtin_cmdline, COMMAND_LINE_SIZE);
+	}
+
 	*cmdline_p = boot_command_line;
 
 	setup_processor();
