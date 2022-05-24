@@ -28,6 +28,7 @@ static inline void prefetchw(const void *x)
 }
 
 #define TASK_SIZE      _BITULL(MMU_USR_ADDR_BITS)
+#define TASK_SIZE_MAX  TASK_SIZE
 
 /*
  * This decides where the kernel will search for a free chunk of vm
