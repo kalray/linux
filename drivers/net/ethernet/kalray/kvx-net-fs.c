@@ -47,7 +47,7 @@ const struct sysfs_ops s##_sysfs_ops = { \
 }; \
 struct kobj_type s##_ktype = { \
 	.sysfs_ops = &s##_sysfs_ops, \
-	.default_attrs = s##_attrs, \
+	.default_groups = s##_groups, \
 }
 
 #define FIELD_RW_ENTRY(s, f, min, max) \
@@ -173,12 +173,16 @@ static struct attribute *mac_f_attrs[] = {
 	&mac_f_pfc_mode_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(mac_f);
 SYSFS_TYPES(mac_f);
 
 DECLARE_SYSFS_ENTRY(phy_f);
 static struct attribute *phy_f_attrs[] = {
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(phy_f);
 SYSFS_TYPES(phy_f);
 
 DECLARE_SYSFS_ENTRY(phy_param);
@@ -198,6 +202,8 @@ static struct attribute *phy_param_attrs[] = {
 	&phy_param_ovrd_en_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(phy_param);
 SYSFS_TYPES(phy_param);
 
 DECLARE_SYSFS_ENTRY(rx_bert_param);
@@ -211,6 +217,8 @@ static struct attribute *rx_bert_param_attrs[] = {
 	&rx_bert_param_rx_mode_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(rx_bert_param);
 SYSFS_TYPES(rx_bert_param);
 
 DECLARE_SYSFS_ENTRY(tx_bert_param);
@@ -222,6 +230,8 @@ static struct attribute *tx_bert_param_attrs[] = {
 	&tx_bert_param_tx_mode_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(tx_bert_param);
 SYSFS_TYPES(tx_bert_param);
 
 DECLARE_SYSFS_ENTRY(lb_f);
@@ -258,6 +268,8 @@ static struct attribute *lb_f_attrs[] = {
 	&lb_f_global_no_pfc_drop_cnt_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(lb_f);
 SYSFS_TYPES(lb_f);
 
 DECLARE_SYSFS_ENTRY(rx_noc);
@@ -273,6 +285,8 @@ static struct attribute *rx_noc_attrs[] = {
 	&rx_noc_vchan1_payload_flit_nb_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(rx_noc);
 SYSFS_TYPES(rx_noc);
 
 DECLARE_SYSFS_ENTRY(lut_f);
@@ -288,6 +302,8 @@ static struct attribute *lut_f_attrs[] = {
 	&lut_f_pfc_enable_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(lut_f);
 SYSFS_TYPES(lut_f);
 
 DECLARE_SYSFS_ENTRY(lut_entry_f);
@@ -297,6 +313,8 @@ static struct attribute *lut_entry_f_attrs[] = {
 	&lut_entry_f_dt_id_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(lut_entry_f);
 SYSFS_TYPES(lut_entry_f);
 
 DECLARE_SYSFS_ENTRY(pfc_f);
@@ -322,6 +340,8 @@ static struct attribute *pfc_f_attrs[] = {
 	&pfc_f_global_no_pfc_wmark_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(pfc_f);
 SYSFS_TYPES(pfc_f);
 
 DECLARE_SYSFS_ENTRY(tx_f);
@@ -365,6 +385,8 @@ static struct attribute *tx_f_attrs[] = {
 	&tx_f_noc_pkt_drop_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(tx_f);
 SYSFS_TYPES(tx_f);
 
 DECLARE_SYSFS_ENTRY(cl_f);
@@ -388,6 +410,8 @@ static struct attribute *cl_f_attrs[] = {
 	&cl_f_drop_cnt_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(cl_f);
 SYSFS_TYPES(cl_f);
 
 DECLARE_SYSFS_ENTRY(dt_f);
@@ -403,6 +427,8 @@ static struct attribute *dt_f_attrs[] = {
 	&dt_f_vchan_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(dt_f);
 SYSFS_TYPES(dt_f);
 
 DECLARE_SYSFS_ENTRY(dt_acc_f);
@@ -414,6 +440,8 @@ static struct attribute *dt_acc_f_attrs[] = {
 	&dt_acc_f_reset_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(dt_acc_f);
 SYSFS_TYPES(dt_acc_f);
 
 DECLARE_SYSFS_ENTRY(parser_f);
@@ -431,6 +459,7 @@ static struct attribute *parser_f_attrs[] = {
 	NULL,
 };
 
+ATTRIBUTE_GROUPS(parser_f);
 SYSFS_TYPES(parser_f);
 
 DECLARE_SYSFS_ENTRY(rule_f);
@@ -446,6 +475,8 @@ static struct attribute *rule_f_attrs[] = {
 	&rule_f_check_header_checksum_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(rule_f);
 SYSFS_TYPES(rule_f);
 
 /**
