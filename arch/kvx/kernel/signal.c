@@ -6,11 +6,11 @@
 
 #include <linux/bug.h>
 #include <linux/syscalls.h>
-#include <linux/tracehook.h>
 
 #include <asm/ucontext.h>
 #include <asm/processor.h>
 #include <asm/cacheflush.h>
+#include <linux/resume_user_mode.h>
 
 struct rt_sigframe {
 	struct siginfo info;
@@ -255,7 +255,7 @@ asmlinkage void do_work_pending(struct pt_regs *regs,
 
 			if (thread_flags & _TIF_NOTIFY_RESUME) {
 				clear_thread_flag(TIF_NOTIFY_RESUME);
-				tracehook_notify_resume(regs);
+				resume_user_mode_work(regs);
 			}
 		}
 		/* Guarantee task flag atomic read */
