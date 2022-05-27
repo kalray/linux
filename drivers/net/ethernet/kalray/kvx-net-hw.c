@@ -648,8 +648,8 @@ void kvx_eth_dt_f_cfg(struct kvx_eth_hw *h, struct kvx_eth_dt_f *dt)
 	kvx_eth_dt_acc_f_update(h);
 }
 
-void kvx_eth_init_dispatch_table(struct kvx_eth_hw *hw,
-		unsigned int start, unsigned int end)
+static void kvx_eth_reset_dispatch_table(struct kvx_eth_hw *hw,
+					 unsigned int start, unsigned int end)
 {
 	struct kvx_eth_dt_f *dt;
 	int i;
@@ -666,7 +666,20 @@ void kvx_eth_init_dispatch_table(struct kvx_eth_hw *hw,
 
 void kvx_eth_reset_dispatch_table_acceleration(struct kvx_eth_hw *hw)
 {
-	kvx_eth_init_dispatch_table(hw, 0, RX_DISPATCH_TABLE_ACCELERATION_NB);
+	kvx_eth_reset_dispatch_table(hw, 0, RX_DISPATCH_TABLE_ACCELERATION_NB);
+}
+
+void kvx_eth_init_dispatch_table(struct kvx_eth_hw *hw)
+{
+	struct kvx_eth_dt_f *dt;
+	int i;
+
+	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; ++i) {
+		dt = &hw->dt_f[i];
+		dt->id = i;
+	}
+
+	kvx_eth_reset_dispatch_table(hw, 0, RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 }
 
 void kvx_eth_dt_acc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_acc_f *dt_acc)
