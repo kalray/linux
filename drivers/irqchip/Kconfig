@@ -334,6 +334,33 @@ config MIPS_GIC
 	select IRQ_DOMAIN_HIERARCHY
 	select MIPS_CM
 
+config KVX_CORE_INTC
+	bool
+	depends on KVX
+	select IRQ_DOMAIN
+
+config KVX_APIC_GIC
+	bool
+	depends on KVX
+	select IRQ_DOMAIN
+	select IRQ_DOMAIN_HIERARCHY
+
+config KVX_APIC_MAILBOX
+	bool
+	depends on KVX
+	select GENERIC_IRQ_IPI if SMP
+	select GENERIC_MSI_IRQ_DOMAIN
+	select IRQ_DOMAIN
+	select IRQ_DOMAIN_HIERARCHY
+
+config KVX_ITGEN
+	bool
+	depends on KVX
+	select GENERIC_IRQ_IPI if SMP
+	select GENERIC_MSI_IRQ_DOMAIN
+	select IRQ_DOMAIN
+	select IRQ_DOMAIN_HIERARCHY
+
 config INGENIC_IRQ
 	bool
 	depends on MACH_INGENIC
