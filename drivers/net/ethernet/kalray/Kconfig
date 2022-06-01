@@ -19,9 +19,7 @@ config NET_KVX_SOC
 	depends on KVX_DMA_NOC
 	depends on I2C
 	select PAGE_POOL
-	select PHYLINK
 	select NET_TI_RTM
-	select SFP
 	help
 	  This driver supports the KVX Ethernet hardware using dma_noc driver
 	  as dependency.
@@ -33,4 +31,5 @@ config NET_KVX_SOC
 config NET_KVX_QSFP
 	tristate "Kalray QSFP cage support"
 	select I2C
+
 endif # NET_VENDOR_KALRAY

@@ -17,7 +17,6 @@
 
 #include <linux/dma/kvx-dma.h>
 #include "kvx-net-hw.h"
-#include "kvx-qsfp.h"
 
 #define KVX_NETDEV_NAME         "kvx_net"
 #define KVX_NET_DRIVER_NAME     "kvx_eth"
@@ -40,7 +39,7 @@ struct kvx_eth_type {
 	int (*phy_init)(struct kvx_eth_hw *hw, unsigned int speed);
 	int (*phy_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 	int (*phy_fw_update)(struct platform_device *pdev);
-	void (*phy_lane_rx_serdes_data_enable)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+	int (*phy_lane_rx_serdes_data_enable)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 	void (*phy_rx_adaptation)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 };
 
@@ -139,25 +138,23 @@ extern const union roce_filter_desc roce_filter_default;
  * @netdev: net device
  * @dev: device
  * @hw: pointer to hw resources
- * @phylink: phy pointer
- * @phylink_cfg: phylink config
- * @sqfp: qsfp driver data
+ * @qsfp: qsfp driver data
  * @cfg: lane config parameters
- * @napi: napi struct
+ * @dma_cfg: dma channel config
  * @node: node in kvx_eth_dev list
  * @rx_ring: RX buffer ring
- * @rx_buffer_len: RX buffer length
+ * @rx_buffer_len: Max RX buffer length
  * @tx_ring: TX buffer ring
  * @stats: hardware statistics
  * @link_poll: link check timer
+ * @dcb_cfg: dcbnl configuration
+ * @link_cfg: work for link configuration (serdes + MAC)
+ * @reinit_task: reinit netdev
  */
 struct kvx_eth_netdev {
 	struct net_device *netdev;
 	struct device *dev;
 	struct kvx_eth_hw *hw;
-	/* Connection to PHY device */
-	struct phylink *phylink;
-	struct phylink_config phylink_cfg;
 	struct kvx_qsfp *qsfp;
 	struct kvx_eth_lane_cfg cfg;
 	struct kvx_dma_config dma_cfg;
@@ -168,6 +165,8 @@ struct kvx_eth_netdev {
 	struct kvx_eth_hw_stats stats;
 	struct timer_list link_poll;
 	struct kbx_dcb_cfg dcb_cfg;
+	struct delayed_work link_cfg;
+	struct work_struct reinit_task;
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
@@ -177,7 +176,10 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *nd, struct kvx_eth_ring *r);
 void kvx_eth_release_tx_ring(struct kvx_eth_ring *ring, int keep_dma_chan);
 void kvx_eth_release_rx_ring(struct kvx_eth_ring *ring, int keep_dma_chan);
 
+void kvx_eth_up(struct net_device *netdev);
+void kvx_eth_down(struct net_device *netdev);
 void kvx_set_ethtool_ops(struct net_device *netdev);
+void kvx_setup_link(struct kvx_eth_netdev *ndev);
 
 int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw);
 int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev);
