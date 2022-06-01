@@ -22,13 +22,14 @@
 #define KVX_PHY_RAM_SIZE 0x8000
 
 #define MAC_LOOPBACK_LATENCY  4
-#define MAC_SYNC_TIMEOUT_MS   2000
-#define SIGDET_TIMEOUT_MS     1000
+#define MAC_SYNC_TIMEOUT_MS   1000
+#define SIGDET_TIMEOUT_MS     500
+#define RESET_TIMEOUT_MS      50
 #define SERDES_ACK_TIMEOUT_MS 60
-#define AN_TIMEOUT_MS         2000
+#define AN_TIMEOUT_MS         1000
 #define NONCE                 0x13
 #define MS_COUNT_SHIFT        5
-#define LT_FSM_TIMEOUT_MS     2000
+#define LT_FSM_TIMEOUT_MS     1000
 #define LT_STAT_RECEIVER_READY BIT(15)
 #define PHY_LOS_TIMEOUT_MS    400
 
@@ -56,6 +57,7 @@
 	do { if (time_after(jiffies, t)) { \
 		dev_dbg(hw->dev, #reg" TIMEOUT l.%d (0x%x exp 0x%x)\n", \
 			__LINE__, (u32)(v & (mask)), (u32)exp); break; } \
+		usleep_range(10, 30); \
 		v = read(hw, reg) & (mask); \
 	} while (exp != (v & (mask))); \
 	(exp == (v & (mask))) ? 0 : -ETIMEDOUT; \
@@ -185,17 +187,36 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 		val = TX_FIFO_SECTION_FULL_THRES << EMAC_TX_FIFO_SECTION_FULL_SHIFT;
 		updatel_bits(hw, MAC, off + EMAC_TX_FIFO_SECTIONS_OFFSET,
 			     EMAC_TX_FIFO_SECTION_FULL_MASK, val);
-		val = kvx_mac_readl(hw, off + EMAC_CMD_CFG_OFFSET);
-		if (GETF(val, EMAC_CMD_CFG_SW_RESET)) {
+
+		ret = kvx_poll(kvx_mac_readl, off + EMAC_CMD_CFG_OFFSET,
+			       EMAC_CMD_CFG_SW_RESET_MASK, 0, RESET_TIMEOUT_MS);
+		if (ret)
 			dev_warn(hw->dev, "EMAC Lane[%d] sw_reset != 0(0x%x)\n",
 				i, (u32)GETF(val, EMAC_CMD_CFG_SW_RESET));
-			ret = -EINVAL;
-		}
 
 		kvx_mac_writel(hw, hw->max_frame_size, off + EMAC_FRM_LEN_OFFSET);
 	}
 
 	return ret;
+}
+
+bool kvx_phy_sigdet(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	int i, lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
+	u32 mask = serdes_mask << PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT;
+	u32 off, val;
+
+	for (i = cfg->id; i < cfg->id + lane_nb; i++) {
+		off = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
+		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		if (GETF(val, PHY_LANE_RX_SERDES_CFG_PSTATE) != PSTATE_P0)
+			return false;
+	}
+
+	val = kvx_phy_readl(hw, PHY_SERDES_STATUS_OFFSET);
+
+	return ((val & mask) == mask);
 }
 
 u32 kvx_mac_get_phylos(struct kvx_eth_hw *hw, int lane_id)
@@ -294,11 +315,10 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 		updatel_bits(hw, MAC, off + PMAC_TX_FIFO_SECTIONS_OFFSET,
 			     PMAC_TX_FIFO_SECTION_FULL_MASK, val);
 
-		val = kvx_mac_readl(hw, off + PMAC_CMD_CFG_OFFSET);
-		if (GETF(val, PMAC_CMD_CFG_SW_RESET)) {
+		ret = kvx_poll(kvx_mac_readl, off + PMAC_CMD_CFG_OFFSET,
+			       PMAC_CMD_CFG_SW_RESET_MASK, 0, RESET_TIMEOUT_MS);
+		if (ret)
 			dev_warn(hw->dev, "PMAC Lane[%d] sw_reset != 0\n", i);
-			ret = -EINVAL;
-		}
 
 		kvx_mac_writel(hw, hw->max_frame_size,
 			       off + PMAC_FRM_LEN_OFFSET);
@@ -378,7 +398,6 @@ static bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
 	return !!(v & (MAC_PCS100_EN_IN_MASK | MAC_MODE40_EN_IN_MASK));
 }
 
-#define RESET_TIMEOUT_MS 50
 void kvx_phy_reset(struct kvx_eth_hw *hw)
 {
 	u32 val = PHY_RESET_MASK;
@@ -574,11 +593,11 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	off = PHY_LANE_OFFSET + lane_id * PHY_LANE_ELEM_SIZE;
 	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
 	if (GETF(val, PHY_LANE_RX_SERDES_CFG_PSTATE) != PSTATE_P0) {
-		dev_err(hw->dev, "RX_ADAPT can not be done (not in P0)\n");
+		dev_dbg(hw->dev, "RX_ADAPT can not be done (not in P0)\n");
 		return -EINVAL;
 	}
 	if (GETF(val, PHY_LANE_RX_SERDES_CFG_ADAPT_IN_PROG)) {
-		dev_err(hw->dev, "RX_ADAPT already in progress\n");
+		dev_dbg(hw->dev, "RX_ADAPT already in progress\n");
 		return -EINVAL;
 	}
 
@@ -591,8 +610,7 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	do {
 		if (time_after(jiffies, t)) {
 			dev_err(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
-			ret = -ETIMEDOUT;
-			break;
+			return -ETIMEDOUT;
 		}
 		v = readw(hw->res[KVX_ETH_RES_PHY].base + off);
 	} while (!(v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK));
@@ -620,8 +638,7 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	do {
 		if (time_after(jiffies, t)) {
 			dev_err(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
-			ret = -ETIMEDOUT;
-			break;
+			return -ETIMEDOUT;
 		}
 		v = readw(hw->res[KVX_ETH_RES_PHY].base + off);
 	} while (v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK);
@@ -983,10 +1000,13 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 		cfg->speed = SPEED_100000;
 	lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	/* Disable serdes for *previous* config */
+	mutex_lock(&hw->mac_reset_lock);
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
 	ret = kvx_eth_phy_serdes_init(hw, cfg->id, cfg->speed);
-	if (ret)
+	if (ret) {
+		mutex_unlock(&hw->mac_reset_lock);
 		return ret;
+	}
 	dev_dbg(hw->dev, "%s nb_lanes: %d speed: %d serdes_mask: 0x%lx serdes_pll_master: 0x%lx\n",
 		__func__, lane_nb, cfg->speed, hw->pll_cfg.serdes_mask,
 		hw->pll_cfg.serdes_pll_master);
@@ -994,7 +1014,6 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	 * Full cycle (disable/enable) is needed to get serdes in appropriate
 	 * state (typically for MDIO operations in SGMII mode)
 	 */
-	mutex_lock(&hw->mac_reset_lock);
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
 	kvx_mac_phy_enable_serdes(hw, cfg->id, lane_nb, PSTATE_P0);
 	mutex_unlock(&hw->mac_reset_lock);
@@ -1005,7 +1024,6 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 		if (hw->phy_f.param[i].update && !hw->phy_f.param[i].ovrd_en)
 			hw->phy_f.param[i].update(&hw->phy_f.param[i]);
 	}
-
 
 	dump_phy_status(hw);
 
@@ -2146,7 +2164,7 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 		ret = kvx_poll(kvx_mac_readl, lt_off + LT_KR_STATUS_OFFSET,
 			  m, m, LT_FSM_TIMEOUT_MS);
 		if (ret) {
-			dev_err(hw->dev, "LT frame lock lane %d timeout\n", lane);
+			dev_dbg(hw->dev, "LT frame lock lane %d timeout\n", lane);
 			return -EINVAL;
 		}
 	}
@@ -2163,11 +2181,11 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 	if (!kvx_eth_lt_fsm_all_done(hw, cfg)) {
 		for_each_cfg_lane(nb_lane, lane, cfg) {
 			if (hw->lt_status[lane].lp_state != LT_LP_STATE_DONE) {
-				dev_err(hw->dev, "Link partner FSM did not end correctly on lane %d\n",
+				dev_dbg(hw->dev, "Link partner FSM did not end correctly on lane %d\n",
 						lane);
 			}
 			if (hw->lt_status[lane].ld_state != LT_LD_STATE_DONE) {
-				dev_err(hw->dev, "Local device FSM did not end correctly on lane %d\n",
+				dev_dbg(hw->dev, "Local device FSM did not end correctly on lane %d\n",
 						lane);
 			}
 		}
@@ -2198,17 +2216,20 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 	int i, ret;
 
 	/* Before reconfiguring retimers, serdes must be disabled */
+	mutex_lock(&hw->mac_reset_lock);
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
 
 	lane_nb = kvx_eth_speed_to_nb_lanes(an_speed, NULL);
 	ret = kvx_eth_phy_serdes_init(hw, cfg->id, an_speed);
 	if (ret) {
+		mutex_unlock(&hw->mac_reset_lock);
 		dev_err(hw->dev, "Failed to configure serdes\n");
 		return ret;
 	}
 	for (i = 0; i < RTM_NB; i++) {
 		ret = configure_rtm(hw, cfg->id, i, an_speed);
 		if (ret) {
+			mutex_unlock(&hw->mac_reset_lock);
 			dev_err(hw->dev, "Failed to configure retimer %i\n", i);
 			return ret;
 		}
@@ -2222,7 +2243,6 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 		kvx_phy_mac_10G_cfg(hw, LANE_RATE_10GBASE_KR, WIDTH_20BITS);
 	/* For 25G/100G, width is already set to  40bits */
 
-	mutex_lock(&hw->mac_reset_lock);
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
 	kvx_mac_phy_enable_serdes(hw, cfg->id, lane_nb, PSTATE_P0);
 	mutex_unlock(&hw->mac_reset_lock);
@@ -2337,12 +2357,12 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 		/* Autoneg timeout, check what happened */
 		val = kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
 		if (GETF(val, AN_KXAN_STATUS_LPANCAPABLE) == 0) {
-			dev_err(hw->dev, "Autonegociation not supported by link partner\n");
+			dev_dbg(hw->dev, "Autonegociation not supported by link partner\n");
 		} else if (GETF(val, AN_KXAN_STATUS_PAGERECEIVED)) {
-			dev_err(hw->dev, "Autonegotiation no page received from link partner\n");
+			dev_dbg(hw->dev, "Autonegotiation no page received from link partner\n");
 		} else {
 			/* Default error message */
-			dev_err(hw->dev, "Autonegotiation base exchange timeout\n");
+			dev_dbg(hw->dev, "Autonegotiation base exchange timeout\n");
 		}
 		goto exit;
 	}
@@ -2512,23 +2532,20 @@ int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	int retry = 2;
 
 	/*
-	 * Retry 3 times to retrigger full autoneg process, it appears
+	 * Retry to retrigger full autoneg process, it appears
 	 * multiple an_restart in MAC gives better results in link partner AN
 	 * communication
 	 */
 	while (ret && retry--) {
 		for (i = 0; i < ARRAY_SIZE(an_speed); i++) {
 			s = an_speed[i];
-			dev_dbg(hw->dev, "retry[%d] AN setup @%d\n", retry, s);
 			ret = kvx_eth_mac_pcs_pma_autoneg_setup(hw, cfg, s);
 			if (ret)
 				return ret;
-
-			ret = kvx_eth_autoneg_page_exchange(hw, cfg);
-			if (!ret)
-				break;
 		}
 	}
+
+	ret = kvx_eth_autoneg_page_exchange(hw, cfg);
 	if (ret)
 		return ret;
 
@@ -2544,7 +2561,7 @@ int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 	lt_ret = kvx_eth_lt_execute(hw, cfg);
 	if (lt_ret)
-		dev_err(hw->dev, "Link training failed\n");
+		dev_dbg(hw->dev, "Link training failed\n");
 
 	ret = kvx_eth_an_good_status_wait(hw, cfg);
 	if (ret && !lt_ret) {
@@ -2570,28 +2587,48 @@ int kvx_eth_mac_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	return kvx_eth_pmac_init(hw, cfg);
 }
 
-void kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+int kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
+	unsigned long delay = 0;
 	u32 off, mask, val = 0;
 	int i, ret;
+	bool data_en;
 
 	mask = serdes_mask << PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT;
 	ret = kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, mask,
 		     mask, SIGDET_TIMEOUT_MS);
-	if (ret)
+	if (ret) {
 		dev_err(hw->dev, "Signal detection timeout.\n");
+		return ret;
+	}
 
 	for (i = cfg->id; i < cfg->id + lane_nb; i++) {
 		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
-		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
-		val |= BIT(PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_SHIFT);
-		kvx_phy_writel(hw, val, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
-		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
-		dev_dbg(hw->dev, "PHY_LANE_RX_SERDES_STATUS[%d] (data_en): 0x%x\n",
-			i, val);
+		val = BIT(PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_SHIFT);
+		updatel_bits(hw, PHYMAC,
+			     off + PHY_LANE_RX_SERDES_CFG_OFFSET, val, val);
 	}
+	delay = jiffies + msecs_to_jiffies(SIGDET_TIMEOUT_MS);
+	do {
+		data_en = true;
+		for (i = cfg->id; i < cfg->id + lane_nb; i++) {
+			off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
+			/* Checks no pending rx adaptation process */
+			val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+			if ((val & PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK_MASK) == 0) {
+				val = BIT(PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_SHIFT);
+				updatel_bits(hw, PHYMAC,
+				 off + PHY_LANE_RX_SERDES_CFG_OFFSET, val, val);
+				data_en = false;
+			}
+		}
+		if (time_after(jiffies, delay))
+			break;
+	} while (!data_en);
+
+	return 0;
 }
 
 void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
@@ -2604,17 +2641,13 @@ void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 	do {
 		lane_fom_ok = 0;
 		for (i = cfg->id; i < cfg->id + lane_nb; i++) {
-			if (hw->phy_f.rx_ber[i].rx_mode == BERT_DISABLED &&
-			    hw->phy_f.tx_ber[i].tx_mode == BERT_DISABLED) {
-				if (lane_fom[i] < hw->fom_thres)
-					lane_fom[i] = kvx_phy_rx_adapt(hw, i);
-				else
-					lane_fom_ok++;
-			}
+			if (lane_fom[i] < hw->fom_thres)
+				lane_fom[i] = kvx_phy_rx_adapt(hw, i);
+			else
+				lane_fom_ok++;
 		}
 	} while (fom_retry-- && lane_fom_ok < lane_nb);
 }
-
 
 /**
  * kvx_eth_mac_cfg() - MAC configuration
@@ -2704,8 +2737,17 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		return ret;
 	}
 
-	if (dev->type->phy_lane_rx_serdes_data_enable)
-		dev->type->phy_lane_rx_serdes_data_enable(hw, cfg);
+	if (dev->type->phy_lane_rx_serdes_data_enable) {
+		ret = dev->type->phy_lane_rx_serdes_data_enable(hw, cfg);
+		if (ret && cfg->mac_f.loopback_mode == NO_LOOPBACK)
+			return ret;
+	}
+
+	/* According Spec (5.13 RX Equalization and Adaptation),
+	 * rx adaptation process **MUST** be done after rx_data_en is asserted
+	 */
+	if (dev->type->phy_rx_adaptation)
+		dev->type->phy_rx_adaptation(hw, cfg);
 
 	val = MAC_LOOPBACK_LATENCY << MAC_BYPASS_LOOPBACK_LATENCY_SHIFT;
 	if (cfg->mac_f.loopback_mode == MAC_SERDES_LOOPBACK) {
@@ -2716,13 +2758,6 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		val |= MAC_BYPASS_ETH_LOOPBACK_MASK;
 	}
 	kvx_mac_writel(hw, val, MAC_BYPASS_OFFSET);
-
-	/* Do not process rx adaptation while in loopback */
-	if (cfg->mac_f.loopback_mode != NO_LOOPBACK)
-		return 0;
-
-	if (dev->type->phy_rx_adaptation)
-		dev->type->phy_rx_adaptation(hw, cfg);
 
 	return 0;
 }

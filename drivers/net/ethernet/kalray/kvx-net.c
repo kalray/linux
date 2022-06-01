@@ -37,6 +37,7 @@
 #include "kvx-net-regs.h"
 #include "kvx-net-hdr.h"
 #include "kvx-mac-regs.h"
+#include "kvx-qsfp.h"
 
 #define KVX_PHY_FW_NAME "dwc_phy.bin"
 
@@ -47,12 +48,14 @@
 #define KVX_MAX_RX_BUF_SIZE     (PAGE_SIZE - KVX_SKB_PAD)
 
 /* Min/max constraints on last segment for skbuff data */
-#define KVX_MIN_LAST_SEG_SIZE   32
-#define KVX_MAX_LAST_SEG_SIZE   220
+#define KVX_MIN_LAST_SEG_SIZE     32
+#define KVX_MAX_LAST_SEG_SIZE     220
 /* Max segment size sent to DMA */
-#define KVX_SEG_SIZE            1024
-#define LINK_POLL_TIMER_IN_MS   1000
-#define REFILL_THRES            1
+#define KVX_SEG_SIZE              1024
+/* **Sensitive** delay between link cfg done and actual link up status from HW */
+#define LINK_POLL_TIMER_IN_MS     500
+#define CHECK_LINK_DURATION_IN_MS 60
+#define REFILL_THRES              1
 
 #define KVX_TEST_BIT(name, bitmap)  test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, bitmap)
 
@@ -107,6 +110,20 @@ void kvx_eth_get_formated_speed(int speed, int *speed_fmt,
 	}
 }
 
+static const char *pause_to_str(int pause)
+{
+	switch (pause & MLO_PAUSE_TXRX_MASK) {
+	case MLO_PAUSE_TX | MLO_PAUSE_RX:
+		return "rx/tx";
+	case MLO_PAUSE_TX:
+		return "tx";
+	case MLO_PAUSE_RX:
+		return "rx";
+	default:
+		return "off";
+	}
+}
+
 /* kvx_eth_desc_unused() - Gets the number of remaining unused buffers in ring
  * @r: Current ring
  *
@@ -130,38 +147,171 @@ static struct netdev_queue *get_txq(const struct kvx_eth_ring *ring)
 	return netdev_get_tx_queue(ring->netdev, ring->qidx);
 }
 
-static void kvx_eth_poll_link(struct timer_list *t)
+static bool kvx_eth_check_link(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	struct kvx_eth_netdev *ndev = container_of(t, struct kvx_eth_netdev,
-						   link_poll);
-	bool link_los, link;
+	/* Deals with spurious link down detection */
+	unsigned long delay = jiffies +
+		msecs_to_jiffies(CHECK_LINK_DURATION_IN_MS);
+	bool link = false;
 
-	if (!ndev->cfg.mac_cfg_done)
-		return;
-	/* No link checks for BERT and SGMII modes (handled @phy/mac level) */
-	if (kvx_eth_phy_is_bert_en(ndev->hw) || ndev->cfg.speed == SPEED_1000 ||
-	    !is_qsfp_module_ready(ndev->qsfp))
-		goto exit;
-
-	if (ndev->cfg.mac_f.loopback_mode) {
-		phylink_mac_change(ndev->phylink, true);
-		goto exit;
+	while (time_before(jiffies, delay)) {
+		link = (!kvx_eth_pmac_linklos(hw, cfg)) &&
+			kvx_eth_mac_getlink(hw, cfg);
+		if (link)
+			break;
 	}
 
-	link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
-	if (link != netif_carrier_ok(ndev->netdev)) {
-		/* Reschedule mac config (consider link down) */
-		phylink_mac_change(ndev->phylink, link);
+	return link;
+}
+
+/**
+ * kvx_eth_autoneg() - Autoneg config: set phy/serdes in 10G mode (mandatory)
+ */
+static int kvx_eth_autoneg(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_hw *hw = ndev->hw;
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
+
+	if (dev->hw.rxtx_crossed) {
+		netdev_err(ndev->netdev, "Autonegotiation is not supported with inverted lanes\n");
+		return -EINVAL;
+	}
+
+	return kvx_eth_an_execute(ndev->hw, &ndev->cfg);
+}
+
+static void kvx_eth_reset_tx(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_ring *txr;
+	unsigned long t;
+	int qidx;
+
+	for (qidx = 0; qidx < ndev->dma_cfg.tx_chan_id.nb; qidx++) {
+		txr = &ndev->tx_ring[qidx];
+		t = jiffies + msecs_to_jiffies(10);
+		/* Wait for pending descriptors */
+		while (!time_after(jiffies, t)) {
+			if (kvx_eth_desc_unused(txr) == txr->count - 1)
+				break;
+		}
+		netif_tx_stop_queue(get_txq(txr));
+		kvx_eth_reset_ring(txr);
+	}
+}
+
+static void kvx_eth_tx_timeout(struct net_device *netdev,
+			       unsigned int __always_unused txqueue)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	netdev_info(netdev, "%s\n", __func__);
+	queue_work(system_power_efficient_wq, &ndev->reinit_task);
+}
+
+static void kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
+{
+	int ret = 0;
+
+	if (!is_cable_connected(ndev->qsfp))
+		return;
+
+	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
+		   ndev->cfg.speed, ndev->cfg.autoneg_en);
+	WRITE_ONCE(ndev->cfg.mac_cfg_done, false);
+	if (ndev->cfg.autoneg_en && !ndev->cfg.mac_f.loopback_mode) {
+		ret = kvx_eth_autoneg(ndev);
+		if (ret)
+			netdev_dbg(ndev->netdev, "Autonegotiation failed\n");
+		ndev->cfg.restart_serdes = true;
+	}
+
+	if (ndev->cfg.speed == SPEED_UNKNOWN)
+		ndev->cfg.speed = SPEED_100000;
+	if (ndev->cfg.duplex == DUPLEX_UNKNOWN)
+		ndev->cfg.duplex = DUPLEX_FULL;
+	ret = kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg,
+					    ndev->cfg.restart_serdes);
+	if (ret)
+		netdev_warn(ndev->netdev, "Failed to setup link\n");
+
+	ndev->cfg.restart_serdes = false;
+	WRITE_ONCE(ndev->cfg.mac_cfg_done, true);
+	netif_tx_start_all_queues(ndev->netdev);
+	netdev_dbg(ndev->netdev, "%s done\n", __func__);
+	mod_timer(&ndev->link_poll, jiffies +
+		  msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
+}
+
+void kvx_setup_link(struct kvx_eth_netdev *ndev)
+{
+	if (delayed_work_pending(&ndev->link_cfg))
+		flush_delayed_work(&ndev->link_cfg);
+
+	queue_delayed_work(system_power_efficient_wq, &ndev->link_cfg, 0);
+}
+
+static void kvx_eth_poll_link(struct timer_list *t)
+{
+	struct kvx_eth_netdev *ndev = from_timer(ndev, t, link_poll);
+	bool link;
+
+	if (kvx_eth_phy_is_bert_en(ndev->hw) || !is_cable_connected(ndev->qsfp))
+		return;
+
+	if (!READ_ONCE(ndev->cfg.mac_cfg_done))
+		return;
+
+	if (ndev->cfg.restart_serdes) {
+		/* Deals with setting change (e.g. speed) */
+		if (netif_carrier_ok(ndev->netdev)) {
+			netdev_info(ndev->netdev, "Link is Down\n");
+			netif_carrier_off(ndev->netdev);
+		}
+		goto mac_cfg;
+	}
+
+	link = kvx_eth_check_link(ndev->hw, &ndev->cfg);
+	if (link) {
+		if (!netif_carrier_ok(ndev->netdev)) {
+			netdev_info(ndev->netdev, "Link is Up - %s/%s - flow control %s\n",
+				    phy_speed_to_str(ndev->cfg.speed),
+				    phy_duplex_to_str(ndev->cfg.duplex),
+				    pause_to_str(ndev->hw->lb_f[ndev->cfg.id].pfc_f.global_pause_en));
+			netif_carrier_on(ndev->netdev);
+			netif_tx_start_all_queues(ndev->netdev);
+		}
 	} else {
-		link_los = kvx_eth_pmac_linklos(ndev->hw, &ndev->cfg);
-		if (link_los)
-			phylink_mac_change(ndev->phylink, false);
+		if (netif_carrier_ok(ndev->netdev)) {
+			netdev_info(ndev->netdev, "Link is Down\n");
+			netif_carrier_off(ndev->netdev);
+		}
+	}
+
+	if (!netif_carrier_ok(ndev->netdev)) {
+		ndev->cfg.restart_serdes = true;
+		goto mac_cfg;
 	}
 	if (!link)
 		kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
 
-exit:
 	mod_timer(t, jiffies + msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
+	return;
+
+mac_cfg:
+	queue_delayed_work(system_power_efficient_wq, &ndev->link_cfg,
+			   msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
+}
+
+static void kvx_eth_reinit(struct net_device *netdev)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	if (netif_running(netdev)) {
+		del_timer_sync(&ndev->link_poll);
+		kvx_eth_reset_tx(ndev);
+	}
+	ndev->cfg.restart_serdes = true;
+	kvx_setup_link(ndev);
 }
 
 /* kvx_eth_netdev_init() - Init netdev (called once)
@@ -169,14 +319,7 @@ exit:
  */
 static int kvx_eth_netdev_init(struct net_device *netdev)
 {
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	int ret = phylink_of_phy_connect(ndev->phylink, ndev->dev->of_node, 0);
-
-	if (ret) {
-		netdev_err(netdev, "Unable to get phy (%i)\n", ret);
-		return ret;
-	}
-
+	netif_carrier_off(netdev);
 	return 0;
 }
 
@@ -185,32 +328,24 @@ static int kvx_eth_netdev_init(struct net_device *netdev)
  */
 static void kvx_eth_netdev_uninit(struct net_device *netdev)
 {
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-
-	phylink_disconnect_phy(ndev->phylink);
 }
 
 /* kvx_eth_up() - Interface up
  * @netdev: Current netdev
  */
-static void kvx_eth_up(struct net_device *netdev)
+void kvx_eth_up(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_ring *r;
 	int i;
 
 	netdev_dbg(netdev, "%s\n", __func__);
-
-	phylink_start(ndev->phylink);
-
 	for (i = 0; i < NB_RX_RING; i++) {
 		r = &ndev->rx_ring[i];
-		r->type = i;
 		kvx_eth_alloc_rx_buffers(r, kvx_eth_desc_unused(r));
 		napi_enable(&r->napi);
 	}
-
-	netif_tx_start_all_queues(netdev);
+	kvx_setup_link(ndev);
 }
 
 /* kvx_eth_netdev_open() - Open ops
@@ -219,23 +354,24 @@ static void kvx_eth_up(struct net_device *netdev)
 static int kvx_eth_netdev_open(struct net_device *netdev)
 {
 	kvx_eth_up(netdev);
+
 	return 0;
 }
 
 /* kvx_eth_down() - Interface down
  * @netdev: Current netdev
  */
-static void kvx_eth_down(struct net_device *netdev)
+void kvx_eth_down(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	int i;
+	int qidx;
 
+	netdev_dbg(netdev, "%s\n", __func__);
 	del_timer_sync(&ndev->link_poll);
-	phylink_stop(ndev->phylink);
 
-	netif_tx_stop_all_queues(netdev);
-	for (i = 0; i < ndev->dma_cfg.rx_chan_id.nb; i++)
-		napi_disable(&ndev->rx_ring[i].napi);
+	kvx_eth_reset_tx(ndev);
+	for (qidx = 0; qidx < ndev->dma_cfg.rx_chan_id.nb; qidx++)
+		napi_disable(&ndev->rx_ring[qidx].napi);
 }
 
 /* kvx_eth_netdev_stop() - Stop all netdev queues
@@ -261,6 +397,7 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 	ndev->rx_buffer_len = ALIGN(ndev->hw->max_frame_size,
 				    KVX_ETH_PKT_ALIGN);
 
+	ndev->cfg.autoneg_en = true;
 	ndev->cfg.speed = SPEED_UNKNOWN;
 	ndev->cfg.duplex = DUPLEX_FULL;
 	ndev->cfg.fec = 0;
@@ -927,6 +1064,7 @@ static const struct net_device_ops kvx_eth_netdev_ops = {
 	.ndo_validate_addr      = eth_validate_addr,
 	.ndo_set_mac_address    = kvx_eth_set_mac_addr,
 	.ndo_change_mtu         = kvx_eth_change_mtu,
+	.ndo_tx_timeout         = kvx_eth_tx_timeout,
 	.ndo_change_rx_flags    = kvx_eth_change_rx_flags,
 	.ndo_get_phys_port_name = kvx_eth_get_phys_port_name,
 	.ndo_get_phys_port_id   = kvx_eth_get_phys_port_id,
@@ -1576,200 +1714,10 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 		return -EINVAL;
 	}
 	ndev->qsfp = platform_get_drvdata(sfp_pdev);
+	if (!ndev->qsfp)
+		return -EINVAL;
 
 	return 0;
-}
-
-static void kvx_phylink_validate(struct phylink_config *cfg,
-			 unsigned long *supported,
-			 struct phylink_link_state *state)
-{
-	struct net_device *netdev = to_net_dev(cfg->dev);
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	u8 c, nominal_br;
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(mac_supported) = { 0, };
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv) = { 0, };
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(additional_prot) = { 0, };
-
-	/*
-	 * Indicate all capabilities supported by the MAC
-	 * The type of media (fiber/copper/...) is dependant
-	 * on the module, the PCS encoding (R flag) is the same
-	 * so we must indicate that the MAC/PCS support them.
-	 */
-	phylink_set(mac_supported, Autoneg);
-	phylink_set(mac_supported, Pause);
-	phylink_set(mac_supported, Asym_Pause);
-	phylink_set_port_modes(mac_supported);
-	bitmap_copy(adv, mac_supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
-	phylink_set(mac_supported, 10baseT_Half);
-	phylink_set(mac_supported, 10baseT_Full);
-	phylink_set(mac_supported, 100baseT_Half);
-	phylink_set(mac_supported, 100baseT_Full);
-	phylink_set(mac_supported, 1000baseT_Full);
-	phylink_set(mac_supported, 10000baseCR_Full);
-	phylink_set(mac_supported, 10000baseSR_Full);
-	phylink_set(mac_supported, 10000baseLR_Full);
-	phylink_set(mac_supported, 10000baseER_Full);
-	phylink_set(mac_supported, 25000baseCR_Full);
-	phylink_set(mac_supported, 25000baseSR_Full);
-	phylink_set(mac_supported, 40000baseCR4_Full);
-	phylink_set(mac_supported, 40000baseSR4_Full);
-	phylink_set(mac_supported, 40000baseLR4_Full);
-	phylink_set(mac_supported, 100000baseKR4_Full);
-	phylink_set(mac_supported, 100000baseCR4_Full);
-	phylink_set(mac_supported, 100000baseSR4_Full);
-	phylink_set(mac_supported, 100000baseLR4_ER4_Full);
-
-	netdev_dbg(netdev, "%s: state->speed: %d\n", __func__, state->speed);
-	/*
-	 * Fill advertising with real expected speed. It *must* be different
-	 * for each requested speed for change rate test cases
-	 */
-	switch (state->speed) {
-	case SPEED_40000:
-		phylink_set(adv, 40000baseCR4_Full);
-		phylink_set(adv, 40000baseSR4_Full);
-		phylink_set(adv, 40000baseLR4_Full);
-		fallthrough;
-	case SPEED_10000:
-		phylink_set(adv, 10000baseCR_Full);
-		phylink_set(adv, 10000baseSR_Full);
-		phylink_set(adv, 10000baseLR_Full);
-		phylink_set(adv, 10000baseER_Full);
-		break;
-	case SPEED_100000:
-		phylink_set(adv, 100000baseKR4_Full);
-		phylink_set(adv, 100000baseCR4_Full);
-		phylink_set(adv, 100000baseSR4_Full);
-		phylink_set(adv, 100000baseLR4_ER4_Full);
-		fallthrough;
-	case SPEED_25000:
-		phylink_set(adv, 25000baseCR_Full);
-		phylink_set(adv, 25000baseSR_Full);
-		break;
-	default:
-		break;
-	}
-
-	phylink_set(additional_prot, FEC_NONE);
-	phylink_set(additional_prot, FEC_RS);
-	phylink_set(additional_prot, FEC_BASER);
-	bitmap_or(adv, adv, additional_prot, __ETHTOOL_LINK_MODE_MASK_NBITS);
-
-	/*
-	 * Match media or module capabilities with MAC capabilities
-	 * The AND operation select only capabilities supported by both
-	 * the SFP/QSFP module and the MAC
-	 */
-	bitmap_and(supported, supported, mac_supported,
-		   __ETHTOOL_LINK_MODE_MASK_NBITS);
-
-	if (state->an_enabled) /* Advertise all supported speeds */
-		bitmap_and(state->advertising, state->advertising,
-			   mac_supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
-	else /* Advertise only requested speed */
-		bitmap_copy(state->advertising, adv, __ETHTOOL_LINK_MODE_MASK_NBITS);
-
-	if (state->interface == PHY_INTERFACE_MODE_SGMII)
-		return;
-
-	/*
-	 * With sfp/qsfp, the match is too restrictive in some cases.
-	 * Handle those special cases separatelly
-	 */
-	if (!is_qsfp_module_ready(ndev->qsfp)) {
-		/*
-		 * Some cable (e.g. splitters) do not have en eeprom
-		 * This is user responsability to choose a proper protocol
-		 */
-		bitmap_or(additional_prot, additional_prot, mac_supported,
-			 __ETHTOOL_LINK_MODE_MASK_NBITS);
-	} else {
-		c = kvx_qsfp_transceiver_compliance_code(ndev->qsfp);
-
-		/*
-		 * Some cable such as mellanox to not indicate their
-		 * full capabilities. As a workaround when a cable support
-		 * 25GBase assume a 100G Base is supported on qsfp cage
-		 * (cable designed for aggregated lane)
-		 */
-		if (KVX_TEST_BIT(25000baseCR_Full, supported))
-			phylink_set(additional_prot, 100000baseCR4_Full);
-		if (KVX_TEST_BIT(25000baseSR_Full, supported))
-			phylink_set(additional_prot, 100000baseSR4_Full);
-		if (KVX_TEST_BIT(40000baseCR4_Full, supported))
-			phylink_set(additional_prot, 10000baseCR_Full);
-		if (KVX_TEST_BIT(40000baseSR4_Full, supported))
-			phylink_set(additional_prot, 10000baseSR_Full);
-		if (KVX_TEST_BIT(40000baseLR4_Full, supported))
-			phylink_set(additional_prot, 10000baseLR_Full);
-		if (c & SFF8636_COMPLIANCE_10GBASE_LRM)
-			phylink_set(additional_prot, 10000baseLRM_Full);
-		if (c & SFF8636_COMPLIANCE_10GBASE_LR)
-			phylink_set(additional_prot, 10000baseLR_Full);
-		if (c & SFF8636_COMPLIANCE_10GBASE_SR)
-			phylink_set(additional_prot, 10000baseSR_Full);
-		if (c & SFF8636_COMPLIANCE_40GBASE_CR4) {
-			phylink_set(additional_prot, 40000baseCR4_Full);
-			phylink_set(additional_prot, 10000baseCR_Full);
-		}
-		if (c & SFF8636_COMPLIANCE_40GBASE_SR4) {
-			phylink_set(additional_prot, 40000baseSR4_Full);
-			phylink_set(additional_prot, 10000baseSR_Full);
-		}
-		if (c & SFF8636_COMPLIANCE_40GBASE_LR4) {
-			phylink_set(additional_prot, 40000baseLR4_Full);
-			phylink_set(additional_prot, 10000baseLR_Full);
-		}
-		/* No compliance code provided (needed for splitted cables) */
-		nominal_br = kvx_qsfp_transceiver_nominal_br(ndev->qsfp);
-		if (!c && nominal_br > 25500) {
-			phylink_set(additional_prot, 100000baseCR4_Full);
-			phylink_set(additional_prot, 100000baseSR4_Full);
-			phylink_set(additional_prot, 40000baseCR4_Full);
-			phylink_set(additional_prot, 40000baseSR4_Full);
-			phylink_set(additional_prot, 40000baseLR4_Full);
-		} else if (!c && nominal_br > 20000) {
-			phylink_set(additional_prot, 25000baseCR_Full);
-			phylink_set(additional_prot, 25000baseKR_Full);
-			phylink_set(additional_prot, 25000baseSR_Full);
-		} else if (!c && nominal_br > 10000) {
-			phylink_set(additional_prot, 10000baseCR_Full);
-			phylink_set(additional_prot, 10000baseSR_Full);
-			phylink_set(additional_prot, 10000baseLR_Full);
-			phylink_set(additional_prot, 10000baseLRM_Full);
-		}
-
-		/* Phylink uses advertising to select qsfp interface */
-		bitmap_or(state->advertising, state->advertising,
-			  additional_prot, __ETHTOOL_LINK_MODE_MASK_NBITS);
-		netdev_dbg(netdev, "%s: state->speed: %d c: 0x%x nominal_bitrate: %d adv: 0x%lx\n",
-			__func__, state->speed, c, nominal_br, *state->advertising);
-	}
-
-	bitmap_or(supported, supported, additional_prot, __ETHTOOL_LINK_MODE_MASK_NBITS);
-}
-
-static void kvx_phylink_mac_pcs_state(struct phylink_config *cfg,
-				      struct phylink_link_state *state)
-{
-	struct net_device *netdev = to_net_dev(cfg->dev);
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-
-	if (kvx_eth_phy_is_bert_en(ndev->hw))
-		state->link = false;
-	else if (ndev->cfg.mac_f.loopback_mode)
-		state->link = true;
-	else
-		state->link = kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
-	state->speed = ndev->cfg.speed;
-	state->duplex = ndev->cfg.duplex;
-	state->pause = 0;
-	if (ndev->hw->lb_f[ndev->cfg.id].pfc_f.global_pause_en)
-		state->pause = MLO_PAUSE_TXRX_MASK;
-	netdev_dbg(netdev, "%s link: %d state->speed: %d ndev->speed: %d pause: 0x%x\n",
-		   __func__, state->link, state->speed, ndev->cfg.speed, state->pause);
 }
 
 int kvx_eth_speed_to_nb_lanes(unsigned int speed, unsigned int *lane_speed)
@@ -1862,164 +1810,21 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 	return 0;
 }
 
-/**
- * kvx_eth_autoneg() - Autoneg config: set phy/serdes in 10G mode (mandatory)
- */
-static int kvx_eth_autoneg(struct kvx_eth_netdev *ndev)
+static void kvx_eth_link_cfg(struct work_struct *w)
 {
-	struct kvx_eth_hw *hw = ndev->hw;
-	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
+	struct kvx_eth_netdev *ndev =
+		container_of(w, struct kvx_eth_netdev, link_cfg.work);
 
-	if (dev->hw.rxtx_crossed) {
-		netdev_err(ndev->netdev, "Autonegotiation is not supported with inverted lanes\n");
-		return -EINVAL;
-	}
-
-	return kvx_eth_an_execute(ndev->hw, &ndev->cfg);
+	kvx_eth_link_configure(ndev);
 }
 
-static void kvx_phylink_mac_config(struct phylink_config *cfg,
-				   unsigned int an_mode,
-				   const struct phylink_link_state *state)
+static void kvx_eth_reinit_task(struct work_struct *w)
 {
-	struct net_device *netdev = to_net_dev(cfg->dev);
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_pfc_f *pfc_f = &ndev->hw->lb_f[ndev->cfg.id].pfc_f;
-	int an_enabled = state->an_enabled;
-	u8 pause = !!(state->pause & MLO_PAUSE_TXRX_MASK);
-	bool update_serdes = false;
-	int speed_fmt, ret = 0;
-	char *unit;
+	struct kvx_eth_netdev *ndev =
+		container_of(w, struct kvx_eth_netdev, reinit_task);
 
-	ndev->cfg.mac_cfg_done = false;
-	netdev_dbg(ndev->netdev, "%s state->speed: %d ndev->speed: %d pause: 0x%x / 0x%x\n",
-		   __func__, state->speed, ndev->cfg.speed,
-		   pause, pfc_f->global_pause_en);
-
-	if (state->interface == PHY_INTERFACE_MODE_SGMII) {
-		/*
-		 * Speed might be undetermined when autoneg is enabled
-		 * but has not completed yet. By setting a default speed
-		 * it ensures that the minimum configuration required
-		 * for autoneg to complete successfully is done
-		 */
-		if (state->speed == SPEED_UNKNOWN)
-			ndev->cfg.speed = SPEED_1000;
-		if (state->duplex == DUPLEX_UNKNOWN)
-			ndev->cfg.duplex = DUPLEX_FULL;
-		/*
-		 * SGMII autoneg is based on clause 37 (not clause 73).
-		 * This avoid a timeout and make link up faster.
-		 */
-		an_enabled = false;
-		update_serdes = true;
-	}
-	/* Check if a sfp/qsfp module is inserted */
-	else if (!is_cable_connected(ndev->qsfp)) {
-		netdev_warn(netdev, "No cable connected\n");
-		goto bail;
-	}
-
-	if (kvx_eth_phy_is_bert_en(ndev->hw)) {
-		netdev_warn(ndev->netdev, "Trying to reconfigure mac while BERT is enabled\n");
-		goto bail;
-	}
-
-	if (state->interface != PHY_INTERFACE_MODE_NA)
-		ndev->cfg.phy_mode = state->interface;
-	ndev->cfg.an_mode = an_mode;
-
-	update_serdes = (ndev->cfg.speed != state->speed ||
-			 ndev->cfg.duplex != state->duplex);
-
-	if (state->speed != SPEED_UNKNOWN)
-		ndev->cfg.speed = state->speed;
-	if (pfc_f->global_pause_en != pause) {
-		pfc_f->global_pause_en = pause;
-		kvx_eth_pfc_f_cfg(ndev->hw, pfc_f);
-	}
-	if (state->duplex != DUPLEX_UNKNOWN)
-		ndev->cfg.duplex = state->duplex;
-
-	if (an_enabled && !ndev->cfg.mac_f.loopback_mode) {
-		ret = kvx_eth_autoneg(ndev);
-		/* If AN is successful MAC/PHY are already configured on
-		 * correct mode as link training requires to be performed at
-		 * nominal speed
-		 */
-		if (ret == 0)
-			goto bail;
-
-		kvx_eth_get_formated_speed(ndev->cfg.speed, &speed_fmt, &unit);
-		netdev_warn(netdev, "Autonegotiation failed, using default speed %i%s\n",
-				speed_fmt, unit);
-		update_serdes = true;
-	}
-
-	kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, update_serdes);
-	/* Force re-assess link state */
-	kvx_eth_mac_getlink(ndev->hw, &ndev->cfg);
-
-bail:
-	ndev->cfg.mac_cfg_done = true;
-	mod_timer(&ndev->link_poll, jiffies +
-		  msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
+	kvx_eth_reinit(ndev->netdev);
 }
-
-static void kvx_phylink_mac_an_restart(struct phylink_config *cfg)
-{
-	pr_debug("%s\n", __func__);
-}
-
-static void kvx_phylink_mac_link_down(struct phylink_config *config,
-				      unsigned int mode,
-				      phy_interface_t interface)
-{
-	struct net_device *netdev = to_net_dev(config->dev);
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_ring *txr;
-	unsigned long t;
-	int qidx;
-
-	netdev_dbg(netdev, "%s carrier: %d\n", __func__,
-		   netif_carrier_ok(netdev));
-
-	for (qidx = 0; qidx < ndev->dma_cfg.tx_chan_id.nb; qidx++) {
-		txr = &ndev->tx_ring[qidx];
-		t = jiffies + msecs_to_jiffies(10);
-		/* Wait for pending descriptors */
-		while (!time_after(jiffies, t)) {
-			if (kvx_eth_desc_unused(txr) == txr->count - 1)
-				break;
-		}
-		netif_tx_stop_queue(get_txq(txr));
-		kvx_eth_reset_ring(txr);
-	}
-}
-
-static void kvx_phylink_mac_link_up(struct phylink_config *config,
-				    struct phy_device *phy, unsigned int mode,
-				    phy_interface_t interface, int speed,
-				    int duplex, bool tx_pause, bool rx_pause)
-{
-	struct net_device *netdev = to_net_dev(config->dev);
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-
-	kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, false);
-	netif_tx_start_all_queues(netdev);
-	netdev_dbg(netdev, "%s carrier: %d\n", __func__,
-		   netif_carrier_ok(netdev));
-}
-
-const static struct phylink_mac_ops kvx_phylink_ops = {
-	.validate          = kvx_phylink_validate,
-	.mac_pcs_get_state = kvx_phylink_mac_pcs_state,
-	.mac_config        = kvx_phylink_mac_config,
-	.mac_an_restart    = kvx_phylink_mac_an_restart,
-	.mac_link_down     = kvx_phylink_mac_link_down,
-	.mac_link_up       = kvx_phylink_mac_link_up,
-};
-
 
 /* kvx_eth_create_netdev() - Create new netdev
  * @pdev: Platform device
@@ -2034,7 +1839,6 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	struct kvx_eth_netdev *ndev;
 	struct net_device *netdev;
 	struct kvx_eth_node_id txq, rxq;
-	struct phylink *phylink;
 	int phy_mode;
 	int ret = 0;
 
@@ -2057,11 +1861,10 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	ndev->netdev = netdev;
 	ndev->hw = &dev->hw;
 	ndev->cfg.hw = ndev->hw;
-	ndev->phylink_cfg.dev = &netdev->dev;
-	ndev->phylink_cfg.type = PHYLINK_NETDEV;
-	ndev->phylink_cfg.pcs_poll = false;
 	INIT_LIST_HEAD(&ndev->cfg.tx_fifo_list);
 	timer_setup(&ndev->link_poll, kvx_eth_poll_link, 0);
+	INIT_DELAYED_WORK(&ndev->link_cfg, kvx_eth_link_cfg);
+	INIT_WORK(&ndev->reinit_task, kvx_eth_reinit_task);
 
 	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
 	if (phy_mode < 0) {
@@ -2072,15 +1875,6 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	ret = kvx_eth_netdev_parse_dt(pdev, ndev);
 	if (ret)
 		return NULL;
-
-	phylink = phylink_create(&ndev->phylink_cfg, pdev->dev.fwnode,
-				       phy_mode, &kvx_phylink_ops);
-	if (IS_ERR(phylink)) {
-		ret = PTR_ERR(phylink);
-		dev_err(&pdev->dev, "phylink_create error (%i)\n", ret);
-		return NULL;
-	}
-	ndev->phylink = phylink;
 
 	kvx_eth_netdev_set_hw_addr(ndev);
 
@@ -2115,7 +1909,6 @@ tx_chan_failed:
 	kvx_eth_release_rx_res(netdev, 0);
 exit:
 	netdev_err(netdev, "Failed to create netdev\n");
-	phylink_destroy(ndev->phylink);
 	return NULL;
 }
 
@@ -2129,7 +1922,6 @@ static int kvx_eth_free_netdev(struct kvx_eth_netdev *ndev)
 	del_timer_sync(&ndev->link_poll);
 	kvx_eth_release_tx_res(ndev->netdev, 0);
 	kvx_eth_release_rx_res(ndev->netdev, 0);
-	phylink_destroy(ndev->phylink);
 	list_del(&ndev->node);
 
 	return 0;
