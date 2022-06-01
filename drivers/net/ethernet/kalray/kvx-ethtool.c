@@ -15,6 +15,7 @@
 #include "kvx-net-hw.h"
 #include "kvx-ethtool.h"
 #include "kvx-net-regs.h"
+#include "kvx-qsfp.h"
 
 #include "kvx-scramble-lut.h"
 
@@ -1256,7 +1257,117 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	return phylink_ethtool_ksettings_get(ndev->phylink, cmd);
+	netdev_dbg(netdev, "%s\n", __func__);
+	cmd->base.speed = SPEED_UNKNOWN;
+	cmd->base.duplex = DUPLEX_UNKNOWN;
+	cmd->base.autoneg = (ndev->cfg.autoneg_en ?
+		AUTONEG_ENABLE : AUTONEG_DISABLE);
+
+	ethtool_link_ksettings_zero_link_mode(cmd, supported);
+	ethtool_link_ksettings_zero_link_mode(cmd, advertising);
+
+	/*
+	 * Indicate all capabilities supported by the MAC
+	 * The type of media (fiber/copper/...) is dependant
+	 * on the module, the PCS encoding (R flag) is the same
+	 * so we must indicate that the MAC/PCS support them.
+	 */
+	ethtool_link_ksettings_add_link_mode(cmd, supported, Autoneg);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, Pause);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, Asym_Pause);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, TP);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, AUI);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, MII);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, FIBRE);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, BNC);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, Backplane);
+
+
+	bitmap_copy(cmd->link_modes.advertising, cmd->link_modes.supported,
+		    __ETHTOOL_LINK_MODE_MASK_NBITS);
+
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 10baseT_Half);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 10baseT_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 100baseT_Half);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 100baseT_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 1000baseT_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseCR_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseSR_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseLR_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseER_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 25000baseCR_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 25000baseSR_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 40000baseCR4_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 40000baseSR4_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 40000baseLR4_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseKR4_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseCR4_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseSR4_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseLR4_ER4_Full);
+
+	/*
+	 * Fill advertising with real expected speed. It *must* be different
+	 * for each requested speed for change rate test cases
+	 */
+	if (ndev->cfg.autoneg_en) {
+		bitmap_copy(cmd->link_modes.advertising, cmd->link_modes.supported,
+			    __ETHTOOL_LINK_MODE_MASK_NBITS);
+		ethtool_link_ksettings_add_link_mode(cmd, advertising, FEC_NONE);
+		ethtool_link_ksettings_add_link_mode(cmd, advertising, FEC_BASER);
+		ethtool_link_ksettings_add_link_mode(cmd, advertising, FEC_RS);
+	} else {
+		switch (ndev->cfg.speed) {
+		case SPEED_40000:
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 40000baseCR4_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 40000baseSR4_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 40000baseLR4_Full);
+			fallthrough;
+		case SPEED_10000:
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 10000baseCR_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 10000baseSR_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 10000baseLR_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 10000baseER_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, FEC_NONE);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, FEC_BASER);
+			break;
+		case SPEED_100000:
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 100000baseKR4_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 100000baseCR4_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 100000baseSR4_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 100000baseLR4_ER4_Full);
+			fallthrough;
+		case SPEED_25000:
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 25000baseCR_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 25000baseSR_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, FEC_RS);
+			break;
+		default:
+			break;
+	}
+	}
+
+	if (netif_carrier_ok(netdev)) {
+		cmd->base.speed = ndev->cfg.speed;
+		cmd->base.duplex = ndev->cfg.duplex;
+	}
+
+	return 0;
 }
 
 static int kvx_eth_set_link_ksettings(struct net_device *netdev,
@@ -1264,23 +1375,78 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	return phylink_ethtool_ksettings_set(ndev->phylink, cmd);
+	netdev_dbg(netdev, "%s requested speed: %d\n", __func__, cmd->base.speed);
+
+	if (kvx_eth_phy_is_bert_en(ndev->hw)) {
+		netdev_warn(netdev, "Trying to reconfigure mac while BERT is enabled\n");
+		goto bail;
+	}
+
+	ndev->cfg.restart_serdes = (ndev->cfg.autoneg_en != cmd->base.autoneg);
+	ndev->cfg.autoneg_en = cmd->base.autoneg;
+	WRITE_ONCE(ndev->cfg.mac_cfg_done, false);
+
+	if (cmd->base.speed != SPEED_UNKNOWN)
+		ndev->cfg.restart_serdes = (ndev->cfg.speed != cmd->base.speed ||
+					    ndev->cfg.duplex != cmd->base.duplex);
+
+	if (cmd->base.speed <= SPEED_1000) {
+		/*
+		 * Speed might be undetermined when autoneg is enabled
+		 * but has not completed yet. By setting a default speed
+		 * it ensures that the minimum configuration required
+		 * for autoneg to complete successfully is done
+		 */
+		ndev->cfg.speed = cmd->base.speed;
+		if (cmd->base.duplex == DUPLEX_UNKNOWN)
+			ndev->cfg.duplex = DUPLEX_FULL;
+		/*
+		 * SGMII autoneg is based on clause 37 (not clause 73).
+		 * This avoid a timeout and make link up faster.
+		 */
+		ndev->cfg.autoneg_en = false;
+		ndev->cfg.restart_serdes = true;
+	}
+
+	if (!ndev->cfg.autoneg_en) {
+		if (cmd->base.speed != SPEED_UNKNOWN) {
+			ndev->cfg.speed = cmd->base.speed;
+			ndev->cfg.duplex = cmd->base.duplex;
+		}
+	}
+
+	netdev_dbg(netdev, "%s set speed: %d\n", __func__, ndev->cfg.speed);
+	kvx_setup_link(ndev);
+
+bail:
+	return 0;
 }
 
 void kvx_eth_get_pauseparam(struct net_device *netdev,
 			    struct ethtool_pauseparam *pause)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_pfc_f *pfc_f = &ndev->hw->lb_f[ndev->cfg.id].pfc_f;
 
-	phylink_ethtool_get_pauseparam(ndev->phylink, pause);
+	pause->rx_pause = !!(pfc_f->global_pause_en & MLO_PAUSE_RX);
+	pause->tx_pause = !!(pfc_f->global_pause_en & MLO_PAUSE_TX);
 }
 
 int kvx_eth_set_pauseparam(struct net_device *netdev,
 			   struct ethtool_pauseparam *pause)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_pfc_f *pfc_f = &ndev->hw->lb_f[ndev->cfg.id].pfc_f;
+	u8 pause_mask = (pause->rx_pause ? MLO_PAUSE_RX : 0);
 
-	return phylink_ethtool_set_pauseparam(ndev->phylink, pause);
+	if (pause->tx_pause)
+		pause_mask |= MLO_PAUSE_TX;
+
+	pfc_f->global_pause_en = pause_mask;
+	kvx_eth_pfc_f_cfg(ndev->hw, pfc_f);
+	kvx_setup_link(ndev);
+
+	return 0;
 }
 
 static int kvx_eth_get_fecparam(struct net_device *netdev,
@@ -1361,6 +1527,7 @@ static int kvx_eth_get_eeprom(struct net_device *netdev,
 
 	netdev_dbg(netdev, "mppa_id: 0x%llx dev_id: 0x%llx magic: 0x%llx\n",
 		ndev->hw->mppa_id, ndev->hw->dev_id, kvx_eth_get_id(ndev->hw));
+	netdev_dbg(netdev, "%s @0x%x len: %d\n", __func__, off, len);
 
 	ret = kvx_qsfp_eeprom_read(ndev->qsfp, data, page, off, len);
 	if (ret > 0)
@@ -1423,6 +1590,7 @@ static const struct ethtool_ops kvx_ethtool_ops = {
 	.get_rxfh_key_size   = kvx_eth_get_rxfh_key_size,
 	.get_rxfh            = kvx_eth_get_rxfh,
 	.set_rxfh            = kvx_eth_set_rxfh,
+	.get_link            = ethtool_op_get_link,
 	.get_link_ksettings  = kvx_eth_get_link_ksettings,
 	.set_link_ksettings  = kvx_eth_set_link_ksettings,
 	.get_pauseparam      = kvx_eth_get_pauseparam,
