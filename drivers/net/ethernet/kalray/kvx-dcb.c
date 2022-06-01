@@ -178,7 +178,7 @@ static void kvx_net_dcbnl_setpfcstate(struct net_device *netdev, u8 state)
 	lb_f->pfc_f.global_pause_en = 0;
 	/* No PFC -> enable default Flow Control */
 	if (state == 0)
-		lb_f->pfc_f.global_pause_en = 1;
+		lb_f->pfc_f.global_pause_en = MLO_PAUSE_TXRX_MASK;
 
 	kvx_eth_pfc_f_cfg(ndev->hw, &lb_f->pfc_f);
 	list_for_each_entry(tx_f, &cfg->tx_fifo_list, node) {
