@@ -474,7 +474,7 @@ static void kvx_apic_mailbox_handle_irq(struct irq_desc *desc)
 	 */
 	masked_its = (~mask_value) & mb_value;
 	if (masked_its)
-		writeq(masked_its, mb_addr + KVX_MAILBOX_LAC_OFFSET);
+		writeq(masked_its, mb_addr + KVX_MAILBOX_VALUE_OFFSET);
 
 	for_each_set_bit(bit, (unsigned long *) &mb_value, BITS_PER_LONG) {
 		irqn = bit + mb_hwirq;
