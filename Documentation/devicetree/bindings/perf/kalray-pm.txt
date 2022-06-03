@@ -1,0 +1,21 @@
+* Kalray kvx Performance Monitors
+
+KVX core has several Performance Monitors for counting cpu and cache events.
+The KVX PM representation in the device tree should be done as under:
+
+Required properties:
+
+- compatible :
+	"kalray,kvx-core-pm"
+
+- interrupts : The interrupt number for kvx PM is 3.
+- interrupt-parent : The kvx core interrupt controller.
+- kalray,pm-num : Number of Performance Monitors the kvx core has.
+
+Example:
+core_pm {
+	compatible = "kalray,kvx-core-pm";
+	interrupts = <3>;
+	interrupt-parent = <&core_intc>;
+	kalray,pm-num = <4>;
+}
