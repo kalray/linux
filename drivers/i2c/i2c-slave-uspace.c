@@ -225,6 +225,7 @@ static ssize_t slave_read(struct file *file, char __user *buf, size_t len, loff_
 	struct slave_data *slave = file->private_data;
 	unsigned int copied = 0;
 	int ret;
+	unsigned long flags;
 
 	do {
 		if (kfifo_is_empty(&slave->write_fifo)) {
@@ -235,9 +236,9 @@ static ssize_t slave_read(struct file *file, char __user *buf, size_t len, loff_
 				return -ERESTARTSYS;
 		}
 
-		spin_lock(&slave->wfifo_lock);
+		spin_lock_irqsave(&slave->wfifo_lock, flags);
 		ret = kfifo_to_user(&slave->write_fifo, buf, len, &copied);
-		spin_unlock(&slave->wfifo_lock);
+		spin_unlock_irqrestore(&slave->wfifo_lock, flags);
 
 		if (ret)
 			return ret;
@@ -255,6 +256,7 @@ static ssize_t slave_write(struct file *file, const char __user *data, size_t le
 	struct slave_data *slave = file->private_data;
 	unsigned int copied = 0;
 	int ret;
+	unsigned long flags;
 
 	if (kfifo_is_full(&slave->read_fifo)) {
 		if (file->f_flags & O_NONBLOCK)
@@ -264,9 +266,9 @@ static ssize_t slave_write(struct file *file, const char __user *data, size_t le
 			return -ERESTARTSYS;
 	}
 
-	spin_lock(&slave->rfifo_lock);
+	spin_lock_irqsave(&slave->rfifo_lock, flags);
 	ret = kfifo_from_user(&slave->read_fifo, data, len, &copied);
-	spin_unlock(&slave->rfifo_lock);
+	spin_unlock_irqrestore(&slave->rfifo_lock, flags);
 
 	if (ret)
 		return ret;
