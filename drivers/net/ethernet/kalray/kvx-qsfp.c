@@ -693,8 +693,9 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 			return QSFP_S_ERROR;
 		kvx_qsfp_tune(qsfp);
 		qsfp->monitor_enabled = true;
-		mod_delayed_work(kvx_qsfp_wq, &qsfp->qsfp_poll,
-				 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
+		if (!delayed_work_pending(&qsfp->qsfp_poll))
+			mod_delayed_work(kvx_qsfp_wq, &qsfp->qsfp_poll,
+					 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
 		kvx_qsfp_set_tx_state(qsfp, QSFP_TX_ENABLE);
 		fallthrough;
 	default:
@@ -729,6 +730,66 @@ static irqreturn_t kvx_qsfp_modprs_irq_handler(int irq, void *data)
 
 	return IRQ_HANDLED;
 }
+
+static ssize_t sysfs_reset_store(struct kobject *kobj, struct kobj_attribute *a,
+				const char *buf, size_t count)
+{
+	struct platform_device *pdev = container_of(kobj, struct platform_device, dev.kobj);
+	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
+
+	qsfp->sm_state = QSFP_S_RESET;
+	queue_work(kvx_qsfp_wq, &qsfp->sm_task);
+
+	return count;
+}
+
+static ssize_t sysfs_monitor_show(struct kobject *kobj,
+				 struct kobj_attribute *attr, char *buf)
+{
+	struct platform_device *pdev = container_of(kobj, struct platform_device,
+						    dev.kobj);
+	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
+
+	return scnprintf(buf, SFP_PAGE_LEN, "%i\n", qsfp->monitor_enabled);
+}
+
+static ssize_t sysfs_monitor_store(struct kobject *kobj, struct kobj_attribute *a,
+				const char *buf, size_t count)
+{
+	struct platform_device *pdev = container_of(kobj, struct platform_device,
+						    dev.kobj);
+	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
+	int ret;
+	bool mon = qsfp->monitor_enabled;
+
+	ret = kstrtouint(buf, 0, (u32 *)&qsfp->monitor_enabled);
+	if (ret)
+		return ret;
+
+	if (!mon && qsfp->monitor_enabled)
+		mod_delayed_work(kvx_qsfp_wq, &qsfp->qsfp_poll,
+				 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
+	if (mon && !qsfp->monitor_enabled)
+		cancel_delayed_work_sync(&qsfp->qsfp_poll);
+
+	return count;
+}
+
+static struct kobj_attribute sysfs_attr_qsfp_reset =
+	__ATTR(reset, 0200, NULL, sysfs_reset_store);
+static struct kobj_attribute sysfs_attr_qsfp_monitor =
+	__ATTR(monitor, 0664, sysfs_monitor_show, sysfs_monitor_store);
+
+
+static struct attribute *sysfs_attrs[] = {
+	&sysfs_attr_qsfp_reset.attr,
+	&sysfs_attr_qsfp_monitor.attr,
+	NULL,
+};
+
+static struct attribute_group sysfs_attr_group = {
+	.attrs = sysfs_attrs,
+};
 
 static const struct of_device_id kvx_qsfp_of_match[] = {
 	{ .compatible = "kalray,qsfp", },
@@ -846,6 +907,10 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 	qsfp->sm_state = QSFP_S_RESET;
 	qsfp->modprs_change = true;
 	queue_work(kvx_qsfp_wq, &qsfp->sm_task);
+
+	err = sysfs_create_group(&qsfp->dev->kobj, &sysfs_attr_group);
+	if (err < 0)
+		return err;
 
 	return 0;
 }
