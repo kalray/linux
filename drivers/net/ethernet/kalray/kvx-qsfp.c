@@ -437,6 +437,7 @@ int kvx_qsfp_get_module_transceiver(struct kvx_qsfp *qsfp)
 		return -EINVAL;
 
 	transceiver->id = data[SFF8636_DEVICE_ID_OFFSET];
+	transceiver->ext_id = data[SFF8636_EXT_ID_OFFSET];
 	memcpy(transceiver->oui, &data[SFF8636_VENDOR_OUI_OFFSET], 3);
 	memcpy(transceiver->sn, &data[SFF8636_VENDOR_SN_OFFSET], 16);
 	memcpy(transceiver->pn, &data[SFF8636_VENDOR_PN_OFFSET], 16);
@@ -606,6 +607,94 @@ static bool is_qsfp_module(u8 phys_id)
 		phys_id == SFP_PHYS_ID_QSFP28);
 }
 
+/** kvx_qsfp_parse_max_power - max power supported by the qsfp module
+ * @qsfp: qsfp prvdata
+ * Returns the max power supported in mW
+ */
+static u32 kvx_qsfp_parse_max_power(struct kvx_qsfp *qsfp)
+{
+	u32 power_mW = 1500;
+	u8 c14, c57, val = 0;
+	u8 *data = (u8 *) &qsfp->eeprom_cache;
+
+	if (!qsfp->transceiver.id)
+		return -EFAULT;
+
+	/* check whether class 8 is available */
+	val = qsfp->transceiver.ext_id;
+	if (val & SFF8636_EXT_ID_POWER_CLASS_8)
+		return data[SFF8636_MAX_POWER_OFFSET] * 100;
+
+	c14 = (val & SFF8636_EXT_ID_POWER_CLASS_14) >> 6;
+	c57 = (val & SFF8636_EXT_ID_POWER_CLASS_57);
+
+	/* if power class 5-7 not supported */
+	if (c57 == 0) {
+		switch (c14) {
+		case 0: /* Power class 1 */
+			power_mW = 1500;
+			break;
+		case 1: /* Power class 2 */
+			power_mW = 2000;
+			break;
+		case 2: /* Power class 3 */
+			power_mW = 2500;
+			break;
+		case 3: /* Power class 4 */
+			power_mW = 3500;
+			break;
+		default:
+			break;
+		}
+	} else {
+		switch (c57) {
+		case 1: /* Power class 5 */
+			power_mW = 4000;
+			break;
+		case 2: /* Power class 6 */
+			power_mW = 4500;
+			break;
+		case 3: /* Power class 7 */
+			power_mW = 5000;
+			break;
+		default:
+			break;
+		}
+	}
+
+	return power_mW;
+}
+
+/** kvx_qsfp_set_module_power - configure qsfp module power
+ * @qsfp: qsfp prvdata
+ * @power_mW: power in mW to configure through i2c
+ */
+static int kvx_qsfp_set_module_power(struct kvx_qsfp *qsfp, u32 power_mW)
+{
+	int ret = 0;
+	u8 val = 0;
+
+	if (!qsfp->transceiver.id)
+		return -EFAULT;
+
+	/* check whether class 8 is available */
+	if (qsfp->transceiver.ext_id & SFF8636_EXT_ID_POWER_CLASS_8
+	    && power_mW > 5000)
+		val |= SFF8636_CTRL_93_POWER_CLS8;
+	if (power_mW > 1500)
+		val |= SFF8636_CTRL_93_POWER_CLS57;
+	/* else, we use default power class 1-4, enabled by default on eeprom
+	 * thus we don't need to do anything
+	 */
+
+	if (val != 0) {
+		val |= SFF8636_CTRL_93_POWER_ORIDE; /* set power override bit */
+		ret = kvx_qsfp_eeprom_write(qsfp, &val, 0, SFF8636_POWER_OFFSET, sizeof(val));
+	}
+
+	return ret;
+}
+
 /** kvx_qsfp_init - driver init, eeprom cache init
  * @qsfp: qsfp prvdata
  * Returns 0 if success
@@ -670,6 +759,7 @@ static void kvx_qsfp_cleanup(void *data)
 static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 {
 	int next_state = qsfp->sm_state;
+	u32 power_mW;
 
 	dev_dbg(qsfp->dev, "current state: %d\n", qsfp->sm_state);
 	if (qsfp->modprs_change) {
@@ -715,6 +805,14 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 			mod_delayed_work(kvx_qsfp_wq, &qsfp->qsfp_poll,
 					 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
 		kvx_qsfp_set_tx_state(qsfp, QSFP_TX_ENABLE);
+		fallthrough;
+	case QSFP_S_WPOWER:
+		/* we set the minimum between host and module max power */
+		power_mW = kvx_qsfp_parse_max_power(qsfp);
+		dev_dbg(qsfp->dev, "Module max power mW: %d\n", power_mW);
+		power_mW = min_t(u32, power_mW, qsfp->max_power_mW);
+		if (kvx_qsfp_set_module_power(qsfp, power_mW) < 0)
+			return QSFP_S_ERROR;
 		fallthrough;
 	default:
 	case QSFP_S_READY:
