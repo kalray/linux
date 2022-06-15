@@ -46,7 +46,9 @@
 #define SFF8636_POWER_OFFSET                93
 #define SFF8636_TX_APP_SELECT_OFFSET        94
 #define SFF8636_TX_CDR_OFFSET               98
+#define SFF8636_MAX_POWER_OFFSET            107
 #define SFF8636_DEVICE_ID_OFFSET            128
+#define SFF8636_EXT_ID_OFFSET               129
 #define SFF8636_DEVICE_TECH_OFFSET          147
 #define SFF8636_TRANS_TECH_MASK             0xF0
 #define SFF8636_TRANS_TECH_TUNABLE_MASK     BIT(0)
@@ -70,6 +72,12 @@
 #define SFF8636_NOMINAL_BITRATE             140
 #define SFF8636_NOMINAL_BITRATE_250         222
 #define SFF8636_IRQ_FLAGS                   3
+#define SFF8636_EXT_ID_POWER_CLASS_8        BIT(5)
+#define SFF8636_EXT_ID_POWER_CLASS_57       0x3
+#define SFF8636_EXT_ID_POWER_CLASS_14       0xC0
+#define SFF8636_CTRL_93_POWER_ORIDE         BIT(0)
+#define SFF8636_CTRL_93_POWER_CLS8          BIT(3)
+#define SFF8636_CTRL_93_POWER_CLS57         BIT(2)
 
 #define QSFP_IRQ_FLAGS_NB                   11
 #define QSFP_POLL_TIMER_IN_MS               500
@@ -87,6 +95,7 @@ enum {
 	QSFP_S_RESET,
 	QSFP_S_TX_FAULT,
 	QSFP_S_INIT,
+	QSFP_S_WPOWER,
 	QSFP_S_READY,
 };
 
@@ -104,6 +113,8 @@ struct kvx_qsfp_param {
 
 
 /** struct qsfp_transceiver_type - Transceiver info
+ * @id: Identifier (offset 128)
+ * @ext_id: Extended Identifier (offset 129)
  * @oui: Cable constructor OUI
  * @pn: Cable part number
  * @sn: Cable serial number
@@ -114,6 +125,7 @@ struct kvx_qsfp_param {
  */
 struct kvx_qsfp_transceiver_type {
 	u8 id;
+	u8 ext_id;
 	u8 oui[3];
 	u8 pn[16];
 	u8 sn[16];
