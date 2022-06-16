@@ -73,6 +73,7 @@
 
 #define QSFP_IRQ_FLAGS_NB                   11
 #define QSFP_POLL_TIMER_IN_MS               500
+#define QSFP_DELAY_DATA_READY_IN_MS         2000
 
 
 enum {
