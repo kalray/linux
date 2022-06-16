@@ -91,6 +91,20 @@ static int i2c_write(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
 	return ret == ARRAY_SIZE(msgs) ? len : 0;
 }
 
+static void eeprom_wait_data_ready(struct i2c_adapter *i2c, u32 timeout_ms)
+{
+	u8 sts[2];
+	int ret;
+	unsigned long timeout = jiffies + msecs_to_jiffies(timeout_ms);
+
+	do {
+		ret = i2c_read(i2c, SFF8636_STATUS_OFFSET, sts, sizeof(sts));
+		if (ret == sizeof(sts) && !(sts[1] & SFF8636_STATUS_DATA_NOT_READY))
+			break;
+		usleep_range(500, 1000);
+	} while (time_is_after_jiffies(timeout));
+}
+
 /** select_eeprom_page - select page on eeprom
  * @qsfp: qsfp prvdata
  * @page: page to select
@@ -98,19 +112,22 @@ static int i2c_write(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
  */
 static int select_eeprom_page(struct kvx_qsfp *qsfp, u8 page)
 {
-	int ret, i = 0;
-	u8 sts;
+	int ret, i;
 
 	if (qsfp->module_flat_mem)
 		return 0;
 
-	do {
-		ret = i2c_read(qsfp->i2c, SFF8636_STATUS_OFFSET + 1, &sts, sizeof(sts));
-		if (ret == sizeof(sts) && !(sts & SFF8636_STATUS_DATA_NOT_READY))
+	for (i = 0; i < 2; i++) {
+	/* if page selection does not work, wait for
+	 * DATA_NOT_READY register and try again. This way we
+	 * avoid unnecessary i2c reads.
+	 */
+		ret = i2c_write(qsfp->i2c, SFP_PAGE_OFFSET, &page, sizeof(page));
+		if (ret == sizeof(page))
 			break;
-	} while (i++ < 5);
+		eeprom_wait_data_ready(qsfp->i2c, 5);
+	}
 
-	ret = i2c_write(qsfp->i2c, SFP_PAGE_OFFSET, &page, sizeof(page));
 	if (ret != sizeof(page)) {
 		dev_warn(qsfp->dev, "Unable to change eeprom page(%d)\n", page);
 		return -EINVAL;
@@ -684,7 +701,8 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		if (!is_cable_connected(qsfp))
 			return QSFP_S_DOWN;
 		kvx_qsfp_reset(qsfp);
-		usleep_range(100, 150); /* wait for reset to take effect */
+		/* wait for reset to take effect */
+		eeprom_wait_data_ready(qsfp->i2c, QSFP_DELAY_DATA_READY_IN_MS);
 		fallthrough;
 	case QSFP_S_INIT:
 		if (kvx_qsfp_init(qsfp) < 0)
