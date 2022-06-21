@@ -112,29 +112,6 @@ struct kvx_qsfp_param {
 };
 
 
-/** struct qsfp_transceiver_type - Transceiver info
- * @id: Identifier (offset 128)
- * @ext_id: Extended Identifier (offset 129)
- * @oui: Cable constructor OUI
- * @pn: Cable part number
- * @sn: Cable serial number
- * @id: Dev sff identifier
- * @compliance_code: byte 131 of EEPROM
- * @tech: cable techology
- * @nominal_br: Nominal bitrate supported by the cable
- */
-struct kvx_qsfp_transceiver_type {
-	u8 id;
-	u8 ext_id;
-	u8 oui[3];
-	u8 pn[16];
-	u8 sn[16];
-	u8 compliance_code;
-	u8 tech;
-	u32 nominal_br;
-};
-
-
 struct kvx_qsfp_eeprom_cache {
 	u8 lower_page0[EEPROM_PAGE_SIZE];
 	u8 upper_page0[EEPROM_PAGE_SIZE];
@@ -158,7 +135,6 @@ struct kvx_qsfp_eeprom_cache {
  * @irq_flags: interrupt flags (page 0 offset 3)
  * @qsfp_poll: struct for polling interrupt flags
  * @modprs_irq_task: task that sends event for IRQ mod-def0
- * @transceiver: transceiver infos
  * @sm_mutex: protects state machine
  * @sm_task: task for running the main of the state machine
  * @sm_state: module current state
@@ -179,7 +155,6 @@ struct kvx_qsfp {
 	struct kvx_qsfp_eeprom_cache eeprom_cache;
 	u8 irq_flags[QSFP_IRQ_FLAGS_NB];
 	struct delayed_work qsfp_poll;
-	struct kvx_qsfp_transceiver_type transceiver;
 	struct work_struct sm_task;
 	u8 sm_state;
 	bool modprs_change;
