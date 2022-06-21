@@ -360,14 +360,7 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 	if (!is_qsfp_module_ready(qsfp))
 		return -ENODEV;
 
-	/*
-	 * if qsfp is in a ready state, transceiver data struct
-	 *  should be filled
-	 */
-	if (!qsfp->transceiver.id)
-		return -EFAULT;
-
-	switch (qsfp->transceiver.id) {
+	switch (kvx_qsfp_transceiver_id(qsfp)) {
 	case SFP_PHYS_ID_SFP:
 		modinfo->type = ETH_MODULE_SFF_8472;
 		modinfo->eeprom_len = ETH_MODULE_SFF_8472_LEN;
@@ -389,81 +382,6 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_module_info);
-
-/** kvx_qsfp_print_module_status - print module status (debug)
- * @qsfp: qsfp prvdata
- * @ee: eeprom status data
- */
-static void kvx_qsfp_print_module_status(struct kvx_qsfp *qsfp, u8 *ee)
-{
-	u8 sfp_status = ee[SFP_STATUS];
-
-	dev_dbg(qsfp->dev, "Sfp status: Tx_dis: %lu Tx_fault: %lu Rx_los: %lu\n",
-		   sfp_status & SFP_STATUS_TX_DISABLE,
-		   sfp_status & SFP_STATUS_TX_FAULT,
-		   sfp_status & SFP_STATUS_RX_LOS);
-
-	dev_dbg(qsfp->dev, "Sfp Tx_dis: 0x%x\n", ee[SFF8636_TX_DIS_OFFSET]);
-	dev_dbg(qsfp->dev, "Sfp Rx_rate_select: 0x%x\n",
-		   ee[SFF8636_RX_RATE_SELECT_OFFSET]);
-	dev_dbg(qsfp->dev, "Sfp Tx_rate_select: 0x%x\n",
-		   ee[SFF8636_TX_RATE_SELECT_OFFSET]);
-	dev_dbg(qsfp->dev, "Sfp Rx_app_select: 0x%x 0x%x 0x%x 0x%x\n",
-		   ee[SFF8636_RX_APP_SELECT_OFFSET],
-		   ee[SFF8636_RX_APP_SELECT_OFFSET + 1],
-		   ee[SFF8636_RX_APP_SELECT_OFFSET + 2],
-		   ee[SFF8636_RX_APP_SELECT_OFFSET + 3]);
-
-	dev_dbg(qsfp->dev, "Sfp power: 0x%x\n", ee[SFF8636_POWER_OFFSET]);
-	dev_dbg(qsfp->dev, "Sfp Tx_app_select: 0x%x 0x%x 0x%x 0x%x\n",
-		   ee[SFF8636_TX_APP_SELECT_OFFSET],
-		   ee[SFF8636_TX_APP_SELECT_OFFSET + 1],
-		   ee[SFF8636_TX_APP_SELECT_OFFSET + 2],
-		   ee[SFF8636_TX_APP_SELECT_OFFSET + 3]);
-	dev_dbg(qsfp->dev, "Sfp Tx_cdr: 0x%x\n", ee[SFF8636_TX_CDR_OFFSET]);
-}
-
-
-/** kvx_qsfp_get_module_transceiver - ethtool module transceiver
- * @qsfp: qsfp prvdata
- * Returns 0 on success
- */
-int kvx_qsfp_get_module_transceiver(struct kvx_qsfp *qsfp)
-{
-	struct kvx_qsfp_transceiver_type *transceiver = &qsfp->transceiver;
-	u8 *data = (u8 *) &qsfp->eeprom_cache;
-
-	if (!is_cable_connected(qsfp) && data[SFP_IDENTIFIER_OFFSET] != 0)
-		return -EINVAL;
-
-	transceiver->id = data[SFF8636_DEVICE_ID_OFFSET];
-	transceiver->ext_id = data[SFF8636_EXT_ID_OFFSET];
-	memcpy(transceiver->oui, &data[SFF8636_VENDOR_OUI_OFFSET], 3);
-	memcpy(transceiver->sn, &data[SFF8636_VENDOR_SN_OFFSET], 16);
-	memcpy(transceiver->pn, &data[SFF8636_VENDOR_PN_OFFSET], 16);
-	transceiver->compliance_code = data[SFF8636_COMPLIANCE_CODES_OFFSET];
-	transceiver->nominal_br = data[SFF8636_NOMINAL_BITRATE];
-	transceiver->tech = data[SFF8636_DEVICE_TECH_OFFSET];
-
-	kvx_qsfp_print_module_status(qsfp, data);
-
-	if (transceiver->nominal_br == 0xFF) {
-		transceiver->nominal_br = data[SFF8636_NOMINAL_BITRATE_250];
-		transceiver->nominal_br *= 250; /* Units of 250Mbps */
-	} else {
-		transceiver->nominal_br *= 100; /* Units of 100Mbps */
-	}
-
-	dev_info(qsfp->dev, "Cable oui: %02x:%02x:%02x pn: %.16s sn: %s comp_codes: 0x%x nominal_br: %dMbps\n",
-		   transceiver->oui[0], transceiver->oui[1],
-		   transceiver->oui[2], transceiver->pn, transceiver->sn,
-		   transceiver->compliance_code,
-		   transceiver->nominal_br);
-	dev_info(qsfp->dev, "Cable tech : 0x%x copper: %d\n",
-			   transceiver->tech, is_cable_copper(qsfp));
-
-	return 0;
-}
 
 /** update_irq_flags - read interrupt flags and update the cache
  * @qsfp: qsfp prvdata
@@ -505,13 +423,66 @@ bool is_cable_connected(struct kvx_qsfp *qsfp)
 }
 EXPORT_SYMBOL_GPL(is_cable_connected);
 
+u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp)
+{
+	u8 *data = (u8 *)&qsfp->eeprom_cache;
+
+	return data[SFF8636_DEVICE_ID_OFFSET];
+}
+EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_id);
+
+
+u8 kvx_qsfp_transceiver_ext_id(struct kvx_qsfp *qsfp)
+{
+	u8 *data = (u8 *)&qsfp->eeprom_cache;
+
+	return data[SFF8636_EXT_ID_OFFSET];
+}
+EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_ext_id);
+
+
+u8 kvx_qsfp_transceiver_compliance_code(struct kvx_qsfp *qsfp)
+{
+	u8 *data = (u8 *)&qsfp->eeprom_cache;
+
+	return data[SFF8636_COMPLIANCE_CODES_OFFSET];
+}
+EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_compliance_code);
+
+
+u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
+{
+	u8 nominal_br, *data = (u8 *)&qsfp->eeprom_cache;
+
+	nominal_br = data[SFF8636_NOMINAL_BITRATE];
+
+	if (nominal_br == 0xFF) {
+		nominal_br = data[SFF8636_NOMINAL_BITRATE_250];
+		nominal_br *= 250; /* Units of 250Mbps */
+	} else {
+		nominal_br *= 100; /* Units of 100Mbps */
+	}
+	return nominal_br;
+
+}
+EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_nominal_br);
+
+
+u8 kvx_qsfp_transceiver_tech(struct kvx_qsfp *qsfp)
+{
+	u8 *data = (u8 *)&qsfp->eeprom_cache;
+
+	return data[SFF8636_DEVICE_TECH_OFFSET] & SFF8636_TRANS_TECH_MASK;
+}
+EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_tech);
+
 /** is_cable_copper - check whether cable is copper
  * @qsfp: qsfp prvdata
  * Returns true if copper
  */
 bool is_cable_copper(struct kvx_qsfp *qsfp)
 {
-	u8 tech = qsfp->transceiver.tech & SFF8636_TRANS_TECH_MASK;
+	u8 tech = kvx_qsfp_transceiver_tech(qsfp);
 
 	return (tech == SFF8636_TRANS_COPPER_LNR_EQUAL ||
 		tech == SFF8636_TRANS_COPPER_NEAR_EQUAL    ||
@@ -522,25 +493,50 @@ bool is_cable_copper(struct kvx_qsfp *qsfp)
 }
 EXPORT_SYMBOL_GPL(is_cable_copper);
 
-u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp)
+/** kvx_qsfp_print_module_status - print module status (debug)
+ * @qsfp: qsfp prvdata
+ * @ee: eeprom status data
+ */
+static void kvx_qsfp_print_module_status(struct kvx_qsfp *qsfp)
 {
-	return qsfp->transceiver.id;
+	u8 *oui, sfp_status;
+	u8 *ee = (u8 *) &qsfp->eeprom_cache;
+
+	oui = &ee[SFF8636_VENDOR_OUI_OFFSET];
+	sfp_status = ee[SFP_STATUS];
+
+	dev_info(qsfp->dev, "Cable oui: %02x:%02x:%02x pn: %.16s sn: %.16s comp_codes: 0x%x nominal_br: %dMbps\n",
+		 oui[0], oui[1], oui[2], &ee[SFF8636_VENDOR_PN_OFFSET],
+		 &ee[SFF8636_VENDOR_SN_OFFSET], kvx_qsfp_transceiver_compliance_code(qsfp),
+		 kvx_qsfp_transceiver_nominal_br(qsfp));
+	dev_info(qsfp->dev, "Cable tech : 0x%x copper: %d\n",
+			   kvx_qsfp_transceiver_tech(qsfp), is_cable_copper(qsfp));
+
+
+	dev_dbg(qsfp->dev, "Sfp status: Tx_dis: %lu Tx_fault: %lu Rx_los: %lu\n",
+		   sfp_status & SFP_STATUS_TX_DISABLE,
+		   sfp_status & SFP_STATUS_TX_FAULT,
+		   sfp_status & SFP_STATUS_RX_LOS);
+
+	dev_dbg(qsfp->dev, "Sfp Tx_dis: 0x%x\n", ee[SFF8636_TX_DIS_OFFSET]);
+	dev_dbg(qsfp->dev, "Sfp Rx_rate_select: 0x%x\n",
+		   ee[SFF8636_RX_RATE_SELECT_OFFSET]);
+	dev_dbg(qsfp->dev, "Sfp Tx_rate_select: 0x%x\n",
+		   ee[SFF8636_TX_RATE_SELECT_OFFSET]);
+	dev_dbg(qsfp->dev, "Sfp Rx_app_select: 0x%x 0x%x 0x%x 0x%x\n",
+		   ee[SFF8636_RX_APP_SELECT_OFFSET],
+		   ee[SFF8636_RX_APP_SELECT_OFFSET + 1],
+		   ee[SFF8636_RX_APP_SELECT_OFFSET + 2],
+		   ee[SFF8636_RX_APP_SELECT_OFFSET + 3]);
+
+	dev_dbg(qsfp->dev, "Sfp power: 0x%x\n", ee[SFF8636_POWER_OFFSET]);
+	dev_dbg(qsfp->dev, "Sfp Tx_app_select: 0x%x 0x%x 0x%x 0x%x\n",
+		   ee[SFF8636_TX_APP_SELECT_OFFSET],
+		   ee[SFF8636_TX_APP_SELECT_OFFSET + 1],
+		   ee[SFF8636_TX_APP_SELECT_OFFSET + 2],
+		   ee[SFF8636_TX_APP_SELECT_OFFSET + 3]);
+	dev_dbg(qsfp->dev, "Sfp Tx_cdr: 0x%x\n", ee[SFF8636_TX_CDR_OFFSET]);
 }
-EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_id);
-
-
-u8 kvx_qsfp_transceiver_compliance_code(struct kvx_qsfp *qsfp)
-{
-	return qsfp->transceiver.compliance_code;
-}
-EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_compliance_code);
-
-
-u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
-{
-	return qsfp->transceiver.nominal_br;
-}
-EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_nominal_br);
 
 /** kvx_qsfp_tune - write qsfp parameters on i2c
  * @qsfp: qsfp prvdata
@@ -617,11 +613,8 @@ static u32 kvx_qsfp_parse_max_power(struct kvx_qsfp *qsfp)
 	u8 c14, c57, val = 0;
 	u8 *data = (u8 *) &qsfp->eeprom_cache;
 
-	if (!qsfp->transceiver.id)
-		return -EFAULT;
-
 	/* check whether class 8 is available */
-	val = qsfp->transceiver.ext_id;
+	val = kvx_qsfp_transceiver_ext_id(qsfp);
 	if (val & SFF8636_EXT_ID_POWER_CLASS_8)
 		return data[SFF8636_MAX_POWER_OFFSET] * 100;
 
@@ -672,14 +665,11 @@ static u32 kvx_qsfp_parse_max_power(struct kvx_qsfp *qsfp)
 static int kvx_qsfp_set_module_power(struct kvx_qsfp *qsfp, u32 power_mW)
 {
 	int ret = 0;
-	u8 val = 0;
-
-	if (!qsfp->transceiver.id)
-		return -EFAULT;
+	u8 ext_id, val = 0;
 
 	/* check whether class 8 is available */
-	if (qsfp->transceiver.ext_id & SFF8636_EXT_ID_POWER_CLASS_8
-	    && power_mW > 5000)
+	ext_id = kvx_qsfp_transceiver_ext_id(qsfp);
+	if ((ext_id & SFF8636_EXT_ID_POWER_CLASS_8) && power_mW > 5000)
 		val |= SFF8636_CTRL_93_POWER_CLS8;
 	if (power_mW > 1500)
 		val |= SFF8636_CTRL_93_POWER_CLS57;
@@ -739,6 +729,8 @@ static int kvx_qsfp_init(struct kvx_qsfp *qsfp)
 		return -EFAULT;
 	}
 
+	kvx_qsfp_print_module_status(qsfp);
+
 	return 0;
 err:
 	mutex_unlock(&qsfp->i2c_lock);
@@ -796,8 +788,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		fallthrough;
 	case QSFP_S_INIT:
 		if (kvx_qsfp_init(qsfp) < 0)
-			return QSFP_S_ERROR;
-		if (kvx_qsfp_get_module_transceiver(qsfp) < 0)
 			return QSFP_S_ERROR;
 		kvx_qsfp_tune(qsfp);
 		qsfp->monitor_enabled = true;
