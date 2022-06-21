@@ -14,6 +14,7 @@
 #include <linux/of_platform.h>
 
 #include <asm/pwr_ctrl.h>
+#include <asm/symbols.h>
 
 struct kvx_pwr_ctrl {
 	void __iomem *regs;
@@ -28,6 +29,9 @@ static struct kvx_pwr_ctrl kvx_pwr_controller;
  */
 void kvx_pwr_ctrl_cpu_poweron(unsigned int cpu)
 {
+	/* Set PE boot address */
+	writeq((unsigned long long)kvx_start,
+			kvx_pwr_controller.regs + KVX_PWR_CTRL_RESET_PC_OFFSET);
 	/* Wake up processor ! */
 	writeq(1ULL << cpu,
 	       kvx_pwr_controller.regs + PWR_CTRL_WUP_SET_OFFSET);
