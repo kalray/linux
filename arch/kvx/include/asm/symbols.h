@@ -10,4 +10,7 @@
 /* Symbols to patch TLB refill handler */
 extern char kvx_perf_tlb_refill[], kvx_std_tlb_refill[];
 
+/* Entry point of the ELF, used to start other PEs in SMP */
+extern int kvx_start[];
+
 #endif
