@@ -20,7 +20,6 @@
 
 #include "kvx-net-hdr.h"
 #include "kvx-ethtool.h"
-#include "kvx-sfp.h"
 
 #define NB_PE                      16
 #define NB_CLUSTER                 5
@@ -30,7 +29,6 @@
 #define KVX_ETH_PARSERS_MAX_PRIO   7
 #define RX_CACHE_NB                4
 #define FOM_THRESHOLD              140
-#define QSFP_IRQ_FLAGS_NB          11
 
 /* Use last 64 entries for current cluster */
 #define RX_DISPATCH_TABLE_ACCELERATION_NB 256
@@ -661,7 +659,6 @@ struct kvx_eth_lane_cfg {
 	struct kvx_eth_hw *hw;
 	struct list_head tx_fifo_list;
 	struct kvx_eth_mac_f mac_f;
-	struct kvx_transceiver_type transceiver;
 	u32 default_dispatch_entry;
 	bool mac_cfg_done;
 };
@@ -800,32 +797,6 @@ struct lt_status {
 	struct lt_saturate saturate;
 };
 
-struct qsfp_param {
-	u32 page;
-	u32 offset;
-	u32 value;
-};
-
-/* struct kvx_eth_qsfp
- * @gpio_reset: reset qsfp gpio
- * @gpio_intl: intl qsfp gpio monitoring
- * @irq: gpio irq id
- * @irq_flags: gpio irq flags
- * @param: eeprom parameters {}
- * @param_count: nb of parameters to update in qsfp eeprom
- * @lock: lock for i2c lane selection + reg update
- * @monitor: enable/disable monitoring
- */
-struct kvx_eth_qsfp {
-	struct gpio_desc *gpio_reset;
-	struct gpio_desc *gpio_intl;
-	int irq;
-	u8  irq_flags[QSFP_IRQ_FLAGS_NB];
-	struct qsfp_param *param;
-	int param_count;
-	struct mutex lock;
-	u32 monitor;
-};
 
 /**
  * struct kvx_eth_hw - HW adapter
@@ -836,7 +807,6 @@ struct kvx_eth_qsfp {
  * @rtm_params: retimer relative parameters
  * @lt_status: link training fsm status structure
  * @mac_reset_lock: MAC reset critical section
- * @qsfp: qsfp stuff
  * @rxtx_crossed: are rx lanes crossed with tx ones
  *                meaning rx4->tx0, rx3->tx1, etc.
  * @parsers_tictoc: if we need to mirror parsers configuration from top half
@@ -868,7 +838,6 @@ struct kvx_eth_hw {
 	struct kvx_eth_rtm_params rtm_params[RTM_NB];
 	struct lt_status lt_status[KVX_ETH_LANE_NB];
 	struct mutex mac_reset_lock;
-	struct kvx_eth_qsfp qsfp;
 	u32 rxtx_crossed;
 	u32 parsers_tictoc;
 	u32 limit_rx_pps;

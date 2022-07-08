@@ -140,7 +140,7 @@ static void kvx_eth_poll_link(struct timer_list *t)
 		return;
 	/* No link checks for BERT and SGMII modes (handled @phy/mac level) */
 	if (kvx_eth_phy_is_bert_en(ndev->hw) || ndev->cfg.speed == SPEED_1000 ||
-	    ndev->cfg.transceiver.id == 0)
+	    !is_qsfp_module_ready(ndev->qsfp))
 		goto exit;
 
 	if (ndev->cfg.mac_f.loopback_mode) {
@@ -200,8 +200,6 @@ static void kvx_eth_up(struct net_device *netdev)
 	int i;
 
 	netdev_dbg(netdev, "%s\n", __func__);
-	if (ndev->cfg.id == 0)
-		kvx_eth_qsfp_tune(ndev);
 
 	phylink_start(ndev->phylink);
 
@@ -1346,7 +1344,6 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	u32 tmp_rx_polarities[KVX_ETH_LANE_NB] = {0};
 	u32 tmp_tx_polarities[KVX_ETH_LANE_NB] = {0};
 	struct nvmem_cell *cell;
-	struct kvx_eth_qsfp *qsfp = &dev->hw.qsfp;
 	int i, ret = 0;
 	u8 *cell_data;
 	size_t len;
@@ -1417,28 +1414,6 @@ int kvx_eth_dev_parse_dt(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	if (of_property_read_u8(np, "kalray,fom_thres", &dev->hw.fom_thres))
 		dev->hw.fom_thres = FOM_THRESHOLD;
 
-	qsfp->gpio_reset = devm_gpiod_get_optional(&pdev->dev,
-						  "qsfp-reset", GPIOD_ASIS);
-	if (IS_ERR(qsfp->gpio_reset))
-		dev_warn(&pdev->dev, "Failed to get qsfp-reset gpio\n");
-
-	qsfp->gpio_intl = devm_gpiod_get_optional(&pdev->dev,
-						"qsfp-intl", GPIOD_IN);
-	if (IS_ERR(qsfp->gpio_intl))
-		dev_warn(&pdev->dev, "Failed to get qsfp-intl gpio\n");
-
-	qsfp->param_count = of_property_count_u32_elems(np, "kalray,qsfp-param");
-	if (qsfp->param_count > 0) {
-		qsfp->param = devm_kzalloc(&pdev->dev,
-				qsfp->param_count * sizeof(u32), GFP_KERNEL);
-		if (qsfp->param) {
-			if (of_property_read_u32_array(np, "kalray,qsfp-param",
-					(u32 *)qsfp->param, qsfp->param_count))
-				dev_dbg(&pdev->dev, "No QSFP tuning\n");
-			qsfp->param_count /= (sizeof(*qsfp->param) / sizeof(u32));
-		}
-	}
-
 	return ret;
 }
 
@@ -1500,7 +1475,8 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 {
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct device_node *np = pdev->dev.of_node;
-	struct device_node *sfp_node, *i2c_node;
+	struct device_node *sfp_node;
+	struct platform_device *sfp_pdev;
 	struct device_node *np_dma;
 	char pname[20];
 	int i, ret = 0;
@@ -1587,10 +1563,19 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 			ndev->hw->phy_f.param[i].ovrd_en = true;
 	}
 
+	/* get qsfp platform device */
 	sfp_node = of_parse_phandle(np, "sfp", 0);
-	i2c_node = of_parse_phandle(sfp_node, "i2c-bus", 0);
-	ndev->qsfp_i2c = of_find_i2c_adapter_by_node(i2c_node);
-	of_node_put(sfp_node);
+	if (!sfp_node) {
+		dev_err(&pdev->dev, "Unable to find sfp in DT\n");
+		return -EINVAL;
+	}
+
+	sfp_pdev = of_find_device_by_node(sfp_node);
+	if (!sfp_pdev) {
+		dev_err(&pdev->dev, "Failed to find sfp platform device\n");
+		return -EINVAL;
+	}
+	ndev->qsfp = platform_get_drvdata(sfp_pdev);
 
 	return 0;
 }
@@ -1601,6 +1586,7 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 {
 	struct net_device *netdev = to_net_dev(cfg->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	u8 c, nominal_br;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(mac_supported) = { 0, };
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(adv) = { 0, };
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(additional_prot) = { 0, };
@@ -1692,15 +1678,15 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 	 * With sfp/qsfp, the match is too restrictive in some cases.
 	 * Handle those special cases separatelly
 	 */
-	if (ndev->cfg.transceiver.id == 0) {
+	if (!is_qsfp_module_ready(ndev->qsfp)) {
 		/*
 		 * Some cable (e.g. splitters) do not have en eeprom
 		 * This is user responsability to choose a proper protocol
 		 */
 		bitmap_or(additional_prot, additional_prot, mac_supported,
 			 __ETHTOOL_LINK_MODE_MASK_NBITS);
-	} else if (ndev->cfg.transceiver.qsfp) {
-		u8 c = ndev->cfg.transceiver.compliance_code;
+	} else {
+		c = kvx_qsfp_transceiver_compliance_code(ndev->qsfp);
 
 		/*
 		 * Some cable such as mellanox to not indicate their
@@ -1737,17 +1723,18 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 			phylink_set(additional_prot, 10000baseLR_Full);
 		}
 		/* No compliance code provided (needed for splitted cables) */
-		if (!c && ndev->cfg.transceiver.nominal_br > 25500) {
+		nominal_br = kvx_qsfp_transceiver_nominal_br(ndev->qsfp);
+		if (!c && nominal_br > 25500) {
 			phylink_set(additional_prot, 100000baseCR4_Full);
 			phylink_set(additional_prot, 100000baseSR4_Full);
 			phylink_set(additional_prot, 40000baseCR4_Full);
 			phylink_set(additional_prot, 40000baseSR4_Full);
 			phylink_set(additional_prot, 40000baseLR4_Full);
-		} else if (!c && ndev->cfg.transceiver.nominal_br > 20000) {
+		} else if (!c && nominal_br > 20000) {
 			phylink_set(additional_prot, 25000baseCR_Full);
 			phylink_set(additional_prot, 25000baseKR_Full);
 			phylink_set(additional_prot, 25000baseSR_Full);
-		} else if (!c && ndev->cfg.transceiver.nominal_br > 10000) {
+		} else if (!c && nominal_br > 10000) {
 			phylink_set(additional_prot, 10000baseCR_Full);
 			phylink_set(additional_prot, 10000baseSR_Full);
 			phylink_set(additional_prot, 10000baseLR_Full);
@@ -1758,8 +1745,7 @@ static void kvx_phylink_validate(struct phylink_config *cfg,
 		bitmap_or(state->advertising, state->advertising,
 			  additional_prot, __ETHTOOL_LINK_MODE_MASK_NBITS);
 		netdev_dbg(netdev, "%s: state->speed: %d c: 0x%x nominal_bitrate: %d adv: 0x%lx\n",
-			__func__, state->speed, c,
-			ndev->cfg.transceiver.nominal_br, *state->advertising);
+			__func__, state->speed, c, nominal_br, *state->advertising);
 	}
 
 	bitmap_or(supported, supported, additional_prot, __ETHTOOL_LINK_MODE_MASK_NBITS);
@@ -1929,7 +1915,7 @@ static void kvx_phylink_mac_config(struct phylink_config *cfg,
 		update_serdes = true;
 	}
 	/* Check if a sfp/qsfp module is inserted */
-	else if (!is_cable_connected(&ndev->cfg.transceiver)) {
+	else if (!is_cable_connected(ndev->qsfp)) {
 		netdev_warn(netdev, "No cable connected\n");
 		goto bail;
 	}
@@ -1997,8 +1983,7 @@ static void kvx_phylink_mac_link_down(struct phylink_config *config,
 
 	netdev_dbg(netdev, "%s carrier: %d\n", __func__,
 		   netif_carrier_ok(netdev));
-	cancel_delayed_work_sync(&ndev->qsfp_poll);
-	kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
+
 	for (qidx = 0; qidx < ndev->dma_cfg.tx_chan_id.nb; qidx++) {
 		txr = &ndev->tx_ring[qidx];
 		t = jiffies + msecs_to_jiffies(10);
@@ -2022,8 +2007,6 @@ static void kvx_phylink_mac_link_up(struct phylink_config *config,
 
 	kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, false);
 	netif_tx_start_all_queues(netdev);
-	mod_delayed_work(system_wq, &ndev->qsfp_poll,
-			 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
 	netdev_dbg(netdev, "%s carrier: %d\n", __func__,
 		   netif_carrier_ok(netdev));
 }
@@ -2037,17 +2020,6 @@ const static struct phylink_mac_ops kvx_phylink_ops = {
 	.mac_link_up       = kvx_phylink_mac_link_up,
 };
 
-static void kvx_eth_qsfp_poll(struct work_struct *work)
-{
-	struct kvx_eth_netdev *ndev = container_of(work,
-				struct kvx_eth_netdev, qsfp_poll.work);
-
-	if (ndev->cfg.id == 0 && ndev->cfg.speed >= SPEED_10000) {
-		kvx_eth_qsfp_monitor(ndev);
-		mod_delayed_work(system_wq, &ndev->qsfp_poll,
-				 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
-	}
-}
 
 /* kvx_eth_create_netdev() - Create new netdev
  * @pdev: Platform device
@@ -2090,7 +2062,6 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	ndev->phylink_cfg.pcs_poll = false;
 	INIT_LIST_HEAD(&ndev->cfg.tx_fifo_list);
 	timer_setup(&ndev->link_poll, kvx_eth_poll_link, 0);
-	INIT_DELAYED_WORK(&ndev->qsfp_poll, kvx_eth_qsfp_poll);
 
 	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
 	if (phy_mode < 0) {
@@ -2323,7 +2294,6 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	dev->type = &kvx_eth_data;
 	INIT_LIST_HEAD(&dev->list);
 	mutex_init(&dev->hw.mac_reset_lock);
-	mutex_init(&dev->hw.qsfp.lock);
 
 	if (of_machine_is_compatible("kalray,haps"))
 		dev->type = &kvx_haps_data;
@@ -2354,8 +2324,6 @@ static int kvx_eth_probe(struct platform_device *pdev)
 		goto err;
 
 	dev->hw.dev = &pdev->dev;
-
-	kvx_eth_qsfp_reset(&dev->hw);
 
 	if (dev->type->phy_init) {
 		ret = dev->type->phy_init(&dev->hw, SPEED_UNKNOWN);

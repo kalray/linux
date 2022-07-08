@@ -29,4 +29,8 @@ config NET_KVX_SOC
 	  TX flow.
 
 	  To compile this driver as a module, choose M here.
+
+config NET_KVX_QSFP
+	tristate "Kalray QSFP cage support"
+	select I2C
 endif # NET_VENDOR_KALRAY

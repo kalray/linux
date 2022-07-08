@@ -15,7 +15,6 @@
 #include "kvx-net-hw.h"
 #include "kvx-ethtool.h"
 #include "kvx-net-regs.h"
-#include "kvx-sfp.h"
 
 #include "kvx-scramble-lut.h"
 
@@ -1329,12 +1328,10 @@ static int kvx_eth_get_eeprom_len(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct ethtool_modinfo mod_info;
-	int ret = sfp_get_module_info(netdev->sfp_bus, &mod_info);
 
-	if (ndev->cfg.transceiver.qsfp)
-		mod_info.eeprom_len = ETH_MODULE_SFF_8636_MAX_LEN;
+	kvx_qsfp_module_info(ndev->qsfp, &mod_info);
 
-	return ((ret == 0) ? mod_info.eeprom_len : ret);
+	return mod_info.eeprom_len;
 }
 
 static u64 kvx_eth_get_id(struct kvx_eth_hw *hw)
@@ -1346,23 +1343,17 @@ static int kvx_eth_get_eeprom(struct net_device *netdev,
 			  struct ethtool_eeprom *ee, u8 *data)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	size_t l, len = ee->len;
+	size_t len = ee->len;
 	int ret, off = ee->offset;
 	u8 page = 0;
 
-	if (!is_cable_connected(&ndev->cfg.transceiver)) {
-		netdev_warn(netdev, "No cable connected\n");
+	if (!ndev->qsfp) {
+		netdev_err(netdev, "Unable to get QSFP module\n");
 		ret = -EINVAL;
 		goto bail;
 	}
 
-	if (!ndev->qsfp_i2c) {
-		netdev_err(netdev, "Unable to get QSFP EEPROM I2C adapter\n");
-		ret = -EINVAL;
-		goto bail;
-	}
-
-	if (is_cable_copper(&ndev->cfg.transceiver)) {
+	if (is_cable_copper(ndev->qsfp)) {
 		if (off > 256)
 			return -EINVAL;
 		len = 256 - off;
@@ -1370,24 +1361,12 @@ static int kvx_eth_get_eeprom(struct net_device *netdev,
 
 	netdev_dbg(netdev, "mppa_id: 0x%llx dev_id: 0x%llx magic: 0x%llx\n",
 		ndev->hw->mppa_id, ndev->hw->dev_id, kvx_eth_get_id(ndev->hw));
-	l = 0;
-	while (l < len) {
-		ret = kvx_eth_qsfp_ee_read(ndev->qsfp_i2c, data + l,
-					   &page, &off, len);
-		if (ret < 0)
-			goto bail;
 
-		l += ret;
-		off += ret;
-	}
-
-	ret = 0;
-	if (l != len)
-		ret = -EINVAL;
+	ret = kvx_qsfp_eeprom_read(ndev->qsfp, data, page, off, len);
+	if (ret > 0)
+		ret = 0;
 
 bail:
-	page = 0;
-	ee_select_page(ndev->qsfp_i2c, page);
 	return ret;
 }
 
@@ -1399,8 +1378,8 @@ static int kvx_eth_set_eeprom(struct net_device *netdev,
 	int ret, off = ee->offset;
 	u8 page = 0;
 
-	if (!ndev->qsfp_i2c) {
-		netdev_err(netdev, "Unable to get QSFP EEPROM I2C adapter\n");
+	if (!ndev->qsfp) {
+		netdev_err(netdev, "Unable to get QSFP driver\n");
 		return -EINVAL;
 	}
 
@@ -1409,14 +1388,27 @@ static int kvx_eth_set_eeprom(struct net_device *netdev,
 		return -EINVAL;
 	}
 
-	ret = kvx_eth_qsfp_ee_writeb(ndev->qsfp_i2c, off, data[0]);
+	ret = kvx_qsfp_eeprom_write(ndev->qsfp, data, page, off, len);
 	if (ret < 0)
 		return -EINVAL;
 
-	page = 0;
-	ee_select_page(ndev->qsfp_i2c, page);
-
 	return 0;
+}
+
+static int kvx_eth_get_module_eeprom(struct net_device *netdev,
+			     struct ethtool_eeprom *ee, u8 *data)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	return kvx_qsfp_get_module_eeprom(ndev->qsfp, ee, data);
+}
+
+static int kvx_eth_get_module_info(struct net_device *netdev,
+			     struct ethtool_modinfo *modinfo)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	return kvx_qsfp_module_info(ndev->qsfp, modinfo);
 }
 
 static const struct ethtool_ops kvx_ethtool_ops = {
@@ -1440,6 +1432,8 @@ static const struct ethtool_ops kvx_ethtool_ops = {
 	.get_eeprom_len      = kvx_eth_get_eeprom_len,
 	.get_eeprom          = kvx_eth_get_eeprom,
 	.set_eeprom          = kvx_eth_set_eeprom,
+	.get_module_eeprom   = kvx_eth_get_module_eeprom,
+	.get_module_info     = kvx_eth_get_module_info,
 };
 
 void kvx_set_ethtool_ops(struct net_device *netdev)
