@@ -17,13 +17,13 @@
 
 #include <linux/dma/kvx-dma.h>
 #include "kvx-net-hw.h"
+#include "kvx-qsfp.h"
 
 #define KVX_NETDEV_NAME         "kvx_net"
 #define KVX_NET_DRIVER_NAME     "kvx_eth"
 #define KVX_NET_DRIVER_VERSION  "1.0"
 
 #define KVX_HW2DEV(hw) container_of(hw, struct kvx_eth_dev, hw)
-#define QSFP_POLL_TIMER_IN_MS         500
 
 #define KVX_ETH_PKT_ALIGN             (8)
 #define KVX_ETH_MAX_MTU               (9216)
@@ -141,7 +141,7 @@ extern const union roce_filter_desc roce_filter_default;
  * @hw: pointer to hw resources
  * @phylink: phy pointer
  * @phylink_cfg: phylink config
- * @qsfp_i2c: pointer to i2c adapter of qsfp eeprom
+ * @sqfp: qsfp driver data
  * @cfg: lane config parameters
  * @napi: napi struct
  * @node: node in kvx_eth_dev list
@@ -150,7 +150,6 @@ extern const union roce_filter_desc roce_filter_default;
  * @tx_ring: TX buffer ring
  * @stats: hardware statistics
  * @link_poll: link check timer
- * @qsfp_poll: polling for qsfp monitoring
  */
 struct kvx_eth_netdev {
 	struct net_device *netdev;
@@ -159,7 +158,7 @@ struct kvx_eth_netdev {
 	/* Connection to PHY device */
 	struct phylink *phylink;
 	struct phylink_config phylink_cfg;
-	struct i2c_adapter *qsfp_i2c;
+	struct kvx_qsfp *qsfp;
 	struct kvx_eth_lane_cfg cfg;
 	struct kvx_dma_config dma_cfg;
 	struct list_head node;
@@ -169,7 +168,6 @@ struct kvx_eth_netdev {
 	struct kvx_eth_hw_stats stats;
 	struct timer_list link_poll;
 	struct kbx_dcb_cfg dcb_cfg;
-	struct delayed_work qsfp_poll;
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
