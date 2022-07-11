@@ -26,7 +26,6 @@
 
 #define SFP_IDENTIFIER_OFFSET               0
 #define SFP_PAGE_OFFSET                     0x7f
-#define SFP_PAGE_LEN                        128
 #define SFP_STATUS                          0x6e
 #define SFP_STATUS_TX_DISABLE		    BIT(7)
 #define SFP_STATUS_TX_FAULT		    BIT(2)
@@ -78,6 +77,9 @@
 #define SFF8636_CTRL_93_POWER_ORIDE         BIT(0)
 #define SFF8636_CTRL_93_POWER_CLS8          BIT(3)
 #define SFF8636_CTRL_93_POWER_CLS57         BIT(2)
+#define SFF8636_OPTIONS_OFFSET              195
+#define SFF8636_PAGE1_PROVIDED              BIT(6)
+#define SFF8636_PAGE2_PROVIDED              BIT(7)
 
 #define QSFP_IRQ_FLAGS_NB                   11
 #define QSFP_POLL_TIMER_IN_MS               500
@@ -165,6 +167,7 @@ struct kvx_qsfp {
 
 int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *ee);
 int kvx_qsfp_get_module_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee, u8 *data);
+int kvx_qsfp_set_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee, u8 *data);
 int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page, unsigned int offset, size_t len);
 int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, u8 page, unsigned int offset, size_t len);
 void kvx_qsfp_reset(struct kvx_qsfp *qsfp);
