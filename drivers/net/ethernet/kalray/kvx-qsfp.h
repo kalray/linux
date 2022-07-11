@@ -20,8 +20,9 @@
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 
-#define EEPROM_CACHE_SIZE                   128
-#define EEPROM_CACHE_OFFSET                 128
+#define EEPROM_LOWER_PAGE0_OFFSET           0
+#define EEPROM_UPPER_PAGE0_OFFSET           128
+#define EEPROM_PAGE_SIZE                    128
 
 #define SFP_IDENTIFIER_OFFSET               0
 #define SFP_PAGE_OFFSET                     0x7f
@@ -35,9 +36,9 @@
 #define SFP_PHYS_ID_QSFP_PLUS               0x0D
 #define SFP_PHYS_ID_QSFP28                  0x11
 
-#define SFF8436_STATUS                      0x01
-#define SFF8436_STATUS_DATA_NOT_READY       BIT(0)
-#define SFF8436_STATUS_FLAT_MEM             BIT(2)
+#define SFF8636_STATUS_OFFSET               1
+#define SFF8636_STATUS_DATA_NOT_READY       BIT(0)
+#define SFF8636_STATUS_FLAT_MEM             BIT(2)
 #define SFF8636_TX_DIS_OFFSET               86
 #define SFF8636_RX_RATE_SELECT_OFFSET       87
 #define SFF8636_TX_RATE_SELECT_OFFSET       88
@@ -121,6 +122,12 @@ struct kvx_qsfp_transceiver_type {
 };
 
 
+struct kvx_qsfp_eeprom_cache {
+	u8 lower_page0[EEPROM_PAGE_SIZE];
+	u8 upper_page0[EEPROM_PAGE_SIZE];
+} __packed;
+
+
 /** struct kvx_qsfp - QSFP driver private data
  * @dev: device structure
  * @i2c: i2c adapter structure
@@ -156,7 +163,7 @@ struct kvx_qsfp {
 	struct kvx_qsfp_param *param;
 	u32 max_power_mW;
 	bool module_flat_mem;
-	u8 eeprom_cache[128];
+	struct kvx_qsfp_eeprom_cache eeprom_cache;
 	u8 irq_flags[QSFP_IRQ_FLAGS_NB];
 	struct delayed_work qsfp_poll;
 	struct kvx_qsfp_transceiver_type transceiver;
@@ -170,8 +177,8 @@ struct kvx_qsfp {
 
 int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *ee);
 int kvx_qsfp_get_module_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee, u8 *data);
-int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page, int offset, size_t len);
-int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, u8 page, int offset, size_t len);
+int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page, unsigned int offset, size_t len);
+int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, u8 page, unsigned int offset, size_t len);
 void kvx_qsfp_reset(struct kvx_qsfp *qsfp);
 bool is_cable_connected(struct kvx_qsfp *qsfp);
 bool is_qsfp_module_ready(struct kvx_qsfp *qsfp);
