@@ -250,7 +250,8 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 			PMAC_CMD_CFG_RX_EN_MASK     |
 			PMAC_CMD_CFG_TX_PAD_EN_MASK |
 			PMAC_CMD_CFG_SW_RESET_MASK  |
-			PMAC_CMD_CFG_CNTL_FRAME_EN_MASK;
+			PMAC_CMD_CFG_CNTL_FRAME_EN_MASK |
+			PMAC_CMD_CFG_TX_FLUSH_MASK;
 
 		if (cfg->mac_f.pfc_mode == MAC_PFC)
 			val |= PMAC_CMD_CFG_PFC_MODE_MASK;
@@ -258,6 +259,7 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 		if (cfg->mac_f.promisc_mode)
 			val |= PMAC_CMD_CFG_PROMIS_EN_MASK;
 		kvx_mac_writel(hw, val, off + PMAC_CMD_CFG_OFFSET);
+
 		/* Disable MAC auto Xon/Xoff gen and store and forward mode */
 		val = RX_FIFO_SECTION_FULL_THRES <<
 			PMAC_RX_FIFO_SECTION_FULL_SHIFT;
@@ -279,6 +281,10 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 
 		kvx_mac_writel(hw, hw->max_frame_size,
 			       off + PMAC_FRM_LEN_OFFSET);
+
+		/* TX flush is not self-cleared -> restore it */
+		updatel_bits(hw, MAC, off + PMAC_CMD_CFG_OFFSET,
+			     PMAC_CMD_CFG_TX_FLUSH_MASK, 0);
 	}
 
 	return ret;
