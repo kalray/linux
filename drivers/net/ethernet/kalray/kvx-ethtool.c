@@ -1494,8 +1494,13 @@ static int kvx_eth_get_eeprom_len(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct ethtool_modinfo mod_info;
+	int ret;
 
-	kvx_qsfp_module_info(ndev->qsfp, &mod_info);
+	ret = kvx_qsfp_module_info(ndev->qsfp, &mod_info);
+	if (ret < 0) {
+		netdev_err(netdev, "qsfp module info failed\n");
+		return ret;
+	}
 
 	return mod_info.eeprom_len;
 }
@@ -1509,57 +1514,30 @@ static int kvx_eth_get_eeprom(struct net_device *netdev,
 			  struct ethtool_eeprom *ee, u8 *data)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	size_t len = ee->len;
-	int ret, off = ee->offset;
-	u8 page = 0;
 
 	if (!ndev->qsfp) {
 		netdev_err(netdev, "Unable to get QSFP module\n");
-		ret = -EINVAL;
-		goto bail;
-	}
-
-	if (is_cable_copper(ndev->qsfp)) {
-		if (off > 256)
-			return -EINVAL;
-		len = 256 - off;
+		return -EINVAL;
 	}
 
 	netdev_dbg(netdev, "mppa_id: 0x%llx dev_id: 0x%llx magic: 0x%llx\n",
 		ndev->hw->mppa_id, ndev->hw->dev_id, kvx_eth_get_id(ndev->hw));
-	netdev_dbg(netdev, "%s @0x%x len: %d\n", __func__, off, len);
+	netdev_dbg(netdev, "%s @0x%x len: %d\n", __func__, ee->offset, ee->len);
 
-	ret = kvx_qsfp_eeprom_read(ndev->qsfp, data, page, off, len);
-	if (ret > 0)
-		ret = 0;
-
-bail:
-	return ret;
+	return kvx_qsfp_get_module_eeprom(ndev->qsfp, ee, data);
 }
 
 static int kvx_eth_set_eeprom(struct net_device *netdev,
 			struct ethtool_eeprom *ee, u8 *data)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	size_t len = ee->len;
-	int ret, off = ee->offset;
-	u8 page = 0;
 
 	if (!ndev->qsfp) {
 		netdev_err(netdev, "Unable to get QSFP driver\n");
 		return -EINVAL;
 	}
 
-	if (len != 1) {
-		netdev_warn(netdev, "Eeprom write limited to 1 byte only\n");
-		return -EINVAL;
-	}
-
-	ret = kvx_qsfp_eeprom_write(ndev->qsfp, data, page, off, len);
-	if (ret < 0)
-		return -EINVAL;
-
-	return 0;
+	return kvx_qsfp_set_eeprom(ndev->qsfp, ee, data);
 }
 
 static int kvx_eth_get_module_eeprom(struct net_device *netdev,
