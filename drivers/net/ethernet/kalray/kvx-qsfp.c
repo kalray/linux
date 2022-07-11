@@ -140,6 +140,12 @@ static int select_eeprom_page(struct kvx_qsfp *qsfp, u8 page)
  * @qsfp: qsfp prvdata
  * @params: array of qsfp params
  * @len: size of params
+ *
+ * This function can write multiple non-continuous bytes in one i2c transfer.
+ * It is faster than calling kvx_qsfp_eeprom_write when all parameters
+ * are on the same page. All params must be on the same page. If 2 groups of
+ * params are on different pages, call i2c_write_params for each page.
+ *
  * Returns the number of registers set successfully
  */
 static int i2c_write_params(struct kvx_qsfp *qsfp, struct kvx_qsfp_param *params,
@@ -147,17 +153,28 @@ static int i2c_write_params(struct kvx_qsfp *qsfp, struct kvx_qsfp_param *params
 {
 	struct i2c_adapter *i2c = qsfp->i2c;
 	struct i2c_msg *msgs;
-	u8 bus_addr = 0x50;
-	int ret, i, page;
+	u8 bus_addr = 0x50, page = -1;
+	int ret, i, j;
+
+	if (len == 0)
+		return -EINVAL;
 
 	msgs = kmalloc_array(len, sizeof(struct i2c_msg), GFP_KERNEL);
 	if (!msgs)
 		return -ENOMEM;
 
+	/* sanity check - all params must be on same page */
+	for (i = 0; i < len; i++)
+		page &= params[i].page;
+	if (page != params[0].page) {
+		ret = -EINVAL;
+		goto bail1;
+	}
+
 	mutex_lock(&qsfp->i2c_lock);
 	ret = select_eeprom_page(qsfp, page);
 	if (ret < 0)
-		goto err;
+		goto bail1;
 
 	for (i = 0; i < len; i++) {
 		msgs[i].addr = bus_addr;
@@ -167,19 +184,19 @@ static int i2c_write_params(struct kvx_qsfp *qsfp, struct kvx_qsfp_param *params
 
 		if (!msgs[i].buf) {
 			ret = -ENOMEM;
-			goto err;
+			goto bail2;
 		}
 
 		msgs[i].buf[0] = (u8)params[i].offset;
-		memcpy(&msgs[0].buf[1], (u8 *)&params[i].value, 1);
+		msgs[i].buf[1] = params[i].value;
 	}
 
 	ret = i2c_transfer(i2c, msgs, len);
 
-err:
-	for (i = 0; i < len; i++)
-		kfree(msgs[i].buf);
-
+bail2:
+	for (j = 0; j < i; j++)
+		kfree(msgs[j].buf);
+bail1:
 	kfree(msgs);
 
 	mutex_unlock(&qsfp->i2c_lock);
@@ -243,7 +260,7 @@ static int i2c_rw(struct kvx_qsfp *qsfp,
  *
  * Returns the length of bytes successfully updated
  */
-static int update_eeprom_cache(struct kvx_qsfp *qsfp, int offset, size_t len)
+static int update_eeprom_cache(struct kvx_qsfp *qsfp, unsigned int offset, size_t len)
 {
 	int ret;
 
@@ -252,6 +269,13 @@ static int update_eeprom_cache(struct kvx_qsfp *qsfp, int offset, size_t len)
 		dev_err(qsfp->dev, "eeprom cache update failed: offset=%d len=%lu\n",
 			offset, len);
 	return ret;
+}
+
+static u8 eeprom_cache_readb(struct kvx_qsfp *qsfp, unsigned int offset)
+{
+	u8 *cache = (u8 *)&qsfp->eeprom_cache;
+
+	return cache[offset];
 }
 
 /** kvx_qsfp_eeprom_read - read after selecting page on eeprom
@@ -321,6 +345,23 @@ bool is_qsfp_module_ready(struct kvx_qsfp *qsfp)
 }
 EXPORT_SYMBOL_GPL(is_qsfp_module_ready);
 
+/* page_offset_from_ethtool_offset - convert ethtool offset to page & offset
+ * @page: pointer to where page number is stored
+ * @offset: pointer to ethtool offset - will be overwritten
+ *
+ * ethtool offset is defined  as follows:
+ * page 0: [0, 255]; page 1: [256, 383]; page 2: [384, 511]; etc.
+ */
+static void page_offset_from_ethtool_offset(u8 *page, unsigned int *offset)
+{
+	if (*offset >= 256) {
+		*page = (u8)((*offset - EEPROM_PAGE_SIZE) / EEPROM_PAGE_SIZE);
+		*offset -= (*page * EEPROM_PAGE_SIZE);
+	} else {
+		*page = 0;
+	}
+}
+
 /**
  * kvx_qsfp_get_module_eeprom() - Read the QSFP module EEPROM
  * @qsfp: a pointer to the &struct kvx_qsfp structure for the qsfp module
@@ -334,19 +375,75 @@ EXPORT_SYMBOL_GPL(is_qsfp_module_ready);
  */
 int kvx_qsfp_get_module_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee, u8 *data)
 {
-	u8 page = 0;
+	size_t len, bytes_remaining = ee->len;
+	unsigned int off = ee->offset;
 	int ret;
+	u8 page = 0;
 
+	/* sanity checks */
 	if (!is_qsfp_module_ready(qsfp))
 		return -ENODEV;
 
 	if (ee->len == 0)
 		return -EINVAL;
 
-	ret = kvx_qsfp_eeprom_read(qsfp, data, page, ee->offset, ee->len);
-	return ret < 0 ? ret : 0;
+	if (is_cable_copper(qsfp) && off + len > 256)
+		return -EINVAL;
+
+	page_offset_from_ethtool_offset(&page, &off);
+
+	while (bytes_remaining > 0) {
+		len = min_t(size_t, 2 * EEPROM_PAGE_SIZE - off, bytes_remaining);
+
+		ret = kvx_qsfp_eeprom_read(qsfp, data, page, off, len);
+		if (ret != len) {
+			dev_err(qsfp->dev, "Failed to read eeprom page %d\n", page);
+			goto bail;
+		}
+
+		bytes_remaining -= len;
+		page += 1;
+		data += len;
+		off = 0;
+	}
+
+	ret = 0;
+bail:
+	return ret;
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_get_module_eeprom);
+
+/**
+ * kvx_qsfp_set_eeprom() - Set 1 byte on the QSFP module EEPROM
+ * @qsfp: a pointer to the &struct kvx_qsfp structure for the qsfp module
+ * @ee: a &struct ethtool_eeprom
+ * @data: buffer to contain the EEPROM data (must be at least @ee->len bytes)
+ *
+ * Write the EEPROM as specified by the supplied @ee. See the documentation
+ * for &struct ethtool_eeprom for the region to be read.
+ *
+ * Returns 0 on success or a negative errno number.
+ */
+int kvx_qsfp_set_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee, u8 *data)
+{
+	int ret;
+	unsigned int off = ee->offset;
+	u8 page = 0;
+
+	if (ee->len != 1) {
+		dev_warn(qsfp->dev, "Eeprom write limited to 1 byte only\n");
+		return -EINVAL;
+	}
+
+	page_offset_from_ethtool_offset(&page, &off);
+
+	ret = kvx_qsfp_eeprom_write(qsfp, data, page, off, ee->len);
+	if (ret < 0)
+		return -EINVAL;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(kvx_qsfp_set_eeprom);
 
 /** kvx_qsfp_module_info - ethtool module info
  * @qsfp: qsfp prvdata
@@ -356,6 +453,7 @@ EXPORT_SYMBOL_GPL(kvx_qsfp_get_module_eeprom);
 int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 {
 	int ret = 0;
+	u8 options;
 
 	if (!is_qsfp_module_ready(qsfp))
 		return -ENODEV;
@@ -367,12 +465,20 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 		break;
 	case SFP_PHYS_ID_QSFP:
 	case SFP_PHYS_ID_QSFP_PLUS:
-		modinfo->type = ETH_MODULE_SFF_8436;
-		modinfo->eeprom_len = ETH_MODULE_SFF_8436_LEN;
-		break;
 	case SFP_PHYS_ID_QSFP28:
+		options = eeprom_cache_readb(qsfp, SFF8636_OPTIONS_OFFSET);
 		modinfo->type = ETH_MODULE_SFF_8636;
+		/* min length: copper cables have only page 0 */
 		modinfo->eeprom_len = ETH_MODULE_SFF_8636_LEN;
+		/* if memory page 1 is implemented */
+		if (options & SFF8636_PAGE1_PROVIDED)
+			modinfo->eeprom_len = ETH_MODULE_SFF_8636_LEN + EEPROM_PAGE_SIZE;
+		/* if memory page 2 is implemented */
+		if (options & SFF8636_PAGE2_PROVIDED)
+			modinfo->eeprom_len = ETH_MODULE_SFF_8636_LEN + 2 * EEPROM_PAGE_SIZE;
+		/* if memory is not flat, then at least page 3 is implemented */
+		if (!qsfp->module_flat_mem)
+			modinfo->eeprom_len = ETH_MODULE_SFF_8636_MAX_LEN;
 		break;
 	default:
 		ret = -EOPNOTSUPP;
@@ -425,39 +531,31 @@ EXPORT_SYMBOL_GPL(is_cable_connected);
 
 u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp)
 {
-	u8 *data = (u8 *)&qsfp->eeprom_cache;
-
-	return data[SFF8636_DEVICE_ID_OFFSET];
+	return eeprom_cache_readb(qsfp, SFF8636_DEVICE_ID_OFFSET);
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_id);
 
 
 u8 kvx_qsfp_transceiver_ext_id(struct kvx_qsfp *qsfp)
 {
-	u8 *data = (u8 *)&qsfp->eeprom_cache;
-
-	return data[SFF8636_EXT_ID_OFFSET];
+	return eeprom_cache_readb(qsfp, SFF8636_EXT_ID_OFFSET);
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_ext_id);
 
 
 u8 kvx_qsfp_transceiver_compliance_code(struct kvx_qsfp *qsfp)
 {
-	u8 *data = (u8 *)&qsfp->eeprom_cache;
-
-	return data[SFF8636_COMPLIANCE_CODES_OFFSET];
+	return eeprom_cache_readb(qsfp, SFF8636_COMPLIANCE_CODES_OFFSET);
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_compliance_code);
 
 
 u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
 {
-	u8 nominal_br, *data = (u8 *)&qsfp->eeprom_cache;
-
-	nominal_br = data[SFF8636_NOMINAL_BITRATE];
+	u8 nominal_br = eeprom_cache_readb(qsfp, SFF8636_NOMINAL_BITRATE);
 
 	if (nominal_br == 0xFF) {
-		nominal_br = data[SFF8636_NOMINAL_BITRATE_250];
+		nominal_br = eeprom_cache_readb(qsfp, SFF8636_NOMINAL_BITRATE_250);
 		nominal_br *= 250; /* Units of 250Mbps */
 	} else {
 		nominal_br *= 100; /* Units of 100Mbps */
@@ -470,9 +568,9 @@ EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_nominal_br);
 
 u8 kvx_qsfp_transceiver_tech(struct kvx_qsfp *qsfp)
 {
-	u8 *data = (u8 *)&qsfp->eeprom_cache;
+	u8 tech = eeprom_cache_readb(qsfp, SFF8636_DEVICE_TECH_OFFSET);
 
-	return data[SFF8636_DEVICE_TECH_OFFSET] & SFF8636_TRANS_TECH_MASK;
+	return tech & SFF8636_TRANS_TECH_MASK;
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_tech);
 
@@ -856,7 +954,7 @@ static ssize_t sysfs_monitor_show(struct kobject *kobj,
 						    dev.kobj);
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
 
-	return scnprintf(buf, SFP_PAGE_LEN, "%i\n", qsfp->monitor_enabled);
+	return scnprintf(buf, 2, "%i\n", qsfp->monitor_enabled);
 }
 
 static ssize_t sysfs_monitor_store(struct kobject *kobj, struct kobj_attribute *a,
