@@ -9,9 +9,7 @@
 
 #include "kvx-qsfp.h"
 
-
 static struct workqueue_struct *kvx_qsfp_wq;
-
 
 /** i2c_read - read bytes from i2c. Make sure the eeprom is on
  *            the right page before calling i2c_read
@@ -59,7 +57,6 @@ static int i2c_read(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
 	return msgs[1].buf - (u8 *)buf;
 }
 
-
 /** i2c_write - write bytes on i2c. Make sure the eeprom is on
  *             the right page before calling i2c_write
  * @i2c_adapter: i2c adapter
@@ -68,8 +65,7 @@ static int i2c_read(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
  * @len: length of buffer
  * return int: length written successfully
  */
-static int i2c_write(struct i2c_adapter *i2c, u8 addr, u8 *buf,
-		     size_t len)
+static int i2c_write(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
 {
 	struct i2c_msg msgs[1];
 	u8 bus_addr = 0x50;
@@ -95,7 +91,6 @@ static int i2c_write(struct i2c_adapter *i2c, u8 addr, u8 *buf,
 	return ret == ARRAY_SIZE(msgs) ? len : 0;
 }
 
-
 /** select_eeprom_page - select page on eeprom
  * @qsfp: qsfp prvdata
  * @page: page to select
@@ -104,14 +99,14 @@ static int i2c_write(struct i2c_adapter *i2c, u8 addr, u8 *buf,
 static int select_eeprom_page(struct kvx_qsfp *qsfp, u8 page)
 {
 	int ret, i = 0;
-	u8 sts[2];
+	u8 sts;
 
 	if (qsfp->module_flat_mem)
 		return 0;
 
 	do {
-		ret = i2c_read(qsfp->i2c, SFF8436_STATUS, sts, ARRAY_SIZE(sts));
-		if (ret == ARRAY_SIZE(sts) && !(sts[1] & SFF8436_STATUS_DATA_NOT_READY))
+		ret = i2c_read(qsfp->i2c, SFF8636_STATUS_OFFSET + 1, &sts, sizeof(sts));
+		if (ret == sizeof(sts) && !(sts & SFF8636_STATUS_DATA_NOT_READY))
 			break;
 	} while (i++ < 5);
 
@@ -123,7 +118,6 @@ static int select_eeprom_page(struct kvx_qsfp *qsfp, u8 page)
 
 	return 0;
 }
-
 
 /** i2c_write_params - write qsfp params on i2c in one single transfer
  * @qsfp: qsfp prvdata
@@ -179,7 +173,6 @@ err:
 	return ret == len ? len : 0;
 }
 
-
 /** i2c_rw - perform r/w transfer after selecting page on eeprom
  * @qsfp: qsfp prvdata
  * @op: read(0) write(1)
@@ -187,11 +180,12 @@ err:
  * @page: page to select
  * @offset: eeprom offset ([0-255] for page 0, else [128-255])
  * @len: size of the buffer
+ *
  * Returns the length successfully transfered
  */
 static int i2c_rw(struct kvx_qsfp *qsfp,
 	   int op(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len),
-	   u8 *data, u8 page, int offset, size_t len)
+	   u8 *data, u8 page, unsigned int offset, size_t len)
 {
 	int ret, remaining, total_len = 0;
 
@@ -224,6 +218,24 @@ static int i2c_rw(struct kvx_qsfp *qsfp,
 	return total_len;
 }
 
+/** update_eeprom_cache - update the eeprom cache
+ * @qsfp: qsfp prvdata
+ * @offset: eeprom offset ([0-255] for page 0)
+ * @len: size of the portion to update
+ * This function must not be called inside a qsfp->i2c_lock mutex lock
+ *
+ * Returns the length of bytes successfully updated
+ */
+static int update_eeprom_cache(struct kvx_qsfp *qsfp, int offset, size_t len)
+{
+	int ret;
+
+	ret = i2c_rw(qsfp, i2c_read, (u8 *)&qsfp->eeprom_cache + offset, 0, offset, len);
+	if (ret != len)
+		dev_err(qsfp->dev, "eeprom cache update failed: offset=%d len=%lu\n",
+			offset, len);
+	return ret;
+}
 
 /** kvx_qsfp_eeprom_read - read after selecting page on eeprom
  * @qsfp: qsfp prvdata
@@ -231,31 +243,44 @@ static int i2c_rw(struct kvx_qsfp *qsfp,
  * @page: page to select
  * @offset: eeprom offset ([0-255] for page 0, else [128-255])
  * @len: size of the buffer
+ *
  * Returns the length successfully transfered
  */
-int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page, int offset,
-		     size_t len)
+int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page,
+			 unsigned int offset, size_t len)
 {
-	int ret = 0, first = offset, last  = offset + len;
+	u8 *cache = (u8 *)&qsfp->eeprom_cache;
+	unsigned int last = offset + len;
+	int ret = 0;
+	size_t l;
+
+	/* sanity check */
+	if (last == 0 || last > EEPROM_UPPER_PAGE0_OFFSET + EEPROM_PAGE_SIZE)
+		return -EINVAL;
 
 	if (page == 0) {
-		if (last >= EEPROM_CACHE_OFFSET) {
-			memcpy(&data[abs(EEPROM_CACHE_OFFSET - first)],
-			       qsfp->eeprom_cache, last - EEPROM_CACHE_OFFSET);
-			ret = last - EEPROM_CACHE_OFFSET;
+		/* upper page 0 is static, values never change.
+		 * Therefore, we always copy the upper page 0 from cache
+		 */
+		last = min_t(unsigned int, last, EEPROM_UPPER_PAGE0_OFFSET);
+
+		/* read lower page 0 */
+		if (offset < EEPROM_UPPER_PAGE0_OFFSET) {
+			l = last - offset;
+			ret = i2c_rw(qsfp, i2c_read, &cache[offset], page, offset, l);
+			if (ret != l)
+				return -EFAULT;
 		}
 
-		if (first < EEPROM_CACHE_OFFSET)
-			last = min_t(unsigned int, last, EEPROM_CACHE_OFFSET);
+		memcpy(data, &cache[offset], len);
+		ret = len;
+	} else {
+		ret = i2c_rw(qsfp, i2c_read, data, page, offset, len);
 	}
-
-	if (page != 0 || offset < EEPROM_CACHE_OFFSET)
-		ret += i2c_rw(qsfp, i2c_read, data, page, offset, last - offset);
 
 	return ret;
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_eeprom_read);
-
 
 /** kvx_qsfp_eeprom_write - write after selecting page on eeprom
  * @qsfp: qsfp prvdata
@@ -263,14 +288,15 @@ EXPORT_SYMBOL_GPL(kvx_qsfp_eeprom_read);
  * @page: page to select
  * @offset: eeprom offset ([0-255] for page 0, else [128-255])
  * @len: size of the buffer
+ *
  * Returns the length successfully transfered
  */
-int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, u8 page, int offset, size_t len)
+int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, u8 page,
+			  unsigned int offset, size_t len)
 {
 	return i2c_rw(qsfp, i2c_write, data, page, offset, len);
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_eeprom_write);
-
 
 bool is_qsfp_module_ready(struct kvx_qsfp *qsfp)
 {
@@ -304,7 +330,6 @@ int kvx_qsfp_get_module_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee,
 	return ret < 0 ? ret : 0;
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_get_module_eeprom);
-
 
 /** kvx_qsfp_module_info - ethtool module info
  * @qsfp: qsfp prvdata
@@ -348,7 +373,6 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_module_info);
 
-
 /** kvx_qsfp_print_module_status - print module status (debug)
  * @qsfp: qsfp prvdata
  * @ee: eeprom status data
@@ -390,26 +414,10 @@ static void kvx_qsfp_print_module_status(struct kvx_qsfp *qsfp, u8 *ee)
 int kvx_qsfp_get_module_transceiver(struct kvx_qsfp *qsfp)
 {
 	struct kvx_qsfp_transceiver_type *transceiver = &qsfp->transceiver;
-	int ret = 0, len = 256;
-	u8 *data, offset = 0, page = 0;
+	u8 *data = (u8 *) &qsfp->eeprom_cache;
 
-	if (!qsfp->i2c || !is_cable_connected(qsfp))
+	if (!is_cable_connected(qsfp) && data[SFP_IDENTIFIER_OFFSET] != 0)
 		return -EINVAL;
-
-	data = kcalloc(len, sizeof(*data), GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
-
-	ret = kvx_qsfp_eeprom_read(qsfp, data, page, offset, len);
-	if (ret < 0)
-		goto bail;
-
-	if (transceiver->id)
-		if (!memcmp(transceiver->pn, &data[SFF8636_VENDOR_PN_OFFSET],
-			    16)) {
-			ret = 0;
-			goto bail;
-		}
 
 	transceiver->id = data[SFF8636_DEVICE_ID_OFFSET];
 	memcpy(transceiver->oui, &data[SFF8636_VENDOR_OUI_OFFSET], 3);
@@ -418,6 +426,7 @@ int kvx_qsfp_get_module_transceiver(struct kvx_qsfp *qsfp)
 	transceiver->compliance_code = data[SFF8636_COMPLIANCE_CODES_OFFSET];
 	transceiver->nominal_br = data[SFF8636_NOMINAL_BITRATE];
 	transceiver->tech = data[SFF8636_DEVICE_TECH_OFFSET];
+
 	kvx_qsfp_print_module_status(qsfp, data);
 
 	if (transceiver->nominal_br == 0xFF) {
@@ -435,11 +444,8 @@ int kvx_qsfp_get_module_transceiver(struct kvx_qsfp *qsfp)
 	dev_info(qsfp->dev, "Cable tech : 0x%x copper: %d\n",
 			   transceiver->tech, is_cable_copper(qsfp));
 
-bail:
-	kfree(data);
-	return ret;
+	return 0;
 }
-
 
 /** update_irq_flags - read interrupt flags and update the cache
  * @qsfp: qsfp prvdata
@@ -466,10 +472,6 @@ static void update_irq_flags(struct kvx_qsfp *qsfp)
 	memcpy(qsfp->irq_flags, irqs, sizeof(irqs));
 }
 
-
-/** kvx_qsfp_poll - qsfp polling
- * @work: work structure
- */
 static void kvx_qsfp_poll(struct work_struct *work)
 {
 	struct kvx_qsfp *qsfp = container_of(work, struct kvx_qsfp, qsfp_poll.work);
@@ -479,13 +481,11 @@ static void kvx_qsfp_poll(struct work_struct *work)
 			 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
 }
 
-
 bool is_cable_connected(struct kvx_qsfp *qsfp)
 {
 	return qsfp->cable_connected;
 }
 EXPORT_SYMBOL_GPL(is_cable_connected);
-
 
 /** is_cable_copper - check whether cable is copper
  * @qsfp: qsfp prvdata
@@ -503,7 +503,6 @@ bool is_cable_copper(struct kvx_qsfp *qsfp)
 		tech == SFF8636_TRANS_COPPER_PAS_UNEQUAL);
 }
 EXPORT_SYMBOL_GPL(is_cable_copper);
-
 
 u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp)
 {
@@ -524,7 +523,6 @@ u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
 	return qsfp->transceiver.nominal_br;
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_nominal_br);
-
 
 /** kvx_qsfp_tune - write qsfp parameters on i2c
  * @qsfp: qsfp prvdata
@@ -553,7 +551,6 @@ static void kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 	dev_info(qsfp->dev, "QSFP param tuning done\n");
 }
 
-
 /** kvx_qsfp_reset - reset qsfp eeprom via gpio
  * @qsfp: qsfp prvdata
  */
@@ -567,7 +564,6 @@ void kvx_qsfp_reset(struct kvx_qsfp *qsfp)
 	}
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_reset);
-
 
 /** kvx_qsfp_set_tx_state - enable/disable TX
  * @qsfp: qsfp prvdata
@@ -586,15 +582,12 @@ void kvx_qsfp_set_tx_state(struct kvx_qsfp *qsfp, int op)
 	}
 }
 
-
 static bool is_qsfp_module(u8 phys_id)
 {
 	return (phys_id == SFP_PHYS_ID_QSFP ||
 		phys_id == SFP_PHYS_ID_QSFP_PLUS ||
 		phys_id == SFP_PHYS_ID_QSFP28);
-
 }
-
 
 /** kvx_qsfp_init - driver init, eeprom cache init
  * @qsfp: qsfp prvdata
@@ -603,37 +596,44 @@ static bool is_qsfp_module(u8 phys_id)
 static int kvx_qsfp_init(struct kvx_qsfp *qsfp)
 {
 	int ret;
-	u8 phys_id, offset = 128, sts[2];
-	size_t cache_size = ARRAY_SIZE(qsfp->eeprom_cache);
+	u8 val, sts[2];
+	size_t cache_size = sizeof(qsfp->eeprom_cache);
 
 	mutex_lock(&qsfp->i2c_lock);
 
 	/* check module is QSFP */
-	ret = i2c_read(qsfp->i2c, SFP_IDENTIFIER_OFFSET, &phys_id, 1);
-	if (ret != sizeof(phys_id))
+	ret = i2c_read(qsfp->i2c, SFP_IDENTIFIER_OFFSET, &val, sizeof(val));
+	if (ret != sizeof(val)) {
+		ret = -EFAULT;
 		goto err;
+	}
 
-	if (!is_qsfp_module(phys_id)) {
+	if (!is_qsfp_module(val)) {
 		dev_err(qsfp->dev, "The module inserted is not supported by kvx qsfp driver\n");
 		ret = -EINVAL;
 		goto err;
 	}
 
 	/* check for flat mem */
-	ret = i2c_read(qsfp->i2c, SFF8436_STATUS, sts, ARRAY_SIZE(sts));
-	if (ret == ARRAY_SIZE(sts))
-		qsfp->module_flat_mem = sts[1] & SFF8436_STATUS_FLAT_MEM;
-
-	/* store in cache the upper page 0 eeprom (offset 128-256) */
-	ret = i2c_read(qsfp->i2c, offset, qsfp->eeprom_cache, cache_size);
-	if (ret != cache_size) {
-		dev_err(qsfp->dev, "Failed to initialize qsfp eeprom cache\n");
+	ret = i2c_read(qsfp->i2c, SFF8636_STATUS_OFFSET, sts, sizeof(sts));
+	if (ret != sizeof(sts)) {
 		ret = -EFAULT;
 		goto err;
 	}
-	dev_dbg(qsfp->dev, "QSFP eeprom cache: %*ph\n",
-		(int)sizeof(qsfp->eeprom_cache), qsfp->eeprom_cache);
-	ret = 0;
+	qsfp->module_flat_mem = sts[1] & SFF8636_STATUS_FLAT_MEM;
+
+	mutex_unlock(&qsfp->i2c_lock);
+
+	dev_dbg(qsfp->dev, "flat_mem=%d\n", qsfp->module_flat_mem);
+
+	/* store in cache the page 0 of eeprom (offset 0-256) */
+	ret = update_eeprom_cache(qsfp, EEPROM_LOWER_PAGE0_OFFSET, cache_size);
+	if (ret != cache_size) {
+		dev_err(qsfp->dev, "Failed to initialize qsfp eeprom cache\n");
+		return -EFAULT;
+	}
+
+	return 0;
 err:
 	mutex_unlock(&qsfp->i2c_lock);
 	return ret;
@@ -649,7 +649,6 @@ static void kvx_qsfp_cleanup(void *data)
 	if (qsfp->i2c)
 		i2c_put_adapter(qsfp->i2c);
 }
-
 
 static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 {
@@ -690,13 +689,13 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 	case QSFP_S_INIT:
 		if (kvx_qsfp_init(qsfp) < 0)
 			return QSFP_S_ERROR;
+		if (kvx_qsfp_get_module_transceiver(qsfp) < 0)
+			return QSFP_S_ERROR;
 		kvx_qsfp_tune(qsfp);
 		qsfp->monitor_enabled = true;
 		mod_delayed_work(kvx_qsfp_wq, &qsfp->qsfp_poll,
 				 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
 		kvx_qsfp_set_tx_state(qsfp, QSFP_TX_ENABLE);
-		if (kvx_qsfp_get_module_transceiver(qsfp) < 0)
-			return QSFP_S_ERROR;
 		fallthrough;
 	default:
 	case QSFP_S_READY:
@@ -709,7 +708,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 	return next_state;
 }
 
-
 static void kvx_qsfp_sm_main_task(struct work_struct *work)
 {
 	struct kvx_qsfp *qsfp = container_of(work, struct kvx_qsfp, sm_task);
@@ -720,7 +718,6 @@ static void kvx_qsfp_sm_main_task(struct work_struct *work)
 	if (qsfp->sm_state != prev_state)
 		queue_work(kvx_qsfp_wq, &qsfp->sm_task);
 }
-
 
 static irqreturn_t kvx_qsfp_modprs_irq_handler(int irq, void *data)
 {
@@ -733,12 +730,10 @@ static irqreturn_t kvx_qsfp_modprs_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-
 static const struct of_device_id kvx_qsfp_of_match[] = {
 	{ .compatible = "kalray,qsfp", },
 	{ },
 };
-
 
 /** kvx_qsfp_probe - probe callback
  * @pdev: platform device
@@ -855,7 +850,6 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 	return 0;
 }
 
-
 static int kvx_qsfp_remove(struct platform_device *pdev)
 {
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
@@ -866,7 +860,6 @@ static int kvx_qsfp_remove(struct platform_device *pdev)
 	return 0;
 }
 
-
 static void kvx_qsfp_shutdown(struct platform_device *pdev)
 {
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
@@ -876,7 +869,6 @@ static void kvx_qsfp_shutdown(struct platform_device *pdev)
 	cancel_work_sync(&qsfp->sm_task);
 	destroy_workqueue(kvx_qsfp_wq);
 }
-
 
 static struct platform_driver kvx_qsfp_driver = {
 	.probe = kvx_qsfp_probe,
@@ -889,7 +881,6 @@ static struct platform_driver kvx_qsfp_driver = {
 	},
 };
 
-
 static int kvx_qsfp_platform_init(void)
 {
 	kvx_qsfp_wq = create_singlethread_workqueue("qsfp");
@@ -901,7 +892,6 @@ static int kvx_qsfp_platform_init(void)
 }
 module_init(kvx_qsfp_platform_init);
 
-
 static void kvx_qsfp_platform_exit(void)
 {
 	flush_workqueue(kvx_qsfp_wq);
@@ -910,7 +900,6 @@ static void kvx_qsfp_platform_exit(void)
 	platform_driver_unregister(&kvx_qsfp_driver);
 }
 module_exit(kvx_qsfp_platform_exit);
-
 
 MODULE_DEVICE_TABLE(of, kvx_qsfp_of_match);
 MODULE_AUTHOR("Ashley Lesdalons <alesdalons@kalray.eu>");
