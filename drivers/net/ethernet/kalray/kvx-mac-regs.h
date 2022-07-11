@@ -211,6 +211,8 @@
 #define PMAC_CMD_CFG_PHY_TX_EN_MASK                0x8000UL
 #define PMAC_CMD_CFG_PFC_MODE_SHIFT                0x13
 #define PMAC_CMD_CFG_PFC_MODE_MASK                 0x80000UL
+#define PMAC_CMD_CFG_TX_FLUSH_SHIFT                0x22
+#define PMAC_CMD_CFG_TX_FLUSH_MASK                 0x400000UL
 #define PMAC_CMD_CFG_PAUSE_IGNORE_SHIFT            0x8
 #define PMAC_CMD_CFG_PAUSE_IGNORE_MASK             0x100UL
 #define PMAC_CMD_CFG_PAUSE_FWD_SHIFT               0x7
