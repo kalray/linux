@@ -339,7 +339,6 @@ void kvx_eth_up(struct net_device *netdev)
 	struct kvx_eth_ring *r;
 	int i;
 
-	netdev_dbg(netdev, "%s\n", __func__);
 	for (i = 0; i < NB_RX_RING; i++) {
 		r = &ndev->rx_ring[i];
 		kvx_eth_alloc_rx_buffers(r, kvx_eth_desc_unused(r));
