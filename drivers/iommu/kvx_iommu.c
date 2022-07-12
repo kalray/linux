@@ -259,7 +259,8 @@ struct kvx_iommu_domain {
 	struct list_head list;
 	struct iommu_domain domain;
 	struct kvx_iommu_drvdata *iommu;
-	u32 asn;
+	unsigned int num_asn;
+	u32 asn[2];
 	spinlock_t lock;
 };
 
@@ -741,10 +742,12 @@ static struct kvx_iommu_domain *
 find_dom_from_asn(struct kvx_iommu_drvdata *drvdata, u32 asn)
 {
 	struct kvx_iommu_domain *kvx_domain;
+	int i;
 
 	list_for_each_entry(kvx_domain, &drvdata->domains, list)
-		if (asn == kvx_domain->asn)
-			return kvx_domain;
+		for (i = 0; i < kvx_domain->num_asn; i++)
+			if (asn == kvx_domain->asn[i])
+				return kvx_domain;
 
 	return NULL;
 }
@@ -1284,7 +1287,7 @@ kvx_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 	struct kvx_iommu_drvdata *iommu_dev;
 	unsigned long flags;
-	int ret = 0;
+	int i, ret = 0;
 
 	if (!fwspec || !dev_iommu_priv_get(dev)) {
 		dev_err(dev, "private firmare spec not found\n");
@@ -1305,8 +1308,14 @@ kvx_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 		goto out_unlock;
 	}
 
+	if (fwspec->num_ids > ARRAY_SIZE(kvx_domain->asn))
+		dev_warn(dev, "iommu doesn't support more than %d asn\n",
+			 ARRAY_SIZE(kvx_domain->asn));
+
 	kvx_domain->iommu = iommu_dev;
-	kvx_domain->asn = fwspec->ids[0];
+	kvx_domain->num_asn = min_t(unsigned int, fwspec->num_ids, ARRAY_SIZE(kvx_domain->asn));
+	for (i = 0; i < kvx_domain->num_asn; i++)
+		kvx_domain->asn[i] = fwspec->ids[i];
 
 	list_add_tail(&kvx_domain->list, &iommu_dev->domains);
 
@@ -1348,18 +1357,21 @@ static size_t kvx_iommu_unmap(struct iommu_domain *domain,
 	struct kvx_iommu_hw *iommu_hw[KVX_IOMMU_NB_TYPE];
 	size_t rx_pgsz, tx_pgsz;
 	u32 asn;
+	int i;
 
 	kvx_domain = to_kvx_domain(domain);
 
 	iommu_hw[KVX_IOMMU_RX] = &kvx_domain->iommu->iommu_hw[KVX_IOMMU_RX];
 	iommu_hw[KVX_IOMMU_TX] = &kvx_domain->iommu->iommu_hw[KVX_IOMMU_TX];
 
-	asn = kvx_domain->asn;
+	for (i = 0; i < kvx_domain->num_asn; i++) {
+		asn = kvx_domain->asn[i];
 
-	rx_pgsz = invalidate_tlb_entry(iommu_hw[KVX_IOMMU_RX], iova, asn, size);
-	tx_pgsz	= invalidate_tlb_entry(iommu_hw[KVX_IOMMU_TX], iova, asn, size);
+		rx_pgsz = invalidate_tlb_entry(iommu_hw[KVX_IOMMU_RX], iova, asn, size);
+		tx_pgsz	= invalidate_tlb_entry(iommu_hw[KVX_IOMMU_TX], iova, asn, size);
 
-	BUG_ON(rx_pgsz != tx_pgsz);
+		BUG_ON(rx_pgsz != tx_pgsz);
+	}
 
 	return rx_pgsz;
 }
@@ -1384,7 +1396,8 @@ static int kvx_iommu_map(struct iommu_domain *domain,
 	struct kvx_iommu_domain *kvx_domain;
 	struct kvx_iommu_drvdata *iommu;
 	struct kvx_iommu_hw *iommu_hw[KVX_IOMMU_NB_TYPE];
-	int i, ret;
+	unsigned int i;
+	int ret;
 
 	kvx_domain = to_kvx_domain(domain);
 	iommu = kvx_domain->iommu;
@@ -1403,12 +1416,14 @@ static int kvx_iommu_map(struct iommu_domain *domain,
 		}
 	}
 
-	ret = map_page_in_tlb(iommu_hw, paddr, (dma_addr_t)iova,
-			      kvx_domain->asn, size);
-	if (ret) {
-		pr_err("%s: failed to map 0x%lx -> 0x%lx (err %d)\n",
-		       __func__, iova, (unsigned long)paddr, ret);
-		return ret;
+	for (i = 0; i < kvx_domain->num_asn; i++) {
+		ret = map_page_in_tlb(iommu_hw, paddr, (dma_addr_t)iova,
+				      kvx_domain->asn[i], size);
+		if (ret) {
+			pr_err("%s: failed to map 0x%lx -> 0x%lx (err %d)\n",
+			       __func__, iova, (unsigned long)paddr, ret);
+			return ret;
+		}
 	}
 
 	return 0;
@@ -1461,7 +1476,8 @@ static phys_addr_t kvx_iommu_iova_to_phys(struct iommu_domain *domain,
 	struct kvx_iommu_hw *iommu_hw;
 	struct kvx_iommu_tlb_entry cur;
 	struct kvx_iommu_tlb_entry entry;
-	int i, set, way;
+	unsigned int i, j;
+	int set, way;
 	phys_addr_t paddr;
 
 	kvx_domain = to_kvx_domain(domain);
@@ -1477,9 +1493,7 @@ static phys_addr_t kvx_iommu_iova_to_phys(struct iommu_domain *domain,
 	 */
 	iommu_hw = &kvx_domain->iommu->iommu_hw[KVX_IOMMU_RX];
 	entry.teh.pn  = iova >> KVX_IOMMU_PN_SHIFT;
-	entry.teh.asn = kvx_domain->asn;
 
-	paddr = 0;
 	for (i = 0; i < KVX_IOMMU_PS_NB; i++) {
 		entry.teh.ps = i;
 
@@ -1496,22 +1510,20 @@ static phys_addr_t kvx_iommu_iova_to_phys(struct iommu_domain *domain,
 
 		for (way = 0; way < iommu_hw->ways; way++) {
 			cur = iommu_hw->tlb_cache[set][way];
-			if ((cur.teh.pn == entry.teh.pn) &&
-			    (cur.teh.asn == entry.teh.asn) &&
-			    (cur.tel.es == KVX_IOMMU_ES_VALID)) {
+			if (cur.tel.es == KVX_IOMMU_ES_VALID && cur.teh.pn == entry.teh.pn) {
 				/* Get the frame number */
 				paddr = cur.tel.fn << KVX_IOMMU_PN_SHIFT;
 				/* Add the offset of the IOVA and we are done */
-				paddr |=
-					iova & (kvx_iommu_get_page_size[i] - 1);
-				/* No need to look another page size */
-				i = KVX_IOMMU_PS_NB;
-				break;
+				paddr |= iova & (kvx_iommu_get_page_size[i] - 1);
+
+				for (j = 0; j < kvx_domain->num_asn; j++)
+					if (cur.teh.asn == kvx_domain->asn[j])
+						return paddr;
 			}
 		}
 	}
 
-	return paddr;
+	return 0;
 }
 
 /**
@@ -1581,19 +1593,19 @@ static int kvx_iommu_of_xlate(struct device *dev,
 			      struct of_phandle_args *spec)
 {
 	struct platform_device *pdev;
-	int ret;
-	u32 asn;
+	int i, ret;
 
-	if (spec->args_count != 1) {
+	if (!spec->args_count) {
 		dev_err(dev, "ASN not provided\n");
 		return -EINVAL;
 	}
 
 	/* Set the ASN to the device */
-	asn = spec->args[0];
-	if (asn_is_invalid(asn)) {
-		dev_err(dev, "ASN %u is not valid\n", asn);
-		return -EINVAL;
+	for (i = 0; i < spec->args_count; i++) {
+		if (asn_is_invalid(spec->args[i])) {
+			dev_err(dev, "ASN %u is not valid\n", spec->args[i]);
+			return -EINVAL;
+		}
 	}
 
 	if (!dev_iommu_priv_get(dev)) {
@@ -1605,9 +1617,9 @@ static int kvx_iommu_of_xlate(struct device *dev,
 		dev_iommu_priv_set(dev, platform_get_drvdata(pdev));
 	}
 
-	ret = iommu_fwspec_add_ids(dev, &asn, 1);
+	ret = iommu_fwspec_add_ids(dev, spec->args, spec->args_count);
 	if (ret)
-		dev_err(dev, "Failed to set ASN %d\n", asn);
+		dev_err(dev, "Failed to add ASN\n");
 
 	return ret;
 }
