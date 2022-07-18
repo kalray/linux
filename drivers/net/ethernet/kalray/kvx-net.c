@@ -1825,6 +1825,28 @@ static void kvx_eth_reinit_task(struct work_struct *w)
 	kvx_eth_reinit(ndev->netdev);
 }
 
+void kvx_eth_qsfp_connect(struct kvx_qsfp *qsfp)
+{
+	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
+
+	ndev->cfg.restart_serdes = true;
+	kvx_setup_link(ndev);
+}
+
+void kvx_eth_qsfp_disconnect(struct kvx_qsfp *qsfp)
+{
+	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
+
+	del_timer_sync(&ndev->link_poll);
+	kvx_eth_reset_tx(ndev);
+	netif_carrier_off(ndev->netdev);
+}
+
+static struct kvx_qsfp_ops qsfp_ops = {
+	.connect    = kvx_eth_qsfp_connect,
+	.disconnect = kvx_eth_qsfp_disconnect,
+};
+
 /* kvx_eth_create_netdev() - Create new netdev
  * @pdev: Platform device
  * @dev: parent device
@@ -1874,6 +1896,10 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	ret = kvx_eth_netdev_parse_dt(pdev, ndev);
 	if (ret)
 		return NULL;
+
+	ret = kvx_qsfp_ops_register(ndev->qsfp, &qsfp_ops, ndev);
+	if (ret)
+		goto exit;
 
 	kvx_eth_netdev_set_hw_addr(ndev);
 
