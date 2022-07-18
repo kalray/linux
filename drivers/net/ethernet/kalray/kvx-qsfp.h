@@ -85,6 +85,10 @@
 #define QSFP_POLL_TIMER_IN_MS               500
 #define QSFP_DELAY_DATA_READY_IN_MS         2000
 
+#define kvx_qsfp_to_ops_data(qsfp, data_t) ((data_t *)qsfp->ops_data)
+
+struct kvx_qsfp;
+
 
 enum {
 	/* TX state */
@@ -120,6 +124,12 @@ struct kvx_qsfp_eeprom_cache {
 } __packed;
 
 
+struct kvx_qsfp_ops {
+	void (*connect)(struct kvx_qsfp *qsfp);
+	void (*disconnect)(struct kvx_qsfp *qsfp);
+};
+
+
 /** struct kvx_qsfp - QSFP driver private data
  * @dev: device structure
  * @i2c: i2c adapter structure
@@ -143,6 +153,8 @@ struct kvx_qsfp_eeprom_cache {
  * @modprs_change: module presence change
  * @cable_connected: true if qsfp cable is plugged in
  * @monitor_enabled: true if monitoring is enabled
+ * @ops: callbacks for events such as cable connect/disconnect
+ * @ops_data: data structure passed to the @ops callbacks
  */
 struct kvx_qsfp {
 	struct device *dev;
@@ -162,6 +174,8 @@ struct kvx_qsfp {
 	bool modprs_change;
 	bool cable_connected;
 	bool monitor_enabled;
+	struct kvx_qsfp_ops *ops;
+	void *ops_data;
 };
 
 
@@ -177,5 +191,6 @@ bool is_cable_copper(struct kvx_qsfp *qsfp);
 u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp);
 u8 kvx_qsfp_transceiver_compliance_code(struct kvx_qsfp *qsfp);
 u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp);
+int kvx_qsfp_ops_register(struct kvx_qsfp *qsfp, struct kvx_qsfp_ops *ops, void *ops_data);
 
 #endif /* NET_KVX_QSFP_H */

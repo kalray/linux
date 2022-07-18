@@ -855,6 +855,14 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 	if (qsfp->modprs_change) {
 		qsfp->cable_connected = gpiod_get_value_cansleep(qsfp->gpio_modprs);
 		qsfp->modprs_change = false;
+
+		/* calling either connect/disconect callback */
+		if (qsfp->ops) {
+			if (qsfp->cable_connected)
+				qsfp->ops->connect(qsfp);
+			else
+				qsfp->ops->disconnect(qsfp);
+		}
 	}
 
 	switch (qsfp->sm_state) {
@@ -994,6 +1002,25 @@ static struct attribute *sysfs_attrs[] = {
 static struct attribute_group sysfs_attr_group = {
 	.attrs = sysfs_attrs,
 };
+
+int kvx_qsfp_ops_register(struct kvx_qsfp *qsfp, struct kvx_qsfp_ops *ops,
+			  void *ops_data)
+{
+	if (!qsfp)
+		return -EINVAL;
+
+	if (!ops->connect)
+		dev_warn(qsfp->dev, "connect callback is not defined\n");
+
+	if (!ops->disconnect)
+		dev_warn(qsfp->dev, "disconnect callback is not defined\n");
+
+	qsfp->ops = ops;
+	qsfp->ops_data = ops_data;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(kvx_qsfp_ops_register);
 
 static const struct of_device_id kvx_qsfp_of_match[] = {
 	{ .compatible = "kalray,qsfp", },
