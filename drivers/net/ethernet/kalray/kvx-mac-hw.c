@@ -127,6 +127,23 @@ void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	mutex_unlock(&hw->mac_reset_lock);
 }
 
+void kvx_eth_mac_tx_flush(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
+			  bool en)
+{
+	int i, lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	u32 off;
+
+	for (i = cfg->id; i < lane_nb; i++) {
+		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
+		updatel_bits(hw, MAC, off + EMAC_CMD_CFG_OFFSET,
+			     EMAC_CMD_CFG_TX_FLUSH_MASK,
+			     (en ? EMAC_CMD_CFG_TX_FLUSH_MASK : 0));
+		updatel_bits(hw, MAC, off + PMAC_CMD_CFG_OFFSET,
+			     PMAC_CMD_CFG_TX_FLUSH_MASK,
+			     (en ? PMAC_CMD_CFG_TX_FLUSH_MASK : 0));
+	}
+}
+
 /**
  * kvx_eth_emac_init() - Configure express MAC
  */
@@ -155,8 +172,8 @@ static int kvx_eth_emac_init(struct kvx_eth_hw *hw,
 		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
 		kvx_mac_writel(hw, val, off + EMAC_CMD_CFG_OFFSET);
 		/* TX flush is not self-cleared -> restore it (PFC features) */
-		val &= ~EMAC_CMD_CFG_TX_FLUSH_MASK;
-		kvx_mac_writel(hw, val, off + EMAC_CMD_CFG_OFFSET);
+		updatel_bits(hw, MAC, off + EMAC_CMD_CFG_OFFSET,
+			     EMAC_CMD_CFG_TX_FLUSH_MASK, 0);
 
 		/* Disable MAC auto Xon/Xoff gen and store and forward mode */
 		val = RX_FIFO_SECTION_FULL_THRES << EMAC_RX_FIFO_SECTION_FULL_SHIFT;
@@ -260,6 +277,10 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 			val |= PMAC_CMD_CFG_PROMIS_EN_MASK;
 		kvx_mac_writel(hw, val, off + PMAC_CMD_CFG_OFFSET);
 
+		/* TX flush is not self-cleared -> restore it */
+		updatel_bits(hw, MAC, off + PMAC_CMD_CFG_OFFSET,
+			     PMAC_CMD_CFG_TX_FLUSH_MASK, 0);
+
 		/* Disable MAC auto Xon/Xoff gen and store and forward mode */
 		val = RX_FIFO_SECTION_FULL_THRES <<
 			PMAC_RX_FIFO_SECTION_FULL_SHIFT;
@@ -281,10 +302,6 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 
 		kvx_mac_writel(hw, hw->max_frame_size,
 			       off + PMAC_FRM_LEN_OFFSET);
-
-		/* TX flush is not self-cleared -> restore it */
-		updatel_bits(hw, MAC, off + PMAC_CMD_CFG_OFFSET,
-			     PMAC_CMD_CFG_TX_FLUSH_MASK, 0);
 	}
 
 	return ret;
