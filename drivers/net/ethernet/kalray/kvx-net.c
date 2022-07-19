@@ -157,6 +157,8 @@ static void kvx_eth_poll_link(struct timer_list *t)
 		if (link_los)
 			phylink_mac_change(ndev->phylink, false);
 	}
+	if (!link)
+		kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
 
 exit:
 	mod_timer(t, jiffies + msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
@@ -1996,6 +1998,7 @@ static void kvx_phylink_mac_link_down(struct phylink_config *config,
 	netdev_dbg(netdev, "%s carrier: %d\n", __func__,
 		   netif_carrier_ok(netdev));
 	cancel_delayed_work_sync(&ndev->qsfp_poll);
+	kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
 	for (qidx = 0; qidx < ndev->dma_cfg.tx_chan_id.nb; qidx++) {
 		txr = &ndev->tx_ring[qidx];
 		t = jiffies + msecs_to_jiffies(10);
@@ -2017,6 +2020,7 @@ static void kvx_phylink_mac_link_up(struct phylink_config *config,
 	struct net_device *netdev = to_net_dev(config->dev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
+	kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, false);
 	netif_tx_start_all_queues(netdev);
 	mod_delayed_work(system_wq, &ndev->qsfp_poll,
 			 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
