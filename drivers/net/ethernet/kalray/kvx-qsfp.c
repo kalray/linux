@@ -591,6 +591,18 @@ bool is_cable_copper(struct kvx_qsfp *qsfp)
 }
 EXPORT_SYMBOL_GPL(is_cable_copper);
 
+/** is_cable_passive_copper - check whether cable is passive copper
+ * @qsfp: qsfp prvdata
+ * Returns true if passive copper
+ */
+bool is_cable_passive_copper(struct kvx_qsfp *qsfp)
+{
+	u8 tech = kvx_qsfp_transceiver_tech(qsfp);
+
+	return  (tech == SFF8636_TRANS_COPPER_PAS_EQUAL ||
+		 tech == SFF8636_TRANS_COPPER_PAS_UNEQUAL);
+}
+
 /** kvx_qsfp_print_module_status - print module status (debug)
  * @qsfp: qsfp prvdata
  * @ee: eeprom status data
@@ -616,7 +628,7 @@ static void kvx_qsfp_print_module_status(struct kvx_qsfp *qsfp)
 		   sfp_status & SFP_STATUS_TX_FAULT,
 		   sfp_status & SFP_STATUS_RX_LOS);
 
-	dev_dbg(qsfp->dev, "Sfp Tx_dis: 0x%x\n", ee[SFF8636_TX_DIS_OFFSET]);
+	dev_dbg(qsfp->dev, "Sfp Tx_dis: 0x%x\n", ee[SFF8636_TX_DISABLE_OFFSET]);
 	dev_dbg(qsfp->dev, "Sfp Rx_rate_select: 0x%x\n",
 		   ee[SFF8636_RX_RATE_SELECT_OFFSET]);
 	dev_dbg(qsfp->dev, "Sfp Tx_rate_select: 0x%x\n",
@@ -681,17 +693,41 @@ EXPORT_SYMBOL_GPL(kvx_qsfp_reset);
  * @qsfp: qsfp prvdata
  * @op: QSFP_TX_ENABLE or QSFP_TX_DISABLE
  */
-void kvx_qsfp_set_tx_state(struct kvx_qsfp *qsfp, int op)
+void kvx_qsfp_set_tx_state(struct kvx_qsfp *qsfp, u8 op)
 {
-	if (op != QSFP_TX_ENABLE && op != QSFP_TX_DISABLE) {
-		dev_err(qsfp->dev, "Incorrect operand value in %s\n", __func__);
+	int ret;
+	u8 val, tx_dis = SFF8636_TX_DISABLE_TX1 | SFF8636_TX_DISABLE_TX2
+		       | SFF8636_TX_DISABLE_TX3 | SFF8636_TX_DISABLE_TX4;
+
+	/* Tx cannot be enabled/disabled if cable is passive copper */
+	if (is_cable_passive_copper(qsfp))
+		return;
+
+	ret = kvx_qsfp_eeprom_read(qsfp, &val, 0, SFF8636_TX_DISABLE_OFFSET,
+				   sizeof(val));
+	if (ret != sizeof(val)) {
+		dev_err(qsfp->dev, "eeprom read failed\n");
 		return;
 	}
 
-	if (qsfp->gpio_tx_disable) {
-		gpiod_set_value(qsfp->gpio_tx_disable, op);
-		dev_info(qsfp->dev, "TX is %sabled\n", op ? "dis" : "en");
+	switch (op) {
+	case QSFP_TX_DISABLE:
+		val |= tx_dis;
+		break;
+	case QSFP_TX_ENABLE:
+		val &= ~tx_dis;
+		break;
+	default:
+		dev_err(qsfp->dev, "Incorrect operand value %i in %s\n", op, __func__);
+		return;
 	}
+
+	ret = kvx_qsfp_eeprom_write(qsfp, &val, 0, SFF8636_TX_DISABLE_OFFSET, sizeof(val));
+	if (ret != sizeof(val)) {
+		dev_err(qsfp->dev, "TX %sable failed (eeprom write failed)\n", op ? "dis" : "en");
+		return;
+	}
+	dev_info(qsfp->dev, "TX is %sabled\n", op ? "dis" : "en");
 }
 
 static bool is_qsfp_module(u8 phys_id)
@@ -872,6 +908,7 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		if (is_cable_connected(qsfp)) {
 			dev_err(qsfp->dev,
 				"qsfp state machine is in an error state\n");
+			kvx_qsfp_set_tx_state(qsfp, QSFP_TX_DISABLE);
 			break;
 		}
 		next_state = QSFP_S_DOWN;
@@ -880,7 +917,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		if (!is_cable_connected(qsfp)) {
 			cancel_delayed_work_sync(&qsfp->qsfp_poll);
 			qsfp->monitor_enabled = false;
-			kvx_qsfp_set_tx_state(qsfp, QSFP_TX_DISABLE);
 			dev_info(qsfp->dev, "Cable unplugged\n");
 			break;
 		}
@@ -962,7 +998,7 @@ static ssize_t sysfs_monitor_show(struct kobject *kobj,
 						    dev.kobj);
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
 
-	return scnprintf(buf, 2, "%i\n", qsfp->monitor_enabled);
+	return sprintf(buf, "%i\n", qsfp->monitor_enabled);
 }
 
 static ssize_t sysfs_monitor_store(struct kobject *kobj, struct kobj_attribute *a,
@@ -987,15 +1023,56 @@ static ssize_t sysfs_monitor_store(struct kobject *kobj, struct kobj_attribute *
 	return count;
 }
 
+static ssize_t sysfs_tx_disable_show(struct kobject *kobj,
+				 struct kobj_attribute *attr, char *buf)
+{
+	struct platform_device *pdev = container_of(kobj, struct platform_device,
+						    dev.kobj);
+	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
+	u8 data;
+	int ret;
+
+	ret = kvx_qsfp_eeprom_read(qsfp, &data, 0, SFF8636_TX_DISABLE_OFFSET,
+				   sizeof(data));
+	if (ret != sizeof(data)) {
+		dev_err(qsfp->dev, "eeprom read failed\n");
+		return ret;
+	}
+
+	data &= (SFF8636_TX_DISABLE_TX1 | SFF8636_TX_DISABLE_TX2
+		 | SFF8636_TX_DISABLE_TX3 | SFF8636_TX_DISABLE_TX4);
+	return sprintf(buf, "%i\n", data);
+}
+
+static ssize_t sysfs_tx_disable_store(struct kobject *kobj, struct kobj_attribute *a,
+				const char *buf, size_t count)
+{
+	struct platform_device *pdev = container_of(kobj, struct platform_device,
+						    dev.kobj);
+	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
+	int ret;
+	u32 tx_disable;
+
+	ret = kstrtouint(buf, 0, &tx_disable);
+	if (ret)
+		return ret;
+
+	kvx_qsfp_set_tx_state(qsfp, tx_disable);
+
+	return count;
+}
+
 static struct kobj_attribute sysfs_attr_qsfp_reset =
 	__ATTR(reset, 0200, NULL, sysfs_reset_store);
 static struct kobj_attribute sysfs_attr_qsfp_monitor =
 	__ATTR(monitor, 0664, sysfs_monitor_show, sysfs_monitor_store);
-
+static struct kobj_attribute sysfs_attr_qsfp_tx_disable =
+	__ATTR(tx_disable, 0664, sysfs_tx_disable_show, sysfs_tx_disable_store);
 
 static struct attribute *sysfs_attrs[] = {
 	&sysfs_attr_qsfp_reset.attr,
 	&sysfs_attr_qsfp_monitor.attr,
+	&sysfs_attr_qsfp_tx_disable.attr,
 	NULL,
 };
 
