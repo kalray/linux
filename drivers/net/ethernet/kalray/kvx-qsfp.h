@@ -38,7 +38,11 @@
 #define SFF8636_STATUS_OFFSET               1
 #define SFF8636_STATUS_DATA_NOT_READY       BIT(0)
 #define SFF8636_STATUS_FLAT_MEM             BIT(2)
-#define SFF8636_TX_DIS_OFFSET               86
+#define SFF8636_TX_DISABLE_OFFSET           86
+#define SFF8636_TX_DISABLE_TX1              BIT(0)
+#define SFF8636_TX_DISABLE_TX2              BIT(1)
+#define SFF8636_TX_DISABLE_TX3              BIT(2)
+#define SFF8636_TX_DISABLE_TX4              BIT(3)
 #define SFF8636_RX_RATE_SELECT_OFFSET       87
 #define SFF8636_TX_RATE_SELECT_OFFSET       88
 #define SFF8636_RX_APP_SELECT_OFFSET        89
