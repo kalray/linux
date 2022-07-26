@@ -16,6 +16,15 @@ config GENERIC_PHY
 	  phy users can obtain reference to the PHY. All the users of this
 	  framework should select this config.
 
+config GENERIC_PHY_USB
+	bool "Generic USB PHY"
+	select GENERIC_PHY
+	select USB_PHY
+	help
+	  Enable this to support generic USB PHY that are either built-in
+	  with USB IP or which are autonomous and does only require to be
+	  powered-on and driven out of reset.
+
 config GENERIC_PHY_MIPI_DPHY
 	bool
 	help
