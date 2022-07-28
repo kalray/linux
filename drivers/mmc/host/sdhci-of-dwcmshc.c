@@ -279,6 +279,12 @@ static const struct sdhci_pltfm_data sdhci_dwcmshc_pdata = {
 	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN | SDHCI_QUIRK2_BROKEN_HS200 | SDHCI_QUIRK2_NO_1_8_V,
 };
 
+static const struct sdhci_pltfm_data sdhci_dwcmshc_kalray_kv31_pdata = {
+	.ops = &sdhci_dwcmshc_ops,
+	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN | SDHCI_QUIRK_BROKEN_TIMEOUT_VAL,
+	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN | SDHCI_QUIRK2_BROKEN_HS200 | SDHCI_QUIRK2_NO_1_8_V | SDHCI_QUIRK2_DISABLE_HW_TIMEOUT,
+};
+
 static const struct sdhci_pltfm_data sdhci_dwcmshc_rk3568_pdata = {
 	.ops = &sdhci_dwcmshc_rk3568_ops,
 	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN |
@@ -329,6 +335,10 @@ static const struct of_device_id sdhci_dwcmshc_dt_ids[] = {
 	{
 		.compatible = "snps,dwcmshc-sdhci",
 		.data = &sdhci_dwcmshc_pdata,
+	},
+	{
+		.compatible = "kalray,kv3-1-dwcmshc-sdhci",
+		.data = &sdhci_dwcmshc_kalray_kv31_pdata,
 	},
 	{},
 };
