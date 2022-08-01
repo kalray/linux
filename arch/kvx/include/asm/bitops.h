@@ -112,7 +112,6 @@ static inline unsigned int __arch_hweight8(unsigned int w)
 #include <asm-generic/bitops/lock.h>
 #include <asm-generic/bitops/le.h>
 #include <asm-generic/bitops/ext2-atomic.h>
-#include <asm-generic/bitops/find.h>
 
 #endif
 
