@@ -11,7 +11,6 @@
 #include <linux/sched.h>
 #include <linux/audit.h>
 #include <linux/irqflags.h>
-#include <linux/tracehook.h>
 #include <linux/thread_info.h>
 #include <linux/context_tracking.h>
 #include <linux/uaccess.h>
@@ -348,7 +347,7 @@ int do_syscall_trace_enter(struct pt_regs *regs, unsigned long syscall)
 	context_tracking_user_exit();
 #endif
 	if (test_thread_flag(TIF_SYSCALL_TRACE))
-		ret = tracehook_report_syscall_entry(regs);
+		ret = ptrace_report_syscall_entry(regs);
 
 #ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
 	if (test_thread_flag(TIF_SYSCALL_TRACEPOINT))
@@ -363,7 +362,7 @@ int do_syscall_trace_enter(struct pt_regs *regs, unsigned long syscall)
 void do_syscall_trace_exit(struct pt_regs *regs)
 {
 	if (test_thread_flag(TIF_SYSCALL_TRACE))
-		tracehook_report_syscall_exit(regs, 0);
+		ptrace_report_syscall_exit(regs, 0);
 
 	audit_syscall_exit(regs);
 
