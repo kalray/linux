@@ -304,7 +304,7 @@ const struct sysfs_ops s##_sysfs_ops = { \
 }; \
 struct kobj_type s##_ktype = { \
 	.sysfs_ops = &s##_sysfs_ops, \
-	.default_attrs = s##_attrs, \
+	.default_groups = s##_groups, \
 }
 
 #define FIELD_RW_ENTRY(s, f, min, max) \

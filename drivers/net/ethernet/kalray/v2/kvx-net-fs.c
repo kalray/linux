@@ -75,6 +75,7 @@ static struct attribute *lb_rfs_f_attrs[] = {
 	&lb_rfs_f_seed_part_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(lb_rfs_f);
 SYSFS_TYPES(lb_rfs_f);
 
 DECLARE_SYSFS_ENTRY(tx_stage_one_f);
@@ -85,6 +86,7 @@ static struct attribute *tx_stage_one_f_attrs[] = {
 	&tx_stage_one_f_config_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_stage_one_f);
 SYSFS_TYPES(tx_stage_one_f);
 DECLARE_SYSFS_ENTRY(tx_stage_two_f);
 FIELD_RW_ENTRY(tx_stage_two_f, drop_disable, 0, 0xF);
@@ -100,6 +102,7 @@ static struct attribute *tx_stage_two_f_attrs[] = {
 	&tx_stage_two_f_drop_cnt_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_stage_two_f);
 SYSFS_TYPES(tx_stage_two_f);
 
 DECLARE_SYSFS_ENTRY(tx_stage_two_wmark_f);
@@ -108,6 +111,7 @@ static struct attribute *tx_stage_two_wmark_f_attrs[] = {
 	&tx_stage_two_wmark_f_wmark_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_stage_two_wmark_f);
 SYSFS_TYPES(tx_stage_two_wmark_f);
 
 DECLARE_SYSFS_ENTRY(tx_stage_two_drop_status_f);
@@ -116,12 +120,14 @@ static struct attribute *tx_stage_two_drop_status_f_attrs[] = {
 	&tx_stage_two_drop_status_f_drop_status_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_stage_two_drop_status_f);
 SYSFS_TYPES(tx_stage_two_drop_status_f);
 
 DECLARE_SYSFS_ENTRY(tx_pfc_f);
 static struct attribute *tx_pfc_f_attrs[] = {
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_pfc_f);
 SYSFS_TYPES(tx_pfc_f);
 
 DECLARE_SYSFS_ENTRY(tx_pfc_xoff_subsc_f);
@@ -130,6 +136,7 @@ static struct attribute *tx_pfc_xoff_subsc_f_attrs[] = {
 	&tx_pfc_xoff_subsc_f_xoff_subsc_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_pfc_xoff_subsc_f);
 SYSFS_TYPES(tx_pfc_xoff_subsc_f);
 
 DECLARE_SYSFS_ENTRY(tx_exp_npre_f);
@@ -138,6 +145,7 @@ static struct attribute *tx_exp_npre_f_attrs[] = {
 	&tx_exp_npre_f_config_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_exp_npre_f);
 SYSFS_TYPES(tx_exp_npre_f);
 
 DECLARE_SYSFS_ENTRY(tx_pre_pbdwrr_f);
@@ -146,6 +154,7 @@ static struct attribute *tx_pre_pbdwrr_f_attrs[] = {
 	&tx_pre_pbdwrr_f_config_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_pre_pbdwrr_f);
 SYSFS_TYPES(tx_pre_pbdwrr_f);
 
 DECLARE_SYSFS_ENTRY(tx_pre_pbdwrr_priority_f);
@@ -154,6 +163,7 @@ static struct attribute *tx_pre_pbdwrr_priority_f_attrs[] = {
 	&tx_pre_pbdwrr_priority_f_priority_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_pre_pbdwrr_priority_f);
 SYSFS_TYPES(tx_pre_pbdwrr_priority_f);
 
 DECLARE_SYSFS_ENTRY(tx_pre_pbdwrr_quantum_f);
@@ -162,6 +172,7 @@ static struct attribute *tx_pre_pbdwrr_quantum_f_attrs[] = {
 	&tx_pre_pbdwrr_quantum_f_quantum_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_pre_pbdwrr_quantum_f);
 SYSFS_TYPES(tx_pre_pbdwrr_quantum_f);
 
 DECLARE_SYSFS_ENTRY(tx_exp_pbdwrr_f);
@@ -170,6 +181,7 @@ static struct attribute *tx_exp_pbdwrr_f_attrs[] = {
 	&tx_exp_pbdwrr_f_config_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_exp_pbdwrr_f);
 SYSFS_TYPES(tx_exp_pbdwrr_f);
 
 DECLARE_SYSFS_ENTRY(tx_exp_pbdwrr_priority_f);
@@ -178,6 +190,7 @@ static struct attribute *tx_exp_pbdwrr_priority_f_attrs[] = {
 	&tx_exp_pbdwrr_priority_f_priority_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_exp_pbdwrr_priority_f);
 SYSFS_TYPES(tx_exp_pbdwrr_priority_f);
 
 DECLARE_SYSFS_ENTRY(tx_exp_pbdwrr_quantum_f);
@@ -186,6 +199,7 @@ static struct attribute *tx_exp_pbdwrr_quantum_f_attrs[] = {
 	&tx_exp_pbdwrr_quantum_f_quantum_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_exp_pbdwrr_quantum_f);
 SYSFS_TYPES(tx_exp_pbdwrr_quantum_f);
 DECLARE_SYSFS_ENTRY(tx_tdm_f);
 FIELD_RW_ENTRY(tx_tdm_f, fcs, 0, 0xFF);
@@ -197,6 +211,7 @@ static struct attribute *tx_tdm_f_attrs[] = {
 	&tx_tdm_f_config_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(tx_tdm_f);
 SYSFS_TYPES(tx_tdm_f);
 
 DECLARE_SYSFS_ENTRY(lb_cv2_f);
@@ -221,6 +236,7 @@ static struct attribute *lb_cv2_f_attrs[] = {
 	&lb_cv2_f_keep_all_crc_error_pkt_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(lb_cv2_f);
 SYSFS_TYPES(lb_cv2_f);
 
 DECLARE_SYSFS_ENTRY(rx_dlv_pfc_f);
@@ -230,6 +246,7 @@ static struct attribute *rx_dlv_pfc_f_attrs[] = {
 	&rx_dlv_pfc_f_total_drop_cnt_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(rx_dlv_pfc_f);
 SYSFS_TYPES(rx_dlv_pfc_f);
 
 DECLARE_SYSFS_ENTRY(lut_cv2_f);
@@ -239,6 +256,7 @@ static struct attribute *lut_cv2_f_attrs[] = {
 	&lut_cv2_f_rss_enable_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(lut_cv2_f);
 SYSFS_TYPES(lut_cv2_f);
 
 DECLARE_SYSFS_ENTRY(parser_cv2_f);
@@ -259,6 +277,7 @@ static struct attribute *parser_cv2_f_attrs[] = {
 	&parser_cv2_f_status_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(parser_cv2_f);
 SYSFS_TYPES(parser_cv2_f);
 
 static struct kset *lb_cv2_kset;
