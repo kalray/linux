@@ -47,7 +47,7 @@ const struct sysfs_ops s##_sysfs_ops = { \
 }; \
 struct kobj_type s##_ktype = { \
 	.sysfs_ops = &s##_sysfs_ops, \
-	.default_attrs = s##_attrs, \
+	.default_groups = s##_groups, \
 }
 
 #define FIELD_COEF_ENTRY(f, min, max) \
@@ -84,6 +84,9 @@ static struct attribute *coef_attrs[] = {
 	&coef_main_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(coef);
+
 SYSFS_TYPES(coef);
 
 static ssize_t eom_hit_cnt_read(struct file *filp, struct kobject *kobj,

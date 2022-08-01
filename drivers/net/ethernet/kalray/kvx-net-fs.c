@@ -22,12 +22,16 @@ static struct attribute *mac_f_attrs[] = {
 	&mac_f_pfc_mode_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(mac_f);
 SYSFS_TYPES(mac_f);
 
 DECLARE_SYSFS_ENTRY(phy_f);
 static struct attribute *phy_f_attrs[] = {
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(phy_f);
 SYSFS_TYPES(phy_f);
 
 DECLARE_SYSFS_ENTRY(phy_param);
@@ -47,6 +51,8 @@ static struct attribute *phy_param_attrs[] = {
 	&phy_param_ovrd_en_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(phy_param);
 SYSFS_TYPES(phy_param);
 
 DECLARE_SYSFS_ENTRY(rx_bert_param);
@@ -60,6 +66,8 @@ static struct attribute *rx_bert_param_attrs[] = {
 	&rx_bert_param_rx_mode_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(rx_bert_param);
 SYSFS_TYPES(rx_bert_param);
 
 DECLARE_SYSFS_ENTRY(tx_bert_param);
@@ -71,6 +79,8 @@ static struct attribute *tx_bert_param_attrs[] = {
 	&tx_bert_param_tx_mode_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(tx_bert_param);
 SYSFS_TYPES(tx_bert_param);
 
 DECLARE_SYSFS_ENTRY(lut_entry_f);
@@ -80,6 +90,8 @@ static struct attribute *lut_entry_f_attrs[] = {
 	&lut_entry_f_dt_id_attr.attr,
 	NULL,
 };
+
+ATTRIBUTE_GROUPS(lut_entry_f);
 SYSFS_TYPES(lut_entry_f);
 
 /**
