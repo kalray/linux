@@ -1751,17 +1751,19 @@ static int kvx_iommu_of_xlate(struct device *dev,
 
 static const struct iommu_ops kvx_iommu_ops = {
 	.domain_alloc = kvx_iommu_domain_alloc,
-	.domain_free = kvx_iommu_domain_free,
-	.attach_dev = kvx_iommu_attach_dev,
-	.detach_dev = kvx_iommu_detach_dev,
-	.map = kvx_iommu_map,
-	.unmap = kvx_iommu_unmap,
 	.probe_device = kvx_iommu_probe_device,
 	.release_device = kvx_iommu_release_device,
-	.iova_to_phys = kvx_iommu_iova_to_phys,
 	.device_group = kvx_iommu_device_group,
 	.pgsize_bitmap = KVX_IOMMU_SUPPORTED_SIZE,
 	.of_xlate = kvx_iommu_of_xlate,
+	.default_domain_ops = &(const struct iommu_domain_ops) {
+		.attach_dev = kvx_iommu_attach_dev,
+		.detach_dev = kvx_iommu_detach_dev,
+		.map = kvx_iommu_map,
+		.unmap = kvx_iommu_unmap,
+		.iova_to_phys = kvx_iommu_iova_to_phys,
+		.free = kvx_iommu_domain_free,
+	}
 };
 
 static const struct kalray_iommu_match_data iommu = { .type = IOMMU };
