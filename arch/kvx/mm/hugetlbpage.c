@@ -136,8 +136,8 @@ void huge_ptep_set_wrprotect(struct mm_struct *mm,
 }
 
 
-void huge_ptep_clear_flush(struct vm_area_struct *vma,
-			   unsigned long addr, pte_t *ptep)
+pte_t huge_ptep_clear_flush(struct vm_area_struct *vma,
+			    unsigned long addr, pte_t *ptep)
 {
 	unsigned int nr_cont, i;
 	struct mm_struct *mm;
@@ -156,6 +156,8 @@ void huge_ptep_clear_flush(struct vm_area_struct *vma,
 
 	if (flush)
 		flush_tlb_page(vma, addr);
+
+	return pte_orig;
 }
 
 pte_t arch_make_huge_pte(pte_t entry, unsigned int shift,
