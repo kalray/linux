@@ -141,7 +141,9 @@ kvx_eth_get_strings(struct net_device *netdev, u32 stringset, u8 *data)
 }
 
 static void
-kvx_eth_get_ringparam(struct net_device *netdev, struct ethtool_ringparam *ring)
+kvx_eth_get_ringparam(struct net_device *netdev, struct ethtool_ringparam *ring,
+		      struct kernel_ethtool_ringparam *kernel_ring,
+		      struct netlink_ext_ack *extack)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_ring *txr = &ndev->tx_ring[0];
