@@ -98,19 +98,22 @@ void start_thread(struct pt_regs *regs,
 	regs->sps |= (1 << KVX_SFR_PS_PL_SHIFT);
 }
 
-int copy_thread(unsigned long clone_flags, unsigned long usp,
-		unsigned long kthread_arg, struct task_struct *p,
-		unsigned long tls)
+int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 {
 	struct pt_regs *regs, *childregs = task_pt_regs(p);
+	unsigned long clone_flags = args->flags;
+	unsigned long usp = args->stack;
+	unsigned long tls = args->tls;
 
 	/* p->thread holds context to be restored by __switch_to() */
-	if (unlikely(p->flags & PF_KTHREAD)) {
+	if (unlikely(args->fn)) {
 		/* Kernel thread */
 		memset(childregs, 0, sizeof(struct pt_regs));
 
-		p->thread.ctx_switch.r20 = usp; /* fn */
-		p->thread.ctx_switch.r21 = kthread_arg;
+		p->thread.ctx_switch.r20 = (uint64_t)args->fn;
+		p->thread.ctx_switch.r21 = (uint64_t)args->fn_arg;
+		p->thread.ctx_switch.ra =
+				(unsigned long) ret_from_kernel_thread;
 	} else {
 		regs = current_pt_regs();
 
