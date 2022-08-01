@@ -148,7 +148,7 @@ static void spi_mem_finish_transfer(struct dw_spi_kvx *dws_kvx)
 {
 	struct dw_spi *dws = &dws_kvx->dws;
 
-	spi_mask_intr(dws, 0xff);
+	dw_spi_mask_intr(dws, 0xff);
 	dws_kvx->comp_status = 0;
 	complete(&dws_kvx->comp);
 }
@@ -190,7 +190,7 @@ static irqreturn_t dw_spi_mem_irq(struct dw_spi *dws)
 		return IRQ_HANDLED;
 	}
 
-	if (irq_status & SPI_INT_RXFI) {
+	if (irq_status & DW_SPI_INT_RXFI) {
 		/* This is a spurious IRQ, should not happen */
 		if (dws_kvx->mem_op->data.dir != SPI_MEM_DATA_IN) {
 			pr_err("Unexpected RX full irq\n");
@@ -199,7 +199,7 @@ static irqreturn_t dw_spi_mem_irq(struct dw_spi *dws)
 		dw_spi_mem_handle_irq(dws_kvx);
 	}
 
-	if (irq_status & SPI_INT_TXEI) {
+	if (irq_status & DW_SPI_INT_TXEI) {
 		/* This is a spurious IRQ, should not happen */
 		if (dws_kvx->mem_op->data.dir == SPI_MEM_DATA_IN) {
 			pr_err("Unexpected TX empty irq\n");
@@ -243,24 +243,24 @@ static void dw_spi_mem_start_std_op(struct dw_spi_kvx *dws_kvx,
 	/* This is the amount of data that will need to be read from the FIFO */
 	dws_kvx->cur_xfer_size = xfer_size;
 
-	spi_enable_chip(dws, 0);
-	spi_mask_intr(dws, 0xff);
+	dw_spi_enable_chip(dws, 0);
+	dw_spi_mask_intr(dws, 0xff);
 
 	/* When reading, we only care about the receive fifo being empty */
 	if (op->data.dir == SPI_MEM_DATA_IN) {
 		/* Set RX fifo level to trigger a rx fifo full interrupt */
 		dw_writel(dws, DW_SPI_RXFTLR, (xfer_size - 1));
 
-		spi_umask_intr(dws, SPI_INT_RXFI);
+		dw_spi_umask_intr(dws, DW_SPI_INT_RXFI);
 	} else {
 		/* We will refill the tx on tx empty fifo interrupt */
-		spi_umask_intr(dws, SPI_INT_TXEI);
+		dw_spi_umask_intr(dws, DW_SPI_INT_TXEI);
 	}
 
 	/* Set TXFTL start fifo level*/
 	dw_writel(dws, DW_SPI_TXFTLR, (xfer_size - 1) << SPI_TXFTLR_FTHR_OFFSET);
 
-	spi_enable_chip(dws, 1);
+	dw_spi_enable_chip(dws, 1);
 
 	dw_write_io_reg(dws, DW_SPI_DR, op->cmd.opcode);
 
@@ -295,9 +295,9 @@ static void dw_spi_mem_exec_std(struct dw_spi_kvx *dws_kvx,
 	dw_spi_mem_reset_xfer(dws_kvx, op);
 
 	if (op->data.dir == SPI_MEM_DATA_IN)
-		cfg.tmode = SPI_TMOD_TR;
+		cfg.tmode = DW_SPI_CTRLR0_TMOD_TR;
 	else
-		cfg.tmode = SPI_TMOD_TO;
+		cfg.tmode = DW_SPI_CTRLR0_TMOD_TO;
 
 	cfg.spi_frf = SPI_SPI_FRF_STANDARD;
 	cfg.freq = spi->max_speed_hz;
@@ -305,9 +305,9 @@ static void dw_spi_mem_exec_std(struct dw_spi_kvx *dws_kvx,
 	dws_kvx->bytes_per_word = 1;
 	cfg.dfs = dws_kvx->bytes_per_word * 8;
 
-	spi_enable_chip(dws, 0);
+	dw_spi_enable_chip(dws, 0);
 	dw_spi_update_config(dws, spi, &cfg);
-	spi_enable_chip(dws, 1);
+	dw_spi_enable_chip(dws, 1);
 
 	dw_spi_mem_start_std_op(dws_kvx, op);
 }
@@ -327,9 +327,9 @@ static void dw_spi_mem_setup_enhanced_xfer(struct dw_spi_kvx *dws_kvx,
 	dws_kvx->enhanced_xfer = 1;
 
 	if (op->data.dir == SPI_MEM_DATA_IN)
-		cfg.tmode = SPI_TMOD_RO;
+		cfg.tmode = DW_SPI_CTRLR0_TMOD_RO;
 	else
-		cfg.tmode = SPI_TMOD_TO;
+		cfg.tmode = DW_SPI_CTRLR0_TMOD_TO;
 
 	if (op->data.buswidth == 8)
 		cfg.spi_frf = SPI_SPI_FRF_OCTAL;
@@ -367,13 +367,13 @@ static void dw_spi_mem_setup_enhanced_xfer(struct dw_spi_kvx *dws_kvx,
 		    (wait_cycles << SPI_CTRL0_WAIT_CYCLES_OFFSET) |
 		    (SPI_SPI_CTRL0_INST_L8 << SPI_CTRL0_INST_L_OFFSET);
 
-	spi_enable_chip(dws, 0);
+	dw_spi_enable_chip(dws, 0);
 
 	dw_spi_update_config(dws, spi, &cfg);
 
 	dw_writel(dws, DW_SPI_SPI_CTRL0, spi_ctrl0);
 
-	spi_enable_chip(dws, 1);
+	dw_spi_enable_chip(dws, 1);
 }
 
 static void dw_spi_mem_start_enhanced_op(struct dw_spi_kvx *dws_kvx,
@@ -384,8 +384,8 @@ static void dw_spi_mem_start_enhanced_op(struct dw_spi_kvx *dws_kvx,
 	unsigned long flags;
 
 	dws_kvx->cur_xfer_size = op->data.nbytes;
-	spi_enable_chip(dws, 0);
-	spi_mask_intr(dws, 0xff);
+	dw_spi_enable_chip(dws, 0);
+	dw_spi_mask_intr(dws, 0xff);
 
 	if (op->data.dir == SPI_MEM_DATA_IN) {
 		thres = min_t(unsigned long, dws->fifo_len,
@@ -395,7 +395,7 @@ static void dw_spi_mem_start_enhanced_op(struct dw_spi_kvx *dws_kvx,
 		dw_writel(dws, DW_SPI_RXFTLR, thres - 1);
 		dw_writel(dws, DW_SPI_TXFTLR, 0);
 
-		spi_umask_intr(dws, SPI_INT_RXFI);
+		dw_spi_umask_intr(dws, DW_SPI_INT_RXFI);
 	} else {
 		/*
 		 * Since we send a command + opcode, we need to set the start
@@ -405,7 +405,7 @@ static void dw_spi_mem_start_enhanced_op(struct dw_spi_kvx *dws_kvx,
 		dw_writel(dws, DW_SPI_TXFTLR, thres << SPI_TXFTLR_FTHR_OFFSET);
 	}
 
-	spi_enable_chip(dws, 1);
+	dw_spi_enable_chip(dws, 1);
 
 	spin_lock_irqsave(&dws_kvx->buf_lock, flags);
 	dw_write_io_reg(dws, DW_SPI_DR, op->cmd.opcode);
@@ -414,7 +414,7 @@ static void dw_spi_mem_start_enhanced_op(struct dw_spi_kvx *dws_kvx,
 	if (op->data.dir == SPI_MEM_DATA_OUT) {
 		dw_spi_mem_enhanced_write_tx_fifo(dws_kvx);
 		/* Unmask tx empty interrupt after data have been pushed in the fifo */
-		spi_umask_intr(dws, SPI_INT_TXEI);
+		dw_spi_umask_intr(dws, DW_SPI_INT_TXEI);
 	}
 
 	spin_unlock_irqrestore(&dws_kvx->buf_lock, flags);
@@ -466,7 +466,7 @@ static int dw_spi_enhanced_exec_mem_op(struct spi_mem *mem,
 
 	/* Wait for TFE bit to go up */
 	timeout = readl_poll_timeout(dws->regs + DW_SPI_SR, sr,
-				     sr & SR_TF_EMPT, 0, USEC_PER_SEC);
+				     sr & DW_SPI_SR_TF_EMPT, 0, USEC_PER_SEC);
 	if (timeout) {
 		dev_err(&dws->master->dev, "wait for transmit fifo empty failed\n");
 		goto err_io;
@@ -474,7 +474,7 @@ static int dw_spi_enhanced_exec_mem_op(struct spi_mem *mem,
 
 	/* Wait for BUSY bit to go down */
 	timeout = readl_poll_timeout(dws->regs + DW_SPI_SR, sr,
-				     !(sr & SR_BUSY), 0, USEC_PER_SEC);
+				     !(sr & DW_SPI_SR_BUSY), 0, USEC_PER_SEC);
 	if (timeout) {
 		dev_err(&dws->master->dev, "wait for end of busy failed\n");
 		goto err_io;
@@ -485,7 +485,7 @@ static int dw_spi_enhanced_exec_mem_op(struct spi_mem *mem,
 	return 0;
 
 err_io:
-	spi_reset_chip(dws);
+	dw_spi_reset_chip(dws);
 	return -EIO;
 
 }
@@ -523,7 +523,7 @@ static int dw_spi_enhanced_adjust_mem_op_size(struct spi_mem *mem,
 		 * read bytes 4 by 4.
 		 */
 		op->data.nbytes = min_t(unsigned int, op->data.nbytes,
-					SPI_NDF_MASK * 4);
+					DW_SPI_NDF_MASK * 4);
 
 		/* Align on 4 to push 4 bytes at once in the fifo */
 		if (op->data.nbytes > 3)
