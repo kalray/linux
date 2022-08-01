@@ -220,7 +220,7 @@ static int kvx_devmsi_alloc(struct irq_domain *domain, unsigned int virq,
 	struct msi_alloc_info *msi_info = (struct msi_alloc_info *)args;
 	struct msi_desc *desc = msi_info->desc;
 	struct kvx_irq_data *kvx_irq_data = msi->kvx_irq_data;
-	bool is_msi = !desc->msi_attrib.is_msix;
+	bool is_msi = !desc->pci.msi_attrib.is_msix;
 	int bit, i, err;
 	u64 msi_addr;
 
