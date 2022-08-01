@@ -6,11 +6,11 @@
 
 #include <linux/bug.h>
 #include <linux/syscalls.h>
-#include <linux/tracehook.h>
 
 #include <asm/ucontext.h>
 #include <asm/processor.h>
 #include <asm/cacheflush.h>
+#include <linux/resume_user_mode.h>
 
 struct rt_sigframe {
 	struct siginfo info;
