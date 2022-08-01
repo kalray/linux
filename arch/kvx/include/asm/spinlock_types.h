@@ -7,7 +7,7 @@
 #ifndef _ASM_KVX_SPINLOCK_TYPES_H
 #define _ASM_KVX_SPINLOCK_TYPES_H
 
-#if !defined(__LINUX_SPINLOCK_TYPES_H) && !defined(__ASM_SPINLOCK_H)
+#if !defined(__LINUX_SPINLOCK_TYPES_RAW_H) && !defined(__ASM_SPINLOCK_H)
 # error "please don't include this file directly"
 #endif
 
