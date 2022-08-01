@@ -181,7 +181,7 @@ pte_t arch_make_huge_pte(pte_t entry, unsigned int shift,
 		BUG();
 	}
 
-	return __pte(ptev);
+	return pte_mkhuge(__pte(ptev));
 }
 
 pte_t *huge_pte_alloc(struct mm_struct *mm, struct vm_area_struct *vma,
