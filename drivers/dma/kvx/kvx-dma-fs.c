@@ -174,6 +174,8 @@ static struct attribute *kvx_dma_attrs[] = {
 	NULL,
 };
 
+ATTRIBUTE_GROUPS(kvx_dma);
+
 static ssize_t kvx_dma_attr_show(struct kobject *kobj,
 			      struct attribute *attr, char *buf)
 {
@@ -205,7 +207,7 @@ const static struct sysfs_ops kvx_dma_sysfs_ops = {
 
 static struct kobj_type kvx_dma_ktype = {
 	.sysfs_ops = &kvx_dma_sysfs_ops,
-	.default_attrs = kvx_dma_attrs,
+	.default_groups = kvx_dma_groups,
 };
 
 int kvx_dma_sysfs_init(struct dma_device *dma)
