@@ -11,7 +11,6 @@
 #include <linux/sched.h>
 #include <linux/audit.h>
 #include <linux/irqflags.h>
-#include <linux/tracehook.h>
 #include <linux/thread_info.h>
 #include <linux/context_tracking.h>
 #include <linux/uaccess.h>
