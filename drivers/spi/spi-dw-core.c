@@ -220,7 +220,7 @@ static irqreturn_t dw_spi_transfer_handler(struct dw_spi *dws)
 	u16 irq_status = dw_readl(dws, DW_SPI_ISR);
 
 	if (!dws->master->cur_msg) {
-		spi_mask_intr(dws, 0xff);
+		dw_spi_mask_intr(dws, 0xff);
 		return IRQ_HANDLED;
 	}
 
