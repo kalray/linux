@@ -10,3 +10,11 @@ config KVX_SOCINFO
 	help
 	  Exposes KVX soc information in sysfs by reading informations
 	  from various sources (nvmem, registers, etc).
+
+config KVX_SMEM_ALLOC
+	tristate "KVX SMEM allocation driver"
+	default y
+	depends on KVX
+	help
+	  Exposes a /dev/smem0 device to specifically allocate and use SMEM
+	  from Linux userspace.
