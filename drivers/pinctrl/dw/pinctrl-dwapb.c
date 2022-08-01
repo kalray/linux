@@ -659,14 +659,14 @@ static int dwapb_gpio_set_mux(struct pinctrl_dev *pctldev, unsigned selector,
 	u32 val;
 
 	reg_off = GPIO_SWPORTA_CTL + (port->idx * GPIO_SWPORT_CTL_STRIDE);
-	spin_lock_irqsave(&gc->bgpio_lock, flags);
+	raw_spin_lock_irqsave(&gc->bgpio_lock, flags);
 	val = dwapb_read(gpio, reg_off);
 	if (selector == 0)
 		val &= ~BIT(group);
 	else
 		val |= BIT(group);
 	dwapb_write(gpio, reg_off, val);
-	spin_unlock_irqrestore(&gc->bgpio_lock, flags);
+	raw_spin_unlock_irqrestore(&gc->bgpio_lock, flags);
 
 	return 0;
 }
