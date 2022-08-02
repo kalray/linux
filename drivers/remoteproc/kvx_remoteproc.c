@@ -277,8 +277,8 @@ static void kvx_rproc_free_mboxes(struct kvx_rproc *kvx_rproc);
 static int wait_cluster_ready(struct kvx_rproc *kvx_rproc)
 {
 	u32 val, timeout = 0;
-	unsigned int status_offset = (void *)(KVX_FTU_CLUSTER_STATUS +
-			kvx_rproc->cluster_id * KVX_FTU_CLUSTER_STRIDE);
+	unsigned int status_offset = KVX_FTU_CLUSTER_STATUS +
+			kvx_rproc->cluster_id * KVX_FTU_CLUSTER_STRIDE;
 
 	do {
 		regmap_read(kvx_rproc->ftu_regmap, status_offset, &val);
