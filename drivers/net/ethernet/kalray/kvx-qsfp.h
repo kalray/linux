@@ -27,13 +27,30 @@
 #define SFP_IDENTIFIER_OFFSET               0
 #define SFP_PAGE_OFFSET                     0x7f
 #define SFP_STATUS                          0x6e
-#define SFP_STATUS_TX_DISABLE		    BIT(7)
-#define SFP_STATUS_TX_FAULT		    BIT(2)
-#define	SFP_STATUS_RX_LOS		    BIT(1)
+#define SFP_STATUS_TX_DISABLE               BIT(7)
+#define SFP_STATUS_TX_FAULT                 BIT(2)
+#define	SFP_STATUS_RX_LOS                   BIT(1)
 #define SFP_PHYS_ID_SFP                     0x03
 #define	SFP_PHYS_ID_QSFP                    0x0C
 #define SFP_PHYS_ID_QSFP_PLUS               0x0D
 #define SFP_PHYS_ID_QSFP28                  0x11
+
+#define SFF8024_ECC_UNSPEC                  0x00
+#define SFF8024_ECC_100G_25GAUI_C2M_AOC     0x01
+#define SFF8024_ECC_100GBASE_SR4_25GBASE_SR 0x02
+#define SFF8024_ECC_100GBASE_LR4_25GBASE_LR 0x03
+#define SFF8024_ECC_100GBASE_ER4_25GBASE_ER 0x04
+#define SFF8024_ECC_100GBASE_SR1            0x05
+#define SFF8024_ECC_100GBASE_CR4            0x0b
+#define SFF8024_ECC_25GBASE_CR_S            0x0c
+#define SFF8024_ECC_25GBASE_CR_N            0x0d
+#define SFF8024_ECC_40GBASE_ER              0x10
+#define SFF8024_ECC_4_10GBASE_SR            0x11
+#define SFF8024_ECC_40GBASE_PSM4_SMF        0x12
+#define SFF8024_ECC_10GBASE_T_SFI           0x16
+#define SFF8024_ECC_10GBASE_T_SR            0x1c
+#define SFF8024_ECC_5GBASE_T                0x1d
+#define SFF8024_ECC_2_5GBASE_T              0x1e
 
 #define SFF8636_STATUS_OFFSET               1
 #define SFF8636_STATUS_DATA_NOT_READY       BIT(0)
@@ -59,6 +76,7 @@
 #define SFF8636_TRANS_TECH_TUNABLE_MASK     BIT(0)
 #define SFF8636_VENDOR_OUI_OFFSET           165
 #define SFF8636_VENDOR_PN_OFFSET            168
+#define SFF8636_EXT_COMPLIANCE_CODES_OFFSET 192
 #define SFF8636_VENDOR_SN_OFFSET            196
 #define SFF8636_TRANS_COPPER_LNR_EQUAL      (15 << 4)
 #define SFF8636_TRANS_COPPER_NEAR_EQUAL     (14 << 4)
@@ -67,6 +85,7 @@
 #define SFF8636_TRANS_COPPER_PAS_EQUAL      (11 << 4)
 #define SFF8636_TRANS_COPPER_PAS_UNEQUAL    (10 << 4)
 #define SFF8636_COMPLIANCE_CODES_OFFSET     131
+#define SFF8636_COMPLIANCE_EXTENDED         BIT(7)
 #define SFF8636_COMPLIANCE_10GBASE_LRM      BIT(6)
 #define SFF8636_COMPLIANCE_10GBASE_LR       BIT(5)
 #define SFF8636_COMPLIANCE_10GBASE_SR       BIT(4)
@@ -102,6 +121,8 @@
 #define QSFP_DELAY_DATA_READY_IN_MS         2000
 
 #define kvx_qsfp_to_ops_data(qsfp, data_t) ((data_t *)qsfp->ops_data)
+#define kvx_set_mode(bm, mode) __set_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, bm)
+#define kvx_test_mode(addr, mode) test_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, addr)
 
 struct kvx_qsfp;
 
@@ -218,10 +239,10 @@ int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page, unsigned int 
 int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, u8 page, unsigned int offset, size_t len);
 void kvx_qsfp_reset(struct kvx_qsfp *qsfp);
 bool is_cable_connected(struct kvx_qsfp *qsfp);
-bool is_qsfp_module_ready(struct kvx_qsfp *qsfp);
+bool is_qsfp_module_ready(struct kvx_qsfp *qsfp, unsigned int timeout_ms);
 bool is_cable_copper(struct kvx_qsfp *qsfp);
+void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support);
 u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp);
-u8 kvx_qsfp_transceiver_compliance_code(struct kvx_qsfp *qsfp);
 u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp);
 int kvx_qsfp_ops_register(struct kvx_qsfp *qsfp, struct kvx_qsfp_ops *ops, void *ops_data);
 
