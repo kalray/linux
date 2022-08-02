@@ -1265,6 +1265,7 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 
 	ethtool_link_ksettings_zero_link_mode(cmd, supported);
 	ethtool_link_ksettings_zero_link_mode(cmd, advertising);
+	kvx_eth_update_cable_modes(ndev);
 
 	/*
 	 * Indicate all capabilities supported by the MAC
@@ -1281,7 +1282,6 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 	ethtool_link_ksettings_add_link_mode(cmd, supported, FIBRE);
 	ethtool_link_ksettings_add_link_mode(cmd, supported, BNC);
 	ethtool_link_ksettings_add_link_mode(cmd, supported, Backplane);
-
 
 	bitmap_copy(cmd->link_modes.advertising, cmd->link_modes.supported,
 		    __ETHTOOL_LINK_MODE_MASK_NBITS);
@@ -1304,6 +1304,9 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseCR4_Full);
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseSR4_Full);
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseLR4_ER4_Full);
+
+	bitmap_and(cmd->link_modes.supported, cmd->link_modes.supported,
+		   ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS);
 
 	/*
 	 * Fill advertising with real expected speed. It *must* be different
@@ -1359,8 +1362,11 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 			break;
 		default:
 			break;
+			}
 	}
-	}
+
+	bitmap_and(cmd->link_modes.advertising, cmd->link_modes.advertising,
+		   ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS);
 
 	if (netif_carrier_ok(netdev)) {
 		cmd->base.speed = ndev->cfg.speed;
