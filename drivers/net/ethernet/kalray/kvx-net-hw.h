@@ -644,6 +644,7 @@ enum lt_ld_states {
  * @mac_f: mac controller features
  * @transceiver: data related to connector
  * @default_dispatch_entry: default dispatch table entry used by current cluster
+ * @cable_rate: cable supported rate
  * @mac_cfg_done: true after mac configuration (including autoneg)
  * @autoneg_en: autoneg enabled
  * @restart_serdes: relaunch serdes cfg needed
@@ -662,6 +663,7 @@ struct kvx_eth_lane_cfg {
 	struct list_head tx_fifo_list;
 	struct kvx_eth_mac_f mac_f;
 	u32 default_dispatch_entry;
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(cable_rate);
 	bool mac_cfg_done;
 	bool restart_serdes;
 	bool autoneg_en;
