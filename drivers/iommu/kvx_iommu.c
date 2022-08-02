@@ -1309,7 +1309,7 @@ kvx_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 	}
 
 	if (fwspec->num_ids > ARRAY_SIZE(kvx_domain->asn))
-		dev_warn(dev, "iommu doesn't support more than %d asn\n",
+		dev_warn(dev, "iommu doesn't support more than %zd asn\n",
 			 ARRAY_SIZE(kvx_domain->asn));
 
 	kvx_domain->iommu = iommu_dev;
