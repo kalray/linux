@@ -1825,11 +1825,34 @@ static void kvx_eth_reinit_task(struct work_struct *w)
 	kvx_eth_reinit(ndev->netdev);
 }
 
+void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev)
+{
+	if (!bitmap_empty(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS))
+		return;
+
+	kvx_set_mode(ndev->cfg.cable_rate, Autoneg);
+	kvx_set_mode(ndev->cfg.cable_rate, Pause);
+	kvx_set_mode(ndev->cfg.cable_rate, Asym_Pause);
+	kvx_set_mode(ndev->cfg.cable_rate, TP);
+	kvx_set_mode(ndev->cfg.cable_rate, AUI);
+	kvx_set_mode(ndev->cfg.cable_rate, MII);
+	kvx_set_mode(ndev->cfg.cable_rate, FIBRE);
+	kvx_set_mode(ndev->cfg.cable_rate, BNC);
+	kvx_set_mode(ndev->cfg.cable_rate, Backplane);
+
+	kvx_set_mode(ndev->cfg.cable_rate, FEC_NONE);
+	kvx_set_mode(ndev->cfg.cable_rate, FEC_BASER);
+	kvx_set_mode(ndev->cfg.cable_rate, FEC_RS);
+
+	kvx_qsfp_parse_support(ndev->qsfp, ndev->cfg.cable_rate);
+}
+
 void kvx_eth_qsfp_connect(struct kvx_qsfp *qsfp)
 {
 	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
 
 	ndev->cfg.restart_serdes = true;
+	bitmap_zero(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS);
 	kvx_setup_link(ndev);
 }
 
