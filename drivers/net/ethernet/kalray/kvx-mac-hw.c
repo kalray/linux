@@ -18,6 +18,7 @@
 #include "kvx-mac-regs.h"
 #include "kvx-phy-hw.h"
 #include "kvx-phy-regs.h"
+#include "kvx-qsfp.h"
 
 #define KVX_PHY_RAM_SIZE 0x8000
 
@@ -2270,6 +2271,7 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 		struct kvx_eth_lane_cfg *cfg)
 {
+	struct kvx_eth_netdev *ndev = container_of(cfg, struct kvx_eth_netdev, cfg);
 	u32 an_off = MAC_CTRL_AN_OFFSET + cfg->id * MAC_CTRL_AN_ELEM_SIZE;
 	u32 an_ctrl_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_CTRL_OFFSET;
 	int an_status_off;
@@ -2280,11 +2282,19 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 	int speed_fmt;
 	char *unit;
 
+	kvx_eth_update_cable_modes(ndev);
+
 	/* Force abilities */
-	cfg->lc.rate = (RATE_100GBASE_KR4 | RATE_100GBASE_CR4 |
-			RATE_40GBASE_KR4 | RATE_40GBASE_CR4 |
+	cfg->lc.rate = (RATE_40GBASE_KR4 | RATE_40GBASE_CR4 |
 			RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S |
 			RATE_10GBASE_KR);
+
+	if (kvx_test_mode(cfg->cable_rate, 100000baseSR4_Full) ||
+	    kvx_test_mode(cfg->cable_rate, 100000baseKR4_Full) ||
+	    kvx_test_mode(cfg->cable_rate, 100000baseCR4_Full) ||
+	    kvx_test_mode(cfg->cable_rate, 100000baseLR4_ER4_Full))
+		cfg->lc.rate |= (RATE_100GBASE_KR4 | RATE_100GBASE_CR4);
+
 	cfg->lc.fec = FEC_10G_FEC_REQUESTED | FEC_25G_BASE_R_REQUESTED |
 		FEC_25G_RS_REQUESTED;
 	cfg->lc.pause = 1;

@@ -339,9 +339,21 @@ int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, u8 page,
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_eeprom_write);
 
-bool is_qsfp_module_ready(struct kvx_qsfp *qsfp)
+bool is_qsfp_module_ready(struct kvx_qsfp *qsfp, unsigned int timeout_ms)
 {
-	return is_cable_connected(qsfp) && qsfp->sm_state == QSFP_S_READY;
+	unsigned long timeout = jiffies + msecs_to_jiffies(timeout_ms);
+	bool ready;
+
+	do {
+		ready = is_cable_connected(qsfp) && qsfp->sm_state == QSFP_S_READY;
+		if (ready)
+			break;
+		usleep_range(500, 1000);
+	} while (time_is_after_jiffies(timeout));
+
+	if (!ready)
+		dev_warn(qsfp->dev, "timeout: qsfp module not ready\n");
+	return ready;
 }
 EXPORT_SYMBOL_GPL(is_qsfp_module_ready);
 
@@ -381,7 +393,7 @@ int kvx_qsfp_get_module_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee,
 	u8 page = 0;
 
 	/* sanity checks */
-	if (!is_qsfp_module_ready(qsfp))
+	if (!is_qsfp_module_ready(qsfp, 0))
 		return -ENODEV;
 
 	if (ee->len == 0)
@@ -455,7 +467,7 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 	int ret = 0;
 	u8 options;
 
-	if (!is_qsfp_module_ready(qsfp))
+	if (!is_qsfp_module_ready(qsfp, 0))
 		return -ENODEV;
 
 	switch (kvx_qsfp_transceiver_id(qsfp)) {
@@ -542,14 +554,6 @@ u8 kvx_qsfp_transceiver_ext_id(struct kvx_qsfp *qsfp)
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_ext_id);
 
-
-u8 kvx_qsfp_transceiver_compliance_code(struct kvx_qsfp *qsfp)
-{
-	return eeprom_cache_readb(qsfp, SFF8636_COMPLIANCE_CODES_OFFSET);
-}
-EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_compliance_code);
-
-
 u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
 {
 	u8 nominal_br = eeprom_cache_readb(qsfp, SFF8636_NOMINAL_BITRATE_OFFSET);
@@ -565,6 +569,10 @@ u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_nominal_br);
 
+static u8 kvx_qsfp_transceiver_compliance_code(struct kvx_qsfp *qsfp)
+{
+	return eeprom_cache_readb(qsfp, SFF8636_COMPLIANCE_CODES_OFFSET);
+}
 
 u8 kvx_qsfp_transceiver_tech(struct kvx_qsfp *qsfp)
 {
@@ -924,6 +932,95 @@ static int kvx_qsfp_set_module_power(struct kvx_qsfp *qsfp, u32 power_mW)
 
 	return ret;
 }
+
+/**
+ * kvx_qsfp_parse_support() - Get supported link modes
+ * @qsfp: qsfp prvdata
+ * @support: pointer to an array of unsigned long for the ethtool support mask
+ *
+ * Parse the EEPROM identification information and derive the supported
+ * ethtool link modes for the module.
+ */
+void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
+{
+	u8 ext, mode;
+
+	/* waiting a bit for qsfp to be ready is sometimes needed */
+	if (!is_qsfp_module_ready(qsfp, 800))
+		return;
+
+	mode = kvx_qsfp_transceiver_compliance_code(qsfp);
+
+	/* Set ethtool support from the compliance fields. */
+	if (mode & SFF8636_COMPLIANCE_10GBASE_SR)
+		kvx_set_mode(support, 10000baseSR_Full);
+	if (mode & SFF8636_COMPLIANCE_10GBASE_LR)
+		kvx_set_mode(support, 10000baseLR_Full);
+	if (mode & SFF8636_COMPLIANCE_10GBASE_LRM)
+		kvx_set_mode(support, 10000baseLRM_Full);
+
+	if (mode & SFF8636_COMPLIANCE_40GBASE_CR4) {
+		kvx_set_mode(support, 10000baseCR_Full);
+		kvx_set_mode(support, 25000baseCR_Full);
+		kvx_set_mode(support, 40000baseCR4_Full);
+	}
+	if (mode & SFF8636_COMPLIANCE_40GBASE_SR4) {
+		kvx_set_mode(support, 10000baseSR_Full);
+		kvx_set_mode(support, 25000baseSR_Full);
+		kvx_set_mode(support, 40000baseSR4_Full);
+	}
+	if (mode & SFF8636_COMPLIANCE_40GBASE_LR4) {
+		kvx_set_mode(support, 40000baseLR4_Full);
+		kvx_set_mode(support, 10000baseSR_Full);
+		kvx_set_mode(support, 10000baseLR_Full);
+	}
+	if (mode & SFF8636_COMPLIANCE_40G_XLPPI) {
+		kvx_set_mode(support, 10000baseSR_Full);
+		kvx_set_mode(support, 10000baseLR_Full);
+		kvx_set_mode(support, 10000baseLRM_Full);
+	}
+
+	if (mode & SFF8636_COMPLIANCE_EXTENDED) {
+		ext = eeprom_cache_readb(qsfp, SFF8636_EXT_COMPLIANCE_CODES_OFFSET);
+		switch (ext) {
+		case SFF8024_ECC_UNSPEC:
+			break;
+		case SFF8024_ECC_100G_25GAUI_C2M_AOC:
+		case SFF8024_ECC_100GBASE_SR4_25GBASE_SR:
+			kvx_set_mode(support, 100000baseSR4_Full);
+			kvx_set_mode(support, 40000baseSR4_Full);
+			kvx_set_mode(support, 25000baseSR_Full);
+			break;
+		case SFF8024_ECC_100GBASE_LR4_25GBASE_LR:
+		case SFF8024_ECC_100GBASE_ER4_25GBASE_ER:
+			kvx_set_mode(support, 100000baseLR4_ER4_Full);
+			break;
+		case SFF8024_ECC_100GBASE_CR4:
+			kvx_set_mode(support, 100000baseCR4_Full);
+			fallthrough;
+		case SFF8024_ECC_25GBASE_CR_S:
+		case SFF8024_ECC_25GBASE_CR_N:
+			kvx_set_mode(support, 25000baseCR_Full);
+			kvx_set_mode(support, 100000baseCR4_Full); /* 25G x4 lanes */
+			break;
+		case SFF8024_ECC_10GBASE_T_SFI:
+		case SFF8024_ECC_10GBASE_T_SR:
+			kvx_set_mode(support, 10000baseT_Full);
+			break;
+		case SFF8024_ECC_5GBASE_T:
+			kvx_set_mode(support, 5000baseT_Full);
+			break;
+		case SFF8024_ECC_2_5GBASE_T:
+			kvx_set_mode(support, 2500baseT_Full);
+			break;
+		default:
+			dev_warn(qsfp->dev, "Unknown/unsupported extended compliance code: 0x%02x\n", ext);
+			break;
+		}
+	}
+	dev_info(qsfp->dev, "%s code: 0x%x ext_code: 0x%x\n", __func__, mode, ext);
+}
+EXPORT_SYMBOL_GPL(kvx_qsfp_parse_support);
 
 /** kvx_qsfp_init - driver init, eeprom cache init
  * @qsfp: qsfp prvdata
