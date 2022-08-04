@@ -230,6 +230,36 @@ static inline struct kvx_tlb_format tlb_mk_entry(
 	return entry;
 }
 
+static inline unsigned long tlb_entry_phys(struct kvx_tlb_format tlbe)
+{
+	return ((unsigned long) tlbe.tel.fn << KVX_SFR_TEL_FN_SHIFT);
+}
+
+static inline unsigned long tlb_entry_virt(struct kvx_tlb_format tlbe)
+{
+	return ((unsigned long) tlbe.teh.pn << KVX_SFR_TEH_PN_SHIFT);
+}
+
+static inline unsigned long tlb_entry_size(struct kvx_tlb_format tlbe)
+{
+	return BIT(get_page_size_shift(tlbe.tel.ps));
+}
+
+static inline int tlb_entry_overlaps(struct kvx_tlb_format tlbe1,
+				     struct kvx_tlb_format tlbe2)
+{
+	unsigned long start1, end1;
+	unsigned long start2, end2;
+
+	start1 = tlb_entry_virt(tlbe1);
+	end1 = start1 + tlb_entry_size(tlbe1);
+
+	start2 = tlb_entry_virt(tlbe2);
+	end2 = start2 + tlb_entry_size(tlbe2);
+
+	return start1 <= end2 && end1 >= start2;
+}
+
 static inline int tlb_entry_match_addr(struct kvx_tlb_format tlbe,
 				       unsigned long vaddr)
 {
@@ -239,7 +269,7 @@ static inline int tlb_entry_match_addr(struct kvx_tlb_format tlbe,
 	 */
 	vaddr &= GENMASK(MMU_VIRT_BITS - 1, KVX_SFR_TEH_PN_SHIFT);
 
-	return ((unsigned long) tlbe.teh.pn << KVX_SFR_TEH_PN_SHIFT) == vaddr;
+	return tlb_entry_virt(tlbe) == vaddr;
 }
 
 extern void kvx_mmu_early_setup(void);
