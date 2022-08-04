@@ -25,6 +25,7 @@
  * the caller, we try again until either we succeed or we fail with a different
  * value than the provided one.
  */
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define __cmpxchg(ptr, old, new, op_suffix, load_suffix)		\
 ({									\
 	register unsigned long __rn asm("r62");				\
@@ -59,6 +60,44 @@
 		: "memory");						\
 	(__ro);								\
 })
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define __cmpxchg(ptr, old, new, op_suffix, load_suffix)		\
+({									\
+	register unsigned long __rn asm("r62");				\
+	register unsigned long __ro asm("r63");				\
+	__asm__ __volatile__ (						\
+		/* Fence to guarantee previous store to be committed */	\
+		"fence\n"						\
+		/* Init "expect" with previous value */			\
+		"copyd $r63 = %[rOld]\n"				\
+		";;\n"							\
+		"1:\n"							\
+		/* Init "update" value with new */			\
+		"copyd $r62 = %[rNew]\n"				\
+		";;\n"							\
+		"acswap" #op_suffix " $r62, [%[rPtr]] = $r62r63\n"		\
+		";;\n"							\
+		/* if acswap succeed, simply return */			\
+		"cb.dnez $r62? 2f\n"					\
+		";;\n"							\
+		/* We failed, load old value */				\
+		"l"  #op_suffix  #load_suffix" $r63 = 0[%[rPtr]]\n"	\
+		";;\n"							\
+		/* Check if equal to "old" one */			\
+		"comp" #op_suffix ".ne $r62 = $r63, %[rOld]\n"		\
+		";;\n"							\
+		/* If different from "old", return it to caller */	\
+		"cb.deqz $r62? 1b\n"					\
+		";;\n"							\
+		"2:\n"							\
+		: "+r" (__rn), "+r" (__ro)				\
+		: [rPtr] "r" (ptr), [rOld] "r" (old), [rNew] "r" (new)	\
+		: "memory");						\
+	(__ro);								\
+})
+#else
+#error "Unknown CONFIG_KVX_SUBARCH"
+#endif /* CONFIG_KVX_SUBARCH_KV3_X */
 
 #define arch_cmpxchg(ptr, o, n)						\
 ({									\
@@ -80,6 +119,7 @@
  * bounds. This way, we only take one more bundle than standard xchg.
  * We simply do a read modify acswap on a 32 bit word.
  */
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define __xchg_small_asm(ptr, new, start, stop)				\
 ({									\
 	register unsigned long __rn asm("r62");				\
@@ -109,6 +149,39 @@
 		: "memory");						\
 	(__ro);								\
 })
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define __xchg_small_asm(ptr, new, start, stop)				\
+({									\
+	register unsigned long __rn asm("r62");				\
+	register unsigned long __ro asm("r63");				\
+	__asm__ __volatile__ (						\
+		"fence\n"						\
+		";;\n"							\
+		"1:\n"							\
+		/* Load original old value */				\
+		"lws $r62 = 0[%[rPtr]]\n"				\
+		";;\n"							\
+		/* Copy read value into "expect" */			\
+		"copyd $r63 = $r62\n"					\
+		/* Prepare new value with insf */			\
+		"insf $r62 = %[rNew], " #stop "," #start "\n"		\
+		";;\n"							\
+		/* Try compare & swap with loaded value */		\
+		"acswapw $r62, [%[rPtr]] = $r62r63\n"				\
+		";;\n"							\
+		/* Did we succeed ?, if no, try again */		\
+		"cb.deqz $r62? 1b\n"					\
+		/* Extract old value for ret value */			\
+		"extfs $r63 = $r63, " #stop "," #start "\n"		\
+		";;\n"							\
+		: "+r" (__rn), "+r" (__ro)				\
+		: [rPtr] "r" (ptr), [rNew] "r" (new)			\
+		: "memory");						\
+	(__ro);								\
+})
+#else
+#error "Unknown CONFIG_KVX_SUBARCH"
+#endif /* CONFIG_KVX_SUBARCH_KV3_X */
 
 /* Needed for generic qspinlock implementation */
 static inline unsigned long xchg_u16(volatile void *ptr, unsigned long new,
@@ -127,6 +200,7 @@ static inline unsigned long xchg_u16(volatile void *ptr, unsigned long new,
 		return __xchg_small_asm(p, new, 16, 31);
 }
 
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define __xchg_asm(ptr, new, op_suffix, load_suffix)			\
 ({									\
 	register unsigned long __rn asm("r62") = (unsigned long) (new);	\
@@ -151,7 +225,34 @@ static inline unsigned long xchg_u16(volatile void *ptr, unsigned long new,
 		: "memory");						\
 	(__ro);								\
 })
-
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define __xchg_asm(ptr, new, op_suffix, load_suffix)			\
+({									\
+	register unsigned long __rn asm("r62") = (unsigned long) (new);	\
+	register unsigned long __ro asm("r63");				\
+	__asm__ __volatile__ (						\
+		"fence\n"						\
+		";;\n"							\
+		"1:\n"							\
+		/* Load original old value */				\
+		"l" #op_suffix #load_suffix " $r63 = 0[%[rPtr]]\n"	\
+		";;\n"							\
+		/* Try compare & swap with loaded value */		\
+		"acswap" #op_suffix " $r62, [%[rPtr]] = $r62r63\n"		\
+		";;\n"							\
+		/* Did we succeed ?, if no, try again */		\
+		"cb.deqz $r62? 1b\n"					\
+		/* $r62 has been cloberred by acswap, restore it */	\
+		"copyd $r62 = %[rNew]\n"				\
+		";;\n"							\
+		: "+r" (__rn), "+r" (__ro)				\
+		: [rPtr] "r" (ptr), [rNew] "r" (new)			\
+		: "memory");						\
+	(__ro);								\
+})
+#else
+#error "Unknown CONFIG_KVX_SUBARCH"
+#endif /* CONFIG_KVX_SUBARCH_KV3_X */
 /*
  * This function doesn't exist, so you'll get a linker error if
  * something tries to do an invalidly-sized xchg().
