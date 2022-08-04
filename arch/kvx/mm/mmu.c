@@ -91,7 +91,7 @@ void kvx_mmu_ltlb_add_entry(unsigned long vaddr, phys_addr_t paddr,
 	kvx_mmu_add_entry(MMC_SB_LTLB, idx, tlbe);
 
 	if (kvx_mmc_error(kvx_sfr_get(MMC)))
-		panic("Failed to write entry to the JTLB");
+		panic("Failed to write entry to the LTLB");
 
 	local_irq_restore(irqflags);
 }
