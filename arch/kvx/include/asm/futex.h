@@ -17,7 +17,7 @@
 #include <linux/futex.h>
 #include <linux/uaccess.h>
 
-
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define __futex_atomic_op(insn, ret, oldval, uaddr, oparg) \
 { \
 	__enable_user_access();                                 \
@@ -53,7 +53,45 @@
 	: "r62", "r63", "memory");                              \
 	__disable_user_access();                                \
 }
-
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define __futex_atomic_op(insn, ret, oldval, uaddr, oparg) \
+{ \
+	__enable_user_access();                                 \
+	__asm__ __volatile__ (                                  \
+	"       fence                                   \n"     \
+	"       ;;\n                                      "     \
+	"1:     lwz $r63 = 0[%[u]]                      \n"     \
+	"       ;;\n                                      "     \
+	"       " insn "                                \n"     \
+	"       ;;\n                                      "     \
+	"       acswapw $r62, [%[u]] = $r62r63                \n"     \
+	"       ;;\n                                      "     \
+	"       cb.deqz $r62? 1b                        \n"     \
+	"       ;;\n                                      "     \
+	"       copyd %[ov] = $r63                      \n"     \
+	"       ;;\n                                      "     \
+	"2:                                             \n"     \
+	"       .section .fixup,\"ax\"                  \n"     \
+	"3:     make %[r] = 2b                          \n"     \
+	"       ;;\n                                      "     \
+	"       make %[r] = %[e]                        \n"     \
+	"       igoto %[r]                              \n"     \
+	"       ;;\n                                      "     \
+	"       .previous                               \n"     \
+	"       .section __ex_table,\"a\"               \n"     \
+	"       .align 8                                \n"     \
+	"       .dword 1b,3b                            \n"     \
+	"       .dword 2b,3b                            \n"     \
+	"       .previous                               \n"     \
+	: [r] "+r" (ret), [ov] "+r" (oldval)                   \
+	: [u] "r" (uaddr),                                      \
+	  [op] "r" (oparg), [e] "i" (-EFAULT)                   \
+	: "r62", "r63", "memory");                              \
+	__disable_user_access();                                \
+}
+#else
+#error "Unknown CONFIG_KVX_SUBARCH"
+#endif /* CONFIG_KVX_SUBARCH_KV3_X */
 
 static inline int
 arch_futex_atomic_op_inuser(int op, u32 oparg, int *oval, u32 __user *uaddr)
@@ -100,6 +138,7 @@ static inline int futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 	if (!access_ok(uaddr, sizeof(u32)))
 		return -EFAULT;
 	__enable_user_access();
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 	__asm__ __volatile__ (
 	"      fence                           \n"/* commit previous stores  */
 	"      copyd $r63 = %[ov]              \n"/* init "expect" with ov   */
@@ -132,6 +171,43 @@ static inline int futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 	: [ov] "r" (oldval), [nv] "r" (newval),
 	  [e] "i" (-EFAULT), [u] "r" (uaddr)
 	: "r62", "r63", "memory");
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+	__asm__ __volatile__ (
+	"      fence                           \n"/* commit previous stores  */
+	"      copyd $r63 = %[ov]              \n"/* init "expect" with ov   */
+	"      copyd $r62 = %[nv]              \n"/* init "update" with nv   */
+	"      ;;\n                              "
+	"1:    acswapw $r62, [%[u]] = $r62r63        \n"
+	"      ;;\n                              "
+	"      cb.dnez $r62? 3f                \n"/* if acswap ok -> return  */
+	"      ;;\n                              "
+	"2:    lws $r63 = 0[%[u]]              \n"/* fail -> load old value  */
+	"      ;;\n                              "
+	"      compw.ne $r62 = $r63, %[ov]     \n"/* check if equal to "old" */
+	"      ;;\n                              "
+	"      cb.deqz $r62? 1b                \n"/* if not equal, try again */
+	"      ;;\n                              "
+	"3:                                    \n"
+	"      .section .fixup,\"ax\"          \n"
+	"4:    make %[r] = 3b                  \n"
+	"      ;;\n                              "
+	"      make %[r] = %[e]                \n"
+	"      igoto %[r]                      \n"/* goto 3b                 */
+	"      ;;\n                              "
+	"      .previous                       \n"
+	"      .section __ex_table,\"a\"       \n"
+	"      .align 8                        \n"
+	"      .dword 1b,4b                    \n"
+	"      .dword 2b,4b                    \n"
+	".previous                             \n"
+	: [r] "+r" (ret)
+	: [ov] "r" (oldval), [nv] "r" (newval),
+	  [e] "i" (-EFAULT), [u] "r" (uaddr)
+	: "r62", "r63", "memory");
+#else
+#error "Unknown CONFIG_KVX_SUBARCH"
+#endif /* CONFIG_KVX_SUBARCH_KV3_X */
+
 	__disable_user_access();
 	*uval = oldval;
 	return ret;
