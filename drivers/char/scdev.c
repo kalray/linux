@@ -122,19 +122,14 @@ static ssize_t scdev_proc_read(struct file *filep,
 static struct proc_ops scdev_proc_ops = {
 	.proc_write = scdev_proc_write,
 	.proc_read = scdev_proc_read,
+	.proc_lseek	= no_llseek,
 };
 
 /* Stuff related to char dev*/
-static int scdev_open(struct inode *inodep, struct file *filep)
+static int scdev_open(struct inode *inode, struct file *file)
 {
 	pr_debug("scdev: opened\n");
-	return 0;
-}
-
-static int scdev_release(struct inode *inodep, struct file *filep)
-{
-	pr_debug("scdev: released\n");
-	return 0;
+	return stream_open(inode, file);
 }
 
 static ssize_t scdev_read(struct file *filep,
@@ -171,17 +166,11 @@ static ssize_t scdev_write(struct file *filep,
 	return scdev_fifo_op(WRITE_DATA, (char __user *)buf, count);
 }
 
-static loff_t scdev_llseek(struct file *filep, loff_t offset, int whence)
-{
-	return offset;
-}
-
 const static struct file_operations scdev_fops = {
 	.open = scdev_open,
 	.read = scdev_read,
 	.write = scdev_write,
-	.llseek = scdev_llseek,
-	.release = scdev_release,
+	.llseek = no_llseek,
 };
 
 static int __init simple_cdev_init(void)
