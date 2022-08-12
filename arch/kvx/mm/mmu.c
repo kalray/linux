@@ -27,6 +27,18 @@ DEFINE_PER_CPU_ALIGNED(uint8_t[MMU_JTLB_SETS], jtlb_current_set_way);
 static struct kvx_tlb_format ltlb_entries[MMU_LTLB_WAYS];
 static unsigned long ltlb_entries_bmp;
 
+static int kvx_mmu_ltlb_overlaps(struct kvx_tlb_format tlbe)
+{
+	int bit = LTLB_ENTRY_FIXED_COUNT;
+
+	for_each_set_bit_from(bit, &ltlb_entries_bmp, MMU_LTLB_WAYS) {
+		if (tlb_entry_overlaps(tlbe, ltlb_entries[bit]))
+			return 1;
+	}
+
+	return 0;
+}
+
 /**
  * kvx_mmu_ltlb_add_entry - Add a kernel entry in the LTLB
  *
@@ -65,6 +77,10 @@ void kvx_mmu_ltlb_add_entry(unsigned long vaddr, phys_addr_t paddr,
 		TLB_ES_A_MODIFIED);
 
 	local_irq_save(irqflags);
+
+	if (IS_ENABLED(CONFIG_KVX_DEBUG_TLB_WRITE) &&
+	    kvx_mmu_ltlb_overlaps(tlbe))
+		panic("VA %lx overlaps with an existing LTLB mapping", vaddr);
 
 	idx = find_next_zero_bit(&ltlb_entries_bmp, MMU_LTLB_WAYS,
 				 LTLB_ENTRY_FIXED_COUNT);
@@ -150,6 +166,10 @@ void kvx_mmu_jtlb_add_entry(unsigned long address, pte_t *ptep,
 
 	local_irq_save(flags);
 
+	if (IS_ENABLED(CONFIG_KVX_DEBUG_TLB_WRITE) &&
+	    kvx_mmu_ltlb_overlaps(tlbe))
+		panic("VA %lx overlaps with an existing LTLB mapping", address);
+
 	way = get_cpu_var(jtlb_current_set_way)[set]++;
 	put_cpu_var(jtlb_current_set_way);
 
@@ -157,10 +177,9 @@ void kvx_mmu_jtlb_add_entry(unsigned long address, pte_t *ptep,
 
 	kvx_mmu_add_entry(MMC_SB_JTLB, way, tlbe);
 
-#ifdef CONFIG_KVX_DEBUG_TLB_WRITE
-	if (kvx_mmc_error(kvx_sfr_get(MMC)))
+	if (IS_ENABLED(CONFIG_KVX_DEBUG_TLB_WRITE) &&
+	    kvx_mmc_error(kvx_sfr_get(MMC)))
 		panic("Failed to write entry to the JTLB (in update_mmu_cache)");
-#endif
 
 	local_irq_restore(flags);
 }
