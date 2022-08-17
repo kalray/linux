@@ -12,6 +12,6 @@
 
 /* __used is needed to keep __crc_* for LTO */
 #define SYMBOL_CRC(sym, crc, sec)   \
-	u32 __section("___kcrctab" sec "+" #sym) __used __crc_##sym = crc
+	u32 __section("___kcrctab" sec "+" #sym) __used __aligned(4) __crc_##sym = crc
 
 #endif /* __LINUX_EXPORT_INTERNAL_H__ */
