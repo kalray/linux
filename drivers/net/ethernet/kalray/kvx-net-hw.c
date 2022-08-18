@@ -222,12 +222,6 @@ void kvx_eth_cl_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_cl_f *cl)
 	updatel_bits(hw, ETH, offset + RX_PFC_LANE_CTRL_OFFSET, mask,
 		     (cl->pfc_ena ? 1 : 0));
 
-	if (cl->pfc_ena) {
-		dev_warn(hw->dev, "Disabling global pause/PFC\n");
-		hw->lb_f[cl->lane_id].pfc_f.global_pfc_en = 0;
-		hw->lb_f[cl->lane_id].pfc_f.global_pause_en = 0;
-	}
-
 	kvx_mac_pfc_cfg(hw, cfg);
 }
 
