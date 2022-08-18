@@ -122,7 +122,7 @@ struct kvx_dma_config {
 };
 
 struct kbx_dcb_cfg {
-	u8 cap;
+	u8 dcbx_mode;
 	u8 state;
 };
 
