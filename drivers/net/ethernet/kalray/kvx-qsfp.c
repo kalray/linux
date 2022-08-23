@@ -466,7 +466,7 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 	case SFP_PHYS_ID_QSFP:
 	case SFP_PHYS_ID_QSFP_PLUS:
 	case SFP_PHYS_ID_QSFP28:
-		options = eeprom_cache_readb(qsfp, SFF8636_OPTIONS_OFFSET);
+		options = eeprom_cache_readb(qsfp, SFF8636_OPTIONS_OFFSET2);
 		modinfo->type = ETH_MODULE_SFF_8636;
 		/* min length: copper cables have only page 0 */
 		modinfo->eeprom_len = ETH_MODULE_SFF_8636_LEN;
@@ -552,10 +552,10 @@ EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_compliance_code);
 
 u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
 {
-	u8 nominal_br = eeprom_cache_readb(qsfp, SFF8636_NOMINAL_BITRATE);
+	u8 nominal_br = eeprom_cache_readb(qsfp, SFF8636_NOMINAL_BITRATE_OFFSET);
 
 	if (nominal_br == 0xFF) {
-		nominal_br = eeprom_cache_readb(qsfp, SFF8636_NOMINAL_BITRATE_250);
+		nominal_br = eeprom_cache_readb(qsfp, SFF8636_NOMINAL_BITRATE_250_OFFSET);
 		nominal_br *= 250; /* Units of 250Mbps */
 	} else {
 		nominal_br *= 100; /* Units of 100Mbps */
@@ -648,31 +648,137 @@ static void kvx_qsfp_print_module_status(struct kvx_qsfp *qsfp)
 	dev_dbg(qsfp->dev, "Sfp Tx_cdr: 0x%x\n", ee[SFF8636_TX_CDR_OFFSET]);
 }
 
+/* The capability bit of "Tx input equalizers auto-adaptive" is not
+ * accurate for some cables for some obscure reason (false negative).
+ * Rx output is also tuned by param SFF8636_TX_ADAPT_EQUAL_OFFSET for
+ * simplicity.
+ */
+static struct kvx_qsfp_param_capability qsfp_param_caps[] = {
+	{
+		.param = { .page = 3, .offset = SFF8636_RX_OUT_EMPH_CTRL_OFFSET0},
+		.cap_offset = SFF8636_OPTIONS_OFFSET0,
+		.cap_bit = SFF8636_RX_OUT_EMPH_CAP,
+	},
+	{
+		.param = { .page = 3, .offset = SFF8636_RX_OUT_EMPH_CTRL_OFFSET1},
+		.cap_offset = SFF8636_OPTIONS_OFFSET0,
+		.cap_bit = SFF8636_RX_OUT_EMPH_CAP,
+	},
+	{
+		.param = { .page = 3, .offset = SFF8636_RX_OUT_AMPL_CTRL_OFFSET0},
+		.cap_offset = SFF8636_OPTIONS_OFFSET0,
+		.cap_bit = SFF8636_RX_OUT_AMPL_CAP,
+	},
+	{
+		.param = { .page = 3, .offset = SFF8636_RX_OUT_AMPL_CTRL_OFFSET1},
+		.cap_offset = SFF8636_OPTIONS_OFFSET0,
+		.cap_bit = SFF8636_RX_OUT_AMPL_CAP,
+	},
+	{
+		.param = { .page = 3, .offset = SFF8636_TX_ADAPT_EQUAL_OFFSET},
+		.cap_offset = SFF8636_TX_ADAPT_EQUAL_OFFSET,
+		.cap_bit = SFF8636_TX_IN_AUTO_EQUALIZER_CAP,
+		.force_update = true
+	}
+};
+
 /** kvx_qsfp_tune - write qsfp parameters on i2c
  * @qsfp: qsfp prvdata
+ * Returns 0 on success
  */
-static void kvx_qsfp_tune(struct kvx_qsfp *qsfp)
+static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 {
-	int ret = 0;
+	/* *param contains all params to write, whether cap bit might be accurate or not
+	 * (write of one element can fail)
+	 * *param_safe contains only params with accurate cap bit (write should not fail)
+	 */
+	struct kvx_qsfp_param *param, *param_safe;
+	int ret, i, j, param_count = 0, param_safe_count = 0;
+	u8 val;
+	bool cap_found;
 
 	if (!qsfp->i2c || !qsfp->param) {
-		dev_err(qsfp->dev,
-			"Cannot tune qsfp param: no i2c adapter param\n");
-		return;
+		dev_err(qsfp->dev, "Cannot tune qsfp param: no i2c adapter param\n");
+		return -EINVAL;
 	}
 	if (!is_cable_connected(qsfp))
-		return;
+		return -EINVAL;
 
-	/* Only tune fiber cable */
-	if (is_cable_copper(qsfp)) {
-		dev_warn(qsfp->dev, "QSFP param NOT tunable on copper cable\n");
-		return;
+	/* Only tune fiber and active copper */
+	if (is_cable_passive_copper(qsfp)) {
+		dev_warn(qsfp->dev, "QSFP param NOT tunable on passive copper cable\n");
+		return 0;
 	}
-	ret = i2c_write_params(qsfp, qsfp->param, qsfp->param_count);
-	if (ret != qsfp->param_count)
-		dev_warn(qsfp->dev, "QSFP param tuning failed\n");
 
-	dev_info(qsfp->dev, "QSFP param tuning done\n");
+	param = kmalloc_array(qsfp->param_count, sizeof(struct kvx_qsfp_param), GFP_KERNEL);
+	if (!param)
+		return -ENOMEM;
+	param_safe = kmalloc_array(qsfp->param_count, sizeof(struct kvx_qsfp_param), GFP_KERNEL);
+	if (!param_safe) {
+		ret = -ENOMEM;
+		goto bail2;
+	}
+
+	/* for each qsfp param, we look at the bit capability to check whether corresponding
+	 * feature is implemented. If it's the case (or cap bit might be inaccurate), the qsfp
+	 * param is copied to *param. If the qsfp param cap bit is also marked as always accurate
+	 * (force_update= false), it is copied to *param_safe. In the case when writing
+	 * *params fails, params marked as safe in *param_safe will be written again whithout
+	 * any expected failure
+	 */
+	for (i = 0; i < qsfp->param_count; i++) {
+		cap_found = false;
+		for (j = 0; j < ARRAY_SIZE(qsfp_param_caps); j++) {
+			if (qsfp->param[i].page == qsfp_param_caps[j].param.page &&
+			    qsfp->param[i].offset == qsfp_param_caps[j].param.offset) {
+				/* check capability bit */
+				val = eeprom_cache_readb(qsfp, qsfp_param_caps[j].cap_offset);
+				val &= qsfp_param_caps[j].cap_bit;
+				if (val || qsfp_param_caps[j].force_update) {
+					memcpy(&param[param_count], &qsfp->param[i],
+					       sizeof(struct kvx_qsfp_param));
+					param_count++;
+				} else {
+					dev_info(qsfp->dev, "param on page %u offset %u will not be tuned\n",
+						 qsfp->param[i].page, qsfp->param[i].offset);
+				}
+				if (val && !qsfp_param_caps[j].force_update) {
+					memcpy(&param_safe[param_safe_count], &qsfp->param[i],
+					       sizeof(struct kvx_qsfp_param));
+					param_safe_count++;
+				}
+				cap_found = true;
+				break;
+			}
+		}
+		if (!cap_found) {
+			dev_dbg(qsfp->dev, "no capability bit to check for param page %u offset %u\n",
+				qsfp->param[i].page, qsfp->param[i].offset);
+			memcpy(&param[param_count], &qsfp->param[i], sizeof(struct kvx_qsfp_param));
+			param_count++;
+		}
+
+	}
+
+	/* tune qsfp params from device tree */
+	ret = i2c_write_params(qsfp, param, param_count);
+	if (ret != param_count) {
+		dev_info(qsfp->dev, "QSFP param tuning failed, trying now only safe params\n");
+		/* tune qsfp safe params */
+		ret = i2c_write_params(qsfp, param_safe, param_safe_count);
+		if (ret != param_safe_count) {
+			dev_warn(qsfp->dev, "QSFP param tuning failed\n");
+			ret = -EIO;
+			goto bail;
+		}
+	}
+	dev_info(qsfp->dev, "QSFP param tuning successful\n");
+	ret = 0;
+bail:
+	kfree(param_safe);
+bail2:
+	kfree(param);
+	return ret;
 }
 
 /** kvx_qsfp_reset - reset qsfp eeprom via gpio
@@ -931,7 +1037,8 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 	case QSFP_S_INIT:
 		if (kvx_qsfp_init(qsfp) < 0)
 			return QSFP_S_ERROR;
-		kvx_qsfp_tune(qsfp);
+		if (kvx_qsfp_tune(qsfp) < 0)
+			return QSFP_S_ERROR;
 		qsfp->monitor_enabled = true;
 		if (!delayed_work_pending(&qsfp->qsfp_poll))
 			mod_delayed_work(kvx_qsfp_wq, &qsfp->qsfp_poll,

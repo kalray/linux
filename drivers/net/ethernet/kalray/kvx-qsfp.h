@@ -52,6 +52,8 @@
 #define SFF8636_MAX_POWER_OFFSET            107
 #define SFF8636_DEVICE_ID_OFFSET            128
 #define SFF8636_EXT_ID_OFFSET               129
+#define SFF8636_NOMINAL_BITRATE_OFFSET      140
+#define SFF8636_NOMINAL_BITRATE_250_OFFSET  222
 #define SFF8636_DEVICE_TECH_OFFSET          147
 #define SFF8636_TRANS_TECH_MASK             0xF0
 #define SFF8636_TRANS_TECH_TUNABLE_MASK     BIT(0)
@@ -72,8 +74,6 @@
 #define SFF8636_COMPLIANCE_40GBASE_SR4      BIT(2)
 #define SFF8636_COMPLIANCE_40GBASE_LR4      BIT(1)
 #define SFF8636_COMPLIANCE_40G_XLPPI        BIT(0)
-#define SFF8636_NOMINAL_BITRATE             140
-#define SFF8636_NOMINAL_BITRATE_250         222
 #define SFF8636_IRQ_FLAGS                   3
 #define SFF8636_EXT_ID_POWER_CLASS_8        BIT(5)
 #define SFF8636_EXT_ID_POWER_CLASS_57       0x3
@@ -81,9 +81,21 @@
 #define SFF8636_CTRL_93_POWER_ORIDE         BIT(0)
 #define SFF8636_CTRL_93_POWER_CLS8          BIT(3)
 #define SFF8636_CTRL_93_POWER_CLS57         BIT(2)
-#define SFF8636_OPTIONS_OFFSET              195
+#define SFF8636_OPTIONS_OFFSET0             193
+#define SFF8636_RX_OUT_AMPL_CAP             BIT(0)
+#define SFF8636_RX_OUT_EMPH_CAP             BIT(1)
+#define SFF8636_TX_IN_AUTO_EQUALIZER_CAP    BIT(3)
+#define SFF8636_OPTIONS_OFFSET1             194
+#define SFF8636_OPTIONS_OFFSET2             195
 #define SFF8636_PAGE1_PROVIDED              BIT(6)
 #define SFF8636_PAGE2_PROVIDED              BIT(7)
+
+/* qsfp params */
+#define SFF8636_RX_OUT_EMPH_CTRL_OFFSET0    236
+#define SFF8636_RX_OUT_EMPH_CTRL_OFFSET1    237
+#define SFF8636_RX_OUT_AMPL_CTRL_OFFSET0    238
+#define SFF8636_RX_OUT_AMPL_CTRL_OFFSET1    239
+#define SFF8636_TX_ADAPT_EQUAL_OFFSET       241
 
 #define QSFP_IRQ_FLAGS_NB                   11
 #define QSFP_POLL_TIMER_IN_MS               500
@@ -110,7 +122,7 @@ enum {
 };
 
 
-/** struct qsfp_param - Used for setting eeprom register
+/** struct kvx_qsfp_param - Used for setting eeprom register
  * @page: page number
  * @offset: offset on eeprom ([0-255] for page 0, else [128-255])
  * @value: 1 byte register value
@@ -119,6 +131,22 @@ struct kvx_qsfp_param {
 	u32 page;
 	u32 offset;
 	u32 value;
+};
+
+
+/** struct kvx_qsfp_param_capability - Define the capability bit for
+ *  each qsfp param
+ * @param: corresponding qsfp param
+ * @cap_offset: offset of the capability bit on page 0
+ * @cap_bit: capability bit
+ * @force_update: capability bit might be inacurate for some cables. If true,
+ *  the param will be set even if the capability bit is 0
+ */
+struct kvx_qsfp_param_capability {
+	struct kvx_qsfp_param param;
+	u32 cap_offset;
+	u32 cap_bit;
+	bool force_update;
 };
 
 
