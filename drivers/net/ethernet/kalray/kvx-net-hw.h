@@ -186,11 +186,14 @@ struct kvx_eth_lut_f {
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
  * @dt_id: the dispatch table entry pointed by this LUT entry
+ * @id: entry index
  */
 struct kvx_eth_lut_entry_f {
 	struct kobject kobj;
+	struct kvx_eth_hw *hw;
 	void (*update)(void *p);
 	u32 dt_id;
+	int id;
 };
 
 /**
@@ -1054,6 +1057,7 @@ void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id);
 void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc);
 void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut);
+void kvx_eth_lut_entry_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_f *l);
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg,
