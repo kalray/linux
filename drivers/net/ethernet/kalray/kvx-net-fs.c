@@ -240,7 +240,7 @@ static struct attribute *lut_f_attrs[] = {
 SYSFS_TYPES(lut_f);
 
 DECLARE_SYSFS_ENTRY(lut_entry_f);
-FIELD_R_ENTRY(lut_entry_f, dt_id, 0, 0);
+FIELD_RW_ENTRY(lut_entry_f, dt_id, 0, RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 
 static struct attribute *lut_entry_f_attrs[] = {
 	&lut_entry_f_dt_id_attr.attr,
