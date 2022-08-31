@@ -279,6 +279,23 @@ void kvx_eth_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_pfc_f *pfc)
 	kvx_mac_pfc_cfg(hw, cfg);
 }
 
+static void lut_entry_f_update(void *data)
+{
+	struct kvx_eth_lut_entry_f *l = (struct kvx_eth_lut_entry_f *)data;
+	u32 off = RX_LB_LUT_OFFSET + RX_LB_LUT_LUT_OFFSET;
+	u32 v = kvx_eth_readl(l->hw, off + l->id * 4);
+
+	l->dt_id = v & RX_LB_LUT_NOC_TABLE_ID_MASK;
+}
+
+void kvx_eth_lut_entry_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_f *l)
+{
+	u32 off = RX_LB_LUT_OFFSET + RX_LB_LUT_LUT_OFFSET;
+	u32 v = l->dt_id & RX_LB_LUT_NOC_TABLE_ID_MASK;
+
+	kvx_eth_writel(hw, v, off + l->id * 4);
+}
+
 void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut)
 {
 	u32 reg = RX_LB_LUT_OFFSET;
@@ -334,6 +351,13 @@ void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			hw->lb_f[i].rx_noc[j].lane_id = i;
 			hw->lb_f[i].rx_noc[j].fdir = j;
 		}
+	}
+
+	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; ++i) {
+		hw->lut_entry_f[i].hw = hw;
+		hw->lut_entry_f[i].dt_id = 0;
+		hw->lut_entry_f[i].id = i;
+		hw->lut_entry_f[i].update = lut_entry_f_update;
 	}
 }
 
