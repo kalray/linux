@@ -198,7 +198,11 @@ struct kvx_dma_tx_comp {
 struct kvx_dma_tx_job_desc {
 	u64 param[KVX_DMA_UC_NB_PARAMS];
 	u64 config;
+	#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	u64 reserved;
+	#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+	u64 config_bis;
+	#endif
 } __packed  __aligned(16);
 
 int is_asn_global(u32 asn);
