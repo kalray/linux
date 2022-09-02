@@ -236,6 +236,7 @@ struct kvx_iommu_group {
  * @domains: list of KVX domains associated to this IOMMU
  * @lock: lock used to manipulate structure like list in a mutex way
  * @dev: the device associated to this IOMMU
+ * @global_pages: Do the mapping as global pages
  * @iommu: the core representation of the IOMMU instance
  * @iommu_hw: hardware IOMMUs managed by the driver
  */
@@ -244,6 +245,7 @@ struct kvx_iommu_drvdata {
 	struct list_head domains;
 	struct mutex lock;
 	struct device *dev;
+	bool global_pages;
 	struct iommu_device iommu;
 	struct kvx_iommu_hw iommu_hw[KVX_IOMMU_NB_TYPE];
 };
@@ -1024,7 +1026,10 @@ static int map_page_in_tlb(struct kvx_iommu_hw *hw[KVX_IOMMU_NB_TYPE],
 	int i, set, way;
 
 	entry.teh.pn  = iova >> KVX_IOMMU_PN_SHIFT;
-	entry.teh.g   = KVX_IOMMU_G_USE_ASN;
+	if (hw[KVX_IOMMU_RX]->drvdata->global_pages)
+		entry.teh.g = KVX_IOMMU_G_GLOBAL;
+	else
+		entry.teh.g = KVX_IOMMU_G_USE_ASN;
 	entry.teh.asn = asn;
 
 	entry.tel.fn = paddr >> KVX_IOMMU_PN_SHIFT;
@@ -1772,6 +1777,11 @@ static int kvx_iommu_probe(struct platform_device *pdev)
 
 	INIT_LIST_HEAD(&drvdata->groups);
 	INIT_LIST_HEAD(&drvdata->domains);
+
+	drvdata->global_pages = of_property_read_bool(dev->of_node,
+						      "global-pages");
+	if (drvdata->global_pages)
+		dev_dbg(dev, "Map pages with global bit\n");
 
 	maybe_init = of_property_read_bool(dev->of_node,
 			"kalray,maybe-initialized");
