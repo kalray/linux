@@ -1454,7 +1454,6 @@ static void kvx_qsfp_shutdown(struct platform_device *pdev)
 	kvx_qsfp_set_tx_state(qsfp, QSFP_TX_DISABLE);
 	cancel_delayed_work_sync(&qsfp->qsfp_poll);
 	cancel_work_sync(&qsfp->sm_task);
-	destroy_workqueue(kvx_qsfp_wq);
 }
 
 static struct platform_driver kvx_qsfp_driver = {
