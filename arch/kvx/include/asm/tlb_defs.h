@@ -143,8 +143,9 @@
  */
 #define LTLB_ENTRY_KERNEL_TEXT	0
 #define LTLB_ENTRY_GDB_PAGE	1
+#define LTLB_ENTRY_VIRTUAL_SMEM	2
 /* Reserve entries for kernel pagination */
-#define LTLB_KERNEL_RESERVED	2
+#define LTLB_KERNEL_RESERVED	3
 /* This define should reflect the maximum number of fixed LTLB entries */
 #define LTLB_ENTRY_FIXED_COUNT	(LTLB_KERNEL_RESERVED + REFILL_PERF_ENTRIES)
 #define LTLB_ENTRY_EARLY_SMEM	LTLB_ENTRY_FIXED_COUNT
