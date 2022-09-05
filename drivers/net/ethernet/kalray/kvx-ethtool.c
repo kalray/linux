@@ -1305,8 +1305,9 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseSR4_Full);
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseLR4_ER4_Full);
 
-	bitmap_and(cmd->link_modes.supported, cmd->link_modes.supported,
-		   ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, FEC_NONE);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, FEC_BASER);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, FEC_RS);
 
 	/*
 	 * Fill advertising with real expected speed. It *must* be different
@@ -1315,10 +1316,8 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 	if (ndev->cfg.autoneg_en) {
 		bitmap_copy(cmd->link_modes.advertising, cmd->link_modes.supported,
 			    __ETHTOOL_LINK_MODE_MASK_NBITS);
-		ethtool_link_ksettings_add_link_mode(cmd, advertising, FEC_NONE);
-		ethtool_link_ksettings_add_link_mode(cmd, advertising, FEC_BASER);
-		ethtool_link_ksettings_add_link_mode(cmd, advertising, FEC_RS);
 	} else {
+		/* when autoneg is off, only the speed set is advertised */
 		switch (ndev->cfg.speed) {
 		case SPEED_40000:
 			ethtool_link_ksettings_add_link_mode(cmd,
@@ -1327,7 +1326,7 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 					advertising, 40000baseSR4_Full);
 			ethtool_link_ksettings_add_link_mode(cmd,
 					advertising, 40000baseLR4_Full);
-			fallthrough;
+			break;
 		case SPEED_10000:
 			ethtool_link_ksettings_add_link_mode(cmd,
 					advertising, 10000baseCR_Full);
@@ -1337,10 +1336,6 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 					advertising, 10000baseLR_Full);
 			ethtool_link_ksettings_add_link_mode(cmd,
 					advertising, 10000baseER_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, FEC_NONE);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, FEC_BASER);
 			break;
 		case SPEED_100000:
 			ethtool_link_ksettings_add_link_mode(cmd,
@@ -1351,18 +1346,26 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 					advertising, 100000baseSR4_Full);
 			ethtool_link_ksettings_add_link_mode(cmd,
 					advertising, 100000baseLR4_ER4_Full);
-			fallthrough;
+			break;
 		case SPEED_25000:
 			ethtool_link_ksettings_add_link_mode(cmd,
 					advertising, 25000baseCR_Full);
 			ethtool_link_ksettings_add_link_mode(cmd,
 					advertising, 25000baseSR_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, FEC_RS);
 			break;
 		default:
 			break;
-			}
+		}
+
+		if (ndev->cfg.fec & FEC_25G_RS_REQUESTED)
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, FEC_RS);
+		else if (ndev->cfg.fec & FEC_25G_BASE_R_REQUESTED)
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, FEC_BASER);
+		else
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, FEC_NONE);
 	}
 
 	bitmap_and(cmd->link_modes.advertising, cmd->link_modes.advertising,
