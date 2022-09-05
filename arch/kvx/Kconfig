@@ -136,7 +136,7 @@ config POISON_INITMEM
 
 config KVX_PHYS_OFFSET
 	hex "RAM address of memory base"
-	default 0x100000000
+	default 0x0
 
 config KVX_PAGE_OFFSET
 	hex "kernel virtual address of memory base"
