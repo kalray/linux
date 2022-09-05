@@ -1840,10 +1840,6 @@ void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev)
 	kvx_set_mode(ndev->cfg.cable_rate, BNC);
 	kvx_set_mode(ndev->cfg.cable_rate, Backplane);
 
-	kvx_set_mode(ndev->cfg.cable_rate, FEC_NONE);
-	kvx_set_mode(ndev->cfg.cable_rate, FEC_BASER);
-	kvx_set_mode(ndev->cfg.cable_rate, FEC_RS);
-
 	kvx_qsfp_parse_support(ndev->qsfp, ndev->cfg.cable_rate);
 }
 

@@ -951,6 +951,9 @@ void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
 
 	mode = kvx_qsfp_transceiver_compliance_code(qsfp);
 
+	/* FEC off always supported (all cables support 10G or 25G) */
+	kvx_set_mode(support, FEC_NONE);
+
 	/* Set ethtool support from the compliance fields. */
 	if (mode & SFF8636_COMPLIANCE_10GBASE_SR)
 		kvx_set_mode(support, 10000baseSR_Full);
@@ -961,17 +964,14 @@ void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
 
 	if (mode & SFF8636_COMPLIANCE_40GBASE_CR4) {
 		kvx_set_mode(support, 10000baseCR_Full);
-		kvx_set_mode(support, 25000baseCR_Full);
 		kvx_set_mode(support, 40000baseCR4_Full);
 	}
 	if (mode & SFF8636_COMPLIANCE_40GBASE_SR4) {
 		kvx_set_mode(support, 10000baseSR_Full);
-		kvx_set_mode(support, 25000baseSR_Full);
 		kvx_set_mode(support, 40000baseSR4_Full);
 	}
 	if (mode & SFF8636_COMPLIANCE_40GBASE_LR4) {
 		kvx_set_mode(support, 40000baseLR4_Full);
-		kvx_set_mode(support, 10000baseSR_Full);
 		kvx_set_mode(support, 10000baseLR_Full);
 	}
 	if (mode & SFF8636_COMPLIANCE_40G_XLPPI) {
@@ -988,20 +988,30 @@ void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
 		case SFF8024_ECC_100G_25GAUI_C2M_AOC:
 		case SFF8024_ECC_100GBASE_SR4_25GBASE_SR:
 			kvx_set_mode(support, 100000baseSR4_Full);
-			kvx_set_mode(support, 40000baseSR4_Full);
 			kvx_set_mode(support, 25000baseSR_Full);
+			kvx_set_mode(support, FEC_RS);
 			break;
 		case SFF8024_ECC_100GBASE_LR4_25GBASE_LR:
 		case SFF8024_ECC_100GBASE_ER4_25GBASE_ER:
 			kvx_set_mode(support, 100000baseLR4_ER4_Full);
+			kvx_set_mode(support, FEC_RS);
 			break;
 		case SFF8024_ECC_100GBASE_CR4:
 			kvx_set_mode(support, 100000baseCR4_Full);
+			kvx_set_mode(support, FEC_RS);
 			fallthrough;
 		case SFF8024_ECC_25GBASE_CR_S:
+			kvx_set_mode(support, FEC_BASER); /* 25GBASE_CR_S only */
+			fallthrough;
 		case SFF8024_ECC_25GBASE_CR_N:
 			kvx_set_mode(support, 25000baseCR_Full);
-			kvx_set_mode(support, 100000baseCR4_Full); /* 25G x4 lanes */
+			kvx_set_mode(support, 50000baseCR2_Full);
+			/* a 100G cable was found with this mode (PN:MCP1600-C001E30N).
+			 * Thus, we exceptionnally add 100G mode and RS-FEC here in order
+			 * to support this cable
+			 */
+			kvx_set_mode(support, 100000baseCR4_Full);
+			kvx_set_mode(support, FEC_RS);
 			break;
 		case SFF8024_ECC_10GBASE_T_SFI:
 		case SFF8024_ECC_10GBASE_T_SR:
