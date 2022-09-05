@@ -12,3 +12,11 @@ config DMABUF_HEAPS_CMA
 	  Choose this option to enable dma-buf CMA heap. This heap is backed
 	  by the Contiguous Memory Allocator (CMA). If your system has these
 	  regions, you should say Y here.
+
+config DMABUF_HEAPS_KVX_SMEM
+	bool "DMA-BUF KVX SMEM Heap"
+	default y
+	depends on KVX && DMABUF_HEAPS
+	help
+	  Choose this option to enable dma-buf SMEM heap. This heap allows
+	  dma-buf allocation in the SMEM. If in doubt, say Y.
