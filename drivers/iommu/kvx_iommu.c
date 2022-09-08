@@ -1302,6 +1302,9 @@ static void kvx_iommu_domain_free(struct iommu_domain *domain)
 {
 	struct kvx_iommu_domain *kvx_domain = to_kvx_domain(domain);
 
+	if (kvx_domain->iommu)
+		list_del(&kvx_domain->list);
+
 	kfree(kvx_domain);
 }
 
