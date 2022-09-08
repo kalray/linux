@@ -217,9 +217,7 @@ ENTRY(kvx_start)
 	;;
 	andd $r21 = $r20, RM_PID_MASK
 	;;
-	cb.deqz $r21 ? init_core
-	;;
-	call asm_rm_cfg_pwr_ctrl
+	cb.dnez $r21 ? asm_rm_cfg_pwr_ctrl
 	;;
 init_core:
 	/**
