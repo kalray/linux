@@ -54,7 +54,7 @@
 #define KVX_SEG_SIZE              1024
 /* **Sensitive** delay between link cfg done and actual link up status from HW */
 #define LINK_POLL_TIMER_IN_MS     500
-#define CHECK_LINK_DURATION_IN_MS 60
+#define CHECK_LINK_DURATION_IN_MS 100
 #define REFILL_THRES              1
 
 #define KVX_TEST_BIT(name, bitmap)  test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, bitmap)
@@ -204,6 +204,8 @@ static void kvx_eth_tx_timeout(struct net_device *netdev,
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
+	if (kvx_eth_phy_is_bert_en(ndev->hw))
+		return;
 	netdev_info(netdev, "%s\n", __func__);
 	queue_work(system_power_efficient_wq, &ndev->reinit_task);
 }
@@ -212,7 +214,7 @@ static void kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 {
 	int ret = 0;
 
-	if (!is_cable_connected(ndev->qsfp))
+	if (kvx_eth_phy_is_bert_en(ndev->hw) || !is_cable_connected(ndev->qsfp))
 		return;
 
 	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
