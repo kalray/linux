@@ -215,6 +215,8 @@ int kvx_dma_pkt_rx_channel_queue_init(struct kvx_dma_phy *phy, int rx_cache_id)
 			KVX_DMA_RX_CHAN_COMP_Q_VALID_RP_OFFSET);
 	kvx_dma_q_writeq_relaxed(phy, phy->msi_cfg.msi_mb_dmaaddr,
 			KVX_DMA_RX_CHAN_COMP_Q_NOTIF_ADDR_OFFSET);
+	kvx_dma_q_writeq_relaxed(phy, phy->msi_cfg.msi_mb_dmaaddr,
+			KVX_DMA_RX_CHAN_COMP_Q_FULL_NOTIF_ADDR_OFFSET);
 	kvx_dma_q_writeq_relaxed(phy, phy->msi_cfg.msi_data,
 			KVX_DMA_RX_CHAN_COMP_Q_NOTIF_ARG_OFFSET);
 	kvx_dma_q_writeq_relaxed(phy, phy->asn,
