@@ -1028,6 +1028,7 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
 int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed);
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_mac_tx_flush_lane(struct kvx_eth_hw *hw, int lane_id, bool en);
 void kvx_eth_mac_tx_flush(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 			  bool en);
 int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
