@@ -130,21 +130,25 @@ void kvx_mac_set_addr(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	mutex_unlock(&hw->mac_reset_lock);
 }
 
+void kvx_mac_tx_flush_lane(struct kvx_eth_hw *hw, int lane_id, bool en)
+{
+	u32 off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * lane_id;
+
+	updatel_bits(hw, MAC, off + EMAC_CMD_CFG_OFFSET,
+		     EMAC_CMD_CFG_TX_FLUSH_MASK,
+		     (en ? EMAC_CMD_CFG_TX_FLUSH_MASK : 0));
+	updatel_bits(hw, MAC, off + PMAC_CMD_CFG_OFFSET,
+		     PMAC_CMD_CFG_TX_FLUSH_MASK,
+		     (en ? PMAC_CMD_CFG_TX_FLUSH_MASK : 0));
+}
+
 void kvx_eth_mac_tx_flush(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 			  bool en)
 {
 	int i, lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
-	u32 off;
 
-	for (i = cfg->id; i < lane_nb; i++) {
-		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
-		updatel_bits(hw, MAC, off + EMAC_CMD_CFG_OFFSET,
-			     EMAC_CMD_CFG_TX_FLUSH_MASK,
-			     (en ? EMAC_CMD_CFG_TX_FLUSH_MASK : 0));
-		updatel_bits(hw, MAC, off + PMAC_CMD_CFG_OFFSET,
-			     PMAC_CMD_CFG_TX_FLUSH_MASK,
-			     (en ? PMAC_CMD_CFG_TX_FLUSH_MASK : 0));
-	}
+	for (i = cfg->id; i < lane_nb; i++)
+		kvx_mac_tx_flush_lane(hw, i, en);
 }
 
 /**
