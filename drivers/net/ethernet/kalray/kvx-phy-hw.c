@@ -214,10 +214,12 @@ void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
 	u16 mask, val;
 
 	if (p->tx_mode == BERT_DISABLED) {
+		kvx_mac_tx_flush_lane(hw, p->lane_id, false);
 		writew(0, hw->res[KVX_ETH_RES_PHY].base + reg);
 		return;
 	}
 
+	kvx_mac_tx_flush_lane(hw, p->lane_id, true);
 	val = readw(hw->res[KVX_ETH_RES_PHY].base + reg);
 	if ((GETF(val, LANE0_TX_LBERT_CTL_MODE) != p->tx_mode) ||
 	    (GETF(val, LANE0_TX_LBERT_CTL_PAT0) != p->pat0)) {
