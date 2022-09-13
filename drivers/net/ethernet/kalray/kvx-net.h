@@ -149,7 +149,6 @@ extern const union roce_filter_desc roce_filter_default;
  * @link_poll: link check timer
  * @dcb_cfg: dcbnl configuration
  * @link_cfg: work for link configuration (serdes + MAC)
- * @reinit_task: reinit netdev
  */
 struct kvx_eth_netdev {
 	struct net_device *netdev;
@@ -166,7 +165,6 @@ struct kvx_eth_netdev {
 	struct timer_list link_poll;
 	struct kbx_dcb_cfg dcb_cfg;
 	struct delayed_work link_cfg;
-	struct work_struct reinit_task;
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
