@@ -2454,7 +2454,7 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 
 	ret = kvx_eth_mac_cfg(hw, cfg);
 	if (ret)
-		dev_err(hw->dev, "Failed to configure MAC\n");
+		dev_dbg(hw->dev, "Failed to configure MAC\n");
 
 	/* Update parser cfg in case of aggregated lane config changed */
 	if (update_serdes)
