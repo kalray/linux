@@ -199,17 +199,6 @@ static void kvx_eth_reset_tx(struct kvx_eth_netdev *ndev)
 	}
 }
 
-static void kvx_eth_tx_timeout(struct net_device *netdev,
-			       unsigned int __always_unused txqueue)
-{
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-
-	if (kvx_eth_phy_is_bert_en(ndev->hw))
-		return;
-	netdev_info(netdev, "%s\n", __func__);
-	queue_work(system_power_efficient_wq, &ndev->reinit_task);
-}
-
 static void kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 {
 	int ret = 0;
@@ -302,18 +291,6 @@ static void kvx_eth_poll_link(struct timer_list *t)
 mac_cfg:
 	queue_delayed_work(system_power_efficient_wq, &ndev->link_cfg,
 			   msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
-}
-
-static void kvx_eth_reinit(struct net_device *netdev)
-{
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-
-	if (netif_running(netdev)) {
-		del_timer_sync(&ndev->link_poll);
-		kvx_eth_reset_tx(ndev);
-	}
-	ndev->cfg.restart_serdes = true;
-	kvx_setup_link(ndev);
 }
 
 /* kvx_eth_netdev_init() - Init netdev (called once)
@@ -1055,6 +1032,9 @@ kvx_eth_get_phys_port_id(struct net_device *dev, struct netdev_phys_item_id *id)
 	return 0;
 }
 
+/**
+ * Note: implementing ndo_tx_timeout may break datapath handled by fw
+ **/
 static const struct net_device_ops kvx_eth_netdev_ops = {
 	.ndo_init               = kvx_eth_netdev_init,
 	.ndo_uninit             = kvx_eth_netdev_uninit,
@@ -1065,7 +1045,6 @@ static const struct net_device_ops kvx_eth_netdev_ops = {
 	.ndo_validate_addr      = eth_validate_addr,
 	.ndo_set_mac_address    = kvx_eth_set_mac_addr,
 	.ndo_change_mtu         = kvx_eth_change_mtu,
-	.ndo_tx_timeout         = kvx_eth_tx_timeout,
 	.ndo_change_rx_flags    = kvx_eth_change_rx_flags,
 	.ndo_get_phys_port_name = kvx_eth_get_phys_port_name,
 	.ndo_get_phys_port_id   = kvx_eth_get_phys_port_id,
@@ -1819,14 +1798,6 @@ static void kvx_eth_link_cfg(struct work_struct *w)
 	kvx_eth_link_configure(ndev);
 }
 
-static void kvx_eth_reinit_task(struct work_struct *w)
-{
-	struct kvx_eth_netdev *ndev =
-		container_of(w, struct kvx_eth_netdev, reinit_task);
-
-	kvx_eth_reinit(ndev->netdev);
-}
-
 void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev)
 {
 	if (!bitmap_empty(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS))
@@ -1906,7 +1877,6 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	INIT_LIST_HEAD(&ndev->cfg.tx_fifo_list);
 	timer_setup(&ndev->link_poll, kvx_eth_poll_link, 0);
 	INIT_DELAYED_WORK(&ndev->link_cfg, kvx_eth_link_cfg);
-	INIT_WORK(&ndev->reinit_task, kvx_eth_reinit_task);
 
 	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
 	if (phy_mode < 0) {

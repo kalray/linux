@@ -1028,7 +1028,7 @@ void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
 			break;
 		}
 	}
-	dev_info(qsfp->dev, "%s code: 0x%x ext_code: 0x%x\n", __func__, mode, ext);
+	dev_dbg(qsfp->dev, "%s code: 0x%x ext_code: 0x%x\n", __func__, mode, ext);
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_parse_support);
 
