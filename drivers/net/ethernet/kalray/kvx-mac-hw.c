@@ -23,14 +23,14 @@
 #define KVX_PHY_RAM_SIZE 0x8000
 
 #define MAC_LOOPBACK_LATENCY  4
-#define MAC_SYNC_TIMEOUT_MS   1000
-#define SIGDET_TIMEOUT_MS     500
+#define MAC_SYNC_TIMEOUT_MS   500
+#define SIGDET_TIMEOUT_MS     200
 #define RESET_TIMEOUT_MS      50
 #define SERDES_ACK_TIMEOUT_MS 60
 #define AN_TIMEOUT_MS         1000
 #define NONCE                 0x13
 #define MS_COUNT_SHIFT        5
-#define LT_FSM_TIMEOUT_MS     1000
+#define LT_FSM_TIMEOUT_MS     500
 #define LT_STAT_RECEIVER_READY BIT(15)
 #define PHY_LOS_TIMEOUT_MS    400
 
@@ -56,10 +56,10 @@
 	unsigned long t = jiffies + msecs_to_jiffies(timeout_in_ms); \
 	u32 v = 0; \
 	do { if (time_after(jiffies, t)) { \
-		dev_dbg(hw->dev, #reg" TIMEOUT l.%d (0x%x exp 0x%x)\n", \
-			__LINE__, (u32)(v & (mask)), (u32)exp); break; } \
+		dev_dbg(hw->dev, #reg" TIMEOUT l.%d (0x%x mask 0x%x exp 0x%x)\n", \
+			__LINE__, (u32)v, (u32)(v & (mask)), (u32)exp); break; } \
 		usleep_range(10, 30); \
-		v = read(hw, reg) & (mask); \
+		v = read(hw, reg); \
 	} while (exp != (v & (mask))); \
 	(exp == (v & (mask))) ? 0 : -ETIMEDOUT; \
 })
@@ -1520,7 +1520,7 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 				       ref, ref, MAC_SYNC_TIMEOUT_MS);
 			if (ret) {
 				dev_err(hw->dev, "Link 100G status timeout (RS-FEC)\n");
-				return ret;
+				goto bail;
 			}
 		} else {
 			if (cfg->speed == SPEED_50000)
@@ -1537,11 +1537,12 @@ int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			if (ret) {
 				dev_err(hw->dev, "Link %s status timeout (FEC)\n",
 					phy_speed_to_str(cfg->speed));
-				return ret;
+				goto bail;
 			}
 		}
 	}
 
+bail:
 	mask = BIT(MAC_SYNC_STATUS_LINK_STATUS_SHIFT + cfg->id);
 	ret = kvx_poll(kvx_mac_readl, MAC_SYNC_STATUS_OFFSET, mask,
 		 mask, MAC_SYNC_TIMEOUT_MS);
@@ -1587,6 +1588,9 @@ static int kvx_eth_mac_setup_fec(struct kvx_eth_hw *hw,
 		updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET, MAC_FEC91_ENA_IN_MASK |
 			     MAC_FEC91_1LANE_IN0_MASK | MAC_FEC91_1LANE_IN2_MASK, 0);
 		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET, MAC_FEC_CTRL_FEC_EN_MASK, 0);
+		updatel_bits(hw, MAC,
+			MAC_CTRL_RS_FEC_OFFSET + MAC_CTRL_RS_FEC_CTRL_OFFSET,
+			MAC_CTRL_RS_FEC_CTRL_EN_MASK, 0);
 	} else {
 		mask = BIT(cfg->id);
 		updatel_bits(hw, MAC, MAC_FEC_CTRL_OFFSET, mask, 0);
@@ -1599,9 +1603,15 @@ static int kvx_eth_mac_setup_fec(struct kvx_eth_hw *hw,
 	switch (cfg->speed) {
 	case SPEED_100000:
 		/* Enable RS FEC */
-		if (cfg->fec & FEC_25G_RS_REQUESTED)
+		if (cfg->fec & FEC_25G_RS_REQUESTED) {
 			updatel_bits(hw, MAC, MAC_FEC91_CTRL_OFFSET,
 				  MAC_FEC91_ENA_IN_MASK, MAC_FEC91_ENA_IN_MASK);
+			updatel_bits(hw, MAC,
+				MAC_CTRL_RS_FEC_OFFSET + MAC_CTRL_RS_FEC_CTRL_OFFSET,
+				MAC_CTRL_RS_FEC_CTRL_EN_MASK,
+				MAC_CTRL_RS_FEC_CTRL_EN_MASK);
+		}
+
 		break;
 	case SPEED_50000:
 		if (cfg->fec & FEC_25G_RS_REQUESTED) {
@@ -2472,6 +2482,13 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 	return ret;
 }
 
+static bool is_kr_cable(struct link_capability *ln)
+{
+	return !!(ln->rate & (RATE_10GBASE_KR | RATE_40GBASE_KR4 |
+			      RATE_100GBASE_KR4 | RATE_25GBASE_KR_CR_S |
+			      RATE_25GBASE_KR_CR));
+}
+
 /**
  * kvx_eth_lt_execute() - Enable link training and starts its FSM
  * @hw: hardware description
@@ -2490,6 +2507,9 @@ static int kvx_eth_lt_execute(struct kvx_eth_hw *hw,
 		struct kvx_eth_lane_cfg *cfg)
 {
 	int ret;
+
+	if (!is_kr_cable(&cfg->ln))
+		return 0;
 
 	kvx_eth_link_training(hw, cfg, true);
 	ret = kvx_eth_perform_link_training(hw, cfg);
@@ -2552,20 +2572,12 @@ int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	unsigned int s, an_speed[] = {SPEED_10000};
 	int i, ret = -EAGAIN, lt_ret;
-	int retry = 2;
 
-	/*
-	 * Retry to retrigger full autoneg process, it appears
-	 * multiple an_restart in MAC gives better results in link partner AN
-	 * communication
-	 */
-	while (ret && retry--) {
-		for (i = 0; i < ARRAY_SIZE(an_speed); i++) {
-			s = an_speed[i];
-			ret = kvx_eth_mac_pcs_pma_autoneg_setup(hw, cfg, s);
-			if (ret)
-				return ret;
-		}
+	for (i = 0; i < ARRAY_SIZE(an_speed); i++) {
+		s = an_speed[i];
+		ret = kvx_eth_mac_pcs_pma_autoneg_setup(hw, cfg, s);
+		if (ret)
+			return ret;
 	}
 
 	ret = kvx_eth_autoneg_page_exchange(hw, cfg);
@@ -2614,12 +2626,14 @@ int kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_eth
 {
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
+	u32 mask = serdes_mask << PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT;
 	unsigned long delay = 0;
-	u32 off, mask, val = 0;
+	u32 off, val = 0;
 	int i, ret;
 	bool data_en;
 
-	mask = serdes_mask << PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT;
+	if (kvx_eth_lanes_aggregated(hw))
+		mask = 1 << PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT;
 	ret = kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, mask,
 		     mask, SIGDET_TIMEOUT_MS);
 	if (ret) {
