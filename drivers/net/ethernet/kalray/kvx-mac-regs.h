@@ -79,6 +79,17 @@
 #define MAC_RS_FEC_STATUS_ALIGNED_SHIFT            0x4
 #define MAC_RS_FEC_STATUS_ALIGNED_MASK             0xF0UL
 #define MAC_FEC_STATUS_OFFSET                      0x6038
+#define MAC_CTRL_RS_FEC_OFFSET                     0x2000
+#define MAC_CTRL_RS_FEC_CTRL_OFFSET                0x0
+#define MAC_CTRL_RS_FEC_CTRL_EN_SHIFT              2
+#define MAC_CTRL_RS_FEC_CTRL_EN_MASK               0x4UL
+#define MAC_CTRL_RS_FEC_STATUS_OFFSET              0x4
+#define MAC_CTRL_RS_FEC_STATUS_BYPASS_COR_MASK     0x1UL
+#define MAC_CTRL_RS_FEC_STATUS_BYPASS_IND_MASK     0x2UL
+#define MAC_CTRL_RS_FEC_STATUS_HIGH_SER_MASK       0x4UL
+#define MAC_CTRL_RS_FEC_STATUS_AMPS_LOCK_MASK      0xf00UL
+#define MAC_CTRL_RS_FEC_STATUS_FEC_ALIGN_STS_MASK  0x4000UL
+
 #define MAC_CTRL_OFFSET                            0x2400
 #define MAC_CTRL_ELEM_SIZE                         0x200
 
