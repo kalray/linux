@@ -1371,10 +1371,8 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 	bitmap_and(cmd->link_modes.advertising, cmd->link_modes.advertising,
 		   ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS);
 
-	if (netif_carrier_ok(netdev)) {
-		cmd->base.speed = ndev->cfg.speed;
-		cmd->base.duplex = ndev->cfg.duplex;
-	}
+	cmd->base.speed = ndev->cfg.speed;
+	cmd->base.duplex = ndev->cfg.duplex;
 
 	return 0;
 }

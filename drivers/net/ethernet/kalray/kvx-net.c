@@ -214,7 +214,7 @@ static void kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 		ret = kvx_eth_autoneg(ndev);
 		if (ret)
 			netdev_dbg(ndev->netdev, "Autonegotiation failed\n");
-		ndev->cfg.restart_serdes = true;
+		ndev->cfg.restart_serdes = false;
 	}
 
 	if (ndev->cfg.speed == SPEED_UNKNOWN)
