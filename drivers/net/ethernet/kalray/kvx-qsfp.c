@@ -271,9 +271,41 @@ static int update_eeprom_cache(struct kvx_qsfp *qsfp, unsigned int offset, size_
 	return ret;
 }
 
-static u8 eeprom_cache_readb(struct kvx_qsfp *qsfp, unsigned int offset)
+static bool is_eeprom_cache_updated(struct kvx_qsfp *qsfp)
 {
 	u8 *cache = (u8 *)&qsfp->eeprom_cache;
+
+	return cache[SFP_IDENTIFIER_OFFSET] != 0;
+}
+
+static bool is_qsfp_ready_state(struct kvx_qsfp *qsfp)
+{
+	int ret;
+
+	/* check that state machine is in ready state */
+	ret = wait_for_completion_timeout(&qsfp->sm_s_ready,
+					  msecs_to_jiffies(WAIT_STATE_READY_TIMEOUT_MS));
+	if (ret == 0) {
+		dev_dbg(qsfp->dev, "timeout: qsfp module not ready\n");
+		return false;
+	}
+	return true;
+}
+
+static u8 eeprom_cache_readb(struct kvx_qsfp *qsfp, unsigned int offset)
+{
+	u8 val, *cache = (u8 *)&qsfp->eeprom_cache;
+	int ret;
+
+	/* if eeprom cache not initialized yet, read byte on i2c */
+	if (!is_eeprom_cache_updated(qsfp)) {
+		ret = i2c_rw(qsfp, i2c_read, &val, 0, offset, 1);
+		if (ret != 1) {
+			dev_err(qsfp->dev, "eeprom readb failed: offset=%d\n", offset);
+			val = 0;
+		}
+		return val;
+	}
 
 	return cache[offset];
 }
@@ -339,24 +371,6 @@ int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, u8 page,
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_eeprom_write);
 
-bool is_qsfp_module_ready(struct kvx_qsfp *qsfp, unsigned int timeout_ms)
-{
-	unsigned long timeout = jiffies + msecs_to_jiffies(timeout_ms);
-	bool ready;
-
-	do {
-		ready = is_cable_connected(qsfp) && READ_ONCE(qsfp->sm_state) == QSFP_S_READY;
-		if (ready)
-			break;
-		usleep_range(500, 1000);
-	} while (time_is_after_jiffies(timeout));
-
-	if (!ready)
-		dev_warn(qsfp->dev, "timeout: qsfp module not ready\n");
-	return ready;
-}
-EXPORT_SYMBOL_GPL(is_qsfp_module_ready);
-
 /* page_offset_from_ethtool_offset - convert ethtool offset to page & offset
  * @page: pointer to where page number is stored
  * @offset: pointer to ethtool offset - will be overwritten
@@ -393,11 +407,11 @@ int kvx_qsfp_get_module_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee,
 	u8 page = 0;
 
 	/* sanity checks */
-	if (!is_qsfp_module_ready(qsfp, 0))
-		return -ENODEV;
-
 	if (ee->len == 0)
 		return -EINVAL;
+
+	if (!is_qsfp_ready_state(qsfp))
+		return -ETIMEDOUT;
 
 	if (is_cable_copper(qsfp) && off + len > 256)
 		return -EINVAL;
@@ -442,10 +456,14 @@ int kvx_qsfp_set_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee, u8 *da
 	unsigned int off = ee->offset;
 	u8 page = 0;
 
+	/* sanity checks */
 	if (ee->len != 1) {
 		dev_warn(qsfp->dev, "Eeprom write limited to 1 byte only\n");
 		return -EINVAL;
 	}
+
+	if (!is_qsfp_ready_state(qsfp))
+		return -ETIMEDOUT;
 
 	page_offset_from_ethtool_offset(&page, &off);
 
@@ -467,8 +485,8 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 	int ret = 0;
 	u8 options;
 
-	if (!is_qsfp_module_ready(qsfp, 0))
-		return -ENODEV;
+	if (!is_qsfp_ready_state(qsfp))
+		return -ETIMEDOUT;
 
 	switch (kvx_qsfp_transceiver_id(qsfp)) {
 	case SFP_PHYS_ID_SFP:
@@ -859,12 +877,11 @@ static u32 kvx_qsfp_parse_max_power(struct kvx_qsfp *qsfp)
 {
 	u32 power_mW = 1500;
 	u8 c14, c57, val = 0;
-	u8 *data = (u8 *) &qsfp->eeprom_cache;
 
 	/* check whether class 8 is available */
 	val = kvx_qsfp_transceiver_ext_id(qsfp);
 	if (val & SFF8636_EXT_ID_POWER_CLASS_8)
-		return data[SFF8636_MAX_POWER_OFFSET] * 100;
+		return eeprom_cache_readb(qsfp, SFF8636_MAX_POWER_OFFSET) * 100;
 
 	c14 = (val & SFF8636_EXT_ID_POWER_CLASS_14) >> 6;
 	c57 = (val & SFF8636_EXT_ID_POWER_CLASS_57);
@@ -944,10 +961,6 @@ static int kvx_qsfp_set_module_power(struct kvx_qsfp *qsfp, u32 power_mW)
 void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
 {
 	u8 ext, mode;
-
-	/* waiting a bit for qsfp to be ready is sometimes needed */
-	if (!is_qsfp_module_ready(qsfp, 800))
-		return;
 
 	mode = kvx_qsfp_transceiver_compliance_code(qsfp);
 
@@ -1105,6 +1118,9 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		qsfp->cable_connected = gpiod_get_value_cansleep(qsfp->gpio_modprs);
 		qsfp->modprs_change = false;
 
+		/* reinit eeprom cache */
+		memset(&qsfp->eeprom_cache, 0, sizeof(qsfp->eeprom_cache));
+
 		/* calling either connect/disconect callback */
 		if (qsfp->ops) {
 			if (qsfp->cable_connected)
@@ -1162,10 +1178,13 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		fallthrough;
 	default:
 	case QSFP_S_READY:
-		if (is_cable_connected(qsfp))
+		if (is_cable_connected(qsfp)) {
 			next_state = QSFP_S_READY;
-		else
+			complete_all(&qsfp->sm_s_ready);
+		} else {
 			next_state = QSFP_S_DOWN;
+			reinit_completion(&qsfp->sm_s_ready);
+		}
 	}
 
 	return next_state;
@@ -1428,6 +1447,7 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 	/* set state machine to the initial state and start it */
 	qsfp->sm_state = QSFP_S_RESET;
 	qsfp->modprs_change = true;
+	init_completion(&qsfp->sm_s_ready);
 	queue_work(kvx_qsfp_wq, &qsfp->sm_task);
 
 	err = sysfs_create_group(&qsfp->dev->kobj, &sysfs_attr_group);

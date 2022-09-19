@@ -19,10 +19,12 @@
 #include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
+#include <linux/completion.h>
 
 #define EEPROM_LOWER_PAGE0_OFFSET           0
 #define EEPROM_UPPER_PAGE0_OFFSET           128
 #define EEPROM_PAGE_SIZE                    128
+#define WAIT_STATE_READY_TIMEOUT_MS         100
 
 #define SFP_IDENTIFIER_OFFSET               0
 #define SFP_PAGE_OFFSET                     0x7f
@@ -203,6 +205,7 @@ struct kvx_qsfp_ops {
  * @sm_mutex: protects state machine
  * @sm_task: task for running the main of the state machine
  * @sm_state: module current state
+ * @sm_s_ready: completion for state QSFP_S_READY
  * @modprs_change: module presence change
  * @cable_connected: true if qsfp cable is plugged in
  * @monitor_enabled: true if monitoring is enabled
@@ -224,6 +227,7 @@ struct kvx_qsfp {
 	struct delayed_work qsfp_poll;
 	struct work_struct sm_task;
 	u8 sm_state;
+	struct completion sm_s_ready;
 	bool modprs_change;
 	bool cable_connected;
 	bool monitor_enabled;
@@ -239,7 +243,6 @@ int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page, unsigned int 
 int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, u8 page, unsigned int offset, size_t len);
 void kvx_qsfp_reset(struct kvx_qsfp *qsfp);
 bool is_cable_connected(struct kvx_qsfp *qsfp);
-bool is_qsfp_module_ready(struct kvx_qsfp *qsfp, unsigned int timeout_ms);
 bool is_cable_copper(struct kvx_qsfp *qsfp);
 void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support);
 u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp);
