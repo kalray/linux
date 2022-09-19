@@ -1803,6 +1803,9 @@ void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev)
 	if (!bitmap_empty(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS))
 		return;
 
+	if (!is_cable_connected(ndev->qsfp))
+		return;
+
 	kvx_set_mode(ndev->cfg.cable_rate, Autoneg);
 	kvx_set_mode(ndev->cfg.cable_rate, Pause);
 	kvx_set_mode(ndev->cfg.cable_rate, Asym_Pause);
