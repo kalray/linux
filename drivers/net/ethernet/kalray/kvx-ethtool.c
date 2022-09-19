@@ -1505,6 +1505,9 @@ static int kvx_eth_get_eeprom_len(struct net_device *netdev)
 	struct ethtool_modinfo mod_info;
 	int ret;
 
+	if (!is_cable_connected(ndev->qsfp))
+		return -ENODEV;
+
 	ret = kvx_qsfp_module_info(ndev->qsfp, &mod_info);
 	if (ret < 0) {
 		netdev_err(netdev, "qsfp module info failed\n");
