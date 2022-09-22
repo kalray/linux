@@ -61,6 +61,7 @@ enum {
 	KVX_IOMMU_IRQ_NOMAPPING,
 	KVX_IOMMU_IRQ_PROTECTION,
 	KVX_IOMMU_IRQ_PARITY,
+	KVX_IOMMU_IRQ_COMBINED,
 	KVX_IOMMU_IRQ_NB_TYPE,
 };
 
@@ -68,6 +69,7 @@ static const char *kvx_iommu_irq_names[KVX_IOMMU_IRQ_NB_TYPE] = {
 	[KVX_IOMMU_IRQ_NOMAPPING] = "nomapping",
 	[KVX_IOMMU_IRQ_PROTECTION] = "protection",
 	[KVX_IOMMU_IRQ_PARITY] = "parity",
+	[KVX_IOMMU_IRQ_COMBINED] = "combined",
 };
 
 static const u64 kvx_iommu_irq_enables[KVX_IOMMU_IRQ_NB_TYPE] = {
@@ -76,6 +78,10 @@ static const u64 kvx_iommu_irq_enables[KVX_IOMMU_IRQ_NB_TYPE] = {
 	[KVX_IOMMU_IRQ_PROTECTION] =
 		KVX_IOMMU_SET_FIELD(1, KVX_IOMMU_IRQ_ENABLE_PROTECTION),
 	[KVX_IOMMU_IRQ_PARITY] =
+		KVX_IOMMU_SET_FIELD(1, KVX_IOMMU_IRQ_ENABLE_PARITY),
+	[KVX_IOMMU_IRQ_COMBINED] =
+		KVX_IOMMU_SET_FIELD(1, KVX_IOMMU_IRQ_ENABLE_NOMAPPING) |
+		KVX_IOMMU_SET_FIELD(1, KVX_IOMMU_IRQ_ENABLE_PROTECTION) |
 		KVX_IOMMU_SET_FIELD(1, KVX_IOMMU_IRQ_ENABLE_PARITY),
 };
 
@@ -206,7 +212,7 @@ struct kvx_iommu_hw {
 	unsigned int has_irq_table;
 	unsigned int in_addr_size;
 	unsigned int out_addr_size;
-	unsigned long irqs[KVX_IOMMU_IRQ_NB_TYPE];
+	long irqs[KVX_IOMMU_IRQ_NB_TYPE];
 	spinlock_t tlb_lock;
 	struct kvx_iommu_tlb_entry tlb_cache[KVX_IOMMU_MAX_SETS]
 					    [KVX_IOMMU_MAX_WAYS];
@@ -765,6 +771,9 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 {
 	struct kvx_iommu_hw *iommu_hw = hw_id;
 	int i;
+	bool combined_irq = (irq == iommu_hw->irqs[KVX_IOMMU_IRQ_COMBINED]);
+	irqreturn_t irqret = IRQ_NONE;
+	int num_of_noerror_irqs = 0;
 
 	for (i = 0; i < KVX_IOMMU_IRQ_NB_TYPE; i++) {
 		struct kvx_iommu_domain *kvx_domain;
@@ -773,7 +782,19 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 		int asn, flags, rwb;
 		int ret;
 
-		if (iommu_hw->irqs[i] != irq)
+		/*
+		 * "combined" irq is not a real IRQ per-se that needs to be
+		 * handled. It's a logical OR between the 3 other IRQs.
+		 */
+		if (i == KVX_IOMMU_IRQ_COMBINED)
+			continue;
+
+		/*
+		 * If the "combined" IRQ fired, we need to iterate over
+		 * the 3 other IRQs (no mapping, protection, parity).
+		 * We must handle them.
+		 */
+		if ((iommu_hw->irqs[i] != irq) && !combined_irq)
 			continue;
 
 		/*
@@ -792,9 +813,11 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 
 		switch (flags) {
 		case 0:
-			dev_err_ratelimited(iommu_hw->dev,
-				"%s: no error was detected, error log is meaningless\n",
-				kvx_iommu_irq_names[i]);
+			if (!combined_irq)
+				dev_err_ratelimited(iommu_hw->dev,
+					"%s: no error was detected, error log is meaningless\n",
+					kvx_iommu_irq_names[i]);
+			num_of_noerror_irqs++;
 			break;
 		case 1:
 			dev_err_ratelimited(iommu_hw->dev,
@@ -835,14 +858,20 @@ static irqreturn_t iommu_irq_handler(int irq, void *hw_id)
 		writeq(0x0, iommu_hw->base + KVX_IOMMU_IRQ_OFFSET +
 			    kvx_iommu_irq_status2_off[i]);
 
-		return IRQ_HANDLED;
+		irqret = IRQ_HANDLED;
 	}
 
-	dev_err_ratelimited(iommu_hw->dev,
-		"IRQ %d is not registered for IOMMUS %s\n",
-		irq, iommu_hw->name);
+	if (combined_irq && (num_of_noerror_irqs == 3))
+		dev_err_ratelimited(iommu_hw->dev,
+			"%s: no error was detected, error log is meaningless\n",
+			kvx_iommu_irq_names[KVX_IOMMU_IRQ_COMBINED]);
 
-	return IRQ_NONE;
+	if (irqret == IRQ_NONE)
+		dev_err_ratelimited(iommu_hw->dev,
+			"IRQ %d is not registered for IOMMUS %s\n",
+			irq, iommu_hw->name);
+
+	return irqret;
 }
 
 /**
@@ -872,16 +901,17 @@ static int setup_hw_iommu(struct kvx_iommu_hw *iommu_hw, u64 ctrl_reg)
 	/* Register IRQs */
 	reg = 0x0;
 	for (i = 0; i < KVX_IOMMU_IRQ_NB_TYPE; i++) {
-		if (iommu_hw->irqs[i] == 0) {
-			dev_info(dev, "IRQ %s not configured",
-				 kvx_iommu_irq_names[i]);
+		if (iommu_hw->irqs[i] <= 0) {
+			dev_dbg(dev, "IRQ %s not configured",
+				kvx_iommu_irq_names[i]);
 			continue;
 		}
 
 		if (devm_request_irq(dev, iommu_hw->irqs[i],
 				     iommu_irq_handler, 0,
 				     dev_name(dev), (void *)iommu_hw)) {
-			dev_err(dev, "failed to register IRQ-%d", i);
+			dev_err(dev, "failed to register IRQ-%d (%s)", i,
+				     kvx_iommu_irq_names[i]);
 			return -ENODEV;
 		}
 
@@ -1001,7 +1031,7 @@ static void unregister_iommu_irqs(struct platform_device *pdev)
 			unsigned long irq;
 
 			irq = iommu_hw->irqs[j];
-			if (irq)
+			if (irq > 0)
 				devm_free_irq(&pdev->dev, irq, iommu_hw);
 		}
 	}
@@ -1812,10 +1842,7 @@ static int kvx_iommu_probe(struct platform_device *pdev)
 				return -ENODEV;
 			}
 
-			irq = platform_get_irq_byname(pdev, irq_name);
-			if (irq < 0)
-				return -ENODEV;
-
+			irq = platform_get_irq_byname_optional(pdev, irq_name);
 			iommu_hw->irqs[j] = irq;
 		}
 
