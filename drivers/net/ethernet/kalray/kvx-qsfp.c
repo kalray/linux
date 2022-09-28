@@ -345,7 +345,7 @@ bool is_qsfp_module_ready(struct kvx_qsfp *qsfp, unsigned int timeout_ms)
 	bool ready;
 
 	do {
-		ready = is_cable_connected(qsfp) && qsfp->sm_state == QSFP_S_READY;
+		ready = is_cable_connected(qsfp) && READ_ONCE(qsfp->sm_state) == QSFP_S_READY;
 		if (ready)
 			break;
 		usleep_range(500, 1000);
