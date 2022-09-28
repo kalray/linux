@@ -49,7 +49,9 @@
 
 #define PCS_STATUS1_PCS_RECEIVE_LINK_MASK  0x4
 
+#define AN_DBG(dev, fmt, ...) dev_dbg(dev, dev_fmt(fmt), ##__VA_ARGS__)
 #define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
+#define AN_REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 
 #define kvx_poll(read, reg, mask, exp, timeout_in_ms) \
 ({ \
@@ -1670,73 +1672,73 @@ static void kvx_eth_dump_an_regs(struct kvx_eth_hw *hw,
 
 	dev_dbg(hw->dev, "Local KXAN_ABILITY lane[%d]\n", lane);
 	val = kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
-	REG_DBG(hw->dev, val, AN_KXAN_STATUS_LPANCAPABLE);
-	REG_DBG(hw->dev, val, AN_KXAN_STATUS_LINKSTATUS);
-	REG_DBG(hw->dev, val, AN_KXAN_STATUS_AN_ABILITY);
-	REG_DBG(hw->dev, val, AN_KXAN_STATUS_REMOTEFAULT);
-	REG_DBG(hw->dev, val, AN_KXAN_STATUS_AN_COMPLETE);
-	REG_DBG(hw->dev, val, AN_KXAN_STATUS_PAGERECEIVED);
-	REG_DBG(hw->dev, val, AN_KXAN_STATUS_EXTDNEXTPAGE);
-	REG_DBG(hw->dev, val, AN_KXAN_STATUS_PARALLELDETECTFAULT);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_STATUS_LPANCAPABLE);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_STATUS_LINKSTATUS);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_STATUS_AN_ABILITY);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_STATUS_REMOTEFAULT);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_STATUS_AN_COMPLETE);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_STATUS_PAGERECEIVED);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_STATUS_EXTDNEXTPAGE);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_STATUS_PARALLELDETECTFAULT);
 
 	val = kvx_mac_readl(hw, an_off + AN_KXAN_ABILITY_0_OFFSET);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_SEL);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ECHOEDNONCE);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_PAUSEABILITY);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_REMOTEFAULT);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ACK);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_NEXTPAGE);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_SEL);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ECHOEDNONCE);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_PAUSEABILITY);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_REMOTEFAULT);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ACK);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_NEXTPAGE);
 
 	val = kvx_mac_readl(hw, an_off + AN_KXAN_ABILITY_1_OFFSET);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TXNONCE);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TECHNOLOGY);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TXNONCE);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TECHNOLOGY);
 
 	val = kvx_mac_readl(hw, an_off + AN_KXAN_ABILITY_2_OFFSET);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_TECHNOLOGY);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_RS_FEC_REQ);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_BASER_FEC_REQ);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_ABILITY);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_REQ);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_TECHNOLOGY);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_RS_FEC_REQ);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_BASER_FEC_REQ);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_ABILITY);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_REQ);
 
 	dev_dbg(hw->dev, "Remote KXAN_ABILITY\n");
 	val = kvx_mac_readl(hw, an_off + AN_KXAN_REM_ABILITY_0_OFFSET);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_SEL);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ECHOEDNONCE);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_PAUSEABILITY);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_REMOTEFAULT);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ACK);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_NEXTPAGE);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_SEL);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ECHOEDNONCE);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_PAUSEABILITY);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_REMOTEFAULT);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_ACK);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_0_NEXTPAGE);
 	val = kvx_mac_readl(hw, an_off + AN_KXAN_REM_ABILITY_1_OFFSET);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TXNONCE);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TECHNOLOGY);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TXNONCE);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_1_TECHNOLOGY);
 
 	val = kvx_mac_readl(hw, an_off + AN_KXAN_REM_ABILITY_2_OFFSET);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_TECHNOLOGY);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_RS_FEC_REQ);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_BASER_FEC_REQ);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_ABILITY);
-	REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_REQ);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_TECHNOLOGY);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_RS_FEC_REQ);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_25G_BASER_FEC_REQ);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_ABILITY);
+	AN_REG_DBG(hw->dev, val, AN_KXAN_ABILITY_2_10G_FEC_REQ);
 
 	dev_dbg(hw->dev, "MAC CTRL\n");
 	val = kvx_mac_readl(hw, an_ctrl_off);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_CTRL_EN);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_CTRL_DIS_TIMER);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_CTRL_PCS_LINK_STATUS);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_CTRL_EN);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_CTRL_DIS_TIMER);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_CTRL_PCS_LINK_STATUS);
 
 	val = kvx_mac_readl(hw, an_status_off);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_INT);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_DONE);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_VAL);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_STATUS);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_SELECT);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_TR_DIS);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_FEC_EN);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_RS_FEC_EN);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_STATE);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_INT);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_VAL);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_STATUS);
-	REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_LOCK);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_INT);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_DONE);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_VAL);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_STATUS);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_SELECT);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_TR_DIS);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_FEC_EN);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_RS_FEC_EN);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_AN_STATE);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_INT);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_VAL);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_STATUS);
+	AN_REG_DBG(hw->dev, val, MAC_CTRL_AN_STATUS_LT_LOCK);
 }
 
 /**
@@ -1752,13 +1754,13 @@ static int kvx_eth_an_get_common_speed(struct kvx_eth_hw *hw, int lane_id,
 	u32 an_off = MAC_CTRL_AN_OFFSET + lane_id * MAC_CTRL_AN_ELEM_SIZE;
 	u32 val = kvx_mac_readl(hw, an_off + AN_BP_STATUS_OFFSET);
 
-	dev_dbg(hw->dev, "%s BP_STATUS[%d]: 0x%x\n", __func__, lane_id, val);
+	AN_DBG(hw->dev, "%s BP_STATUS[%d]: 0x%x\n", __func__, lane_id, val);
 	/* Gets autonegotiation rate and fec */
 	ln->rate = 0;
 	ln->speed = SPEED_UNKNOWN;
 	ln->fec = 0;
 	if (val & AN_BP_STATUS_TECHNOLOGY_A0_MASK) {
-		dev_dbg(hw->dev, "Negotiated 1G KX rate\n");
+		AN_DBG(hw->dev, "Negotiated 1G KX rate\n");
 		ln->rate |= RATE_1GBASE_KX;
 		ln->speed = SPEED_1000;
 	}
@@ -1772,44 +1774,44 @@ static int kvx_eth_an_get_common_speed(struct kvx_eth_hw *hw, int lane_id,
 		ln->speed = SPEED_10000;
 	}
 	if (val & AN_BP_STATUS_TECHNOLOGY_A2_MASK) {
-		dev_dbg(hw->dev, "Negotiated 10G KR rate.\n");
+		AN_DBG(hw->dev, "Negotiated 10G KR rate.\n");
 		ln->rate |= RATE_10GBASE_KR;
 		ln->speed = SPEED_10000;
 	}
 	if (val & AN_BP_STATUS_TECHNOLOGY_A10_MASK) {
-		dev_dbg(hw->dev, "Negotiated 25G KR/CR rate.\n");
+		AN_DBG(hw->dev, "Negotiated 25G KR/CR rate.\n");
 		ln->rate |= RATE_25GBASE_KR_CR;
 		ln->speed = SPEED_25000;
 	}
 	if (val & AN_BP_STATUS_TECHNOLOGY_A9_MASK) {
-		dev_dbg(hw->dev, "Negotiated 25G KR/CR-S rate.\n");
+		AN_DBG(hw->dev, "Negotiated 25G KR/CR-S rate.\n");
 		ln->rate |= RATE_25GBASE_KR_CR_S;
 		ln->speed = SPEED_25000;
 	}
 	if (val & AN_BP_STATUS_TECHNOLOGY_A3_MASK) {
-		dev_dbg(hw->dev, "Negotiated 40G KR4 rate.\n");
+		AN_DBG(hw->dev, "Negotiated 40G KR4 rate.\n");
 		ln->rate |= RATE_40GBASE_KR4;
 		ln->speed = SPEED_40000;
 	}
 	if (val & AN_BP_STATUS_TECHNOLOGY_A4_MASK) {
-		dev_dbg(hw->dev, "Negotiated 40G CR4 rate.\n");
+		AN_DBG(hw->dev, "Negotiated 40G CR4 rate.\n");
 		ln->rate |= RATE_40GBASE_CR4;
 		ln->speed = SPEED_40000;
 	}
 	if (val & AN_BP_STATUS_TECHNOLOGY_A5_MASK)
 		dev_err(hw->dev, "Unsupported 100G-CR10 negotiated rate\n");
 	if (val & AN_BP_STATUS_TECHNOLOGY_A6_MASK) {
-		dev_dbg(hw->dev, "Negotiated 100G KP4 rate.\n");
+		AN_DBG(hw->dev, "Negotiated 100G KP4 rate.\n");
 		ln->rate |= RATE_100GBASE_KP4;
 		ln->speed = SPEED_100000;
 	}
 	if (val & AN_BP_STATUS_TECHNOLOGY_A7_MASK) {
-		dev_dbg(hw->dev, "Negotiated 100G KR4 rate.\n");
+		AN_DBG(hw->dev, "Negotiated 100G KR4 rate.\n");
 		ln->rate |= RATE_100GBASE_KR4;
 		ln->speed = SPEED_100000;
 	}
 	if (val & AN_BP_STATUS_TECHNOLOGY_A8_MASK) {
-		dev_dbg(hw->dev, "Negotiated 100G CR4 rate.\n");
+		AN_DBG(hw->dev, "Negotiated 100G CR4 rate.\n");
 		ln->rate |= RATE_100GBASE_CR4;
 		ln->speed = SPEED_100000;
 	}
@@ -1819,7 +1821,7 @@ static int kvx_eth_an_get_common_speed(struct kvx_eth_hw *hw, int lane_id,
 	if (val & AN_BP_STATUS_2_TECHNOLOGY_A14_MASK)
 		dev_err(hw->dev, "Unsupported 100G-KR2/CR2 negotiated rate.\n");
 	if (val & AN_BP_STATUS_2_TECHNOLOGY_A13_MASK) {
-		dev_dbg(hw->dev, "Negotiated 50G KR/CR rate.\n");
+		AN_DBG(hw->dev, "Negotiated 50G KR/CR rate.\n");
 		ln->rate |= RATE_25GBASE_KR_CR;
 		ln->speed = SPEED_50000;
 	}
@@ -1829,10 +1831,10 @@ static int kvx_eth_an_get_common_speed(struct kvx_eth_hw *hw, int lane_id,
 	 * with autonegociation off.
 	 */
 	if (val & AN_BP_STATUS_BPETHSTATUSRSV_MASK) {
-		dev_dbg(hw->dev, "Autoneg RS-FEC\n");
+		AN_DBG(hw->dev, "Autoneg RS-FEC\n");
 		ln->fec = FEC_25G_RS_REQUESTED;
 	} else if (val & AN_BP_STATUS_FEC_MASK) {
-		dev_dbg(hw->dev, "Autoneg FEC\n");
+		AN_DBG(hw->dev, "Autoneg FEC\n");
 		ln->fec = FEC_10G_FEC_ABILITY;
 	}
 
@@ -2389,14 +2391,19 @@ static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
 	if (ret) {
 		/* Autoneg timeout, check what happened */
 		val = kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
-		if (GETF(val, AN_KXAN_STATUS_LPANCAPABLE) == 0) {
-			dev_dbg(hw->dev, "Autonegociation not supported by link partner\n");
-		} else if (GETF(val, AN_KXAN_STATUS_PAGERECEIVED)) {
-			dev_dbg(hw->dev, "Autonegotiation no page received from link partner\n");
-		} else {
-			/* Default error message */
-			dev_dbg(hw->dev, "Autonegotiation base exchange timeout\n");
-		}
+		AN_DBG(hw->dev, "%s LPANCAPABLE: %ld LINKSTATUS: %ld\n",
+		       __func__, GETF(val, AN_KXAN_STATUS_LPANCAPABLE),
+		       GETF(val, AN_KXAN_STATUS_LINKSTATUS));
+		AN_DBG(hw->dev, "%s AN_ABILITY: %ld REMOTEFAULT: %ld\n",
+		       __func__, GETF(val, AN_KXAN_STATUS_AN_ABILITY),
+		       GETF(val, AN_KXAN_STATUS_REMOTEFAULT));
+		AN_DBG(hw->dev, "%s AN_COMPLETE: %ld PAGERECEIVED: %ld\n",
+		       __func__, GETF(val, AN_KXAN_STATUS_AN_COMPLETE),
+		       GETF(val, AN_KXAN_STATUS_PAGERECEIVED));
+		AN_DBG(hw->dev, "%s EXTDNEXTPAGE: %ld PARALLELDETECTFAULT: %ld\n",
+		       __func__, GETF(val, AN_KXAN_STATUS_EXTDNEXTPAGE),
+		       GETF(val, AN_KXAN_STATUS_PARALLELDETECTFAULT));
+
 		goto exit;
 	}
 
