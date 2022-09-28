@@ -123,6 +123,20 @@ static void __init setup_initrd(void)
 }
 #endif
 
+static phys_addr_t memory_limit = PHYS_ADDR_MAX;
+
+static int __init early_mem(char *p)
+{
+	if (!p)
+		return 1;
+
+	memory_limit = memparse(p, &p) & PAGE_MASK;
+	pr_notice("Memory limited to %lldMB\n", memory_limit >> 20);
+
+	return 0;
+}
+early_param("mem", early_mem);
+
 static void __init setup_bootmem(void)
 {
 	phys_addr_t kernel_start, kernel_end;
@@ -159,6 +173,9 @@ static void __init setup_bootmem(void)
 #ifdef CONFIG_BLK_DEV_INITRD
 	setup_initrd();
 #endif
+
+	if (memory_limit != PHYS_ADDR_MAX)
+		memblock_mem_limit_remove_map(memory_limit);
 
 	/* Don't reserve the device tree if its builtin */
 	if (!is_kernel_rodata((unsigned long) initial_boot_params))
