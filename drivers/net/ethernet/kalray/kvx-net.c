@@ -193,6 +193,7 @@ static void kvx_eth_reset_tx(struct kvx_eth_netdev *ndev)
 		while (!time_after(jiffies, t)) {
 			if (kvx_eth_desc_unused(txr) == txr->count - 1)
 				break;
+			usleep_range(10, 20);
 		}
 		netif_tx_stop_queue(get_txq(txr));
 		kvx_eth_reset_ring(txr);

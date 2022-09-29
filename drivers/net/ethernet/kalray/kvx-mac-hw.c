@@ -265,11 +265,11 @@ bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 
 	t = jiffies + msecs_to_jiffies(PHY_LOS_TIMEOUT_MS);
 	do {
-		if (time_after(jiffies, t))
-			break;
 		pcs_link = kvx_mac_readl(hw, off);
 		pcs_link &= mask;
-	} while (pcs_link == 0);
+		if (pcs_link)
+			break;
+	} while (!time_after(jiffies, t));
 
 bail:
 	mutex_unlock(&hw->mac_reset_lock);
@@ -618,7 +618,10 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 			return -ETIMEDOUT;
 		}
 		v = readw(hw->res[KVX_ETH_RES_PHY].base + off);
-	} while (!(v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK));
+		if (v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK)
+			break;
+		usleep_range(100, 150);
+	} while (true);
 
 	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
 	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
@@ -646,7 +649,10 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 			return -ETIMEDOUT;
 		}
 		v = readw(hw->res[KVX_ETH_RES_PHY].base + off);
-	} while (v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK);
+		if ((v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK) == 0)
+			break;
+		usleep_range(50, 100);
+	} while (true);
 
 	dev_dbg(hw->dev, "lane[%d] FOM %d\n", lane_id, p->fom);
 
@@ -2181,7 +2187,10 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 			kvx_eth_lt_ld_fsm(hw, lane);
 			kvx_eth_lt_lp_fsm(hw, lane);
 		}
-	} while (!kvx_eth_lt_fsm_all_done(hw, cfg) && !time_after(jiffies, t));
+		if (kvx_eth_lt_fsm_all_done(hw, cfg))
+			break;
+		usleep_range(200, 300);
+	} while (!time_after(jiffies, t));
 
 	if (!kvx_eth_lt_fsm_all_done(hw, cfg)) {
 		for_each_cfg_lane(nb_lane, lane, cfg) {
@@ -2638,9 +2647,10 @@ int kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_eth
 				data_en = false;
 			}
 		}
-		if (time_after(jiffies, delay))
+		if (data_en)
 			break;
-	} while (!data_en);
+		usleep_range(100, 150);
+	} while (!time_after(jiffies, delay));
 
 	return 0;
 }
