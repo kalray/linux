@@ -65,6 +65,24 @@ struct page *empty_zero_page;
 EXPORT_SYMBOL(empty_zero_page);
 
 extern char _start[];
+extern char __kernel_smem_code_start[];
+extern char __kernel_smem_code_end[];
+
+struct kernel_section {
+	phys_addr_t start;
+	phys_addr_t end;
+};
+
+struct kernel_section kernel_sections[] = {
+	{
+		.start = (phys_addr_t)__kernel_smem_code_start,
+		.end = (phys_addr_t)__kernel_smem_code_end
+	},
+	{
+		.start = __pa(_start),
+		.end = __pa(_end)
+	}
+};
 
 static void __init zone_sizes_init(void)
 {
@@ -109,7 +127,6 @@ static void __init setup_bootmem(void)
 {
 	phys_addr_t kernel_start, kernel_end;
 	phys_addr_t start, end = 0;
-	int kernel_memory_reserved = 0;
 	u64 i;
 
 	init_mm.start_code = (unsigned long)_stext;
@@ -117,31 +134,18 @@ static void __init setup_bootmem(void)
 	init_mm.end_data = (unsigned long)_edata;
 	init_mm.brk = (unsigned long)_end;
 
-	/* kernel means text + data here */
-	kernel_start = __pa(_start);
-	kernel_end = __pa(init_mm.brk);
+	for (i = 0; i < ARRAY_SIZE(kernel_sections); i++) {
+		kernel_start = kernel_sections[i].start;
+		kernel_end = kernel_sections[i].end;
 
-	/* Find the memory region containing the kernel */
-	for_each_mem_range(i, &start, &end) {
-
-		/* Check that this memblock includes the kernel */
-		if (start <= kernel_start && kernel_end <= end) {
-
-			pr_info("%15s: memory  : 0x%lx - 0x%lx\n", __func__,
-				(unsigned long)start,
-				(unsigned long)end);
-			pr_info("%15s: reserved: 0x%lx - 0x%lx\n", __func__,
-				(unsigned long)kernel_start,
-				(unsigned long)kernel_end);
-
-			/* Reserve from the start to the end of the kernel. */
-			memblock_reserve(kernel_start,
-					 kernel_end - kernel_start);
-			kernel_memory_reserved = 1;
-			break;
-		}
+		memblock_reserve(kernel_start, kernel_end - kernel_start);
 	}
-	BUG_ON(kernel_memory_reserved == 0);
+
+	for_each_mem_range(i, &start, &end) {
+		pr_info("%15s: memory  : 0x%lx - 0x%lx\n", __func__,
+			(unsigned long)start,
+			(unsigned long)end);
+	}
 
 	/* min_low_pfn is the lowest PFN available in the system */
 	min_low_pfn = PFN_UP(memblock_start_of_DRAM());
