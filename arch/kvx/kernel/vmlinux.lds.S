@@ -50,8 +50,10 @@ SECTIONS
 	. = BOOT_ENTRY;
 	.boot :
 	{
+		__kernel_smem_code_start = .;
 		KEEP(*(.boot.startup));
 		KEEP(*(.boot.*));
+		__kernel_smem_code_end = .;
 	}
 
 	/**
