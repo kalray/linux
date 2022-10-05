@@ -107,14 +107,6 @@ int sfp_parse_port(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 }
 EXPORT_SYMBOL_GPL(sfp_parse_port);
 
-bool sfp_is_qsfp_module(const struct sfp_eeprom_id *id)
-{
-	return (id->base.phys_id == SFP_PHYS_ID_QSFP ||
-		id->base.phys_id == SFP_PHYS_ID_QSFP_PLUS ||
-		id->base.phys_id == SFP_PHYS_ID_QSFP28);
-}
-EXPORT_SYMBOL_GPL(sfp_is_qsfp_module);
-
 /**
  * sfp_may_have_phy() - indicate whether the module may have a PHY
  * @bus: a pointer to the &struct sfp_bus structure for the sfp module
@@ -143,92 +135,6 @@ bool sfp_may_have_phy(struct sfp_bus *bus, const struct sfp_eeprom_id *id)
 EXPORT_SYMBOL_GPL(sfp_may_have_phy);
 
 /**
- * qsfp_parse_support() - Parse the eeprom id for supported link modes (8636)
- * @bus: a pointer to the &struct sfp_bus structure for the sfp module
- * @id: a pointer to the module's &struct sfp_eeprom_id
- * @support: pointer to an array of unsigned long for the ethtool support mask
- *
- * Parse the EEPROM identification information and derive the supported
- * ethtool link modes for the module.
- */
-static void qsfp_parse_support(struct sfp_bus *bus,
-			       const struct sfp_eeprom_id *id,
-			       unsigned long *support)
-{
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(modes) = { 0, };
-
-	/* Set ethtool support from the compliance fields. */
-	if (id->base.e10g_base_sr)
-		phylink_set(modes, 10000baseSR_Full);
-	if (id->base.e10g_base_lr)
-		phylink_set(modes, 10000baseLR_Full);
-	if (id->base.e10g_base_lrm)
-		phylink_set(modes, 10000baseLRM_Full);
-
-	if (id->base.qsfp.e40g_base_cr4)
-		phylink_set(modes, 40000baseCR4_Full);
-	if (id->base.qsfp.e40g_base_sr4)
-		phylink_set(modes, 40000baseSR4_Full);
-	if (id->base.qsfp.e40g_base_lr4)
-		phylink_set(modes, 40000baseLR4_Full);
-	if (id->base.qsfp.e40g_base_active) {
-		phylink_set(modes, 10000baseSR_Full);
-		phylink_set(modes, 10000baseLR_Full);
-		phylink_set(modes, 10000baseLRM_Full);
-	}
-
-	if (id->base.qsfp.extended) {
-		switch (id->ext_8636.code) {
-		case SFF8024_ECC_UNSPEC:
-			break;
-		case SFF8024_ECC_100G_25GAUI_C2M_AOC:
-		case SFF8024_ECC_100GBASE_SR4_25GBASE_SR:
-			phylink_set(modes, 100000baseSR4_Full);
-			phylink_set(modes, 40000baseSR4_Full);
-			phylink_set(modes, 25000baseSR_Full);
-			break;
-		case SFF8024_ECC_100GBASE_LR4_25GBASE_LR:
-		case SFF8024_ECC_100GBASE_ER4_25GBASE_ER:
-			phylink_set(modes, 100000baseLR4_ER4_Full);
-			break;
-		case SFF8024_ECC_100GBASE_CR4:
-			phylink_set(modes, 100000baseCR4_Full);
-			fallthrough;
-		case SFF8024_ECC_25GBASE_CR_S:
-		case SFF8024_ECC_25GBASE_CR_N:
-			phylink_set(modes, 25000baseCR_Full);
-			break;
-		case SFF8024_ECC_10GBASE_T_SFI:
-		case SFF8024_ECC_10GBASE_T_SR:
-			phylink_set(modes, 10000baseT_Full);
-			break;
-		case SFF8024_ECC_5GBASE_T:
-			phylink_set(modes, 5000baseT_Full);
-			break;
-		case SFF8024_ECC_2_5GBASE_T:
-			phylink_set(modes, 2500baseT_Full);
-			break;
-		default:
-			dev_warn(bus->sfp_dev, "Unknown/unsupported extended compliance code: 0x%02x\n",
-				 id->ext_8636.code);
-			break;
-		}
-	}
-	dev_dbg(bus->sfp_dev, "%s ext_code: 0x%x ext_opt: 0x%x 0x%x 0x%x\n",
-		__func__, id->ext_8636.code, id->ext_8636.option[0],
-		id->ext_8636.option[1], id->ext_8636.option[2]);
-
-	if (bus->sfp_quirk)
-		bus->sfp_quirk->modes(id, modes);
-
-	bitmap_or(support, support, modes, __ETHTOOL_LINK_MODE_MASK_NBITS);
-
-	phylink_set(support, Autoneg);
-	phylink_set(support, Pause);
-	phylink_set(support, Asym_Pause);
-}
-
-/**
  * sfp_parse_support() - Parse the eeprom id for supported link modes
  * @bus: a pointer to the &struct sfp_bus structure for the sfp module
  * @id: a pointer to the module's &struct sfp_eeprom_id
@@ -244,11 +150,6 @@ void sfp_parse_support(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 {
 	unsigned int br_min, br_nom, br_max;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(modes) = { 0, };
-	bool is_qsfp = sfp_is_qsfp_module(id);
-	u8 val = 0;
-
-	if (is_qsfp)
-		return qsfp_parse_support(bus, id, support);
 
 	/* Decode the bitrate information to MBd */
 	br_min = br_nom = br_max = 0;
@@ -302,6 +203,7 @@ void sfp_parse_support(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 		__set_bit(PHY_INTERFACE_MODE_1000BASEX, interfaces);
 		__set_bit(PHY_INTERFACE_MODE_SGMII, interfaces);
 	}
+
 	/* 1000Base-PX or 1000Base-BX10 */
 	if ((id->base.e_base_px || id->base.e_base_bx10) &&
 	    br_min <= 1300 && br_max >= 1200) {
@@ -351,8 +253,7 @@ void sfp_parse_support(struct sfp_bus *bus, const struct sfp_eeprom_id *id,
 		}
 	}
 
-	val = id->base.extended_cc;
-	switch (val) {
+	switch (id->base.extended_cc) {
 	case SFF8024_ECC_UNSPEC:
 		break;
 	case SFF8024_ECC_100G_25GAUI_C2M_AOC:
@@ -462,16 +363,6 @@ phy_interface_t sfp_select_interface(struct sfp_bus *bus,
 	    phylink_test(link_modes, 25000baseKR_Full) ||
 	    phylink_test(link_modes, 25000baseSR_Full))
 		return PHY_INTERFACE_MODE_25GBASER;
-
-	if (phylink_test(link_modes, 100000baseKR4_Full) ||
-	    phylink_test(link_modes, 100000baseSR4_Full) ||
-	    phylink_test(link_modes, 100000baseCR4_Full) ||
-	    phylink_test(link_modes, 100000baseLR4_ER4_Full) ||
-	    phylink_test(link_modes, 40000baseKR4_Full) ||
-	    phylink_test(link_modes, 40000baseCR4_Full) ||
-	    phylink_test(link_modes, 40000baseSR4_Full) ||
-	    phylink_test(link_modes, 40000baseLR4_Full))
-		return PHY_INTERFACE_MODE_INTERNAL;
 
 	if (phylink_test(link_modes, 10000baseCR_Full) ||
 	    phylink_test(link_modes, 10000baseSR_Full) ||
