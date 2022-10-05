@@ -221,7 +221,6 @@ static const enum gpiod_flags gpio_flags[] = {
 struct sff_data {
 	unsigned int gpios;
 	bool (*module_supported)(const struct sfp_eeprom_id *id);
-	int (*module_parse_power)(struct sfp *sfp);
 };
 
 struct sfp {
@@ -281,9 +280,6 @@ struct sfp {
 #endif
 };
 
-static int sfp_module_parse_power(struct sfp *sfp);
-static int qsfp_module_parse_power(struct sfp *sfp);
-
 static bool sff_module_supported(const struct sfp_eeprom_id *id)
 {
 	return id->base.phys_id == SFF8024_ID_SFF_8472 &&
@@ -292,8 +288,7 @@ static bool sff_module_supported(const struct sfp_eeprom_id *id)
 
 static const struct sff_data sff_data = {
 	.gpios = SFP_F_LOS | SFP_F_TX_FAULT | SFP_F_TX_DISABLE,
-	.module_supported   = sff_module_supported,
-	.module_parse_power = sfp_module_parse_power,
+	.module_supported = sff_module_supported,
 };
 
 static bool sfp_module_supported(const struct sfp_eeprom_id *id)
@@ -321,22 +316,9 @@ static const struct sff_data sfp_data = {
 	.module_supported = sfp_module_supported,
 };
 
-static bool qsfp_module_supported(const struct sfp_eeprom_id *id)
-{
-	return sfp_is_qsfp_module(id);
-}
-
-static const struct sff_data qsfp_data = {
-	.gpios = SFP_F_PRESENT | SFP_F_LOS | SFP_F_TX_FAULT |
-		 SFP_F_TX_DISABLE | SFP_F_RATE_SELECT,
-	.module_supported   = qsfp_module_supported,
-	.module_parse_power = qsfp_module_parse_power,
-};
-
 static const struct of_device_id sfp_of_match[] = {
 	{ .compatible = "sff,sff", .data = &sff_data, },
 	{ .compatible = "sff,sfp", .data = &sfp_data, },
-	{ .compatible = "sff,qsfp", .data = &qsfp_data, },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, sfp_of_match);
@@ -636,19 +618,6 @@ static int sfp_write(struct sfp *sfp, bool a2, u8 addr, void *buf, size_t len)
 	return sfp->write(sfp, a2, addr, buf, len);
 }
 
-static int sfp_page_select(struct sfp *sfp, u8 page_id)
-{
-	int ret = sfp_write(sfp, false, SFP_PAGE, &page_id, sizeof(page_id));
-
-	if (ret != sizeof(page_id)) {
-		dev_dbg(sfp->dev, "Failed to select EEPROM page[%d]: %d\n",
-			page_id, ret);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 static unsigned int sfp_soft_get_state(struct sfp *sfp)
 {
 	unsigned int state = 0;
@@ -674,32 +643,16 @@ static unsigned int sfp_soft_get_state(struct sfp *sfp)
 
 static void sfp_soft_set_state(struct sfp *sfp, unsigned int state)
 {
-	bool a2 = false;
 	u8 status;
 
-	if (sfp_is_qsfp_module(&sfp->id)) {
-		if (sfp_read(sfp, a2, SFF8636_TX_DISABLE_REG,
-			     &status, sizeof(status)) != sizeof(status)) {
-			a2 = true;
-			sfp_read(sfp, a2, SFF8636_TX_DISABLE_REG,
-				 &status, sizeof(status));
-		}
+	if (sfp_read(sfp, true, SFP_STATUS, &status, sizeof(status)) ==
+		     sizeof(status)) {
 		if (state & SFP_F_TX_DISABLE)
-			status |= 0xF; /* Disable all lanes */
+			status |= SFP_STATUS_TX_DISABLE_FORCE;
 		else
-			status &= ~0xF;
-		sfp_write(sfp, a2, SFF8636_TX_DISABLE_REG,
-			  &status, sizeof(status));
-	} else {
-		if (sfp_read(sfp, true, SFP_STATUS, &status, sizeof(status)) ==
-		    sizeof(status)) {
-			if (state & SFP_F_TX_DISABLE)
-				status |= SFP_STATUS_TX_DISABLE_FORCE;
-			else
-				status &= ~SFP_STATUS_TX_DISABLE_FORCE;
+			status &= ~SFP_STATUS_TX_DISABLE_FORCE;
 
-			sfp_write(sfp, true, SFP_STATUS, &status, sizeof(status));
-		}
+		sfp_write(sfp, true, SFP_STATUS, &status, sizeof(status));
 	}
 }
 
@@ -1721,12 +1674,6 @@ static void sfp_sm_link_check_los(struct sfp *sfp)
 	__be16 los_options = sfp->id.ext.options & (los_inverted | los_normal);
 	bool los = false;
 
-	if (sfp_is_qsfp_module(&sfp->id)) {
-		/* Force link up for SFF-8x36 */
-		sfp_sm_link_up(sfp);
-		return;
-	}
-
 	/* If neither SFP_OPTIONS_LOS_INVERTED nor SFP_OPTIONS_LOS_NORMAL
 	 * are set, we assume that no LOS signal is available. If both are
 	 * set, we assume LOS is not implemented (and is meaningless.)
@@ -1819,67 +1766,6 @@ static int sfp_sm_probe_for_phy(struct sfp *sfp)
 	return err;
 }
 
-static int qsfp_module_parse_power(struct sfp *sfp)
-{
-	u32 power_mW = 2000;
-	u8 c14, c57, val = 0;
-	int ret = sfp_page_select(sfp, 0);
-
-	if (ret)
-		return 0;
-
-	ret = sfp_read(sfp, false, SFF8636_EXT_ID_REG, &val, sizeof(val));
-	if (ret != sizeof(val)) {
-		dev_err(sfp->dev, "Failed to read EEPROM: %d (l.%d)\n",
-			ret, __LINE__);
-	}
-
-	c14 = (val & SFF8636_EXT_ID_POWER_CLASS_14) >> 6;
-	c57 = (val & SFF8636_EXT_ID_POWER_CLASS_57);
-	if (c57 == 0) {
-		switch (c14) {
-		case 0: /* Power class 1 */
-			power_mW = 1500;
-			break;
-		case 1: /* Power class 2 */
-			power_mW = 2000;
-			break;
-		case 2: /* Power class 3 */
-			power_mW = 2500;
-			break;
-		case 3: /* Power class 4 */
-			power_mW = 3500;
-			break;
-		default:
-			break;
-		}
-	} else {
-		switch (c57) {
-		case 1: /* Power class 5 */
-			power_mW = 4000;
-			break;
-		case 2: /* Power class 6 */
-			power_mW = 4500;
-			break;
-		case 3: /* Power class 7 */
-			power_mW = 5000;
-			break;
-		default:
-			break;
-		}
-	}
-
-	if (power_mW > sfp->max_power_mW) {
-		dev_warn(sfp->dev, "Host does not support %u.%uW modules (maximum-power-milliwatt property)\n",
-				 power_mW / 1000, (power_mW / 100) % 10);
-		return 0;
-	}
-
-	sfp->module_power_mW = power_mW;
-
-	return 0;
-}
-
 static int sfp_module_parse_power(struct sfp *sfp)
 {
 	u32 power_mW = 1000;
@@ -1943,71 +1829,10 @@ static int sfp_module_parse_power(struct sfp *sfp)
 	return 0;
 }
 
-static int qsfp_sm_mod_hpower(struct sfp *sfp, bool enable)
-{
-	bool a2 = false;
-	int err;
-	u8 val, enh_opts = 0;
-
-	/* Read bus @0x50 for qsfp by default */
-	err = sfp_read(sfp, a2, SFF8636_POWER_REG, &val, sizeof(val));
-	if (err != sizeof(val)) {
-		a2 = true;
-		err = sfp_read(sfp, a2, SFF8636_POWER_REG, &val, sizeof(val));
-		if (err != sizeof(val)) {
-			dev_err(sfp->dev, "Failed to read EEPROM: %d (l.%d)\n",
-				err, __LINE__);
-			return err;
-		}
-	}
-
-	err = sfp_read(sfp, a2, SFF8636_ENH_OPTS_REG, &enh_opts,
-		       sizeof(enh_opts));
-	if (err == sizeof(enh_opts)) {
-		if (!(enh_opts & SFF8636_ENH_OPTS_RESET_IMPL))
-			dev_warn(sfp->dev, "SW reset not implemented\n");
-		else
-			val |= SFF8636_POWER_SW_RESET;
-	}
-
-	dev_dbg(sfp->dev, "%s a2=%d power reg: 0x%x en: %d\n", __func__,
-		 a2, val, enable);
-	/* Force POWER_OVRD for QSFP support */
-	if (enable)
-		val = SFF8636_POWER_OVRD;
-	else
-		val &= ~(SFF8636_POWER_SET | SFF8636_POWER_OVRD);
-
-	err = sfp_write(sfp, a2, SFF8636_POWER_REG, &val, sizeof(val));
-	if (err != sizeof(val)) {
-		dev_err(sfp->dev, "Failed to write EEPROM: %d (l.%d)\n",
-			err, __LINE__);
-		return 0;
-	}
-
-	err = sfp_read(sfp, a2, SFF8636_POWER_REG, &val, sizeof(val));
-	if (err != sizeof(val)) {
-		dev_err(sfp->dev, "Failed to read EEPROM: %d (l.%d)\n",
-			err, __LINE__);
-		return 0;
-	}
-
-	dev_dbg(sfp->dev, "%s updated power reg: 0x%x\n", __func__, val);
-	if (enable)
-		dev_info(sfp->dev, "Module switched to %u.%uW power level\n",
-			 sfp->module_power_mW / 1000,
-			 (sfp->module_power_mW / 100) % 10);
-
-	return 0;
-}
-
 static int sfp_sm_mod_hpower(struct sfp *sfp, bool enable)
 {
 	u8 val;
 	int err;
-
-	if (sfp_is_qsfp_module(&sfp->id))
-		return qsfp_sm_mod_hpower(sfp, enable);
 
 	err = sfp_read(sfp, true, SFP_EXT_STATUS, &val, sizeof(val));
 	if (err != sizeof(val)) {
@@ -2104,39 +1929,6 @@ static int sfp_cotsworks_fixup_check(struct sfp *sfp, struct sfp_eeprom_id *id)
 	return 0;
 }
 
-static int qsfp_read_eeprom_id(struct sfp *sfp, struct sfp_eeprom_id *id,
-			       bool report)
-{
-	u8 status[2];
-	int ret;
-
-	ret = sfp_read(sfp, false, SFF8436_STATUS, status, ARRAY_SIZE(status));
-	if (ret < 0) {
-		if (report)
-			dev_err(sfp->dev, "failed to read data EEPROM: %d\n", ret);
-		return -EINVAL;
-	}
-
-	if (status[1] & SFF8436_STATUS_DATA_NOT_READY)
-		return -EAGAIN;
-	if (!(status[1] & SFF8436_STATUS_FLAT_MEM))
-		sfp_page_select(sfp, 0);
-	ret = sfp_read(sfp, false, 128, id, sizeof(*id));
-	if (ret < 0) {
-		if (report)
-			dev_err(sfp->dev, "failed to read EEPROM: %d (l.%d)\n",
-				ret, __LINE__);
-		return -EAGAIN;
-	}
-
-	if (ret != sizeof(*id)) {
-		dev_err(sfp->dev, "EEPROM short read: %d\n", ret);
-		return -EAGAIN;
-	}
-
-	return 0;
-}
-
 static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
 {
 	/* SFP module inserted - read I2C data */
@@ -2159,13 +1951,6 @@ static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
 	if (ret != sizeof(id.base)) {
 		dev_err(sfp->dev, "EEPROM short read: %pe\n", ERR_PTR(ret));
 		return -EAGAIN;
-	}
-
-	if (sfp_is_qsfp_module(&id)) {
-		ret = qsfp_read_eeprom_id(sfp, &id, report);
-		if (ret)
-			return ret;
-		goto bail;
 	}
 
 	/* Some SFP modules (e.g. Nokia 3FE46541AA) lock up if read from
@@ -2260,7 +2045,6 @@ static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
 		}
 	}
 
-bail:
 	sfp->id = id;
 
 	dev_info(sfp->dev, "module %.*s %.*s rev %.*s sn %.*s dc %.*s\n",
@@ -2284,7 +2068,7 @@ bail:
 			 "module address swap to access page 0xA2 is not supported.\n");
 
 	/* Parse the module power requirement */
-	ret = sfp->type->module_parse_power(sfp);
+	ret = sfp_module_parse_power(sfp);
 	if (ret < 0)
 		return ret;
 
@@ -2697,11 +2481,6 @@ static int sfp_module_info(struct sfp *sfp, struct ethtool_modinfo *modinfo)
 		modinfo->type = ETH_MODULE_SFF_8079;
 		modinfo->eeprom_len = ETH_MODULE_SFF_8079_LEN;
 	}
-	if (sfp_is_qsfp_module(&sfp->id)) {
-		modinfo->type = ETH_MODULE_SFF_8636;
-		modinfo->eeprom_len = ETH_MODULE_SFF_8636_LEN;
-	}
-
 	return 0;
 }
 
