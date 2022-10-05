@@ -8,30 +8,14 @@ struct sfp_eeprom_base {
 	u8 phys_ext_id;
 	u8 connector;
 #if defined __BIG_ENDIAN_BITFIELD
-	union {
-		/* sfp SFF-8472*/
-		struct {
-			u8 e10g_base_er:1;
-			u8 e10g_base_lrm:1;
-			u8 e10g_base_lr:1;
-			u8 e10g_base_sr:1;
-			u8 if_1x_sx:1;
-			u8 if_1x_lx:1;
-			u8 if_1x_copper_active:1;
-			u8 if_1x_copper_passive:1;
-		};
-		/* qsfp SFF-8636 */
-		struct {
-			u8 extended:1;
-			u8 e10g_base_lrm:1;
-			u8 e10g_base_lr:1;
-			u8 e10g_base_sr:1;
-			u8 e40g_base_cr4:1;
-			u8 e40g_base_sr4:1;
-			u8 e40g_base_lr4:1;
-			u8 e40g_base_active:1;
-		} qsfp;
-	};
+	u8 e10g_base_er:1;
+	u8 e10g_base_lrm:1;
+	u8 e10g_base_lr:1;
+	u8 e10g_base_sr:1;
+	u8 if_1x_sx:1;
+	u8 if_1x_lx:1;
+	u8 if_1x_copper_active:1;
+	u8 if_1x_copper_passive:1;
 
 	u8 escon_mmf_1310_led:1;
 	u8 escon_smf_1310_laser:1;
@@ -96,30 +80,15 @@ struct sfp_eeprom_base {
 	u8 unallocated_10_1:1;
 	u8 fc_speed_100:1;
 #elif defined __LITTLE_ENDIAN_BITFIELD
-	union {
-		/* sfp SFF-8472*/
-		struct {
-			u8 if_1x_copper_passive:1;
-			u8 if_1x_copper_active:1;
-			u8 if_1x_lx:1;
-			u8 if_1x_sx:1;
-			u8 e10g_base_sr:1;
-			u8 e10g_base_lr:1;
-			u8 e10g_base_lrm:1;
-			u8 e10g_base_er:1;
-		};
-		/* qsfp SFF-8636 */
-		struct {
-			u8 e40g_base_active:1;
-			u8 e40g_base_lr4:1;
-			u8 e40g_base_sr4:1;
-			u8 e40g_base_cr4:1;
-			u8 e10g_base_sr:1;
-			u8 e10g_base_lr:1;
-			u8 e10g_base_lrm:1;
-			u8 extended:1;
-		} qsfp;
-	};
+	u8 if_1x_copper_passive:1;
+	u8 if_1x_copper_active:1;
+	u8 if_1x_lx:1;
+	u8 if_1x_sx:1;
+	u8 e10g_base_sr:1;
+	u8 e10g_base_lr:1;
+	u8 e10g_base_lrm:1;
+	u8 e10g_base_er:1;
+
 	u8 sonet_oc3_short_reach:1;
 	u8 sonet_oc3_smf_intermediate_reach:1;
 	u8 sonet_oc3_smf_long_reach:1;
@@ -248,17 +217,6 @@ struct sfp_eeprom_ext {
 	u8 cc_ext;
 } __packed;
 
-struct sfp_eeprom_ext_8636 {
-	u8 code;
-	u8 option[3];
-	char vendor_sn[16];
-	char datecode[8];
-	u8 diagmon;
-	u8 enhopts;
-	u8 nominal_baudrate;
-	u8 cc_ext;
-} __packed;
-
 /**
  * struct sfp_eeprom_id - raw SFP module identification information
  * @base: base SFP module identification structure
@@ -270,10 +228,7 @@ struct sfp_eeprom_ext_8636 {
  */
 struct sfp_eeprom_id {
 	struct sfp_eeprom_base base;
-	union {
-		struct sfp_eeprom_ext ext;
-		struct sfp_eeprom_ext_8636 ext_8636;
-	};
+	struct sfp_eeprom_ext ext;
 } __packed;
 
 struct sfp_diag {
@@ -369,9 +324,6 @@ enum {
 	SFF8024_ECC_100GBASE_CR4	= 0x0b,
 	SFF8024_ECC_25GBASE_CR_S	= 0x0c,
 	SFF8024_ECC_25GBASE_CR_N	= 0x0d,
-	SFF8024_ECC_40GBASE_ER          = 0x10,
-	SFF8024_ECC_4_10GBASE_SR        = 0x11,
-	SFF8024_ECC_40GBASE_PSM4_SMF    = 0x12,
 	SFF8024_ECC_10GBASE_T_SFI	= 0x16,
 	SFF8024_ECC_10GBASE_T_SR	= 0x1c,
 	SFF8024_ECC_5GBASE_T		= 0x1d,
@@ -412,11 +364,6 @@ enum {
 	SFP_SFF8472_COMPLIANCE		= 0x5e,
 	SFP_CC_EXT			= 0x5f,
 
-	SFP_PHYS_ID_SFF			= 0x02,
-	SFP_PHYS_ID_SFP			= 0x03,
-	SFP_PHYS_ID_QSFP		= 0x0C,
-	SFP_PHYS_ID_QSFP_PLUS		= 0x0D,
-	SFP_PHYS_ID_QSFP28		= 0x11,
 	SFP_PHYS_EXT_ID_SFP		= 0x04,
 	SFP_OPTIONS_HIGH_POWER_LEVEL	= BIT(13),
 	SFP_OPTIONS_PAGING_A2		= BIT(12),
@@ -546,37 +493,6 @@ enum {
 	SFP_PAGE			= 0x7f,
 };
 
-/* SFF8436 registers */
-enum {
-	SFF8436_ID                           = 0x00,
-	SFF8436_STATUS                       = 0x01,
-	SFF8436_STATUS_DATA_NOT_READY        = BIT(0),
-	SFF8436_STATUS_FLAT_MEM              = BIT(2),
-};
-
-/* SFF8636 reisters */
-enum {
-	SFF8636_STATUS_REG1                 = 1,
-	SFF8636_STATUS_REG2                 = 2,
-	SFF8636_IRQ_FLAGS                   = 3,
-	SFF8636_TX_DISABLE_REG              = 86,
-	SFF8636_POWER_REG                   = 93,
-	SFF8636_POWER_OVRD                  = BIT(0),
-	SFF8636_POWER_SET                   = BIT(1),
-	SFF8636_POWER_CLASS_57              = BIT(2),
-	SFF8636_POWER_CLASS_8               = BIT(3),
-	SFF8636_POWER_SW_RESET              = BIT(7),
-	SFF8636_CDR_REG                     = 98,
-	SFF8636_MAX_POWER_REG               = 107,
-	SFF8636_EXT_ID_REG                  = 129,
-	SFF8636_EXT_ID_POWER_CLASS_57       = 0x3,
-	SFF8636_EXT_ID_POWER_CLASS_14       = 0xC0,
-	SFF8636_ENH_OPTS_REG                = 221,
-	SFF8636_ENH_OPTS_RESET_IMPL         = BIT(0),
-	SFF8636_RX_DIFF_AMP_REG1            = 238,
-	SFF8636_RX_DIFF_AMP_REG2            = 239,
-};
-
 struct fwnode_handle;
 struct ethtool_eeprom;
 struct ethtool_modinfo;
@@ -636,7 +552,6 @@ struct sfp_bus *sfp_bus_find_fwnode(struct fwnode_handle *fwnode);
 int sfp_bus_add_upstream(struct sfp_bus *bus, void *upstream,
 			 const struct sfp_upstream_ops *ops);
 void sfp_bus_del_upstream(struct sfp_bus *bus);
-bool sfp_is_qsfp_module(const struct sfp_eeprom_id *id);
 #else
 static inline int sfp_parse_port(struct sfp_bus *bus,
 				 const struct sfp_eeprom_id *id,
@@ -708,11 +623,6 @@ static inline int sfp_bus_add_upstream(struct sfp_bus *bus, void *upstream,
 
 static inline void sfp_bus_del_upstream(struct sfp_bus *bus)
 {
-}
-
-static inline bool sfp_is_qsfp_module(const struct sfp_eeprom_id *id)
-{
-	return false;
 }
 #endif
 

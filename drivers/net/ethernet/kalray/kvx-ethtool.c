@@ -9,7 +9,6 @@
 
 #include <linux/ethtool.h>
 #include <linux/etherdevice.h>
-#include <linux/sfp.h>
 
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
