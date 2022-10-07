@@ -136,77 +136,6 @@ static int select_eeprom_page(struct kvx_qsfp *qsfp, u8 page)
 	return 0;
 }
 
-/** i2c_write_params - write qsfp params on i2c in one single transfer
- * @qsfp: qsfp prvdata
- * @params: array of qsfp params
- * @len: size of params
- *
- * This function can write multiple non-continuous bytes in one i2c transfer.
- * It is faster than calling kvx_qsfp_eeprom_write when all parameters
- * are on the same page. All params must be on the same page. If 2 groups of
- * params are on different pages, call i2c_write_params for each page.
- *
- * Returns the number of registers set successfully
- */
-static int i2c_write_params(struct kvx_qsfp *qsfp, struct kvx_qsfp_param *params,
-			    size_t len)
-{
-	struct i2c_adapter *i2c = qsfp->i2c;
-	struct i2c_msg *msgs;
-	u8 bus_addr = 0x50, page = -1;
-	int ret, i, j;
-
-	if (len == 0)
-		return -EINVAL;
-
-	msgs = kmalloc_array(len, sizeof(struct i2c_msg), GFP_KERNEL);
-	if (!msgs)
-		return -ENOMEM;
-
-	/* sanity check - all params must be on same page */
-	for (i = 0; i < len; i++)
-		page &= params[i].page;
-	if (page != params[0].page) {
-		ret = -EINVAL;
-		goto bail1;
-	}
-
-	mutex_lock(&qsfp->i2c_lock);
-	ret = select_eeprom_page(qsfp, page);
-	if (ret < 0)
-		goto bail1;
-
-	for (i = 0; i < len; i++) {
-		msgs[i].addr = bus_addr;
-		msgs[i].flags = 0;
-		msgs[i].len = 1 + 1;
-		msgs[i].buf = kmalloc(1 + 1, GFP_KERNEL);
-
-		if (!msgs[i].buf) {
-			ret = -ENOMEM;
-			goto bail2;
-		}
-
-		msgs[i].buf[0] = (u8)params[i].offset;
-		msgs[i].buf[1] = params[i].value;
-	}
-
-	ret = i2c_transfer(i2c, msgs, len);
-
-bail2:
-	for (j = 0; j < i; j++)
-		kfree(msgs[j].buf);
-bail1:
-	kfree(msgs);
-
-	mutex_unlock(&qsfp->i2c_lock);
-
-	if (ret < 0)
-		return ret;
-
-	return ret == len ? len : 0;
-}
-
 /** i2c_rw - perform r/w transfer after selecting page on eeprom
  * @qsfp: qsfp prvdata
  * @op: read(0) write(1)
@@ -714,13 +643,8 @@ static struct kvx_qsfp_param_capability qsfp_param_caps[] = {
  */
 static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 {
-	/* *param contains all params to write, whether cap bit might be accurate or not
-	 * (write of one element can fail)
-	 * *param_safe contains only params with accurate cap bit (write should not fail)
-	 */
-	struct kvx_qsfp_param *param, *param_safe;
-	int ret, i, j, param_count = 0, param_safe_count = 0;
-	u8 val;
+	int ret, i, j, err = 0;
+	u8 val, l = sizeof(u8);
 	bool cap_found;
 
 	if (!qsfp->i2c || !qsfp->param) {
@@ -736,21 +660,10 @@ static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 		return 0;
 	}
 
-	param = kmalloc_array(qsfp->param_count, sizeof(struct kvx_qsfp_param), GFP_KERNEL);
-	if (!param)
-		return -ENOMEM;
-	param_safe = kmalloc_array(qsfp->param_count, sizeof(struct kvx_qsfp_param), GFP_KERNEL);
-	if (!param_safe) {
-		ret = -ENOMEM;
-		goto bail2;
-	}
-
 	/* for each qsfp param, we look at the bit capability to check whether corresponding
 	 * feature is implemented. If it's the case (or cap bit might be inaccurate), the qsfp
-	 * param is copied to *param. If the qsfp param cap bit is also marked as always accurate
-	 * (force_update= false), it is copied to *param_safe. In the case when writing
-	 * *params fails, params marked as safe in *param_safe will be written again whithout
-	 * any expected failure
+	 * param is written to eeprom. If the qsfp param cap bit is also marked as always accurate
+	 * (force_update= false), it is not written.
 	 */
 	for (i = 0; i < qsfp->param_count; i++) {
 		cap_found = false;
@@ -761,17 +674,16 @@ static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 				val = eeprom_cache_readb(qsfp, qsfp_param_caps[j].cap_offset);
 				val &= qsfp_param_caps[j].cap_bit;
 				if (val || qsfp_param_caps[j].force_update) {
-					memcpy(&param[param_count], &qsfp->param[i],
-					       sizeof(struct kvx_qsfp_param));
-					param_count++;
+					ret = kvx_qsfp_eeprom_write(qsfp, (u8 *)&qsfp->param[i].value,
+								    qsfp->param[i].page, qsfp->param[i].offset, l);
+					if (ret != l && !qsfp_param_caps[j].force_update) {
+						dev_err(qsfp->dev, "failed to write param on page %u offset %u\n",
+							qsfp->param[i].page, qsfp->param[i].offset);
+						err = -EFAULT;
+					}
 				} else {
 					dev_info(qsfp->dev, "param on page %u offset %u will not be tuned\n",
 						 qsfp->param[i].page, qsfp->param[i].offset);
-				}
-				if (val && !qsfp_param_caps[j].force_update) {
-					memcpy(&param_safe[param_safe_count], &qsfp->param[i],
-					       sizeof(struct kvx_qsfp_param));
-					param_safe_count++;
 				}
 				cap_found = true;
 				break;
@@ -780,31 +692,19 @@ static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 		if (!cap_found) {
 			dev_dbg(qsfp->dev, "no capability bit to check for param page %u offset %u\n",
 				qsfp->param[i].page, qsfp->param[i].offset);
-			memcpy(&param[param_count], &qsfp->param[i], sizeof(struct kvx_qsfp_param));
-			param_count++;
-		}
-
-	}
-
-	/* tune qsfp params from device tree */
-	ret = i2c_write_params(qsfp, param, param_count);
-	if (ret != param_count) {
-		dev_info(qsfp->dev, "QSFP param tuning failed, trying now only safe params\n");
-		/* tune qsfp safe params */
-		ret = i2c_write_params(qsfp, param_safe, param_safe_count);
-		if (ret != param_safe_count) {
-			dev_warn(qsfp->dev, "QSFP param tuning failed\n");
-			ret = -EIO;
-			goto bail;
+			ret = kvx_qsfp_eeprom_write(qsfp, (u8 *)&qsfp->param[i].value,
+						    qsfp->param[i].page, qsfp->param[i].offset, l);
+			if (ret != l) {
+				dev_err(qsfp->dev, "failed to write param on page %u offset %u\n",
+					qsfp->param[i].page, qsfp->param[i].offset);
+				err = -EFAULT;
+			}
 		}
 	}
-	dev_info(qsfp->dev, "QSFP param tuning successful\n");
-	ret = 0;
-bail:
-	kfree(param_safe);
-bail2:
-	kfree(param);
-	return ret;
+
+	if (err == 0)
+		dev_info(qsfp->dev, "QSFP param tuning successful\n");
+	return err;
 }
 
 /** kvx_qsfp_reset - reset qsfp eeprom via gpio
