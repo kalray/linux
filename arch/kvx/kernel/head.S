@@ -41,7 +41,6 @@
 			PS_VAL_WFXL(MMUP, 1) | \
 			PS_VAL_WFXL(ET, 0) | \
 			PS_VAL_WFXL(HTD, 0) | \
-			PS_VAL_WFXL(V64, 1) | \
 			PS_VAL_WFXL(PMJ, KVX_SUPPORTED_PSIZE)
 
 #define PCR_VAL_WFXM(__field, __val) \
@@ -72,11 +71,11 @@
 #define MMC_CLEAR_ERROR (KVX_SFR_MMC_E_MASK)
 
 #define TEH_VIRTUAL_MEMORY \
-	TLB_MK_TEH_ENTRY(DDR_VIRT_OFFSET, 0, TLB_G_GLOBAL, 0)
+	TLB_MK_TEH_ENTRY(PAGE_OFFSET, 0, TLB_G_GLOBAL, 0)
 
 #if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define TEL_VIRTUAL_MEMORY \
-	TLB_MK_TEL_ENTRY(DDR_PHYS_OFFSET, TLB_PS_512M, TLB_ES_A_MODIFIED,\
+	TLB_MK_TEL_ENTRY(PHYS_OFFSET, TLB_PS_512M, TLB_ES_A_MODIFIED,\
 	TLB_CP_W_C, TLB_PA_NA_RWX)
 
 /* (TEH|TEL)_SHARED_MEMORY are mapping 0x0 to 0x0 */
@@ -84,13 +83,6 @@
 	TLB_MK_TEH_ENTRY(0, 0, TLB_G_GLOBAL, 0)
 
 #define TEL_SHARED_MEMORY \
-	TLB_MK_TEL_ENTRY(0, TLB_PS_2M, TLB_ES_A_MODIFIED,\
-	TLB_CP_W_C, TLB_PA_NA_RWX)
-
-#define TEH_VIRTUAL_SMEM \
-	TLB_MK_TEH_ENTRY(0 + PAGE_OFFSET, 0, TLB_G_GLOBAL, 0)
-
-#define TEL_VIRTUAL_SMEM \
 	TLB_MK_TEL_ENTRY(0, TLB_PS_2M, TLB_ES_A_MODIFIED,\
 	TLB_CP_W_C, TLB_PA_NA_RWX)
 
@@ -102,7 +94,7 @@
 	TLB_CP_U_U, TLB_PA_RWX_RWX)
 #elif defined(CONFIG_KVX_SUBARCH_KV3_2)
 #define TEL_VIRTUAL_MEMORY \
-	TLB_MK_TEL_ENTRY(DDR_PHYS_OFFSET, TLB_PS_512M, TLB_ES_A_MODIFIED,\
+	TLB_MK_TEL_ENTRY(PHYS_OFFSET, TLB_PS_512M, TLB_ES_A_MODIFIED,\
 	TLB_CP_W_W_C, TLB_PA_NA_RWX)
 
 /* (TEH|TEL)_SHARED_MEMORY are mapping 0x0 to 0x0 */
@@ -110,13 +102,6 @@
 	TLB_MK_TEH_ENTRY(0, 0, TLB_G_GLOBAL, 0)
 
 #define TEL_SHARED_MEMORY \
-	TLB_MK_TEL_ENTRY(0, TLB_PS_2M, TLB_ES_A_MODIFIED,\
-	TLB_CP_W_W_C, TLB_PA_NA_RWX)
-
-#define TEH_VIRTUAL_SMEM \
-	TLB_MK_TEH_ENTRY(0 + PAGE_OFFSET, 0, TLB_G_GLOBAL, 0)
-
-#define TEL_VIRTUAL_SMEM \
 	TLB_MK_TEL_ENTRY(0, TLB_PS_2M, TLB_ES_A_MODIFIED,\
 	TLB_CP_W_W_C, TLB_PA_NA_RWX)
 
@@ -205,6 +190,7 @@ __HEAD
 
 .align 8
 .section .boot.startup, "ax", @progbits
+
 ENTRY(kvx_start)
 	/* Setup 64 bit really early to avoid bugs */
 	make $r21 = PS_VAL_WFXL(V64, 1)
@@ -246,20 +232,13 @@ init_core:
 	make $r27 = __early_exception_start
 	;;
 	set $ev = $r27
-	make $r27 = gdb_mmu_enabled
 	;;
 	wfxm $pcr = $r26
 	;;
-	wfxl $sps = $r25
+	wfxl $ps = $r25
 	;;
-	set $spc = $r27
-	;;
-	rfe /* return into a virtual memory world */
-	;;
-
-	/* gdb_mmu_enable is a label to easily install a breakpoint once the
-	 * mmu is enabled and virtual addresses of kernel text can be accessed
-	 * by gdb. See Documentation/kvx/kvx.txt for more details. */
+	/* Use as break point for debugging purpose.
+	   See Documentation/kvx/kvx.txt for more details. */
 gdb_mmu_enabled:
 	/* Extract processor identifier */
 	get $r24 = $pcr
@@ -584,13 +563,6 @@ ENTRY(asm_init_mmu)
 	;;
 	make $r20 = TEH_SHARED_MEMORY
 	make $r21 = TEL_SHARED_MEMORY
-	;;
-	write_tlb_entry $r20, $r21
-	;;
-	select_way_from_immediate LTLB_ENTRY_VIRTUAL_SMEM, $r20, $r21
-	;;
-	make $r20 = TEH_VIRTUAL_SMEM
-	make $r21 = TEL_VIRTUAL_SMEM
 	;;
 	write_tlb_entry $r20, $r21
 	;;
