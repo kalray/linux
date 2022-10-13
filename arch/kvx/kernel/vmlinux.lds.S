@@ -21,7 +21,7 @@
 #define RM_FIRMWARE_SIZE	(64 * 1024)
 #define RM_FIRMWARE_ADDRESS	(64 * 1024)
 
-#define LOAD_OFFSET  (DDR_VIRT_OFFSET - DDR_PHYS_OFFSET)
+#define LOAD_OFFSET  (PAGE_OFFSET - PHYS_OFFSET)
 #include <asm-generic/vmlinux.lds.h>
 
 OUTPUT_FORMAT("elf64-kvx")
@@ -77,7 +77,7 @@ SECTIONS
 		__rm_firmware_regs_end = .;
 	}
 
-	. = DDR_VIRT_OFFSET;
+	. = PAGE_OFFSET;
 	_start = .;
 
 	_stext = .;
