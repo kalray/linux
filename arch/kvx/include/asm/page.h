@@ -15,10 +15,8 @@
 #define PAGE_SIZE		_BITUL(PAGE_SHIFT)
 #define PAGE_MASK		(~(PAGE_SIZE - 1))
 
-#define DDR_PHYS_OFFSET		(0x100000000)
 #define PHYS_OFFSET		CONFIG_KVX_PHYS_OFFSET
 #define PAGE_OFFSET		CONFIG_KVX_PAGE_OFFSET
-#define DDR_VIRT_OFFSET		(DDR_PHYS_OFFSET + PAGE_OFFSET)
 
 #define VA_TO_PA_OFFSET		(PHYS_OFFSET - PAGE_OFFSET)
 #define PA_TO_VA_OFFSET		(PAGE_OFFSET - PHYS_OFFSET)
@@ -29,6 +27,12 @@
  */
 #define __PA(x)	((x) + VA_TO_PA_OFFSET)
 #define __VA(x)	((x) + PA_TO_VA_OFFSET)
+
+/*
+ * PFN starts at 0 if physical address starts at 0x0. As it is not the case
+ * for the kvx we need to apply an offset to the calculated PFN.
+ */
+#define ARCH_PFN_OFFSET	((unsigned long)(PHYS_OFFSET >> PAGE_SHIFT))
 
 #if defined(CONFIG_KVX_4K_PAGES)
 /* Maximum usable bit using with 4K pages and current page table layout */
@@ -147,12 +151,6 @@ typedef struct page *pgtable_t;
 #define virt_addr_valid(vaddr)	(pfn_valid(virt_to_pfn(vaddr)))
 
 #ifdef CONFIG_FLATMEM
-
-/*
- * PFN starts at 0 if physical address starts at 0x0. As it is not the case
- * for the kvx we need to apply an offset to the calculated PFN.
- */
-#define ARCH_PFN_OFFSET	((unsigned long)(PHYS_OFFSET >> PAGE_SHIFT))
 static inline bool pfn_valid(unsigned long pfn)
 {
 	/* avoid <linux/mm.h> include hell */
