@@ -11,6 +11,9 @@
 
 #include "kvx-net-hw.h"
 #include "kvx-net-regs.h"
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+#include "kvx-ethtx-regs-cv2.h"
+#endif
 
 #define DEFAULT_PFC_ALERT_LEVEL   ((7 * PFC_MAX_LEVEL) / 10)
 #define DEFAULT_PFC_RELEASE_LEVEL ((3 * PFC_MAX_LEVEL) / 10)
@@ -97,8 +100,14 @@ bool kvx_eth_speed_aggregated(const int speed)
 void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu)
 {
 	updatel_bits(hw, ETH, RX_LB_CTRL(lane), RX_LB_CTRL_MTU_SIZE_MASK, mtu);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_writel(hw, mtu, TX_OFFSET + TX_LANE +
 		       lane * TX_LANE_ELEM_SIZE + TX_LANE_MTU);
+#else
+	kvx_eth_tx_writel(hw, mtu, KVX_ETH_TX_STAGE_TWO_GRP_OFFSET +
+		KVX_ETH_TX_STAGE_TWO_GRP_ELEM_SIZE * lane +
+		KVX_ETH_TX_STAGE_TWO_MTU_OFFSET);
+#endif
 	kvx_mac_hw_change_mtu(hw, lane, mtu);
 }
 
