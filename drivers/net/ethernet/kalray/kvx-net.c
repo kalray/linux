@@ -275,6 +275,9 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_ser
 	if (ndev->cfg.duplex == DUPLEX_UNKNOWN)
 		ndev->cfg.duplex = DUPLEX_FULL;
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+	kvx_eth_tx_cfg_speed_settings(ndev->hw, &ndev->cfg);
+#endif /* #ifdef CONFIG_KVX_SUBARCH_KV3_2 */
 	ret = kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, restart_serdes);
 	if (ret) {
 		netdev_warn(ndev->netdev, "Failed to setup link\n");
@@ -677,13 +680,17 @@ static void kvx_eth_fill_tx_hdr(struct kvx_eth_netdev *ndev,
 
 	h->dword[0] = 0;
 	h->dword[1] = 0;
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	if (unlikely(!ndev->hw->tx_f[cfg->tx_fifo_id].header_en))
 		goto bail;
+#endif
 
 	/* Packet size without tx metadata */
 	h->pkt_size = tx->len;
 	h->lane = cfg->id;
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	h->nocx_en = ndev->hw->tx_f[cfg->tx_fifo_id].nocx_en;
+#endif
 
 	if (skb->ip_summed != CHECKSUM_PARTIAL)
 		goto bail;
@@ -693,13 +700,18 @@ static void kvx_eth_fill_tx_hdr(struct kvx_eth_netdev *ndev,
 	else if (eth_h->h_proto == ETH_P_IPV6)
 		ip_mode = IP_V6_MODE;
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	if (iph && ndev->hw->tx_f[cfg->tx_fifo_id].crc_en) {
+#else
+	if (iph) {
+#endif
 		if (iph->protocol == IPPROTO_TCP)
 			crc_mode = TCP_MODE;
 		else if ((iph->protocol == IPPROTO_UDP) ||
 			 (iph->protocol == IPPROTO_UDPLITE))
 			crc_mode = UDP_MODE;
 	}
+
 	if (ip_mode && crc_mode) {
 		h->ip_mode  = ip_mode;
 		h->crc_mode = crc_mode;
@@ -1366,12 +1378,16 @@ chan_failed:
 void kvx_eth_release_tx_ring(struct kvx_eth_ring *r, int keep_dma_chan)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(r->netdev);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	struct kvx_eth_tx_f *tx_f;
+#endif
 
 	if (!keep_dma_chan)
 		kvx_dma_release_chan(ndev->dma_cfg.pdev, r->dma_chan, &r->param);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	tx_f = &ndev->hw->tx_f[ndev->dma_cfg.tx_chan_id.start + r->qidx];
 	list_del_init(&tx_f->node);
+#endif
 	kfree(r->tx_buf);
 	r->tx_buf = NULL;
 	r->init_done = false;
@@ -1385,13 +1401,17 @@ void kvx_eth_release_tx_ring(struct kvx_eth_ring *r, int keep_dma_chan)
 static int kvx_eth_alloc_tx_res(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	struct kvx_eth_tx_f *tx_f;
+#endif
 	struct kvx_eth_ring *r;
 	int i, qidx, ret = 0;
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	tx_f = &ndev->hw->tx_f[ndev->cfg.tx_fifo_id];
 	tx_f->lane_id = ndev->cfg.id;
 	list_add_tail(&tx_f->node, &ndev->cfg.tx_fifo_list);
+#endif
 	for (qidx = 0; qidx < ndev->dma_cfg.tx_chan_id.nb; qidx++) {
 		r = &ndev->tx_ring[qidx];
 		r->qidx = qidx;
@@ -1404,7 +1424,9 @@ static int kvx_eth_alloc_tx_res(struct net_device *netdev)
 	return 0;
 
 alloc_failed:
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	list_del_init(&tx_f->node);
+#endif
 	for (i = qidx - 1; i >= 0; i--)
 		kvx_eth_release_tx_ring(&ndev->tx_ring[i], 0);
 
@@ -2077,11 +2099,9 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 		kvx_eth_lb_f_cfg(&dev->hw, &ndev->hw->lb_f[i]);
 #endif
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 	ret = kvx_eth_netdev_sysfs_init(ndev);
 	if (ret)
 		netdev_warn(ndev->netdev, "Failed to initialize sysfs\n");
-#endif
 	dev_info(&pdev->dev, "KVX netdev[%d] probed\n", ndev->cfg.id);
 
 	return 0;
@@ -2252,7 +2272,9 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	}
 #ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_init_dispatch_table(&dev->hw);
+#endif
 	kvx_eth_tx_init(&dev->hw);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_parsers_init(&dev->hw);
 	kvx_eth_phy_f_init(&dev->hw);
 	kvx_eth_hw_sysfs_init(&dev->hw);
