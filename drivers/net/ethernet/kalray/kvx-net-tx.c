@@ -42,6 +42,7 @@ static void kvx_eth_tx_noc_f_update(void *data)
 	f->pkt_drop = kvx_eth_readl(f->hw, off + TX_NOC_IF_NOC_PKT_DROP_CNT);
 }
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_tx_f *f;
@@ -65,6 +66,7 @@ void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 		nf->cid = i;
 	}
 }
+#endif
 
 void kvx_eth_tx_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_f *f)
 {
@@ -111,4 +113,3 @@ u32 kvx_eth_tx_has_header(struct kvx_eth_hw *hw, int tx_fifo_id)
 
 	return GETF(v, TX_FIFO_CTRL_HEADER_EN);
 }
-
