@@ -331,9 +331,11 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 	return ret;
 }
 
+
 /**
  * kvx_mac_pfc_cfg() - Configure pfc MAC and eth tx registers
  */
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	struct kvx_eth_pfc_f *pfc_f = &hw->lb_f[cfg->id].pfc_f;
@@ -379,9 +381,7 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	dev_dbg(hw->dev, "%s reg class[0] quanta: 0x%x thres: 0x%x\n", __func__,
 		 kvx_mac_readl(hw, base + EMAC_CL01_PAUSE_QUANTA_OFFSET),
 		 kvx_mac_readl(hw, base + EMAC_CL01_QUANTA_THRESH_OFFSET));
-#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 	kvx_eth_tx_f_cfg(hw, &hw->tx_f[tx_fifo_id]);
-#endif
 	for (i = cfg->id; i < lane_nb; i++) {
 		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
 
@@ -396,6 +396,60 @@ void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		       PMAC_CMD_CFG_PFC_MODE_MASK, val);
 	}
 }
+#else
+void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	struct kvx_eth_pfc_f *pfc_f = &hw->lb_f[cfg->id].pfc_f;
+	struct kvx_eth_cl_f *cl_f = hw->lb_f[cfg->id].cl_f;
+	u32 base = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	bool pfc_class_en = false;
+	u32 val, off;
+	int i = 0;
+
+	if (kvx_mac_under_reset(hw))
+		return;
+
+	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++) {
+		if (cl_f[i].pfc_ena)
+			pfc_class_en = true;
+
+		if ((i % 2) == 0) {
+			val = (u32)cl_f[i + 1].quanta << 16 |
+				(u32)cl_f[i].quanta;
+			off = EMAC_CL01_PAUSE_QUANTA_OFFSET + 2 * i;
+			kvx_mac_writel(hw, val, base + off);
+			val = (u32)cl_f[i + 1].quanta_thres << 16 |
+				(u32)cl_f[i].quanta_thres;
+			off = EMAC_CL01_QUANTA_THRESH_OFFSET + 2 * i;
+			kvx_mac_writel(hw, val, base + off);
+		}
+	}
+	if (pfc_f->global_pfc_en || pfc_class_en)
+		cfg->mac_f.pfc_mode = MAC_PFC;
+	else if (pfc_f->global_pause_en)
+		cfg->mac_f.pfc_mode = MAC_PAUSE;
+	else
+		cfg->mac_f.pfc_mode = MAC_PFC_NONE;
+	dev_dbg(hw->dev, "%s reg class[0] quanta: 0x%x thres: 0x%x\n", __func__,
+		 kvx_mac_readl(hw, base + EMAC_CL01_PAUSE_QUANTA_OFFSET),
+		 kvx_mac_readl(hw, base + EMAC_CL01_QUANTA_THRESH_OFFSET));
+	for (i = cfg->id; i < lane_nb; i++) {
+		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
+
+		val = (cfg->mac_f.pfc_mode == MAC_PFC ?
+			EMAC_CMD_CFG_PFC_MODE_MASK : 0);
+		updatel_bits(hw, MAC, off + EMAC_CMD_CFG_OFFSET,
+			     EMAC_CMD_CFG_PFC_MODE_MASK, val);
+
+		val = (cfg->mac_f.pfc_mode == MAC_PFC ?
+		       PMAC_CMD_CFG_PFC_MODE_MASK : 0);
+		updatel_bits(hw, MAC, off + PMAC_CMD_CFG_OFFSET,
+		       PMAC_CMD_CFG_PFC_MODE_MASK, val);
+	}
+}
+#endif
+
 
 static bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
 {
@@ -2811,8 +2865,9 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		val |= ((u32) 3 << MAC_SG_TX_LANE_CKMULT_SHIFT);
 	}
 	kvx_mac_writel(hw, val, MAC_SG_OFFSET);
-
+#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 	kvx_eth_tx_f_cfg(hw, &hw->tx_f[cfg->id]);
+#endif
 	if (hw->aggregated_only) {
 		for (i = 0; i < KVX_ETH_LANE_NB; i++)
 			kvx_eth_lb_f_cfg(hw, &hw->lb_f[i]);
