@@ -178,11 +178,13 @@ static int kvx_net_dcbnl_set_pfc(struct net_device *netdev,
 		}
 		kvx_eth_pfc_f_cfg(ndev->hw, &lb_f->pfc_f);
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 		list_for_each_entry(tx_f, &cfg->tx_fifo_list, node) {
 			tx_f->pfc_en = !!pfc_cl_ena;
 			tx_f->pause_en = lb_f->pfc_f.global_pause_en;
 			kvx_eth_tx_f_cfg(ndev->hw, tx_f);
 		}
+#endif
 	}
 
 	return 0;

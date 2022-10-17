@@ -30,6 +30,13 @@
 #define RX_CACHE_NB                4
 #define FOM_THRESHOLD              140
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+#define KVX_ETH_TX_TGT_NB          9
+#define KVX_ETH_TX_TAS_NB          10
+#define KVX_ETH_TX_PBDWRR_INIT_QUAUTUM_PROGRAM 0
+#define KVX_ETH_TX_PBDWRR_INIT_QUAUTUM_DONE 1
+#endif
+
 /* Use last 64 entries for current cluster */
 #define RX_DISPATCH_TABLE_ACCELERATION_NB 256
 #define KVX_ETH_DEFAULT_RULE_DTABLE_IDX RX_DISPATCH_TABLE_ACCELERATION_NB
@@ -385,7 +392,6 @@ struct kvx_eth_parser_f {
 	u32 fifo_overflow;
 	int id;
 };
-
 
 /**
  * struct kvx_eth_tx_f - TX features
@@ -980,6 +986,88 @@ enum kvx_eth_vlan_match_values {
 /* In TCI field only 12 LSBs are for VLAN */
 #define TCI_VLAN_HASH_MASK (0xfff)
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+enum kvx_eth_tx_stage_one_cfg_values {
+	KVX_ETH_TX_STAGE_ONE_CFG_4_FIFO_2K = 0x00,
+	KVX_ETH_TX_STAGE_ONE_CFG_2_FIFO_4K = 0x01,
+	KVX_ETH_TX_STAGE_ONE_CFG_1_FIFO_8K = 0x02,
+};
+
+enum kvx_eth_tx_credit_enable_values {
+	KVX_ETH_TX_CREDIT_DISABLE_ALL = 0x00,
+	KVX_ETH_TX_CREDIT_ENABLE_ALL = 0x1F,
+};
+
+enum kvx_eth_tx_drop_disable_values {
+	KVX_ETH_TX_STAGE_TWO_DROP_DISABLE_NONE = 0x00,
+	KVX_ETH_TX_STAGE_TWO_DROP_DISABLE_MTU = 0x08,
+	KVX_ETH_TX_STAGE_TWO_DROP_DISABLE_ALL = 0x0F,
+};
+
+enum kvx_eth_tx_cnt_msk_values {
+	KVX_ETH_TX_STAGE_TWO_CNT_DROP_ALL = 0x00,
+	KVX_ETH_TX_STAGE_TWO_CNT_DROP_MTU = 0x08,
+	KVX_ETH_TX_STAGE_TWO_CNT_DROP_NONE = 0x0F,
+};
+
+enum kvx_eth_tx_cnt_subscr_values {
+	KVX_ETH_TX_STAGE_TWO_CNT_SUBSCR_TGT_ALL = 0x1FF,
+};
+
+enum kvx_eth_tx_cbs_enable_values {
+	KVX_ETH_TX_CBS_DISABLE = 0x0,
+	KVX_ETH_TX_CBS_ENABLE = 0x1,
+};
+
+enum kvx_eth_tx_tas_enable_values {
+	KVX_ETH_TX_TAS_DISABLE = 0x0,
+	KVX_ETH_TX_TAS_ENABLE = 0x1,
+};
+
+enum kvx_eth_tx_pfc_xoff_values {
+	KVX_ETH_TX_PFC_XOFF_DIS_GLBL_PAUS_DIS = 0x00,
+	KVX_ETH_TX_PFC_XOFF_DIS_GLBL_PAUS_EN  = 0x100,
+};
+
+enum kvx_eth_tx_pbdwrr_config_values {
+	KVX_ETH_TX_PBDWRR_CONFIG_DWRR_DISABLE = 0x00,
+	KVX_ETH_TX_PBDWRR_CONFIG_DWRR_ENABLE = 0x01,
+};
+
+enum kvx_eth_tx_pbdwrr_init_quantum_values {
+	KVX_ETH_TX_PBDWRR_INIT_QUANTUM_PROGRAM = 0x00,
+	KVX_ETH_TX_PBDWRR_INIT_QUANTUM_DONE = 0x01,
+};
+
+enum kvx_eth_tx_tdm_cfg_values {
+	KVX_ETH_TX_TDM_CONFIG_BY4_AGG = 0x00,
+	KVX_ETH_TX_TDM_CONFIG_NO_AGG  = 0x03,
+	KVX_ETH_TX_TDM_CONFIG_BY2_AGG = 0x04,
+};
+/* FIXME : haps mac config to be updated  -- */
+
+enum kvx_eth_tx_fcs_values {
+	KVX_ETH_TX_FCS_DISABLE_ALL = 0x00,
+	KVX_ETH_TX_FCS_PREEMPT_LANES = 0x0F,
+	KVX_ETH_TX_FCS_EXPRESS_LANES = 0xF0,
+	KVX_ETH_TX_FCS_ENABLE_ALL = 0xFF,
+};
+
+enum kvx_eth_tx_errfcs_values {
+	KVX_ETH_TX_ERRFCS_DISABLE_ALL = 0x00,
+	KVX_ETH_TX_ERRFCS_PREEMPT_LANES = 0x0F,
+	KVX_ETH_TX_ERRFCS_EXPRESS_LANES = 0xF0,
+	KVX_ETH_TX_ERRFCS_ENABLE_ALL = 0xFF,
+};
+
+struct eth_tx_speed_cfg_t {
+	unsigned int speed;
+	uint32_t stage_one_config;
+	uint32_t tdm_config;
+};
+#endif
+
+
 /* Helpers */
 static inline void kvx_eth_writeq(struct kvx_eth_hw *hw, u64 val, const u64 off)
 {
@@ -1010,6 +1098,18 @@ static inline void kvx_mac_writeq(struct kvx_eth_hw *hw, u64 val, u64 off)
 {
 	writeq(val, hw->res[KVX_ETH_RES_MAC].base + off);
 }
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+static inline void kvx_eth_tx_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
+{
+	writel(val, hw->res[KVX_ETH_RES_ETH_TX].base + off);
+}
+
+static inline u32 kvx_eth_tx_readl(struct kvx_eth_hw *hw, const u64 off)
+{
+	return readl(hw->res[KVX_ETH_RES_ETH_TX].base + off);
+}
+#endif
 
 u32 noc_route_c2eth(enum kvx_eth_io eth_id, int cluster_id);
 u32 noc_route_eth2c(enum kvx_eth_io eth_id, int cluster_id);
@@ -1107,6 +1207,9 @@ void kvx_eth_tx_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_f *f);
 void kvx_eth_tx_fifo_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 u32  kvx_eth_tx_has_header(struct kvx_eth_hw *hw, int tx_fifo_id);
 void kvx_eth_tx_init(struct kvx_eth_hw *hw);
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+void kvx_eth_tx_cfg_speed_settings(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+#endif
 
 /* PARSING */
 int parser_config_wrapper(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
