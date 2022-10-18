@@ -113,19 +113,19 @@ static void eeprom_wait_data_ready(struct i2c_adapter *i2c, u32 timeout_ms)
 static int select_eeprom_page(struct kvx_qsfp *qsfp, u8 page)
 {
 	int ret, i;
+	u8 p = 0xFF;
 
 	if (qsfp->module_flat_mem)
 		return 0;
 
+	ret = i2c_read(qsfp->i2c, SFP_PAGE_OFFSET, &p, sizeof(p));
+	if ((ret == sizeof(p)) && (p == page))
+		return 0;
+
 	for (i = 0; i < 2; i++) {
-	/* if page selection does not work, wait for
-	 * DATA_NOT_READY register and try again. This way we
-	 * avoid unnecessary i2c reads.
-	 */
 		ret = i2c_write(qsfp->i2c, SFP_PAGE_OFFSET, &page, sizeof(page));
 		if (ret == sizeof(page))
-			break;
-		eeprom_wait_data_ready(qsfp->i2c, 5);
+			return 0;
 	}
 
 	if (ret != sizeof(page)) {
@@ -157,19 +157,23 @@ static int i2c_rw(struct kvx_qsfp *qsfp,
 
 	remaining = len;
 
+	mutex_lock(&qsfp->i2c_lock);
 	while (remaining > 0) {
 		len = min_t(unsigned int, offset + remaining,
 			    ETH_MODULE_SFF_8636_LEN);
 		len -= offset;
 
-		mutex_lock(&qsfp->i2c_lock);
+		dev_dbg(qsfp->dev, "%s %s: page=%d offset=%d len=%lu\n",
+			__func__, ((op == i2c_read) ? "i2c_read" : "i2c_write"),
+			page, offset, len);
 		ret = select_eeprom_page(qsfp, page);
 		if (ret == 0)
 			ret = op(qsfp->i2c, offset, data, len);
-		mutex_unlock(&qsfp->i2c_lock);
 
-		if (ret < 0)
+		if (ret < 0) {
+			mutex_unlock(&qsfp->i2c_lock);
 			return ret;
+		}
 
 		offset = 128; /* for page > 0, offset starts at 128 */
 		remaining -= len;
@@ -178,6 +182,7 @@ static int i2c_rw(struct kvx_qsfp *qsfp,
 		page += 1;
 	}
 
+	mutex_unlock(&qsfp->i2c_lock);
 	return total_len;
 }
 
@@ -193,7 +198,8 @@ static int update_eeprom_cache(struct kvx_qsfp *qsfp, unsigned int offset, size_
 {
 	int ret;
 
-	ret = i2c_rw(qsfp, i2c_read, (u8 *)&qsfp->eeprom_cache + offset, 0, offset, len);
+	ret = i2c_rw(qsfp, i2c_read, (u8 *)&qsfp->eeprom_cache + offset,
+		     0, offset, len);
 	if (ret != len)
 		dev_err(qsfp->dev, "eeprom cache update failed: offset=%d len=%lu\n",
 			offset, len);
@@ -246,7 +252,7 @@ static u8 eeprom_cache_readb(struct kvx_qsfp *qsfp, unsigned int offset)
  * @offset: eeprom offset ([0-255] for page 0, else [128-255])
  * @len: size of the buffer
  *
- * Returns the length successfully transfered
+ * Returns the length successfully transfered, else < 0
  */
 int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page,
 			 unsigned int offset, size_t len)
@@ -257,8 +263,11 @@ int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page,
 	size_t l;
 
 	/* sanity check */
-	if (last == 0 || last > EEPROM_UPPER_PAGE0_OFFSET + EEPROM_PAGE_SIZE)
+	if (last == 0 || last > EEPROM_UPPER_PAGE0_OFFSET + EEPROM_PAGE_SIZE) {
+		dev_err(qsfp->dev, "Can't read eeprom page: %d @0x%x len: %lu\n",
+			page, offset, len);
 		return -EINVAL;
+	}
 
 	if (page == 0) {
 		/* upper page 0 is static, values never change.
@@ -271,13 +280,20 @@ int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page,
 			l = last - offset;
 			ret = i2c_rw(qsfp, i2c_read, &cache[offset], page, offset, l);
 			if (ret != l)
-				return -EFAULT;
+				goto bail;
 		}
 
 		memcpy(data, &cache[offset], len);
 		ret = len;
 	} else {
 		ret = i2c_rw(qsfp, i2c_read, data, page, offset, len);
+	}
+
+bail:
+	if (ret != len) {
+		dev_err(qsfp->dev, "eeprom read failed page: %d @0x%x\n",
+			page, offset);
+		return -EFAULT;
 	}
 
 	return ret;
@@ -351,10 +367,8 @@ int kvx_qsfp_get_module_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee,
 		len = min_t(size_t, 2 * EEPROM_PAGE_SIZE - off, bytes_remaining);
 
 		ret = kvx_qsfp_eeprom_read(qsfp, data, page, off, len);
-		if (ret != len) {
-			dev_err(qsfp->dev, "Failed to read eeprom page %d\n", page);
+		if (ret != len)
 			goto bail;
-		}
 
 		bytes_remaining -= len;
 		page += 1;
@@ -461,10 +475,8 @@ static void update_irq_flags(struct kvx_qsfp *qsfp)
 
 	ret = kvx_qsfp_eeprom_read(qsfp, irqs, page, SFF8636_IRQ_FLAGS,
 			       sizeof(irqs));
-	if (ret < 0) {
-		dev_info(qsfp->dev, "QSFP interrupt flags read failed\n");
+	if (ret < 0)
 		return;
-	}
 
 	if (!memcmp(qsfp->irq_flags, irqs, sizeof(irqs)))
 		return;
@@ -712,35 +724,66 @@ static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
  */
 void kvx_qsfp_reset(struct kvx_qsfp *qsfp)
 {
+	int ret = gpiod_get_value(qsfp->gpio_reset);
+
+	mutex_lock(&qsfp->i2c_lock);
 	if (qsfp->gpio_reset) {
 		gpiod_direction_output(qsfp->gpio_reset, 0);
 		usleep_range(10000, 20000);
 		gpiod_set_value(qsfp->gpio_reset, 1);
-		dev_info(qsfp->dev, "QSFP reset done\n");
+		usleep_range(10000, 20000);
+		gpiod_direction_input(qsfp->gpio_reset);
 	}
+	/* wait for reset to take effect */
+	eeprom_wait_data_ready(qsfp->i2c, QSFP_DELAY_DATA_READY_IN_MS);
+	mutex_unlock(&qsfp->i2c_lock);
+	dev_dbg(qsfp->dev, "QSFP reset done (%d -> %d)\n", ret,
+		gpiod_get_value(qsfp->gpio_reset));
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_reset);
 
-/** kvx_qsfp_set_tx_state - enable/disable TX
+static void set_power_override(struct kvx_qsfp *qsfp, u8 op)
+{
+	u8 val = 0, mask = SFF8636_CTRL_93_POWER_ORIDE;
+	size_t l = sizeof(val);
+	int ret = kvx_qsfp_eeprom_read(qsfp, &val, 0, SFF8636_POWER_OFFSET, l);
+
+	if (ret != l)
+		return;
+
+	/* Prevent useless write */
+	if (((op == QSFP_TX_DISABLE) && !(val & mask)) ||
+	    ((op == QSFP_TX_ENABLE) && (val & mask)))
+		return;
+
+	if (op == QSFP_TX_ENABLE)
+		val |= mask;
+	else
+		val &= (~mask);
+
+	kvx_qsfp_eeprom_write(qsfp, &val, 0, SFF8636_POWER_OFFSET, l);
+}
+
+/** kvx_qsfp_set_ee_tx_state - enable/disable TX via I2C (eeprom)
  * @qsfp: qsfp prvdata
  * @op: QSFP_TX_ENABLE or QSFP_TX_DISABLE
  */
-void kvx_qsfp_set_tx_state(struct kvx_qsfp *qsfp, u8 op)
+static void kvx_qsfp_set_ee_tx_state(struct kvx_qsfp *qsfp, u8 op)
 {
 	int ret;
 	u8 val, tx_dis = SFF8636_TX_DISABLE_TX1 | SFF8636_TX_DISABLE_TX2
 		       | SFF8636_TX_DISABLE_TX3 | SFF8636_TX_DISABLE_TX4;
+	size_t l = sizeof(val);
 
 	/* Tx cannot be enabled/disabled if cable is passive copper */
 	if (is_cable_passive_copper(qsfp))
 		return;
 
-	ret = kvx_qsfp_eeprom_read(qsfp, &val, 0, SFF8636_TX_DISABLE_OFFSET,
-				   sizeof(val));
-	if (ret != sizeof(val)) {
-		dev_err(qsfp->dev, "eeprom read failed\n");
+	set_power_override(qsfp, op);
+
+	ret = kvx_qsfp_eeprom_read(qsfp, &val, 0, SFF8636_TX_DISABLE_OFFSET, l);
+	if (ret != l)
 		return;
-	}
 
 	switch (op) {
 	case QSFP_TX_DISABLE:
@@ -754,12 +797,42 @@ void kvx_qsfp_set_tx_state(struct kvx_qsfp *qsfp, u8 op)
 		return;
 	}
 
-	ret = kvx_qsfp_eeprom_write(qsfp, &val, 0, SFF8636_TX_DISABLE_OFFSET, sizeof(val));
-	if (ret != sizeof(val)) {
+	ret = kvx_qsfp_eeprom_write(qsfp, &val, 0, SFF8636_TX_DISABLE_OFFSET, l);
+	if (ret != l) {
 		dev_err(qsfp->dev, "TX %sable failed (eeprom write failed)\n", op ? "dis" : "en");
 		return;
 	}
 	dev_info(qsfp->dev, "TX is %sabled\n", op ? "dis" : "en");
+}
+
+static bool tx_disable_fast_path_supported(struct kvx_qsfp *qsfp)
+{
+	u8 val = eeprom_cache_readb(qsfp, SFF8636_TIMING_OPTION_OFFSET);
+
+	return (val & SFF8636_TIMING_TXDIS_FASTPATH_MASK);
+}
+
+/** kvx_qsfp_set_tx_state - enable/disable TX via GPIO
+ * @qsfp: qsfp prvdata
+ * @op: QSFP_TX_ENABLE or QSFP_TX_DISABLE
+ */
+void kvx_qsfp_set_tx_state(struct kvx_qsfp *qsfp, u8 op)
+{
+	int ret = 0;
+
+	/* If tx_disable fast path support is enabled */
+	if (tx_disable_fast_path_supported(qsfp)) {
+		gpiod_direction_input(qsfp->gpio_tx_disable);
+		ret = gpiod_get_value(qsfp->gpio_tx_disable);
+		gpiod_direction_output(qsfp->gpio_tx_disable, 0);
+		gpiod_set_value(qsfp->gpio_tx_disable,
+				(op == QSFP_TX_ENABLE ? 0 : 1));
+		usleep_range(10000, 15000);
+		dev_info(qsfp->dev, "TX is %sabled (%d -> %d)\n", (op ? "dis" : "en"),
+			ret, gpiod_get_value(qsfp->gpio_tx_disable));
+	} else {
+		kvx_qsfp_set_ee_tx_state(qsfp, op);
+	}
 }
 
 static bool is_qsfp_module(u8 phys_id)
@@ -829,25 +902,33 @@ static u32 kvx_qsfp_parse_max_power(struct kvx_qsfp *qsfp)
  */
 static int kvx_qsfp_set_module_power(struct kvx_qsfp *qsfp, u32 power_mW)
 {
-	int ret = 0;
 	u8 ext_id, val = 0;
+	size_t l = sizeof(val);
+	int ret = kvx_qsfp_eeprom_read(qsfp, &val, 0, SFF8636_POWER_OFFSET, l);
+	u8 v = val;
+
+	if (!tx_disable_fast_path_supported(qsfp))
+		set_power_override(qsfp, QSFP_TX_ENABLE);
 
 	/* check whether class 8 is available */
 	ext_id = kvx_qsfp_transceiver_ext_id(qsfp);
-	if ((ext_id & SFF8636_EXT_ID_POWER_CLASS_8) && power_mW > 5000)
-		val |= SFF8636_CTRL_93_POWER_CLS8;
-	if (power_mW > 1500)
+	if (power_mW > 5000) {
+		if ((ext_id & SFF8636_EXT_ID_POWER_CLASS_8))
+			val |= SFF8636_CTRL_93_POWER_CLS8;
+	} else if (power_mW > 4000) {
 		val |= SFF8636_CTRL_93_POWER_CLS57;
+	}
 	/* else, we use default power class 1-4, enabled by default on eeprom
 	 * thus we don't need to do anything
 	 */
-
-	if (val != 0) {
-		val |= SFF8636_CTRL_93_POWER_ORIDE; /* set power override bit */
-		ret = kvx_qsfp_eeprom_write(qsfp, &val, 0, SFF8636_POWER_OFFSET, sizeof(val));
+	if (val != v) {
+		ret = kvx_qsfp_eeprom_write(qsfp, &val, 0,
+					    SFF8636_POWER_OFFSET, l);
+		if (ret != l)
+			dev_err(qsfp->dev, "%s Can not override power settings\n", __func__);
 	}
 
-	return ret;
+	return 0;
 }
 
 /**
@@ -1035,8 +1116,9 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		break;
 	case QSFP_S_ERROR:
 		if (is_cable_connected(qsfp)) {
-			dev_err(qsfp->dev,
-				"qsfp state machine is in an error state\n");
+			cancel_delayed_work_sync(&qsfp->qsfp_poll);
+			qsfp->monitor_enabled = false;
+			dev_err(qsfp->dev, "qsfp state machine is in an error state\n");
 			kvx_qsfp_set_tx_state(qsfp, QSFP_TX_DISABLE);
 			break;
 		}
@@ -1054,8 +1136,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		if (!is_cable_connected(qsfp))
 			return QSFP_S_DOWN;
 		kvx_qsfp_reset(qsfp);
-		/* wait for reset to take effect */
-		eeprom_wait_data_ready(qsfp->i2c, QSFP_DELAY_DATA_READY_IN_MS);
 		fallthrough;
 	case QSFP_S_INIT:
 		if (kvx_qsfp_init(qsfp) < 0)
@@ -1165,15 +1245,18 @@ static ssize_t sysfs_tx_disable_show(struct kobject *kobj,
 	u8 data;
 	int ret;
 
-	ret = kvx_qsfp_eeprom_read(qsfp, &data, 0, SFF8636_TX_DISABLE_OFFSET,
-				   sizeof(data));
-	if (ret != sizeof(data)) {
-		dev_err(qsfp->dev, "eeprom read failed\n");
-		return ret;
-	}
+	if (tx_disable_fast_path_supported(qsfp)) {
+		gpiod_direction_input(qsfp->gpio_tx_disable);
+		data = gpiod_get_value(qsfp->gpio_tx_disable);
+	} else {
+		ret = kvx_qsfp_eeprom_read(qsfp, &data, 0, SFF8636_TX_DISABLE_OFFSET,
+					   sizeof(data));
+		if (ret != sizeof(data))
+			return ret;
 
-	data &= (SFF8636_TX_DISABLE_TX1 | SFF8636_TX_DISABLE_TX2
-		 | SFF8636_TX_DISABLE_TX3 | SFF8636_TX_DISABLE_TX4);
+		data &= (SFF8636_TX_DISABLE_TX1 | SFF8636_TX_DISABLE_TX2
+			 | SFF8636_TX_DISABLE_TX3 | SFF8636_TX_DISABLE_TX4);
+	}
 	return sprintf(buf, "%i\n", data);
 }
 
