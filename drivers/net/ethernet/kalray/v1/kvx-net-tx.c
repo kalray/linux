@@ -9,8 +9,8 @@
 #include <linux/device.h>
 #include <linux/io.h>
 
-#include "kvx-net.h"
-#include "kvx-net-regs.h"
+#include "../kvx-net.h"
+#include "../kvx-net-regs.h"
 
 #define TX_FIFO(f) (TX_OFFSET + TX_FIFO_OFFSET + (f) * TX_FIFO_ELEM_SIZE)
 

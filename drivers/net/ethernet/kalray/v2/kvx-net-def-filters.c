@@ -7,7 +7,7 @@
  * Copyright (C) 2019 Kalray Inc.
  */
 
-#include "kvx-net.h"
+#include "../kvx-net.h"
 
 #include <net/pkt_cls.h>
 
@@ -21,8 +21,7 @@ const union mac_filter_desc mac_filter_default = {
 	.word                = {0},
 	.ptype               = PTYPE_MAC_VLAN,
 	.add_metadata_index  = 1,
-	.min_max_swap        = 0,
-	.pfc_en              = 0,
+	.etype_fk_en         = 0,
 	.vlan_ctrl           = KVX_ETH_VLAN_DONT_CARE,
 	.da_cmp_polarity     = 0,
 	.da                  = 0,
@@ -35,13 +34,13 @@ const union mac_filter_desc mac_filter_default = {
 	.tci0                = 0,
 	.tci1                = 0,
 	.da_mask             = 0x000000000000ULL,
-	.da_hash_mask        = 0x000000000000ULL,
+	.da_fk_mask          = 0x000000000000ULL,
 	.sa_mask             = 0x000000000000ULL,
-	.sa_hash_mask        = 0x000000000000ULL,
+	.sa_fk_mask          = 0x000000000000ULL,
 	.tci0_mask           = 0,
-	.tci0_hash_mask      = 0,
+	.tci0_fk_mask      = 0,
 	.tci1_mask           = 0,
-	.tci1_hash_mask      = 0,
+	.tci1_fk_mask        = 0,
 };
 
 const union ipv4_filter_desc ipv4_filter_default = {
@@ -53,23 +52,23 @@ const union ipv4_filter_desc ipv4_filter_default = {
 	.dscp_cmp_polarity     = 0,
 	.dscp                  = 0,
 	.dscp_mask             = 0x0,
-	.dscp_hash_mask        = 0x0,
+	.dscp_fk_mask        = 0x0,
 	.ecn_cmp_polarity      = 0,
 	.ecn                   = 0,
 	.ecn_mask              = 0x0,
-	.ecn_hash_mask         = 0x0,
+	.ecn_fk_mask           = 0x0,
 	.protocol_cmp_polarity = 0,
 	.protocol              = 0,
 	.protocol_mask         = 0x00,
-	.protocol_hash_mask    = 0x00,
+	.protocol_fk_mask      = 0x00,
 	.sa_cmp_polarity       = 0,
 	.sa                    = 0x00000000,
 	.sa_mask               = 0x00000000,
-	.sa_hash_mask          = 0x00000000,
+	.sa_fk_mask            = 0x00000000,
 	.da_cmp_polarity       = 0,
 	.da                    = 0x00000000,
 	.da_mask               = 0x00000000,
-	.da_hash_mask          = 0x00000000,
+	.da_fk_mask            = 0x00000000,
 	.skip_length           = 1,
 	.end_of_rule           = 0,
 };
@@ -78,19 +77,18 @@ const struct ipv6_filter_desc ipv6_filter_default = {
 	.d0 = {
 		.ptype              = PTYPE_IP_V6,
 		.add_metadata_index = 1,
-		.min_max_swap_en    = 0,
 		.tc_cmp_polarity    = 0,
 		.tc                 = 0x00,
 		.tc_mask            = 0x00,
-		.tc_hash_mask       = 0x00,
+		.tc_fk_mask         = 0x00,
 		.fl_cmp_polarity    = 0,
 		.fl                 = 0x00000,
 		.fl_mask            = 0x00000,
-		.fl_hash_mask       = 0x00000,
+		.fl_fk_mask         = 0x00000,
 		.nh_cmp_polarity    = 0,
 		.nh                 = 0,
 		.nh_mask            = 0x00,
-		.nh_hash_mask       = 0x00,
+		.nh_fk_mask         = 0x00,
 		.skip_length        = 2,
 	},
 	.d1 = {
@@ -99,8 +97,8 @@ const struct ipv6_filter_desc ipv6_filter_default = {
 		.src_msb            = 0x0000000000000000ULL,
 		.src_lsb_mask       = 0x0000000000000000ULL,
 		.src_msb_mask       = 0x0000000000000000ULL,
-		.src_lsb_hash_mask  = 0x0000000000000000ULL,
-		.src_msb_hash_mask  = 0x0000000000000000ULL,
+		.src_lsb_fk_mask    = 0x0000000000000000ULL,
+		.src_msb_fk_mask    = 0x0000000000000000ULL,
 	},
 	.d2 = {
 		.dst_cmp_polarity  = 0,
@@ -108,8 +106,8 @@ const struct ipv6_filter_desc ipv6_filter_default = {
 		.dst_msb           = 0x0000000000000000ULL,
 		.dst_lsb_mask      = 0x0000000000000000ULL,
 		.dst_msb_mask      = 0x0000000000000000ULL,
-		.dst_lsb_hash_mask = 0x0000000000000000ULL,
-		.dst_msb_hash_mask = 0x0000000000000000ULL,
+		.dst_lsb_fk_mask   = 0x0000000000000000ULL,
+		.dst_msb_fk_mask   = 0x0000000000000000ULL,
 	},
 };
 
@@ -118,15 +116,15 @@ const union udp_filter_desc udp_filter_default = {
 	.ptype                 = PTYPE_UDP,
 	.add_metadata_index    = 1,
 	.check_header_checksum = 1,
-	.min_max_swap_en       = 0,
+	.reserved              = 0,
 	.src_min_port          = 0x0000,
 	.src_max_port          = 0xFFFF,
 	.src_ctrl              = 2,
-	.src_hash_mask         = 0x0000,
+	.src_fk_mask           = 0x0000,
 	.dst_min_port          = 0x0000,
 	.dst_max_port          = 0xFFFF,
 	.dst_ctrl              = 2,
-	.dst_hash_mask         = 0x0000,
+	.dst_fk_mask           = 0x0000,
 	.skip_length           = 2,
 };
 
@@ -135,19 +133,19 @@ const union tcp_filter_desc tcp_filter_default = {
 	.ptype                 = PTYPE_TCP,
 	.add_metadata_index    = 1,
 	.check_header_checksum = 1,
-	.min_max_swap_en       = 0,
+	.reserved          = 0,
 	.src_min_port          = 0x0000,
 	.src_max_port          = 0xFFFF,
 	.src_ctrl              = 2,
-	.src_hash_mask         = 0x0000,
+	.src_fk_mask           = 0x0000,
 	.dst_min_port          = 0x0000,
 	.dst_max_port          = 0xFFFF,
 	.dst_ctrl              = 2,
-	.dst_hash_mask         = 0x0000,
+	.dst_fk_mask           = 0x0000,
 	.flags_cmp_polarity    = 0,
 	.expected_flags        = 0x000,
 	.flags_mask            = 0x000,
-	.flags_hash_mask       = 0x000,
+	.flags_fk_mask         = 0x000,
 	.skip_length           = 2,
 };
 
@@ -160,6 +158,6 @@ const union roce_filter_desc roce_filter_default = {
 	.qpair_cmp_polarity    = 0,
 	.qpair                 = 0x000000,
 	.qpair_mask            = 0x000000,
-	.qpair_hash_mask       = 0xffffff, /* Always on */
+	.qpair_fk_mask       = 0xffffff, /* Always on */
 	.skip_length           = 2,
 };

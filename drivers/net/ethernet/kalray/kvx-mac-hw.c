@@ -2946,6 +2946,7 @@ void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	cfg->mac_f.promisc_mode = false;
 }
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 {
 	struct kvx_eth_lane_cfg *cfg = container_of(mac_f,
@@ -2959,6 +2960,21 @@ void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 	}
 	kvx_eth_mac_cfg(hw, cfg);
 }
+#else
+void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
+{
+	u32 val = MAC_LOOPBACK_LATENCY << MAC_BYPASS_LOOPBACK_LATENCY_SHIFT;
+
+	if (mac_f->loopback_mode == MAC_SERDES_LOOPBACK) {
+		dev_info(hw->dev, "Mac out loopback\n");
+		val |= 0x0F << MAC_BYPASS_MAC_OUT_LOOPBACK_SHIFT;
+	} else if (mac_f->loopback_mode == MAC_ETH_LOOPBACK) {
+		dev_info(hw->dev, "Mac eth loopback\n");
+		val |= MAC_BYPASS_ETH_LOOPBACK_MASK;
+	}
+	kvx_mac_writel(hw, val, MAC_BYPASS_OFFSET);
+}
+#endif
 
 void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
 			    struct kvx_eth_hw_stats *s)

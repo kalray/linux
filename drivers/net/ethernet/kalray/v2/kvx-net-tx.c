@@ -9,12 +9,10 @@
 #include <linux/device.h>
 #include <linux/io.h>
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
+#include "../kvx-net.h"
+#include "../kvx-net-regs.h"
 
-#include "kvx-net.h"
-#include "kvx-net-regs.h"
-
-#include "kvx-ethtx-regs-cv2.h"
+#include "../kvx-ethtx-regs-cv2.h"
 
 const struct eth_tx_speed_cfg_t eth_tx_speed_cfg[] = {
 	{SPEED_100000, KVX_ETH_TX_STAGE_ONE_CFG_1_FIFO_8K, KVX_ETH_TX_TDM_CONFIG_BY4_AGG},
@@ -344,4 +342,3 @@ void kvx_eth_tx_f_init(struct kvx_eth_hw *hw)
 		}
 	}
 }
-#endif
