@@ -18,7 +18,12 @@
 #include <net/page_pool.h>
 #include <linux/gpio/consumer.h>
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 #include "kvx-net-hdr.h"
+#else
+#include "kvx-net-hdr-cv2.h"
+#endif
+
 #include "kvx-ethtool.h"
 
 #define NB_PE                      16
@@ -99,6 +104,68 @@ enum kvx_eth_resource {
 #define KVX_ETH_RES_ETH		KVX_ETH_RES_ETH_RX
 #endif
 
+enum tx_ip_mode {
+	NO_IP_MODE = 0,
+	IP_V4_MODE = 1,
+	IP_V6_MODE = 2,
+};
+
+enum tx_crc_mode {
+	NO_CRC_MODE   = 0,
+	UDP_MODE      = 1,
+	TCP_MODE      = 2,
+	ROCE_V1_MODE  = 3,
+	ROCE_V2_MODE  = 4,
+};
+
+#define PTYPE_MASK     (0x1F)
+
+enum parser_ptype {
+	PTYPE_END_OF_RULE = 0x0,
+	PTYPE_MAC_VLAN    = 0x01,
+	PTYPE_IP_V4       = 0x03,
+	PTYPE_IP_V6       = 0x04,
+	PTYPE_VXLAN       = 0x07,
+	PTYPE_UDP         = 0x08,
+	PTYPE_TCP         = 0x09,
+	PTYPE_MPLS        = 0x0A,
+	PTYPE_ROCE        = 0x0B,
+	PTYPE_SKIP        = 0x1E,
+	PTYPE_CUSTOM      = 0x1F,
+};
+
+/**
+ * struct rx_fields
+ */
+struct rx_fields {
+	u64 pkt_size     :16; /* [79:64] Packet size without header/footer */
+	u64 hash_key     :16; /* [95:80] HASH key in HASH/LUT dispatch mode */
+	u64 lut_entry    :11; /* [106:96] LUT entry in HASH/LUT dispatch mode */
+	u64 lane_id      :2;  /* [108:107] Lane source */
+	u64 eth_id       :1;  /* [109:109] ETH interface */
+	u64 coolidge_id  :1;  /* [110:110] Coolidge chip (default : 0) */
+	u64 parser_id    :5;  /* [115:111] Parser Id match (if !default_rule) */
+	u64 default_rule :1;  /* [116:116] Set if pkt catched by default rule */
+	u64 fcs_errors   :1;  /* [117:117] FCS error: set if pkt corrupted*/
+	u64 crc_errors   :4;  /* [121:118] Set when CRC check fails */
+	u64 reserved1    :6;  /* [127:122] Padding */
+} __packed;
+
+/**
+ * struct rx_metadata
+ */
+struct rx_metadata {
+	u64 timestamp;      /* [63:0] Timestamp */
+	struct rx_fields f; /* [64:127] Header/footer fields (aligned 32B) */
+	u16 index0;         /* [143:128] First index extracted by the parser */
+	u16 index1;         /* [159:144] Second index extracted by the parser */
+	u16 index2;         /* [175:160] Third index extracted by the parser */
+	u16 index3;         /* [191:176] Fourth index extracted by the parser */
+	u32 global_pkt_id;  /* [223:192] ++ if received on any lane */
+	u32 rule_pkt_id;    /* [255:224] ++ if received on any lane by a rule */
+} __packed;
+
+
 enum kvx_eth_phy_supply_voltage {
 	KVX_PHY_SUPLY_1_5V = 0x10,
 	KVX_PHY_SUPLY_1_8V = 0x11,
@@ -168,6 +235,7 @@ enum default_dispatch_policy {
 	DEFAULT_DISPATCH_POLICY_NB,
 };
 
+
 enum parser_dispatch_policy {
 	PARSER_DISABLED = 0x0,
 	PARSER_DROP = 0x1,
@@ -177,6 +245,21 @@ enum parser_dispatch_policy {
 	PARSER_NOCX = 0x5,
 	PARSER_POLICY_NB,
 };
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+enum lb_analyzer_parser_dispatch_policy {
+	POLICY_DEFAULT = 0x0,
+	POLICY_USE_RSS = 0x1,
+	POLICY_USE_RFS = 0x2,
+	POLICY_USE_RFS_RSS = 0x3,
+	POLICY_PARSER = 0x4,
+};
+
+enum parser_dispatch_info_drop {
+	DISPATCH_INFO_PROCESS = 0x0,
+	DISPATCH_INFO_DROP = 0x1,
+};
+
+#endif
 
 #define RATE_1GBASE_KX              BIT(0)
 #define RATE_10GBASE_KX4            BIT(1)
@@ -421,6 +504,7 @@ struct kvx_eth_cl_f {
 	int id;
 };
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 /**
  * struct kvx_eth_lb_f - Load balancer features
  * @kobj: kobject for sysfs
@@ -468,7 +552,33 @@ struct kvx_eth_lb_f {
 	u32 global_no_pfc_drop_cnt;
 	int id;
 };
-
+#else
+struct kvx_eth_lb_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	enum default_dispatch_policy default_dispatch_policy;
+	u8 store_and_forward;
+	u8 keep_all_crc_error_pkt;
+	u8 add_header;
+	u8 add_footer;
+	struct kvx_eth_rx_noc rx_noc[NB_CLUSTER];
+	struct kvx_eth_cl_f cl_f[KVX_ETH_PFC_CLASS_NB];
+	struct kvx_eth_pfc_f pfc_f;
+	u32 drop_mtu_err_cnt;
+	u32 drop_fcs_err_cnt;
+	u32 drop_crc_err_cnt;
+	u32 drop_rule_cnt;
+	u32 drop_fifo_overflow_cnt;
+	u32 drop_total_cnt;
+	u32 default_hit_cnt;
+	u32 global_drop_cnt;
+	u32 global_no_pfc_drop_cnt;
+	u16 default_dispatch_info;
+	u8  default_flow_type;
+	int id;
+};
+#endif
 struct kvx_eth_rule_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
@@ -485,9 +595,11 @@ struct kvx_eth_rule_f {
  *   1    2    3    4
  * 1: enable 2: type 3: add_index 4: checksum
  */
+
 #define PARSER_RULE_FMT "%d;%02hhx;%hhu;%hhu:"
 #define PARSER_RULE_LEN (9)
 #define PARSER_DESC_LEN (KVX_NET_LAYER_NB * PARSER_RULE_LEN + 1)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 struct kvx_eth_parser_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
@@ -500,6 +612,25 @@ struct kvx_eth_parser_f {
 	u32 fifo_overflow;
 	int id;
 };
+#else
+struct kvx_eth_parser_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	struct kvx_eth_rule_f rules[KVX_NET_LAYER_NB];
+	bool enable;
+	char desc[PARSER_DESC_LEN];
+	u8 disp_policy;
+	u16 disp_info;
+	u8 flow_type;
+	u8 flow_key_ctrl;
+	u32 hit_cnt;
+	u16 ctrl;
+	u8 status;
+	int id;
+};
+#endif
+
 
 
 /**
@@ -809,6 +940,7 @@ struct kvx_eth_lane_cfg {
 	bool restart_serdes;
 };
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 /**
  * parser_type - Type of a parser, meaning how many checksums it can perform
  * PARSER_TYPE_NO_CHECKSUM: Can't handle any checksum
@@ -822,6 +954,7 @@ enum parser_crc_ability {
 	PARSER_CRC_ABILITY_UNKNOWN,
 	PARSER_CRC_ABILITY_NB,
 };
+#endif
 
 struct kvx_eth_parser {
 	union filter_desc *filters[KVX_NET_LAYER_NB];
@@ -829,7 +962,9 @@ struct kvx_eth_parser {
 	unsigned int enabled;
 	enum kvx_eth_layer nb_layers;
 	int loc;
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	enum parser_crc_ability crc_ability;
+#endif
 };
 
 struct kvx_eth_parsing {
@@ -1186,6 +1321,16 @@ struct eth_tx_speed_cfg_t {
 	uint32_t stage_one_config;
 	uint32_t tdm_config;
 };
+
+enum kvx_eth_rx_lb_ana_parser_ctrl_enable_values {
+	KVX_ETH_RX_LBA_PARSER_CTRL_DISABLE = 0x00,
+	KVX_ETH_RX_LBA_PARSER_CTRL_ENABLE  = 0x01
+};
+
+enum kvx_eth_rx_lb_ana_parser_status_running_values {
+	KVX_ETH_RX_LBA_PARSER_STATUS_STOPPED = 0x00,
+	KVX_ETH_RX_LBA_PARSER_STATUS_RUNNING = 0x01
+};
 #endif
 
 
@@ -1230,6 +1375,17 @@ static inline u32 kvx_eth_tx_readl(struct kvx_eth_hw *hw, const u64 off)
 {
 	return readl(hw->res[KVX_ETH_RES_ETH_TX].base + off);
 }
+
+static inline u32 kvx_eth_rxlbana_readl(struct kvx_eth_hw *hw, const u64 off)
+{
+	return readl(hw->res[KVX_ETH_RES_ETH_RX_LB_ANA].base + off);
+}
+
+static inline void kvx_eth_rxlbana_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
+{
+	writel(val, hw->res[KVX_ETH_RES_ETH_RX_LB_ANA].base + off);
+}
+
 #endif
 
 u32 noc_route_c2eth(enum kvx_eth_io eth_id, int cluster_id);
@@ -1295,7 +1451,11 @@ void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
 u32 kvx_eth_lb_has_header(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 u32 kvx_eth_lb_has_footer(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int parser_config_update(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, int lane_id);
+#else
+void kvx_eth_lbana_set_default(struct kvx_eth_hw *hw, u8 dispatch_info);
+#endif
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_eth_parsers_init(struct kvx_eth_hw *hw);
@@ -1305,12 +1465,18 @@ void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut);
 void kvx_eth_lut_entry_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_f *l);
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg,
 				 struct kvx_eth_dt_f *dt, int idx);
+#endif
 void kvx_eth_init_dispatch_table(struct kvx_eth_hw *hw);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg, u32 rx_tag);
+#else
+void kvx_eth_parser_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_parser_f *p);
+#endif
 void kvx_eth_dt_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_f *dt);
 void kvx_eth_dt_acc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_acc_f *dt_acc);
 void kvx_eth_dt_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
