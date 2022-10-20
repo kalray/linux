@@ -13,6 +13,7 @@
 #include "kvx-net-regs.h"
 #ifdef CONFIG_KVX_SUBARCH_KV3_2
 #include "kvx-ethtx-regs-cv2.h"
+#include "kvx-ethrx-regs-cv2.h"
 #endif
 
 #define DEFAULT_PFC_ALERT_LEVEL   ((7 * PFC_MAX_LEVEL) / 10)
@@ -25,6 +26,7 @@
 	(RX_LB_DEFAULT_RULE_OFFSET + RX_LB_DEFAULT_RULE_LANE_OFFSET \
 	+ (LANE) * RX_LB_DEFAULT_RULE_LANE_ELEM_SIZE)
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 #define RX_LB_DEFAULT_RULE_LANE_RR_TARGET(LANE, RR_TARGET) \
 	(RX_LB_DEFAULT_RULE_LANE(LANE) + \
 	RX_LB_DEFAULT_RULE_LANE_RR_TARGET_OFFSET + \
@@ -33,10 +35,40 @@
 #define RX_LB_PARSER_RR_TARGET(PARSER_ID, RR_TARGET) \
 	(PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * (PARSER_ID) + \
 	PARSER_CTRL_RR_TARGET + (RR_TARGET) * PARSER_CTRL_RR_TARGET_ELEM_SIZE)
+#endif
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+#define RX_LB_DEFAULT_RULE_DISPATCH_INFO(LANE) \
+	(KVX_ETH_LBA_CONTROL_GRP_OFFSET + ((LANE) * KVX_ETH_LBA_CONTROL_GRP_ELEM_SIZE) + \
+	KVX_ETH_LBA_CONTROL_LB_DEFAULT_PARSER_GRP_OFFSET + \
+	KVX_ETH_LBA_CONTROL_LB_DEFAULT_PARSER_DEFAULT_DISPATCH_INFO_OFFSET)
+
+#define RX_LB_DEFAULT_RULE_HIT_CNT(LANE) \
+	(KVX_ETH_LBA_CONTROL_GRP_OFFSET + ((LANE) * KVX_ETH_LBA_CONTROL_GRP_ELEM_SIZE) + \
+	KVX_ETH_LBA_CONTROL_LB_DEFAULT_PARSER_GRP_OFFSET + \
+	KVX_ETH_LBA_CONTROL_LB_DEFAULT_PARSER_DEFAULT_HIT_CNT_OFFSET)
+
+#define RX_LB_DEFAULT_FLOW_TYPE(LANE) \
+	(KVX_ETH_LBA_CONTROL_GRP_OFFSET + ((LANE) * KVX_ETH_LBA_CONTROL_GRP_ELEM_SIZE) + \
+	KVX_ETH_LBA_CONTROL_LB_DEFAULT_FLOW_TYPE_OFFSET)
+
+#define RX_LB_PARSER_DISPATCH_POLICY(PARSER) \
+	(KVX_ETH_LBA_PARSER_GRP_OFFSET + ((PARSER) * KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE) + \
+	KVX_ETH_LBA_PARSER_DISPATCH_POLICY_OFFSET)
+
+#define RX_LB_PARSER_DISPATCH_INFO(PARSER) \
+	(KVX_ETH_LBA_PARSER_GRP_OFFSET + ((PARSER) * KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE) + \
+	KVX_ETH_LBA_PARSER_DISPATCH_INFO_OFFSET)
+
+#define RX_LB_PARSER_HIT_CNT(PARSER) \
+	(KVX_ETH_LBA_PARSER_GRP_OFFSET + ((PARSER) * KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE) + \
+	KVX_ETH_LBA_PARSER_HIT_CNT_OFFSET)
+#endif
 
 #define RX_DISPATCH_TABLE_ENTRY(ENTRY) \
 	(RX_DISPATCH_TABLE_OFFSET + RX_DISPATCH_TABLE_ENTRY_OFFSET + \
 	(ENTRY) * RX_DISPATCH_TABLE_ENTRY_ELEM_SIZE)
+
 
 #define RX_LB_DEFAULT_RULE_LANE_CTRL(LANE) \
 	(RX_LB_DEFAULT_RULE_LANE(LANE) + RX_LB_DEFAULT_RULE_LANE_CTRL_OFFSET)
@@ -310,7 +342,7 @@ void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut)
 	val = (lut->qpn_enable << RX_LB_LUT_QPN_CTRL_QPN_EN_SHIFT);
 	kvx_eth_writel(hw, val, reg + RX_LB_LUT_QPN_CTRL_OFFSET);
 }
-
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 static void lb_f_update(void *data)
 {
 	struct kvx_eth_lb_f *lb = (struct kvx_eth_lb_f *)data;
@@ -339,6 +371,30 @@ static void lb_f_update(void *data)
 	lb->global_no_pfc_drop_cnt = kvx_eth_readl(lb->hw, reg +
 				RX_PFC_LANE_GLOBAL_NO_PFC_DROP_CNT_OFFSET);
 }
+#else
+static void lb_f_update(void *data)
+{
+	struct kvx_eth_lb_f *lb = (struct kvx_eth_lb_f *)data;
+	u32 reg = KVX_ETH_LBA_STATUS_COUNTERS_GRP_OFFSET +
+		lb->id * KVX_ETH_LBA_STATUS_COUNTERS_GRP_ELEM_SIZE;
+
+	lb->drop_mtu_err_cnt = kvx_eth_rxlbana_readl(lb->hw,
+				 reg + KVX_ETH_LBA_STATUS_COUNTERS_MTU_ERROR_DROP_CNT_OFFSET);
+	lb->drop_fcs_err_cnt = kvx_eth_rxlbana_readl(lb->hw,
+				 reg + KVX_ETH_LBA_STATUS_COUNTERS_MAC_ERROR_DROP_CNT_OFFSET);
+	lb->drop_crc_err_cnt = kvx_eth_rxlbana_readl(lb->hw,
+				 reg + KVX_ETH_LBA_STATUS_COUNTERS_CRC_DROP_CNT_OFFSET);
+	lb->drop_total_cnt = kvx_eth_rxlbana_readl(lb->hw,
+				 reg + KVX_ETH_LBA_STATUS_COUNTERS_TOTAL_DROP_CNT_OFFSET);
+	lb->default_hit_cnt = kvx_eth_rxlbana_readl(lb->hw,
+				 RX_LB_DEFAULT_RULE_HIT_CNT(lb->id));
+	/* added */
+	lb->default_dispatch_info = kvx_eth_rxlbana_readl(lb->hw,
+				 RX_LB_DEFAULT_RULE_DISPATCH_INFO(lb->id));
+	lb->default_flow_type = kvx_eth_rxlbana_readl(lb->hw,
+				 RX_LB_DEFAULT_FLOW_TYPE(lb->id));
+}
+#endif
 
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
@@ -364,6 +420,7 @@ void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 }
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 static void kvx_eth_parser_f_update(void *data)
 {
 	struct kvx_eth_parser_f *p = (struct kvx_eth_parser_f *)data;
@@ -387,7 +444,47 @@ void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 			hw->parser_f[i].rules[j].hw = hw;
 	}
 }
+#else
+static void kvx_eth_parser_f_update(void *data)
+{
+	struct kvx_eth_parser_f *p = (struct kvx_eth_parser_f *)data;
+	u32 off = KVX_ETH_LBA_PARSER_GRP_OFFSET + KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE * p->id;
 
+	p->disp_policy = kvx_eth_rxlbana_readl(p->hw, off + KVX_ETH_LBA_PARSER_DISPATCH_POLICY_OFFSET);
+	p->disp_info = kvx_eth_rxlbana_readl(p->hw, off + KVX_ETH_LBA_PARSER_DISPATCH_INFO_OFFSET);
+	p->flow_type = kvx_eth_rxlbana_readl(p->hw, off + KVX_ETH_LBA_PARSER_FLOW_TYPE_OFFSET);
+	p->flow_key_ctrl = kvx_eth_rxlbana_readl(p->hw, off + KVX_ETH_LBA_PARSER_FLOW_KEY_CTRL_OFFSET);
+	p->hit_cnt = kvx_eth_rxlbana_readl(p->hw, off + KVX_ETH_LBA_PARSER_HIT_CNT_OFFSET);
+	p->ctrl = kvx_eth_rxlbana_readl(p->hw, off + KVX_ETH_LBA_PARSER_CTRL_OFFSET);
+	p->status = kvx_eth_rxlbana_readl(p->hw, off + KVX_ETH_LBA_PARSER_STATUS_OFFSET);
+}
+
+void kvx_eth_parser_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_parser_f *p)
+{
+	u32 off = KVX_ETH_LBA_PARSER_GRP_OFFSET + KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE * p->id;
+
+	kvx_eth_rxlbana_writel(hw, p->disp_policy, off +  KVX_ETH_LBA_PARSER_DISPATCH_POLICY_OFFSET);
+	kvx_eth_rxlbana_writel(hw, p->disp_info,  off + KVX_ETH_LBA_PARSER_DISPATCH_INFO_OFFSET);
+	kvx_eth_rxlbana_writel(hw, p->flow_type,  off + KVX_ETH_LBA_PARSER_FLOW_TYPE_OFFSET);
+	kvx_eth_rxlbana_writel(hw, p->flow_key_ctrl,  off + KVX_ETH_LBA_PARSER_FLOW_KEY_CTRL_OFFSET);
+	kvx_eth_rxlbana_writel(hw, p->ctrl,  off + KVX_ETH_LBA_PARSER_CTRL_OFFSET);
+}
+
+void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	int i, j;
+
+	for (i = 0; i < KVX_ETH_PARSER_NB; ++i) {
+		hw->parser_f[i].hw = hw;
+		hw->parser_f[i].id = i;
+		hw->parser_f[i].update = kvx_eth_parser_f_update;
+		for (j = 0; j < KVX_NET_LAYER_NB; ++j)
+			hw->parser_f[i].rules[j].hw = hw;
+	}
+}
+#endif
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 /* All available parsers indexes, sorted by how many CRC check they can
  * handle.
  * This separates them into different pools, as not every parser is able to
@@ -450,7 +547,7 @@ static enum parser_crc_ability parser_crc_ability_init(struct kvx_eth_hw *hw, in
 	}
 	return PARSER_CRC_ABILITY_UNKNOWN;
 }
-
+#endif
 /**
  * kvx_eth_parsers_init() - Initialize parsers structures
  *   Used to mark their location id at -1, meaning they're currently unused,
@@ -464,16 +561,19 @@ int kvx_eth_parsers_init(struct kvx_eth_hw *hw)
 
 	for (i = 0; i < KVX_ETH_PARSER_NB; ++i) {
 		hw->parsing.parsers[i].loc = -1;
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 		hw->parsing.parsers[i].crc_ability = parser_crc_ability_init(hw, i);
 		if (hw->parsing.parsers[i].crc_ability == PARSER_CRC_ABILITY_UNKNOWN) {
 			dev_err(hw->dev, "Unknown parser crc_ability for parser %d", i);
 			return -1;
 		}
 		dev_dbg(hw->dev, "Parser %d is of crc_ability %d\n", i, hw->parsing.parsers[i].crc_ability);
+#endif
 	}
 	return 0;
 }
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, int lane_id)
 {
 	struct kvx_eth_lb_f *lb_f = &hw->lb_f[lane_id];
@@ -498,6 +598,20 @@ void kvx_eth_lb_set_default(struct kvx_eth_hw *hw, int lane_id)
 		kvx_eth_writel(hw, 0,
 			       RX_LB_DEFAULT_RULE_LANE_RR_TARGET(lane_id, i));
 }
+#else
+void kvx_eth_lbana_set_default(struct kvx_eth_hw *hw, u8 dispatch_info)
+{
+	int i;
+
+	for (i = 0; i < KVX_ETH_LANE_NB; i++)
+		kvx_eth_rxlbana_writel(hw, dispatch_info, RX_LB_DEFAULT_RULE_DISPATCH_INFO(i));
+
+	for (i = 0; i < KVX_ETH_PHYS_PARSER_NB; ++i) {
+		kvx_eth_rxlbana_writel(hw, POLICY_PARSER, RX_LB_PARSER_DISPATCH_POLICY(i));
+		kvx_eth_rxlbana_writel(hw, dispatch_info, RX_LB_PARSER_DISPATCH_INFO(i));
+	}
+}
+#endif
 
 void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc)
 {
@@ -519,7 +633,7 @@ void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc)
 		kvx_eth_writel(hw, val, RX_NOC_PKT_LANE(lane, fdir) + 4);
 	}
 }
-
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 {
 	u32 val = lb->default_dispatch_policy <<
@@ -555,7 +669,16 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 		kvx_eth_writel(hw, val, RX_LB_CTRL(l));
 	}
 }
+#else
+void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
+{
+	kvx_eth_rxlbana_writel(hw, lb->default_dispatch_info,
+		RX_LB_DEFAULT_RULE_DISPATCH_INFO(lb->id));
+}
+#endif
 
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 /**
  * enable_default_dispatch_entry() - Writes route cfg for DEFAULT RR policy
  * @hw: HW description
@@ -605,6 +728,7 @@ static void enable_parser_dispatch_entry(struct kvx_eth_hw *hw,
 		__func__, dispatch_table_idx, row, mask);
 	kvx_eth_writel(hw, mask, RX_LB_PARSER_RR_TARGET(parser_id, row));
 }
+#endif
 
 void kvx_eth_dt_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
@@ -716,7 +840,7 @@ void kvx_eth_dt_acc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_acc_f *dt_acc
 		dt_acc->reset = false;
 	}
 }
-
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg,
 				 struct kvx_eth_dt_f *dt, int idx)
@@ -731,7 +855,9 @@ void kvx_eth_add_dispatch_table_entry(struct kvx_eth_hw *hw,
 
 	enable_default_dispatch_entry(hw, cfg, idx);
 }
+#endif
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg,
 				 u32 rx_tag)
@@ -755,6 +881,7 @@ void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 		enable_parser_dispatch_entry(hw, i,
 					  cfg->default_dispatch_entry + rx_tag);
 }
+#endif
 
 u32 kvx_eth_lb_has_header(struct kvx_eth_hw *hw,
 			  struct kvx_eth_lane_cfg *lane_cfg)
