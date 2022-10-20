@@ -35,7 +35,11 @@
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
 #include "kvx-net-regs.h"
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 #include "kvx-net-hdr.h"
+#else
+#include "kvx-net-hdr-cv2.h"
+#endif
 #include "kvx-mac-regs.h"
 #include "kvx-qsfp.h"
 
@@ -459,6 +463,8 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 	kvx_eth_parser_f_init(ndev->hw, &ndev->cfg);
 	kvx_net_init_dcb(ndev->netdev);
 #else
+	kvx_eth_lb_f_init(ndev->hw, &ndev->cfg);
+	kvx_eth_parser_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_tx_f_init(ndev->hw);
 #endif
 
@@ -2088,6 +2094,7 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	 * Rx LB ctrl registers for lanes 0/2 must be set the same way
 	 * Program all lane LB accordingly
 	 */
+
 #ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 	for (i = 0; i < KVX_ETH_LANE_NB; i++)
 		kvx_eth_lb_set_default(&dev->hw, i);
@@ -2099,6 +2106,8 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 
 	for (i = 0; i < KVX_ETH_LANE_NB; i++)
 		kvx_eth_lb_f_cfg(&dev->hw, &ndev->hw->lb_f[i]);
+#else
+	kvx_eth_lbana_set_default(&dev->hw, ndev->dma_cfg.rx_chan_id.start);
 #endif
 
 	ret = kvx_eth_netdev_sysfs_init(ndev);
@@ -2276,8 +2285,8 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	kvx_eth_init_dispatch_table(&dev->hw);
 #endif
 	kvx_eth_tx_init(&dev->hw);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_parsers_init(&dev->hw);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_phy_f_init(&dev->hw);
 #endif
 	kvx_eth_hw_sysfs_init(&dev->hw);

@@ -152,8 +152,14 @@ static int parser_check(unsigned int parser_id, unsigned int word_index)
 	return 0;
 }
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 #define RAM(p)      (PARSER_RAM_OFFSET + PARSER_RAM_ELEM_SIZE * (p))
 #define RAM_LINE(l) (PARSER_RAM_LINE + (l) * PARSER_RAM_LINE_ELEM_SIZE)
+#else
+#define RAM(p)      (KVX_ETH_LBA_PARSER_RAM_GRP_OFFSET + KVX_ETH_LBA_PARSER_RAM_GRP_ELEM_SIZE * (p))
+#define RAM_LINE(l) (KVX_ETH_LBA_PARSER_RAM_LB_PARSER_RAM_LINE_GRP_OFFSET + (l) * KVX_ETH_LBA_PARSER_RAM_LB_PARSER_RAM_LINE_GRP_ELEM_SIZE)
+#endif
+
 
 /**
  * parser_commit_filter() - Enables filtering for parser_id
@@ -172,16 +178,22 @@ static int parser_commit_filter(struct kvx_eth_hw *hw,
 	u32 off = RAM(parser_id) + RAM_LINE(0);
 	u32 val = 0;
 	int ret = 0;
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+	struct kvx_eth_parser_f *parser = &hw->parser_f[parser_id];
+#endif
 
 	ret = parser_check(parser_id, word_index);
 	if (ret < 0) {
 		dev_err(hw->dev, "Lane[%d] parser check failed\n", cfg->id);
 		return ret;
 	}
-
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_writel(hw, PTYPE_END_OF_RULE, off + i * PARSER_RAM_WORD_SIZE);
+#else
+	kvx_eth_rxlbana_writel(hw, PTYPE_END_OF_RULE, off + i * PARSER_RAM_WORD_SIZE);
+#endif
 	i++;
-
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * parser_id;
 	val = ((u32)policy << PARSER_CTRL_DISPATCH_POLICY_SHIFT) |
 		((u32)cfg->id << PARSER_CTRL_LANE_SRC_SHIFT) |
@@ -189,6 +201,22 @@ static int parser_commit_filter(struct kvx_eth_hw *hw,
 		((u32)PARSER_RR_PKT_NB << PARSER_CTRL_RR_PKT_NB_SHIFT) |
 		((u32)HASH_SEED << PARSER_CTRL_HASH_SEED_SHIFT);
 	kvx_eth_writel(hw, val, off + PARSER_CTRL_CTL);
+#else
+	off = KVX_ETH_LBA_PARSER_GRP_OFFSET + KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE * parser_id;
+	if (policy == PARSER_DROP) {
+		parser->disp_info = DISPATCH_INFO_DROP;
+		val = ((u32) parser->disp_info) << KVX_ETH_LBA_PARSER_DISPATCH_INFO_DROP_SHIFT;
+		kvx_eth_rxlbana_writel(hw, val, off + KVX_ETH_LBA_PARSER_DISPATCH_INFO_OFFSET);
+		parser->disp_policy = (u32) POLICY_PARSER;
+	} else {
+		parser->disp_policy = (u32) POLICY_USE_RSS;
+	}
+	kvx_eth_rxlbana_writel(hw, parser->disp_policy, off + KVX_ETH_LBA_PARSER_DISPATCH_POLICY_OFFSET);
+	parser->ctrl = (KVX_ETH_RX_LBA_PARSER_CTRL_ENABLE |
+			(1 << (KVX_ETH_LBA_PARSER_CTRL_LANE_SRC_SHIFT + (u32)cfg->id)) |
+			((u32)prio << KVX_ETH_LBA_PARSER_CTRL_PRIORITY_SHIFT));
+	kvx_eth_rxlbana_writel(hw, parser->ctrl, off + KVX_ETH_LBA_PARSER_CTRL_OFFSET);
+#endif
 
 	return i;
 }
@@ -205,12 +233,20 @@ int parser_add_skip_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
 	int j, i = idx;
 	u32 off = RAM(parser_id) + RAM_LINE(0);
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_writel(hw, *(u32 *)&desc->word[0],
 		       off + PARSER_RAM_WORD_SIZE * i);
+#else
+	kvx_eth_rxlbana_writel(hw, *(u32 *)&desc->word[0],
+		       off + PARSER_RAM_WORD_SIZE * i);
+#endif
 	++i;
 	for (j = 0; j < PARSER_RAM_WORD_NB - 1; ++j)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 		kvx_eth_writel(hw, 0, off + PARSER_RAM_WORD_SIZE * (i + j));
-
+#else
+		kvx_eth_rxlbana_writel(hw, 0, off + PARSER_RAM_WORD_SIZE * (i + j));
+#endif
 	/* Considers desc->skip_length == 3 to start next rule on next line) */
 	i += PARSER_RAM_WORD_NB - 1;
 	return i;
@@ -232,12 +268,20 @@ static int write_ramline(struct kvx_eth_hw *hw, unsigned int parser_id,
 	size = s / PARSER_RAM_WORD_SIZE;
 	dev_dbg(hw->dev, "idx: %d array size: %d s: %d\n", idx, size, (int)s);
 	for (j = 0; j < size; ++j) {
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 		kvx_eth_writel(hw, data[j], off + PARSER_RAM_WORD_SIZE * i);
+#else
+		kvx_eth_rxlbana_writel(hw, data[j], off + PARSER_RAM_WORD_SIZE * i);
+#endif
 		++i;
 	}
 	/* Fill in the rest of the line */
 	for (; j < PARSER_RAM_WORD_NB; ++j) {
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 		kvx_eth_writel(hw, 0, off + PARSER_RAM_WORD_SIZE * i);
+#else
+		kvx_eth_rxlbana_writel(hw, 0, off + PARSER_RAM_WORD_SIZE * i);
+#endif
 		++i;
 	}
 
@@ -449,22 +493,43 @@ static int parser_add_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
  */
 static int parser_disable(struct kvx_eth_hw *hw, int parser_id)
 {
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	u32 off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * parser_id;
 	u32 val = (u32)PARSER_DISABLED << PARSER_CTRL_DISPATCH_POLICY_SHIFT;
+#else
+	u32 val = 0;
+	u32 off = KVX_ETH_LBA_PARSER_GRP_OFFSET + KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE * parser_id;
+	struct kvx_eth_parser_f *parser = &hw->parser_f[parser_id];
+#endif
 	int ret = 0;
 
 	dev_dbg(hw->dev, "Disable parser[%d]\n", parser_id);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_writel(hw, val, off + PARSER_CTRL_CTL);
+#else
+	parser->ctrl = KVX_ETH_RX_LBA_PARSER_CTRL_DISABLE;
+	kvx_eth_rxlbana_writel(hw, parser->ctrl, off + KVX_ETH_LBA_PARSER_CTRL_OFFSET);
+#endif
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	ret = readl_poll_timeout(hw->res[KVX_ETH_RES_ETH].base + off +
 				 PARSER_CTRL_STATUS, val, !val,
 				 READ_DELAY, READ_TIMEOUT);
+#else
+	ret = readl_poll_timeout(hw->res[KVX_ETH_RES_ETH_RX_LB_ANA].base + off +
+				 KVX_ETH_LBA_PARSER_STATUS_OFFSET, val,
+				 (val == KVX_ETH_RX_LBA_PARSER_STATUS_STOPPED), READ_DELAY, READ_TIMEOUT);
+#endif
 	if (unlikely(ret)) {
 		dev_err(hw->dev, "Disable parser[%d] timeout\n", parser_id);
 		return ret;
 	}
 
 	/* Reset hit_cnt */
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_readl(hw, off + PARSER_CTRL_HIT_CNT + 4);
+#else
+	kvx_eth_rxlbana_readl(hw, off + KVX_ETH_LBA_PARSER_HIT_CNT_LAC_OFFSET);
+#endif
 	clear_parser_f(hw, parser_id);
 	return 0;
 }
