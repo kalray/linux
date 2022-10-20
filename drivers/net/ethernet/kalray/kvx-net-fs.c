@@ -289,6 +289,7 @@ static struct attribute *tx_bert_param_attrs[] = {
 SYSFS_TYPES(tx_bert_param);
 
 DECLARE_SYSFS_ENTRY(lb_f);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 FIELD_RW_ENTRY(lb_f, default_dispatch_policy,
 	       0, DEFAULT_DISPATCH_POLICY_NB);
 FIELD_RW_ENTRY(lb_f, keep_all_crc_error_pkt, 0, 1);
@@ -322,6 +323,26 @@ static struct attribute *lb_f_attrs[] = {
 	&lb_f_global_no_pfc_drop_cnt_attr.attr,
 	NULL,
 };
+#else
+FIELD_R_ENTRY(lb_f, drop_mtu_err_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, drop_fcs_err_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, drop_crc_err_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, drop_total_cnt, 0, U32_MAX);
+FIELD_R_ENTRY(lb_f, default_hit_cnt, 0, U32_MAX);
+FIELD_RW_ENTRY(lb_f, default_dispatch_info, 0, 0x7FFF);
+FIELD_RW_ENTRY(lb_f, default_flow_type, 0, 0xF);
+
+static struct attribute *lb_f_attrs[] = {
+	&lb_f_drop_mtu_err_cnt_attr.attr,
+	&lb_f_drop_fcs_err_cnt_attr.attr,
+	&lb_f_drop_crc_err_cnt_attr.attr,
+	&lb_f_drop_total_cnt_attr.attr,
+	&lb_f_default_hit_cnt_attr.attr,
+	&lb_f_default_dispatch_info_attr.attr,
+	&lb_f_default_flow_type_attr.attr,
+	NULL,
+};
+#endif
 SYSFS_TYPES(lb_f);
 
 DECLARE_SYSFS_ENTRY(rx_noc);
@@ -490,6 +511,7 @@ static struct attribute *dt_acc_f_attrs[] = {
 SYSFS_TYPES(dt_acc_f);
 
 DECLARE_SYSFS_ENTRY(parser_f);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 FIELD_R_ENTRY(parser_f, enable, 0, 1);
 FIELD_R_ENTRY(parser_f, hit_cnt, 0, U32_MAX);
 FIELD_R_ENTRY(parser_f, running, 0, 1);
@@ -503,7 +525,25 @@ static struct attribute *parser_f_attrs[] = {
 	&parser_f_fifo_overflow_attr.attr,
 	NULL,
 };
-
+#else
+FIELD_RW_ENTRY(parser_f, disp_policy, 0, 0x4);
+FIELD_RW_ENTRY(parser_f, disp_info, 0, 0x7FFF);
+FIELD_RW_ENTRY(parser_f, flow_type, 0, 0xF);
+FIELD_RW_ENTRY(parser_f, flow_key_ctrl, 0, 0x7);
+FIELD_R_ENTRY(parser_f, hit_cnt, 0, U32_MAX);
+FIELD_RW_ENTRY(parser_f, ctrl, 0, 0x7FF);
+FIELD_R_ENTRY(parser_f, status, 0, U32_MAX);
+static struct attribute *parser_f_attrs[] = {
+	&parser_f_disp_policy_attr.attr,
+	&parser_f_disp_info_attr.attr,
+	&parser_f_flow_type_attr.attr,
+	&parser_f_flow_key_ctrl_attr.attr,
+	&parser_f_hit_cnt_attr.attr,
+	&parser_f_ctrl_attr.attr,
+	&parser_f_status_attr.attr,
+	NULL,
+};
+#endif
 SYSFS_TYPES(parser_f);
 
 DECLARE_SYSFS_ENTRY(rule_f);

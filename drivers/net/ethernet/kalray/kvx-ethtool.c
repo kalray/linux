@@ -361,9 +361,17 @@ static union tcp_filter_desc *fill_tcp_filter(struct kvx_eth_netdev *ndev,
 	if (traffic_type_is_supported(tt)) {
 		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_L4_SPORT) != 0)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 			filter->src_hash_mask = 0xffff;
+#else
+			filter->src_fk_mask = 0xffff;
+#endif
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_L4_DPORT) != 0)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 			filter->dst_hash_mask = 0xffff;
+#else
+			filter->dst_fk_mask = 0xffff;
+#endif
 	}
 
 	return filter;
@@ -420,9 +428,18 @@ static union udp_filter_desc *fill_udp_filter(struct kvx_eth_netdev *ndev,
 	if (traffic_type_is_supported(tt)) {
 		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_L4_SPORT) != 0)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 			filter->src_hash_mask = 0xffff;
+#else
+			filter->src_fk_mask = 0xffff;
+#endif
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_L4_DPORT) != 0)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 			filter->dst_hash_mask = 0xffff;
+#else
+			filter->dst_fk_mask = 0xffff;
+#endif
+
 	}
 
 	return filter;
@@ -468,14 +485,27 @@ static union ipv4_filter_desc *fill_ipv4_filter(struct kvx_eth_netdev *ndev,
 
 	if (tt == KVX_TT_IP4) {
 		netdev_info(ndev->netdev, "Force src/dst hashing for IP4 only rule\n");
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 		filter->sa_hash_mask = 0xffffffff;
 		filter->da_hash_mask = 0xffffffff;
+#else
+		filter->sa_fk_mask = 0xffffffff;
+		filter->da_fk_mask = 0xffffffff;
+#endif
 	} else if (traffic_type_is_supported(tt)) {
 		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_SRC_IP) != 0)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 			filter->sa_hash_mask = 0xffffffff;
+#else
+			filter->sa_fk_mask = 0xffffffff;
+#endif
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_DST_IP) != 0)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 			filter->da_hash_mask = 0xffffffff;
+#else
+			filter->da_fk_mask = 0xffffffff;
+#endif
 	}
 
 	return filter;
@@ -536,20 +566,36 @@ static struct ipv6_filter_desc *fill_ipv6_filter(struct kvx_eth_netdev *ndev,
 
 	if (tt == KVX_TT_IP6) {
 		netdev_info(ndev->netdev, "Force src/dst hashing for IP6 only rule\n");
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 		filter->d1.src_lsb_hash_mask = 0xffffffffffffffffULL;
 		filter->d1.src_msb_hash_mask = 0xffffffffffffffffULL;
-
 		filter->d2.dst_lsb_hash_mask = 0xffffffffffffffffULL;
 		filter->d2.dst_msb_hash_mask = 0xffffffffffffffffULL;
+#else
+		filter->d1.src_lsb_fk_mask = 0xffffffffffffffffULL;
+		filter->d1.src_msb_fk_mask = 0xffffffffffffffffULL;
+		filter->d2.dst_lsb_fk_mask = 0xffffffffffffffffULL;
+		filter->d2.dst_msb_fk_mask = 0xffffffffffffffffULL;
+#endif
 	} else if (traffic_type_is_supported(tt)) {
 		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_SRC_IP) != 0) {
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 			filter->d1.src_lsb_hash_mask = 0xffffffffffffffffULL;
 			filter->d1.src_msb_hash_mask = 0xffffffffffffffffULL;
+#else
+			filter->d1.src_lsb_fk_mask = 0xffffffffffffffffULL;
+			filter->d1.src_msb_fk_mask = 0xffffffffffffffffULL;
+#endif
 		}
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_DST_IP) != 0) {
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 			filter->d2.dst_lsb_hash_mask = 0xffffffffffffffffULL;
 			filter->d2.dst_msb_hash_mask = 0xffffffffffffffffULL;
+#else
+			filter->d2.dst_lsb_fk_mask = 0xffffffffffffffffULL;
+			filter->d2.dst_msb_fk_mask = 0xffffffffffffffffULL;
+#endif
 		}
 	}
 
@@ -680,7 +726,11 @@ static union mac_filter_desc *fill_eth_filter(struct kvx_eth_netdev *ndev,
 		/* tci mask is bitwise-negated */
 		filter->tci0_mask = ~ntohs(fs->m_ext.vlan_tci);
 		filter->vlan_ctrl = KVX_ETH_VLAN_ONE;
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 		filter->pfc_en    = 1;
+#else
+		filter->etype_fk_en = 1;
+#endif
 		netdev_dbg(ndev->netdev, "%s vlan: 0x%x /0x%x PFC en", __func__,
 			    filter->tci0, filter->tci0_mask);
 	}
@@ -688,9 +738,17 @@ static union mac_filter_desc *fill_eth_filter(struct kvx_eth_netdev *ndev,
 	if (traffic_type_is_supported(tt)) {
 		rx_hash_field = ndev->hw->parsing.rx_hash_fields[tt];
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_VLAN) != 0)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 			filter->tci0_hash_mask = TCI_VLAN_HASH_MASK;
+#else
+			filter->tci0_fk_mask = TCI_VLAN_HASH_MASK;
+#endif
 		if ((rx_hash_field & KVX_HASH_FIELD_SEL_DST_MAC) != 0)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 			filter->da_hash_mask = 0xffffffffffffULL;
+#else
+			filter->da_fk_mask = 0xffffffffffffULL;
+#endif
 	}
 
 	return filter;
@@ -849,6 +907,8 @@ static int kvx_eth_fill_parser(struct kvx_eth_netdev *ndev,
 	return 0;
 }
 
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 /**
  * find_elligible_parser() - Find the next free parser within the appropriate
  *   CRC group (based on fs parameter)
@@ -879,7 +939,6 @@ static int find_elligible_parser(struct kvx_eth_netdev *ndev,
 	}
 
 	netdev_dbg(ndev->netdev, "Requesting parser type %d\n", crc_ability);
-
 	/* Find parser matching criteria */
 	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
 		if (crc_ability == PARSER_CRC_ABILITY_NO) {
@@ -906,6 +965,20 @@ static int find_elligible_parser(struct kvx_eth_netdev *ndev,
 
 	return -EINVAL;
 }
+#else
+static int find_elligible_parser(struct kvx_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs)
+{
+	int i;
+	struct kvx_eth_hw *hw = ndev->hw;
+
+	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
+		if (hw->parsing.parsers[i].loc == -1)
+			return i;
+	}
+	return -EINVAL;
+}
+#endif
 
 static int kvx_eth_parse_ethtool_rule(struct kvx_eth_netdev *ndev,
 				struct ethtool_rx_flow_spec *fs,
