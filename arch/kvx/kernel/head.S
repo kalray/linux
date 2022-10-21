@@ -48,8 +48,8 @@
 
 #define PCR_WFXM_VALUE	PCR_VAL_WFXM(L1CE, 1)
 
-/* 30 sec for primary watchdog timeout */
-#define PRIMARY_WATCHDOG_VALUE (30000000000UL)
+/* 120 sec for primary watchdog timeout */
+#define PRIMARY_WATCHDOG_VALUE (120000000000UL)
 
 #define TCR_WFXL_VALUE SFR_SET_VAL_WFXL(TCR, WUI, 1) | \
 	SFR_SET_VAL_WFXL(TCR, WCE, 1)
