@@ -57,12 +57,14 @@
 ({ \
 	unsigned long t = jiffies + msecs_to_jiffies(timeout_in_ms); \
 	u32 v = 0; \
-	do { if (time_after(jiffies, t)) { \
+	do { v = read(hw, reg); \
+		if (exp == (v & (mask))) \
+			break; \
+		usleep_range(20, 50); \
+	} while (time_before(jiffies, t)); \
+	if (exp != (v & (mask))) \
 		dev_dbg(hw->dev, #reg" TIMEOUT l.%d (0x%x mask 0x%x exp 0x%x)\n", \
-			__LINE__, (u32)v, (u32)(v & (mask)), (u32)exp); break; } \
-		usleep_range(10, 30); \
-		v = read(hw, reg); \
-	} while (exp != (v & (mask))); \
+			__LINE__, (u32)v, (u32)(v & (mask)), (u32)exp); \
 	(exp == (v & (mask))) ? 0 : -ETIMEDOUT; \
 })
 
@@ -240,7 +242,6 @@ bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 	u32 off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
 	u32 mask, pcs_link = true;
 	u32 phy_los = 0;
-	unsigned long t;
 
 	if (!mutex_trylock(&hw->mac_reset_lock))
 		return false;
@@ -265,13 +266,8 @@ bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw,
 		goto bail;
 	}
 
-	t = jiffies + msecs_to_jiffies(PHY_LOS_TIMEOUT_MS);
-	do {
-		pcs_link = kvx_mac_readl(hw, off);
-		pcs_link &= mask;
-		if (pcs_link)
-			break;
-	} while (!time_after(jiffies, t));
+	pcs_link = kvx_mac_readl(hw, off);
+	pcs_link &= mask;
 
 bail:
 	mutex_unlock(&hw->mac_reset_lock);
@@ -592,10 +588,9 @@ static void dump_phy_status(struct kvx_eth_hw *hw)
 int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 {
 	struct kvx_eth_phy_param *p = &hw->phy_f.param[lane_id];
-	unsigned long t;
 	u32 off, val;
 	int ret = 0;
-	u16 v;
+	u16 v, mask;
 
 	off = PHY_LANE_OFFSET + lane_id * PHY_LANE_ELEM_SIZE;
 	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
@@ -612,19 +607,14 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	v = PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_MASK |
 		PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK;
 	updatew_bits(hw, PHY, off, v, v);
-	off = RAWLANE0_DIG_PCS_XF_RX_ADAPT_ACK + LANE_OFFSET * lane_id;
-	t = jiffies + msecs_to_jiffies(SERDES_ACK_TIMEOUT_MS);
-	do {
-		if (time_after(jiffies, t)) {
-			dev_err(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
-			return -ETIMEDOUT;
-		}
-		v = readw(hw->res[KVX_ETH_RES_PHY].base + off);
-		if (v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK)
-			break;
-		usleep_range(100, 150);
-	} while (true);
 
+	off = RAWLANE0_DIG_PCS_XF_RX_ADAPT_ACK + LANE_OFFSET * lane_id;
+	mask = PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK;
+	ret = kvx_poll(kvx_phy_readw, off, mask, mask, SERDES_ACK_TIMEOUT_MS);
+	if (ret) {
+		dev_err(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
+		return -ETIMEDOUT;
+	}
 	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
 	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 	p->fom = GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
@@ -644,17 +634,12 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 
 	/* Expect ACK == 0*/
 	off = RAWLANE0_DIG_PCS_XF_RX_ADAPT_ACK + LANE_OFFSET * lane_id;
-	t = jiffies + msecs_to_jiffies(SERDES_ACK_TIMEOUT_MS);
-	do {
-		if (time_after(jiffies, t)) {
-			dev_err(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
-			return -ETIMEDOUT;
-		}
-		v = readw(hw->res[KVX_ETH_RES_PHY].base + off);
-		if ((v & PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK) == 0)
-			break;
-		usleep_range(50, 100);
-	} while (true);
+	mask = PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK;
+	ret = kvx_poll(kvx_phy_readw, off, mask, 0, SERDES_ACK_TIMEOUT_MS);
+	if (ret) {
+		dev_err(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
+		return -ETIMEDOUT;
+	}
 
 	dev_dbg(hw->dev, "lane[%d] FOM %d\n", lane_id, p->fom);
 
@@ -2579,6 +2564,9 @@ int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	unsigned int s, an_speed[] = {SPEED_10000};
 	int i, ret = -EAGAIN, lt_ret;
+
+	if (kvx_eth_phy_is_bert_en(hw))
+		return 0;
 
 	for (i = 0; i < ARRAY_SIZE(an_speed); i++) {
 		s = an_speed[i];
