@@ -198,5 +198,7 @@ struct pll_serdes_param {
 };
 
 u32 get_serdes_mask(int first_lane, int lane_nb);
+void kvx_phy_writew(struct kvx_eth_hw *hw, u16 val, u64 off);
+u16 kvx_phy_readw(struct kvx_eth_hw *hw, u64 off);
 
 #endif
