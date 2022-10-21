@@ -149,18 +149,16 @@ static struct netdev_queue *get_txq(const struct kvx_eth_ring *ring)
 
 static bool kvx_eth_check_link(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	/* Deals with spurious link down detection */
-	unsigned long delay = jiffies +
-		msecs_to_jiffies(CHECK_LINK_DURATION_IN_MS);
 	bool link = false;
+	int retry = 10;
 
-	while (time_before(jiffies, delay)) {
+	/* Prevent false detection */
+	while (retry--) {
 		link = (!kvx_eth_pmac_linklos(hw, cfg)) &&
 			kvx_eth_mac_getlink(hw, cfg);
 		if (link)
 			break;
 	}
-
 	return link;
 }
 
@@ -190,7 +188,7 @@ static void kvx_eth_reset_tx(struct kvx_eth_netdev *ndev)
 		txr = &ndev->tx_ring[qidx];
 		t = jiffies + msecs_to_jiffies(10);
 		/* Wait for pending descriptors */
-		while (!time_after(jiffies, t)) {
+		while (time_before(jiffies, t)) {
 			if (kvx_eth_desc_unused(txr) == txr->count - 1)
 				break;
 			usleep_range(10, 20);
@@ -258,6 +256,7 @@ static void kvx_eth_poll_link(struct timer_list *t)
 		if (netif_carrier_ok(ndev->netdev)) {
 			netdev_info(ndev->netdev, "Link is Down\n");
 			netif_carrier_off(ndev->netdev);
+			kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
 		}
 		goto mac_cfg;
 	}
@@ -276,6 +275,7 @@ static void kvx_eth_poll_link(struct timer_list *t)
 		if (netif_carrier_ok(ndev->netdev)) {
 			netdev_info(ndev->netdev, "Link is Down\n");
 			netif_carrier_off(ndev->netdev);
+			kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
 		}
 	}
 
@@ -283,8 +283,6 @@ static void kvx_eth_poll_link(struct timer_list *t)
 		ndev->cfg.restart_serdes = true;
 		goto mac_cfg;
 	}
-	if (!link)
-		kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
 
 	mod_timer(t, jiffies + msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
 	return;
