@@ -1461,13 +1461,18 @@ static int kvx_eth_get_fecparam(struct net_device *netdev,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	unsigned int fec = ndev->cfg.fec;
 
-	param->fec = ETHTOOL_FEC_AUTO | ETHTOOL_FEC_RS | ETHTOOL_FEC_BASER;
-	param->active_fec = ETHTOOL_FEC_OFF;
+	if (ndev->cfg.autoneg_en)
+		param->fec = ETHTOOL_FEC_AUTO;
+	else
+		param->fec = ETHTOOL_FEC_RS | ETHTOOL_FEC_BASER |
+			     ETHTOOL_FEC_OFF;
 
 	if (fec & FEC_25G_RS_REQUESTED)
 		param->active_fec = ETHTOOL_FEC_RS;
 	else if (fec & (FEC_25G_BASE_R_REQUESTED | FEC_10G_FEC_REQUESTED))
 		param->active_fec = ETHTOOL_FEC_BASER;
+	else
+		param->active_fec = ETHTOOL_FEC_OFF;
 
 	netdev_dbg(netdev, "FEC: 0x%x (configured: 0x%x)\n", param->fec, fec);
 	return 0;
@@ -1477,7 +1482,31 @@ static int kvx_eth_set_fecparam(struct net_device *netdev,
 				struct ethtool_fecparam *param)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct ethtool_fecparam cur_param;
 	int ret = 0;
+
+	if (param->fec & ETHTOOL_FEC_NONE)
+		return -EINVAL;
+
+	/* reject auto + other encoding -> ambiguous  */
+	if (param->fec & ETHTOOL_FEC_AUTO && param->fec != ETHTOOL_FEC_AUTO)
+		return -EINVAL;
+
+	if (ndev->cfg.autoneg_en && !(param->fec & ETHTOOL_FEC_AUTO))
+		return -EINVAL;
+
+	if (!ndev->cfg.autoneg_en) {
+		/* FEC auto cannot be configured when autoneg is off */
+		if (param->fec & ETHTOOL_FEC_AUTO)
+			return -EINVAL;
+
+		/* avoid reconfiguring if requested fec = current fec */
+		ret = kvx_eth_get_fecparam(netdev, &cur_param);
+		if (ret < 0)
+			return ret;
+		if (param->fec == cur_param.active_fec)
+			return 0;
+	}
 
 	netdev_dbg(netdev, "FEC: %d\n", param->fec);
 	if (param->fec & ETHTOOL_FEC_AUTO)
