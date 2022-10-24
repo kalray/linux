@@ -1255,8 +1255,7 @@ static inline int speed_to_sgmii(unsigned int net_speed)
 	return -1;
 }
 
-static int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw,
-			const struct kvx_eth_lane_cfg *cfg)
+int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw, const struct kvx_eth_lane_cfg *cfg)
 {
 	u32 reg, mc, thresh;
 	int i, s;
@@ -1560,8 +1559,7 @@ int kvx_eth_mac_getlink(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	return !!v;
 }
 
-static int kvx_eth_mac_setup_fec(struct kvx_eth_hw *hw,
-			       struct kvx_eth_lane_cfg *cfg)
+int kvx_eth_mac_setup_fec(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	u32 v, mask;
