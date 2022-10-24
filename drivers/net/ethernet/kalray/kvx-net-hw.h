@@ -1037,6 +1037,8 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *lane_cfg);
 void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
 int kvx_eth_wait_link_up(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_mac_pcs_cfg(struct kvx_eth_hw *hw, const struct kvx_eth_lane_cfg *c);
+int kvx_eth_mac_setup_fec(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 bool kvx_phy_sigdet(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 u32 kvx_mac_get_phylos(struct kvx_eth_hw *hw, int lane_id);
 bool kvx_eth_pmac_linklos(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
