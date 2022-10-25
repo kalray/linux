@@ -145,7 +145,9 @@ static int kvx_net_dcbnl_set_pfc(struct net_device *netdev,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
 	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	struct kvx_eth_tx_f *tx_f;
+#endif
 	u32 pfc_cl_ena = 0, modified = false;
 	unsigned int i, val;
 
