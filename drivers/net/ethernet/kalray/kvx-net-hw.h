@@ -210,6 +210,114 @@ struct kvx_eth_lut_f {
 	u8  pfc_enable;
 };
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+struct kvx_eth_tx_stage_one_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	u8 credit;
+	u8 config;
+};
+struct kvx_eth_tx_stage_two_drop_status_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	int tgt_id;
+	u8 drop_status;
+};
+struct kvx_eth_tx_stage_two_wmark_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	int tgt_id;
+	u16 wmark;
+};
+struct kvx_eth_tx_stage_two_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	u8 drop_disable;
+	u16 mtu;
+	u8 drop_cnt_mask;
+	u16 drop_cnt_subscr;
+	u16 drop_cnt;
+	struct kvx_eth_tx_stage_two_drop_status_f drop_status[KVX_ETH_TX_TGT_NB];
+	struct kvx_eth_tx_stage_two_wmark_f wmark[KVX_ETH_TX_TGT_NB];
+};
+struct kvx_eth_tx_pfc_xoff_subsc_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	int tgt_id;
+	u16 xoff_subsc;
+};
+struct kvx_eth_tx_pfc_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	struct kvx_eth_tx_pfc_xoff_subsc_f xoff_subsc[KVX_ETH_TX_TGT_NB];
+};
+struct kvx_eth_tx_exp_npre_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	u16 config;
+};
+struct kvx_eth_tx_pbrr_priority_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	int tgt_id;
+	u16 priority;
+};
+struct kvx_eth_tx_pbrr_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	struct kvx_eth_tx_pbrr_priority_f priority[KVX_ETH_TX_TGT_NB];
+};
+struct kvx_eth_tx_pbdwrr_quantum_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	int tgt_id;
+	u16 quantum;
+};
+struct kvx_eth_tx_pbdwrr_priority_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	int tgt_id;
+	u16 priority;
+};
+struct kvx_eth_tx_pbdwrr_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	struct kvx_eth_tx_pbdwrr_priority_f priority[KVX_ETH_TX_TGT_NB];
+	u8 config;
+	struct kvx_eth_tx_pbdwrr_quantum_f quantum[KVX_ETH_TX_TGT_NB];
+};
+struct kvx_eth_tx_tdm_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	u8 config;
+	u8 fcs;
+	u8 err;
+};
+#endif
 /**
  * struct kvx_eth_lut_entry_f - LUT entry config
  * @kobj: kobject for sysfs
@@ -393,6 +501,7 @@ struct kvx_eth_parser_f {
 	int id;
 };
 
+
 /**
  * struct kvx_eth_tx_f - TX features
  * @kobj: kobject for sysfs
@@ -434,6 +543,7 @@ struct kvx_eth_tx_f {
 	u32 drop_cnt;
 };
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 struct kvx_eth_tx_noc_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
@@ -446,6 +556,7 @@ struct kvx_eth_tx_noc_f {
 	u32 fifo_err;
 	u32 pkt_drop;
 };
+#endif
 
 /**
  * struct kvx_eth_dt_f - Dispatch table features
@@ -861,11 +972,21 @@ struct kvx_eth_hw {
 	struct device *dev;
 	struct kvx_eth_res res[KVX_ETH_NUM_RES];
 	struct kvx_eth_parsing parsing;
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
+	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
+	struct kvx_eth_tx_noc_f tx_noc_f[NB_CLUSTER];
+#else
+	struct kvx_eth_tx_stage_one_f tx_stage_one_f;
+	struct kvx_eth_tx_tdm_f tx_tdm_f;
+	struct kvx_eth_tx_pfc_f tx_pfc_f[KVX_ETH_LANE_NB];
+	struct kvx_eth_tx_stage_two_f tx_stage_two_f[KVX_ETH_LANE_NB];
+	struct kvx_eth_tx_exp_npre_f tx_exp_npre_f[KVX_ETH_LANE_NB];
+	struct kvx_eth_tx_pbrr_f tx_pbrr_f[KVX_ETH_LANE_NB];
+	struct kvx_eth_tx_pbdwrr_f tx_pbdwrr_f[KVX_ETH_LANE_NB];
+#endif
 	struct kvx_eth_lb_f lb_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_parser_f parser_f[KVX_ETH_PHYS_PARSER_NB];
 	struct kvx_eth_lut_f lut_f;
-	struct kvx_eth_tx_f tx_f[TX_FIFO_NB];
-	struct kvx_eth_tx_noc_f tx_noc_f[NB_CLUSTER];
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
 	struct kvx_eth_dt_acc_f dt_acc_f;
 	struct kvx_eth_lut_entry_f lut_entry_f[RX_LB_LUT_ARRAY_SIZE];
@@ -1203,12 +1324,24 @@ void kvx_eth_cl_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_cl_f *cl);
 
 /* TX */
 void kvx_eth_tx_set_default(struct kvx_eth_lane_cfg *cfg);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_tx_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_f *f);
 void kvx_eth_tx_fifo_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 u32  kvx_eth_tx_has_header(struct kvx_eth_hw *hw, int tx_fifo_id);
+#endif
 void kvx_eth_tx_init(struct kvx_eth_hw *hw);
 #ifdef CONFIG_KVX_SUBARCH_KV3_2
+void kvx_eth_tx_f_init(struct kvx_eth_hw *hw);
 void kvx_eth_tx_cfg_speed_settings(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_eth_tx_stage_one_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_stage_one_f *stage_one);
+void kvx_eth_tx_tdm_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_tdm_f *tdm);
+void kvx_eth_tx_pfc_xoff_subsc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pfc_xoff_subsc_f *subsc);
+void kvx_eth_tx_stage_two_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_stage_two_f *tx_stage_two);
+void kvx_eth_tx_exp_npre_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_npre_f *tx_exp_npre);
+void kvx_eth_tx_pbrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbrr_priority_f *tx_pbrr_prio);
+void kvx_eth_tx_pbdwrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbdwrr_priority_f *tx_pbdwrr_prio);
+void kvx_eth_tx_pbdwrr_quantum_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbdwrr_quantum_f *tx_pbdwrr_quantum);
+void kvx_eth_tx_pbdwrr_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbdwrr_f *tx_pbdwrr);
 #endif
 
 /* PARSING */
