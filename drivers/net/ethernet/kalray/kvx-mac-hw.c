@@ -50,6 +50,7 @@
 #define PCS_STATUS1_PCS_RECEIVE_LINK_MASK  0x4
 
 #define AN_DBG(dev, fmt, ...) dev_dbg(dev, dev_fmt(fmt), ##__VA_ARGS__)
+#define LT_DBG(dev, fmt, ...) dev_info(dev, dev_fmt(fmt), ##__VA_ARGS__)
 #define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 #define AN_REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 
@@ -1912,6 +1913,8 @@ void kvx_eth_lt_lp_fsm(struct kvx_eth_hw *hw, int lane)
 	lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
 	switch (hw->lt_status[lane].lp_state) {
 	case LT_LP_STATE_WAIT_COEFF_UPD:
+		LT_DBG(hw->dev, "%s LT_LP_STATE_WAIT_COEFF_UPD lane[%d]\n",
+		      __func__, lane);
 		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_COEF_OFFSET);
 		/* Check either coef update in normal operation, initialize
 		 * operation or preset operation
@@ -1925,10 +1928,14 @@ void kvx_eth_lt_lp_fsm(struct kvx_eth_hw *hw, int lane)
 			hw->lt_status[lane].lp_state = LT_LP_STATE_DONE;
 		break;
 	case LT_LP_STATE_UPDATE_COEFF:
+		LT_DBG(hw->dev, "%s LT_LP_STATE_UPDATE_COEFF lane[%d]\n",
+		      __func__, lane);
 		kvx_eth_lt_report_ld_status_updated(hw, lane);
 		hw->lt_status[lane].lp_state = LT_LP_STATE_WAIT_HOLD;
 		break;
 	case LT_LP_STATE_WAIT_HOLD:
+		LT_DBG(hw->dev, "%s LT_LP_STATE_WAIT_HOLD lane[%d]\n",
+		      __func__, lane);
 		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_COEF_OFFSET);
 		if ((val & LT_OP_NORMAL_MASK) == 0 &&
 				(val & LT_OP_INIT_MASK) == 0 &&
@@ -1938,6 +1945,8 @@ void kvx_eth_lt_lp_fsm(struct kvx_eth_hw *hw, int lane)
 		}
 		break;
 	case LT_LP_STATE_DONE:
+		LT_DBG(hw->dev, "%s LT_LP_STATE_WAIT_HOLD lane[%d]\n",
+		      __func__, lane);
 		break;
 	default:
 		/* This can not happen */
@@ -1960,6 +1969,8 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 
 	switch (hw->lt_status[lane].ld_state) {
 	case LT_LD_STATE_INIT_QUERY:
+		LT_DBG(hw->dev, "%s LT_LD_STATE_INIT_QUERY lane[%d]\n",
+		      __func__, lane);
 		/* Send INIT query */
 		updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
 			     LT_OP_INIT_MASK, LT_OP_INIT_MASK);
@@ -1982,6 +1993,8 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 		}
 		break;
 	case LT_LD_STATE_WAIT_UPDATE:
+		LT_DBG(hw->dev, "%s LT_LD_STATE_WAIT_UPDATE lane[%d]\n",
+		       __func__, lane);
 		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_STAT_OFFSET);
 		mask = LT_COEF_M_1_MASK | LT_COEF_0_MASK | LT_COEF_P_1_MASK;
 		if ((val & mask) != 0) {
@@ -2009,6 +2022,8 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 		}
 		break;
 	case LT_LD_STATE_WAIT_ACK:
+		LT_DBG(hw->dev, "%s LT_LD_STATE_WAIT_ACK lane[%d]\n",
+		       __func__, lane);
 		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_STAT_OFFSET);
 		mask = LT_COEF_M_1_MASK | LT_COEF_0_MASK | LT_COEF_P_1_MASK;
 		if ((val & mask) == 0) {
@@ -2021,6 +2036,8 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 		}
 		break;
 	case LT_LD_STATE_PROCESS_UPDATE:
+		LT_DBG(hw->dev, "%s LT_LD_STATE_PROCESS_UPDATE lane[%d]\n",
+		       __func__, lane);
 		/* Wait for the end of adaptation */
 		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane;
 		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
@@ -2053,6 +2070,8 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 			     val);
 		break;
 	case LT_LD_STATE_PREPARE_DONE:
+		LT_DBG(hw->dev, "%s LT_LD_STATE_PREPARE_DONE lane[%d]\n",
+		       __func__, lane);
 		/* Send completed to remote */
 		updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET,
 			     LT_STAT_RECEIVER_READY,
@@ -2063,6 +2082,8 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 		hw->lt_status[lane].ld_state = LT_LD_STATE_DONE;
 		break;
 	case LT_LD_STATE_DONE:
+		LT_DBG(hw->dev, "%s LT_LD_STATE_DONE lane[%d]\n",
+		       __func__, lane);
 		break;
 	}
 }
@@ -2170,7 +2191,7 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 		ret = kvx_poll(kvx_mac_readl, lt_off + LT_KR_STATUS_OFFSET,
 			  m, m, LT_FSM_TIMEOUT_MS);
 		if (ret) {
-			dev_dbg(hw->dev, "LT frame lock lane %d timeout\n", lane);
+			LT_DBG(hw->dev, "LT frame lock lane %d timeout\n", lane);
 			return -EINVAL;
 		}
 	}
