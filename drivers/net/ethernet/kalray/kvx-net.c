@@ -458,6 +458,8 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 	kvx_eth_pfc_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_parser_f_init(ndev->hw, &ndev->cfg);
 	kvx_net_init_dcb(ndev->netdev);
+#else
+	kvx_eth_tx_f_init(ndev->hw);
 #endif
 
 	return 0;
@@ -2277,8 +2279,8 @@ static int kvx_eth_probe(struct platform_device *pdev)
 #ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_parsers_init(&dev->hw);
 	kvx_eth_phy_f_init(&dev->hw);
-	kvx_eth_hw_sysfs_init(&dev->hw);
 #endif
+	kvx_eth_hw_sysfs_init(&dev->hw);
 
 	dev_info(&pdev->dev, "KVX network driver\n");
 	return devm_of_platform_populate(&pdev->dev);
