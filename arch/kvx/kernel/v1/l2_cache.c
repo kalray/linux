@@ -4,6 +4,7 @@
  * Author(s): Clement Leger
  *            Luc Michel
  *            Julien Hascoet
+ *            Julian Vetter
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -391,7 +392,7 @@ static int __init l2_cache_init(void)
 
 	np = of_find_compatible_node(NULL, NULL, "kalray,kvx-l2-cache");
 	if (!np || !of_device_is_available(np)) {
-		if (!IS_ENABLED(CONFIG_SMP)) {
+		if (num_possible_cpus() == 1) {
 			pr_info("controller disabled\n");
 			return 0;
 		}
@@ -438,7 +439,7 @@ err_unmap_l2:
 	kvx_mmu_ltlb_remove_entry((unsigned long) l2c_ctrl.regs);
 	iounmap(l2c_ctrl.regs);
 err:
-	if (IS_ENABLED(CONFIG_SMP))
+	if (num_possible_cpus() > 1)
 		panic("L2$ controller is mandatory for SMP");
 
 	return ret;

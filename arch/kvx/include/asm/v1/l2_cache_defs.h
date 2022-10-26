@@ -60,5 +60,4 @@ enum l2_api_error {
 #define L2_CMD_OP_CMD_SHIFT                        0x2
 #define L2_CMD_OP_ARG_COUNT                        0x3
 
-
 #endif /* _ASM_KVX_L2_CACHE_DEFS_H */

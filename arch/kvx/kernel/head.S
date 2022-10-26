@@ -12,6 +12,7 @@
 #include <asm/thread_info.h>
 #include <asm/page_size.h>
 #include <asm/pwr_ctrl.h>
+#include <asm/sec_regs.h>
 #include <asm/sfr_defs.h>
 #include <asm/sys_arch.h>
 #include <asm/privilege.h>
@@ -61,11 +62,6 @@
 
 /* SMP stuff */
 #define RM_PID_MASK		((KVX_RM_ID) << KVX_SFR_PCR_PID_SHIFT)
-
-#define PWR_CTRL_ADDR 0xA40000
-
-#define PWR_CTRL_GLOBAL_CONFIG_VALUE \
-	(1 << KVX_PWR_CTRL_GLOBAL_SET_PE_EN_SHIFT)
 
 /* Clean error and selected buffer */
 #define MMC_CLEAR_ERROR (KVX_SFR_MMC_E_MASK)
@@ -345,15 +341,16 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	wfxl $ps = $r32
 	;;
 	make $r26 = PWR_CTRL_ADDR
-	make $r27 = PWR_CTRL_GLOBAL_CONFIG_VALUE
-	;;
 	/* Set PE enable in power controller */
 	#if defined(CONFIG_KVX_SUBARCH_KV3_1)
-	sd PWR_CTRL_GLOBAL_CONFIG_OFFSET[$r26] = $r27
-	#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-	make $r32 = KVX_SEC_CLUSTER_ADDR
+	make $r27 = PWR_CTRL_GLOBAL_CONFIG_PE_EN
 	;;
-	sd PWR_CTRL_GLOBAL_CONFIG_OFFSET[$r32] = $r27
+	sd PWR_CTRL_GLOBAL_CONFIG_SET_OFFSET[$r26] = $r27
+	#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+	make $r27 = KVX_SEC_CLUSTER_REGS_GLOBAL_CONFIG_PE_EN
+	make $r32 = KVX_SEC_CLUSTER_REGS_ADDR
+	;;
+	sd SEC_CLUSTER_REGS_GLOBAL_CONFIG_SET_OFFSET[$r32] = $r27
 	#else
 	#error Unsupported arch
 	#endif
