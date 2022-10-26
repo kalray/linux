@@ -2,6 +2,7 @@
 /*
  * Copyright (C) 2017-2022 Kalray Inc.
  * Author(s): Clement Leger
+ *            Julian Vetter
  */
 
 #ifndef _ASM_KVX_CACHE_H
@@ -40,7 +41,13 @@
 #define L1_CACHE_SHIFT	KVX_DCACHE_LINE_SHIFT
 #define L1_CACHE_BYTES	KVX_DCACHE_LINE_SIZE
 
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define L2_CACHE_LINE_SIZE	256
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define L2_CACHE_LINE_SIZE	64
+#else
+#error Unsupported arch
+#endif
 #define L2_CACHE_LINE_MASK	(L2_CACHE_LINE_SIZE - 1)
 
 #endif	/* _ASM_KVX_CACHE_H */
