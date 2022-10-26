@@ -3,18 +3,19 @@
  * Copyright (C) 2017-2022 Kalray Inc.
  * Author(s): Marius Gligor
  *            Clement Leger
+ *            Julian Vetter
  */
 
-#ifndef _SFR_DEFS_H_
-#define _SFR_DEFS_H_
+#ifndef _ASM_SFR_DEFS_H_
+#define _ASM_SFR_DEFS_H_
 
-#if defined(__kvxarch_kv3_1)
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #include "asm/v1/sfr_defs.h"
-#elif defined(__kvxarch_kv3_2)
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
 #include "asm/v2/sfr_defs.h"
 #else
-#error "Unknown Coolidge version"
+#error "Unsupported arch"
 #endif
 
-#endif /* _SFR_DEFS_H_ */
+#endif /* _ASM_SFR_DEFS_H_ */
 

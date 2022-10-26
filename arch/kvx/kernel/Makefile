@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# Copyright (C) 2019-2020 Kalray Inc.
-#
+# Copyright (C) 2017-2022 Kalray Inc.
+# Author(s): Clement Leger
+#            Guillaume Thouvenin
+#            Julian Vetter
+#            Yann Sionneau
+#            Marius Gligor
 
 ifdef CONFIG_FUNCTION_TRACER
 CFLAGS_REMOVE_ftrace.o = $(CC_FLAGS_FTRACE)
@@ -25,5 +29,9 @@ obj-$(CONFIG_HAVE_HW_BREAKPOINT) += hw_breakpoint.o
 obj-$(CONFIG_MODULES) += module.o
 obj-$(CONFIG_KGDB) += kgdb.o
 CFLAGS_module.o += -Wstrict-overflow -fstrict-overflow
-obj-$(CONFIG_L2_CACHE) += l2_cache.o
+
+ifdef CONFIG_L2_CACHE
+obj-$(CONFIG_KVX_SUBARCH_KV3_1) += v1/l2_cache.o
+obj-$(CONFIG_KVX_SUBARCH_KV3_2) += v2/l2_cache.o
+endif
 obj-$(CONFIG_FUNCTION_TRACER) += mcount.o ftrace.o
