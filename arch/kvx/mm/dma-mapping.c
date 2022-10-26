@@ -4,8 +4,8 @@
  * Author(s): Clement Leger
  *            Guillaume Thouvenin
  *            Jules Maselbas
+ *            Julian Vetter
  */
-
 #include <linux/dma-mapping.h>
 #include <linux/dma-iommu.h>
 
@@ -55,7 +55,7 @@ void arch_sync_dma_for_cpu(phys_addr_t paddr, size_t size,
 	case DMA_TO_DEVICE:
 		break;
 	case DMA_FROM_DEVICE:
-#ifdef CONFIG_L2_CACHE
+#if defined(CONFIG_L2_CACHE) && (L2_CACHE_LINE_SIZE != KVX_DCACHE_LINE_SIZE)
 		/* kvx does not do speculative loads by itself, however
 		 * L2 cache lines are bigger than L1 cache lines, which can
 		 * cause a "false sharing" situation where two L1 cache lines
