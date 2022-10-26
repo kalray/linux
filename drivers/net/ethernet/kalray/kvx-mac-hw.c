@@ -69,12 +69,12 @@
 	(exp == (v & (mask))) ? 0 : -ETIMEDOUT; \
 })
 
-static void kvx_phy_writel(struct kvx_eth_hw *hw, u32 val, u64 off)
+static void kvx_phymac_writel(struct kvx_eth_hw *hw, u32 val, u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_PHYMAC].base + off);
 }
 
-static u32 kvx_phy_readl(struct kvx_eth_hw *hw, u64 off)
+static u32 kvx_phymac_readl(struct kvx_eth_hw *hw, u64 off)
 {
 	u32 val = readl(hw->res[KVX_ETH_RES_PHYMAC].base + off);
 	return val;
@@ -219,12 +219,12 @@ bool kvx_phy_sigdet(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 	for (i = cfg->id; i < cfg->id + lane_nb; i++) {
 		off = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
-		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+		val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
 		if (GETF(val, PHY_LANE_RX_SERDES_CFG_PSTATE) != PSTATE_P0)
 			return false;
 	}
 
-	val = kvx_phy_readl(hw, PHY_SERDES_STATUS_OFFSET);
+	val = kvx_phymac_readl(hw, PHY_SERDES_STATUS_OFFSET);
 
 	return ((val & mask) == mask);
 }
@@ -408,14 +408,14 @@ void kvx_phy_reset(struct kvx_eth_hw *hw)
 
 	updatel_bits(hw, PHYMAC, PHY_RESET_OFFSET, val, val);
 
-	kvx_poll(kvx_phy_readl, PHY_RESET_OFFSET, val, val, RESET_TIMEOUT_MS);
+	kvx_poll(kvx_phymac_readl, PHY_RESET_OFFSET, val, val, RESET_TIMEOUT_MS);
 	/* PHY Power-Down Sequence requests 15us delay after reset in power-up
 	 *  sequence (See 5.2 PHY Initialization Sequence).
 	 */
 	usleep_range(15, 50);
 
 	updatel_bits(hw, PHYMAC, PHY_RESET_OFFSET, val, 0);
-	kvx_poll(kvx_phy_readl, PHY_RESET_OFFSET, val, 0, RESET_TIMEOUT_MS);
+	kvx_poll(kvx_phymac_readl, PHY_RESET_OFFSET, val, 0, RESET_TIMEOUT_MS);
 }
 
 void kvx_phy_serdes_reset(struct kvx_eth_hw *hw, u32 serdes_mask)
@@ -430,14 +430,14 @@ void kvx_phy_serdes_reset(struct kvx_eth_hw *hw, u32 serdes_mask)
 		val |= PHY_RESET_MASK;
 
 	updatel_bits(hw, PHYMAC, PHY_RESET_OFFSET, val, val);
-	kvx_poll(kvx_phy_readl, PHY_RESET_OFFSET, val, val, RESET_TIMEOUT_MS);
+	kvx_poll(kvx_phymac_readl, PHY_RESET_OFFSET, val, val, RESET_TIMEOUT_MS);
 	/* PHY Power-Down Sequence requests 15us delay after reset in power-up
 	 * sequence (See 5.2 PHY Initialization Sequence).
 	 */
 	usleep_range(15, 50);
 
 	updatel_bits(hw, PHYMAC, PHY_RESET_OFFSET, val, 0);
-	kvx_poll(kvx_phy_readl, PHY_RESET_OFFSET, val | PHY_RESET_MASK,
+	kvx_poll(kvx_phymac_readl, PHY_RESET_OFFSET, val | PHY_RESET_MASK,
 		 0, RESET_TIMEOUT_MS);
 }
 
@@ -571,13 +571,13 @@ static int kvx_eth_phy_serdes_init(struct kvx_eth_hw *hw, unsigned int lane_id,
 
 static void dump_phy_status(struct kvx_eth_hw *hw)
 {
-	u32 val = kvx_phy_readl(hw, PHY_PLL_STATUS_OFFSET);
+	u32 val = kvx_phymac_readl(hw, PHY_PLL_STATUS_OFFSET);
 
 	REG_DBG(hw->dev, val, PHY_PLL_STATUS_PLLA);
 	REG_DBG(hw->dev, val, PHY_PLL_STATUS_PLLB);
 	REG_DBG(hw->dev, val, PHY_PLL_STATUS_REF_CLK_DETECTED);
 
-	val = kvx_phy_readl(hw, PHY_PLL_OFFSET);
+	val = kvx_phymac_readl(hw, PHY_PLL_OFFSET);
 	dev_dbg(hw->dev, "phy PLL: 0x%x\n", val);
 }
 
@@ -594,7 +594,7 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	u16 v, mask;
 
 	off = PHY_LANE_OFFSET + lane_id * PHY_LANE_ELEM_SIZE;
-	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
+	val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
 	if (GETF(val, PHY_LANE_RX_SERDES_CFG_PSTATE) != PSTATE_P0) {
 		dev_dbg(hw->dev, "RX_ADAPT can not be done (not in P0)\n");
 		return -EINVAL;
@@ -617,11 +617,11 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 		return -ETIMEDOUT;
 	}
 	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
-	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+	val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 	p->fom = GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
 	ret = p->fom;
 
-	val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+	val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_TXPRE_DIR);
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_TXPOST_DIR);
@@ -689,23 +689,23 @@ static int kvx_serdes_handshake(struct kvx_eth_hw *hw, u32 serdes_mask,
 	}
 
 	/* Expects req / ack signals at 0 */
-	kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, req, 0,
+	kvx_poll(kvx_phymac_readl, PHY_SERDES_STATUS_OFFSET, req, 0,
 		 SERDES_ACK_TIMEOUT_MS);
-	kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, ack, 0,
+	kvx_poll(kvx_phymac_readl, PHY_SERDES_STATUS_OFFSET, ack, 0,
 		 SERDES_ACK_TIMEOUT_MS);
 	/* Assert Req */
 	updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET, req, req);
 	/* Waits for the ack signals be at high */
-	kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, ack, ack,
+	kvx_poll(kvx_phymac_readl, PHY_SERDES_STATUS_OFFSET, ack, ack,
 		 SERDES_ACK_TIMEOUT_MS);
 
 	/* Clear serdes req signals */
 	updatel_bits(hw, PHYMAC, PHY_SERDES_CTRL_OFFSET, req, 0);
-	kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, req, 0,
+	kvx_poll(kvx_phymac_readl, PHY_SERDES_STATUS_OFFSET, req, 0,
 		 SERDES_ACK_TIMEOUT_MS);
 
 	/* Expects ack signals at 0 */
-	ret = kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, ack, 0,
+	ret = kvx_poll(kvx_phymac_readl, PHY_SERDES_STATUS_OFFSET, ack, 0,
 		 SERDES_ACK_TIMEOUT_MS);
 
 	return ret;
@@ -749,7 +749,7 @@ static int kvx_pll_wait_lock(struct kvx_eth_hw *hw)
 	}
 
 	/* Waits for PLL lock */
-	return kvx_poll(kvx_phy_readl, PHY_PLL_STATUS_OFFSET, mask, val,
+	return kvx_poll(kvx_phymac_readl, PHY_PLL_STATUS_OFFSET, mask, val,
 			SERDES_ACK_TIMEOUT_MS);
 }
 
@@ -772,15 +772,15 @@ int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw)
 	updatel_bits(hw, PHYMAC, PHY_RESET_OFFSET,
 		     PHY_RESET_MASK, PHY_RESET_MASK);
 	/* Enable CR interface */
-	kvx_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
+	kvx_phymac_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
 
 	/* Select the MAC PLL ref clock */
 	if (pll->rate == SPEED_1000)
-		kvx_phy_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
+		kvx_phymac_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
 	else
-		kvx_phy_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
+		kvx_phymac_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
 	/* Configure serdes PLL master + power down pll */
-	kvx_phy_writel(hw, 0, PHY_SERDES_PLL_CFG_OFFSET);
+	kvx_phymac_writel(hw, 0, PHY_SERDES_PLL_CFG_OFFSET);
 
 	/*
 	 * Enable serdes, pstate:
@@ -821,18 +821,17 @@ int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw)
 	kvx_phy_serdes_reset(hw, serdes_mask);
 
 	mask = PHY_PLL_STATUS_SRAM_INIT_DONE_MASK;
-	kvx_poll(kvx_phy_readl, PHY_PLL_STATUS_OFFSET, mask, mask,
+	kvx_poll(kvx_phymac_readl, PHY_PLL_STATUS_OFFSET, mask, mask,
 		 SERDES_ACK_TIMEOUT_MS);
 	/* Copy FW to RAM */
 	for (i = 0, addr = 0; i < KVX_PHY_RAM_SIZE; i += 2, addr += 4) {
 		data = (fw[i] << 8) | fw[i + 1];
-		writew(data, hw->res[KVX_ETH_RES_PHY].base +
-		       RAWMEM_DIG_RAM_CMN + addr);
+		kvx_phy_writew(hw, data, RAWMEM_DIG_RAM_CMN + addr);
 	}
 
 	/* Wait for init SRAM done */
 	mask = PHY_PLL_STATUS_SRAM_INIT_DONE_MASK;
-	kvx_poll(kvx_phy_readl, PHY_PLL_STATUS_OFFSET, mask, mask,
+	kvx_poll(kvx_phymac_readl, PHY_PLL_STATUS_OFFSET, mask, mask,
 		 SERDES_ACK_TIMEOUT_MS);
 	/* Start after fw load */
 	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET, PHY_PLL_SRAM_LD_DONE_MASK,
@@ -841,7 +840,7 @@ int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw)
 	/* Waits for the ack signals be low */
 	mask = (serdes_mask << PHY_SERDES_STATUS_RX_ACK_SHIFT) |
 		(serdes_mask << PHY_SERDES_STATUS_TX_ACK_SHIFT);
-	kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, mask, 0,
+	kvx_poll(kvx_phymac_readl, PHY_SERDES_STATUS_OFFSET, mask, 0,
 		     SERDES_ACK_TIMEOUT_MS);
 
 	ret = kvx_pll_wait_lock(hw);
@@ -870,9 +869,9 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb)
 
 	/* Select the MAC PLL ref clock */
 	if (pll->rate == SPEED_1000)
-		kvx_phy_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
+		kvx_phymac_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
 	else
-		kvx_phy_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
+		kvx_phymac_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
 	/* Configure serdes PLL master + power down pll */
 	mask = (serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_EN_SHIFT |
 		serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_SEL_SHIFT);
@@ -944,7 +943,7 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
 		serdes_mask, serdes_master_mask);
 
 	/* Enable CR interface */
-	kvx_phy_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
+	kvx_phymac_writel(hw, 1, PHY_PHY_CR_PARA_CTRL_OFFSET);
 
 	/* Assert tx_clk_rdy */
 	val = serdes_mask << PHY_SERDES_CTRL_TX_CLK_RDY_SHIFT;
@@ -958,7 +957,7 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
 	updatel_bits(hw, PHYMAC, PHY_SERDES_PLL_CFG_OFFSET, mask, val);
 
 	dev_dbg(hw->dev, "%s PLL_CFG: 0x%x\n", __func__,
-		kvx_phy_readl(hw, PHY_SERDES_PLL_CFG_OFFSET));
+		kvx_phymac_readl(hw, PHY_SERDES_PLL_CFG_OFFSET));
 
 	kvx_serdes_handshake(hw, serdes_mask, SERDES_RX | SERDES_TX);
 	for (i = lane; i < lane + lane_nb; i++) {
@@ -2040,7 +2039,7 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 		       __func__, lane);
 		/* Wait for the end of adaptation */
 		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane;
-		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+		val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 		if (GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK) == 0)
 			return;
 
@@ -2049,7 +2048,7 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 			     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK, 0);
 
 		/* Check coefficients for LP to update */
-		val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+		val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 		pre  = GETF(val, PHY_LANE_RX_SERDES_STATUS_TXPRE_DIR);
 		post = GETF(val, PHY_LANE_RX_SERDES_STATUS_TXPOST_DIR);
 		swing = GETF(val, PHY_LANE_RX_SERDES_STATUS_TXMAIN_DIR);
@@ -2648,7 +2647,7 @@ int kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_eth
 
 	if (kvx_eth_lanes_aggregated(hw))
 		mask = 1 << PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT;
-	ret = kvx_poll(kvx_phy_readl, PHY_SERDES_STATUS_OFFSET, mask,
+	ret = kvx_poll(kvx_phymac_readl, PHY_SERDES_STATUS_OFFSET, mask,
 		     mask, SIGDET_TIMEOUT_MS);
 	if (ret) {
 		dev_err(hw->dev, "Signal detection timeout.\n");
@@ -2667,7 +2666,7 @@ int kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_eth
 		for (i = cfg->id; i < cfg->id + lane_nb; i++) {
 			off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * i;
 			/* Checks no pending rx adaptation process */
-			val = kvx_phy_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+			val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 			if ((val & PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK_MASK) == 0) {
 				val = BIT(PHY_LANE_RX_SERDES_CFG_RX_DATA_EN_SHIFT);
 				updatel_bits(hw, PHYMAC,
