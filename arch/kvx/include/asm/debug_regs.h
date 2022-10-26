@@ -1,0 +1,40 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Copyright (C) 2017-2022 Kalray Inc.
+ * Author(s): Julian Vetter
+ */
+
+#ifndef _ASM_KVX_DEBUG_REGS_H
+#define _ASM_KVX_DEBUG_REGS_H
+
+#define KVX_DEBUG_REGS_ADDR                             0xCC2000
+
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
+
+/* No debug functions are exposed on kv3-1 */
+
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+
+/* blocking */
+#define KVX_DEBUG_REGS_L2CM_FLUSH_BY_ADDR_BLOCKING      0x410
+#define KVX_DEBUG_REGS_L2CM_INVAL_BY_ADDR_BLOCKING      0x420
+#define KVX_DEBUG_REGS_L2CM_PURGE_BY_ADDR_BLOCKING      0x430
+
+#define KVX_DEBUG_REGS_L2CM_FLUSH_BY_IWAY_BLOCKING      0x450
+#define KVX_DEBUG_REGS_L2CM_INVAL_BY_IWAY_BLOCKING      0x460
+#define KVX_DEBUG_REGS_L2CM_PURGE_BY_IWAY_BLOCKING      0x470
+
+/* non-blocking*/
+#define KVX_DEBUG_REGS_L2CM_FLUSH_BY_ADDR_NONBLOCKING   0x490
+#define KVX_DEBUG_REGS_L2CM_INVAL_BY_ADDR_NONBLOCKING   0x4A0
+#define KVX_DEBUG_REGS_L2CM_PURGE_BY_ADDR_NONBLOCKING   0x4B0
+
+#define KVX_DEBUG_REGS_L2CM_FLUSH_BY_IWAY_NONBLOCKING   0x4D0
+#define KVX_DEBUG_REGS_L2CM_INVAL_BY_IWAY_NONBLOCKING   0x4E0
+#define KVX_DEBUG_REGS_L2CM_PURGE_BY_IWAY_NONBLOCKING   0x4F0
+
+#else
+#error "Unsupported·arch"
+#endif
+
+#endif /* _ASM_KVX_DEBUG_REGS_H */
