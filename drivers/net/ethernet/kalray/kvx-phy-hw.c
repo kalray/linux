@@ -179,42 +179,9 @@ static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 	}
 }
 
-static void kvx_phy_set_polarities(struct kvx_eth_hw *hw)
-{
-	struct kvx_eth_polarities *pol;
-	struct kvx_eth_polarities clear_pol = {.rx = 0, .tx = 0};
-	u32 v, lane_id;
-	u32 off, mask;
-	/* In case of phy loopback, RX serdes must be with the same polarity as
-	 * their TX counterparts
-	 */
-	bool clear = (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK);
-
-	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
-		pol = &hw->phy_f.polarities[lane_id];
-		if (clear)
-			pol = &clear_pol;
-
-		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
-		mask = PHY_LANE_RX_SERDES_CFG_INVERT_MASK;
-		v = (u32) pol->rx << PHY_LANE_RX_SERDES_CFG_INVERT_SHIFT;
-		updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
-			     mask, v);
-
-		mask = PHY_LANE_TX_SERDES_CFG_INVERT_MASK;
-		v = (u32) pol->tx << PHY_LANE_TX_SERDES_CFG_INVERT_SHIFT;
-		updatel_bits(hw, PHYMAC, off + PHY_LANE_TX_SERDES_CFG_OFFSET,
-			     mask, v);
-
-		dev_dbg(hw->dev, "Lane [%d] polarity rx:%d/tx:%d done\n",
-			lane_id, pol->rx, pol->tx);
-	}
-}
-
 void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f)
 {
 	kvx_phy_param_tuning(hw);
-	kvx_phy_set_polarities(hw);
 }
 
 void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
@@ -507,7 +474,6 @@ int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p)
 {
 	kvx_phy_param_tuning(hw);
-	kvx_phy_set_polarities(hw);
 	if (p->trig_rx_adapt) {
 		kvx_mac_phy_rx_adapt(p);
 		p->trig_rx_adapt = false;

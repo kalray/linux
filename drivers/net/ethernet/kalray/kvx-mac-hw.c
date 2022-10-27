@@ -935,6 +935,9 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
 {
 	u32 serdes_mask = get_serdes_mask(lane, lane_nb);
 	u32 serdes_master_mask = serdes_mask & hw->pll_cfg.serdes_pll_master;
+	bool clear = (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK);
+	struct kvx_eth_polarities clear_pol = {.rx = 0, .tx = 0};
+	struct kvx_eth_polarities *pol;
 	u32 i, val, mask, reg;
 	int ret;
 
@@ -961,17 +964,24 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
 
 	kvx_serdes_handshake(hw, serdes_mask, SERDES_RX | SERDES_TX);
 	for (i = lane; i < lane + lane_nb; i++) {
+		pol = &hw->phy_f.polarities[i];
+		if (clear)
+			pol = &clear_pol;
 		reg = PHY_LANE_OFFSET + i * PHY_LANE_ELEM_SIZE;
 		mask = (PHY_LANE_RX_SERDES_CFG_DISABLE_MASK |
-			PHY_LANE_RX_SERDES_CFG_PSTATE_MASK);
-		val = ((u32)pstate << PHY_LANE_RX_SERDES_CFG_PSTATE_SHIFT);
+			PHY_LANE_RX_SERDES_CFG_PSTATE_MASK |
+			PHY_LANE_RX_SERDES_CFG_INVERT_MASK);
+		val = ((u32)pstate << PHY_LANE_RX_SERDES_CFG_PSTATE_SHIFT) |
+			(u32) pol->rx << PHY_LANE_RX_SERDES_CFG_INVERT_SHIFT;
 		updatel_bits(hw, PHYMAC, reg + PHY_LANE_RX_SERDES_CFG_OFFSET,
 			     mask, val);
 		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_RX_SERDES_CFG_OFFSET);
 
 		mask = (PHY_LANE_TX_SERDES_CFG_DISABLE_MASK |
-			PHY_LANE_TX_SERDES_CFG_PSTATE_MASK);
-		val = ((u32)pstate << PHY_LANE_TX_SERDES_CFG_PSTATE_SHIFT);
+			PHY_LANE_TX_SERDES_CFG_PSTATE_MASK |
+			PHY_LANE_TX_SERDES_CFG_INVERT_MASK);
+		val = ((u32)pstate << PHY_LANE_TX_SERDES_CFG_PSTATE_SHIFT) |
+			(u32) pol->tx << PHY_LANE_TX_SERDES_CFG_INVERT_SHIFT;
 		updatel_bits(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET,
 			     mask, val);
 		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
