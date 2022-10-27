@@ -593,6 +593,9 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	int ret = 0;
 	u16 v, mask;
 
+	if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK)
+		return 0;
+
 	off = PHY_LANE_OFFSET + lane_id * PHY_LANE_ELEM_SIZE;
 	val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_CFG_OFFSET);
 	if (GETF(val, PHY_LANE_RX_SERDES_CFG_PSTATE) != PSTATE_P0) {
