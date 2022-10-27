@@ -1376,6 +1376,7 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 		dev_warn(qsfp->dev, "Failed to get mod-def0 GPIO from DT\n");
 		return -ENODEV;
 	}
+	qsfp->cable_connected = gpiod_get_value_cansleep(qsfp->gpio_modprs);
 
 	qsfp->gpio_modprs_irq = gpiod_to_irq(qsfp->gpio_modprs);
 	if (!qsfp->gpio_modprs_irq) {

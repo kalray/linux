@@ -205,6 +205,9 @@ static void kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 	if (kvx_eth_phy_is_bert_en(ndev->hw) || !is_cable_connected(ndev->qsfp))
 		return;
 
+	if (ndev->hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK)
+		return;
+
 	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
 		   ndev->cfg.speed, ndev->cfg.autoneg_en);
 	WRITE_ONCE(ndev->cfg.mac_cfg_done, false);
