@@ -108,6 +108,7 @@
 #define SFF8636_TX_IN_AUTO_EQUALIZER_CAP    BIT(3)
 #define SFF8636_OPTIONS_OFFSET1             194
 #define SFF8636_OPTIONS_OFFSET2             195
+#define SFF8636_TX_DIS_CAP                  BIT(4)
 #define SFF8636_PAGE1_PROVIDED              BIT(6)
 #define SFF8636_PAGE2_PROVIDED              BIT(7)
 
