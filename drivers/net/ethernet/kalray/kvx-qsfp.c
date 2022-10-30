@@ -764,6 +764,13 @@ static void set_power_override(struct kvx_qsfp *qsfp, u8 op)
 	kvx_qsfp_eeprom_write(qsfp, &val, 0, SFF8636_POWER_OFFSET, l);
 }
 
+static bool tx_disable_supported(struct kvx_qsfp *qsfp)
+{
+	u8 val = eeprom_cache_readb(qsfp, SFF8636_OPTIONS_OFFSET2);
+
+	return (val & SFF8636_TX_DIS_CAP);
+}
+
 /** kvx_qsfp_set_ee_tx_state - enable/disable TX via I2C (eeprom)
  * @qsfp: qsfp prvdata
  * @op: QSFP_TX_ENABLE or QSFP_TX_DISABLE
@@ -775,8 +782,7 @@ static void kvx_qsfp_set_ee_tx_state(struct kvx_qsfp *qsfp, u8 op)
 		       | SFF8636_TX_DISABLE_TX3 | SFF8636_TX_DISABLE_TX4;
 	size_t l = sizeof(val);
 
-	/* Tx cannot be enabled/disabled if cable is passive copper */
-	if (is_cable_passive_copper(qsfp))
+	if (!tx_disable_supported(qsfp))
 		return;
 
 	set_power_override(qsfp, op);
@@ -807,8 +813,15 @@ static void kvx_qsfp_set_ee_tx_state(struct kvx_qsfp *qsfp, u8 op)
 
 static bool tx_disable_fast_path_supported(struct kvx_qsfp *qsfp)
 {
-	u8 val = eeprom_cache_readb(qsfp, SFF8636_TIMING_OPTION_OFFSET);
+	u8 val;
 
+	/* SFF-8636: TxDis Fast Mode Supported is not relevant for
+	 * passive cables and optional for the others
+	 */
+	if (is_cable_passive_copper(qsfp))
+		return 0;
+
+	val = eeprom_cache_readb(qsfp, SFF8636_TIMING_OPTION_OFFSET);
 	return (val & SFF8636_TIMING_TXDIS_FASTPATH_MASK);
 }
 
