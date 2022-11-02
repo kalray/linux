@@ -205,8 +205,10 @@ static void kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 	if (kvx_eth_phy_is_bert_en(ndev->hw) || !is_cable_connected(ndev->qsfp))
 		return;
 
-	if (ndev->hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK)
+	if (ndev->hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK) {
+		netdev_warn(ndev->netdev, "%s PHY loopback is enabled\n", __func__);
 		return;
+	}
 
 	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
 		   ndev->cfg.speed, ndev->cfg.autoneg_en);
@@ -320,6 +322,7 @@ void kvx_eth_up(struct net_device *netdev)
 	struct kvx_eth_ring *r;
 	int i;
 
+	netdev_dbg(netdev, "%s\n", __func__);
 	for (i = 0; i < NB_RX_RING; i++) {
 		r = &ndev->rx_ring[i];
 		kvx_eth_alloc_rx_buffers(r, kvx_eth_desc_unused(r));
