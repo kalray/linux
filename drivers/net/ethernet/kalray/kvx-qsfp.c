@@ -464,36 +464,25 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_module_info);
 
-/** update_irq_flags - read interrupt flags and update the cache
+/** update_interrupt_flags - read interrupt flags and update the cache
  * @qsfp: qsfp prvdata
  */
-static void update_irq_flags(struct kvx_qsfp *qsfp)
+static void update_interrupt_flags(struct kvx_qsfp *qsfp)
 {
-	int ret, page = 0;
-	u8 irqs[QSFP_IRQ_FLAGS_NB];
+	int ret;
+	u8 *flags = qsfp->int_flags;
+	int l = sizeof(qsfp->int_flags);
 
 	if (!qsfp->i2c)
 		return;
 
-	ret = kvx_qsfp_eeprom_read(qsfp, irqs, page, SFF8636_IRQ_FLAGS,
-			       sizeof(irqs));
-	if (ret < 0)
+	ret = kvx_qsfp_eeprom_read(qsfp, flags, 0, SFF8636_INT_FLAGS_OFFSET, l);
+	if (ret != l) {
+		dev_err(qsfp->dev, "int flags - i2c reads failed\n");
 		return;
+	}
 
-	if (!memcmp(qsfp->irq_flags, irqs, sizeof(irqs)))
-		return;
-
-	dev_dbg(qsfp->dev, "QSFP irqs: %*ph\n", (int)sizeof(irqs), irqs);
-	memcpy(qsfp->irq_flags, irqs, sizeof(irqs));
-}
-
-static void kvx_qsfp_poll(struct work_struct *work)
-{
-	struct kvx_qsfp *qsfp = container_of(work, struct kvx_qsfp, qsfp_poll.work);
-
-	update_irq_flags(qsfp);
-	mod_delayed_work(kvx_qsfp_wq, &qsfp->qsfp_poll,
-			 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
+	dev_dbg(qsfp->dev, "interrupt flags: %*ph\n", l, flags);
 }
 
 bool is_cable_connected(struct kvx_qsfp *qsfp)
@@ -1138,7 +1127,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		break;
 	case QSFP_S_ERROR:
 		if (is_cable_connected(qsfp)) {
-			cancel_delayed_work_sync(&qsfp->qsfp_poll);
 			qsfp->monitor_enabled = false;
 			dev_err(qsfp->dev, "qsfp state machine is in an error state\n");
 			kvx_qsfp_set_tx_state(qsfp, QSFP_TX_DISABLE);
@@ -1148,7 +1136,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		fallthrough;
 	case QSFP_S_DOWN:
 		if (!is_cable_connected(qsfp)) {
-			cancel_delayed_work_sync(&qsfp->qsfp_poll);
 			qsfp->monitor_enabled = false;
 			dev_info(qsfp->dev, "Cable unplugged\n");
 			break;
@@ -1165,9 +1152,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		if (kvx_qsfp_tune(qsfp) < 0)
 			return QSFP_S_ERROR;
 		qsfp->monitor_enabled = true;
-		if (!delayed_work_pending(&qsfp->qsfp_poll))
-			mod_delayed_work(kvx_qsfp_wq, &qsfp->qsfp_poll,
-					 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
 		kvx_qsfp_set_tx_state(qsfp, QSFP_TX_ENABLE);
 		fallthrough;
 	case QSFP_S_WPOWER:
@@ -1214,6 +1198,16 @@ static irqreturn_t kvx_qsfp_modprs_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t kvx_qsfp_intl_irq_handler(int irq, void *data)
+{
+	struct kvx_qsfp *qsfp = data;
+
+	if (qsfp && qsfp->monitor_enabled)
+		update_interrupt_flags(qsfp);
+
+	return IRQ_HANDLED;
+}
+
 static ssize_t sysfs_reset_store(struct kobject *kobj, struct kobj_attribute *a,
 				const char *buf, size_t count)
 {
@@ -1243,17 +1237,10 @@ static ssize_t sysfs_monitor_store(struct kobject *kobj, struct kobj_attribute *
 						    dev.kobj);
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
 	int ret;
-	bool mon = qsfp->monitor_enabled;
 
 	ret = kstrtouint(buf, 0, (u32 *)&qsfp->monitor_enabled);
 	if (ret)
 		return ret;
-
-	if (!mon && qsfp->monitor_enabled)
-		mod_delayed_work(kvx_qsfp_wq, &qsfp->qsfp_poll,
-				 msecs_to_jiffies(QSFP_POLL_TIMER_IN_MS));
-	if (mon && !qsfp->monitor_enabled)
-		cancel_delayed_work_sync(&qsfp->qsfp_poll);
 
 	return count;
 }
@@ -1345,6 +1332,10 @@ static const struct kvx_qsfp_gpio_def kvx_qsfp_gpios[QSFP_GPIO_NB] = {
 	  .irq_flags = IRQF_ONESHOT | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING },
 	{ .of_name = "reset", .flags = GPIOD_ASIS },
 	{ .of_name = "tx-disable", .flags = GPIOD_OUT_HIGH },
+	{ .of_name = "intl",
+	  .flags = GPIOD_IN,
+	  .irq_handler = kvx_qsfp_intl_irq_handler,
+	  .irq_flags = IRQF_ONESHOT | IRQF_TRIGGER_FALLING }
 };
 
 static const struct of_device_id kvx_qsfp_of_match[] = {
@@ -1456,7 +1447,6 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 	of_node_put(i2c_np);
 
 	/* recurrent tasks: interrupt flags polling */
-	INIT_DELAYED_WORK(&qsfp->qsfp_poll, kvx_qsfp_poll);
 	INIT_WORK(&qsfp->sm_task, kvx_qsfp_sm_main_task);
 
 	/* set state machine to the initial state and start it */
@@ -1490,7 +1480,6 @@ static void kvx_qsfp_shutdown(struct platform_device *pdev)
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
 
 	kvx_qsfp_set_tx_state(qsfp, QSFP_TX_DISABLE);
-	cancel_delayed_work_sync(&qsfp->qsfp_poll);
 	cancel_work_sync(&qsfp->sm_task);
 }
 
