@@ -8,7 +8,7 @@
 #define _ASM_KVX_KV3_2_L2_CACHE_H
 
 #include <linux/io.h>
-
+#include <linux/jump_label.h>
 #include <asm/debug_regs.h>
 
 extern uint64_t kvx_debug_regs;
