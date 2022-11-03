@@ -942,7 +942,7 @@ static int kvx_eth_set_mac_addr(struct net_device *netdev, void *p)
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
 
-	memcpy(netdev->dev_addr, addr->sa_data, netdev->addr_len);
+	eth_hw_addr_set(netdev, addr->sa_data);
 	memcpy(ndev->cfg.mac_f.addr, addr->sa_data, netdev->addr_len);
 
 	kvx_mac_set_addr(ndev->hw, &ndev->cfg);
@@ -1581,7 +1581,7 @@ static void kvx_eth_netdev_set_hw_addr(struct kvx_eth_netdev *ndev)
 	}
 
 	netdev->addr_assign_type = NET_ADDR_PERM;
-	ether_addr_copy(netdev->dev_addr, a);
+	eth_hw_addr_set(netdev, a);
 	ether_addr_copy(ndev->cfg.mac_f.addr, a);
 }
 
