@@ -95,7 +95,7 @@
 #define SFF8636_COMPLIANCE_40GBASE_SR4      BIT(2)
 #define SFF8636_COMPLIANCE_40GBASE_LR4      BIT(1)
 #define SFF8636_COMPLIANCE_40G_XLPPI        BIT(0)
-#define SFF8636_IRQ_FLAGS                   3
+#define SFF8636_INT_FLAGS_OFFSET            3
 #define SFF8636_EXT_ID_POWER_CLASS_8        BIT(5)
 #define SFF8636_EXT_ID_POWER_CLASS_57       0x3
 #define SFF8636_EXT_ID_POWER_CLASS_14       0xC0
@@ -121,8 +121,7 @@
 #define SFF8636_RX_OUT_AMPL_CTRL_OFFSET1    239
 #define SFF8636_TX_ADAPT_EQUAL_OFFSET       241
 
-#define QSFP_IRQ_FLAGS_NB                   11
-#define QSFP_POLL_TIMER_IN_MS               500
+#define QSFP_INT_FLAGS_LEN                  11
 #define QSFP_DELAY_DATA_READY_IN_MS         2000
 
 #define kvx_qsfp_to_ops_data(qsfp, data_t) ((data_t *)qsfp->ops_data)
@@ -137,6 +136,7 @@ enum {
 	QSFP_GPIO_MODPRS = 0,
 	QSFP_GPIO_RESET,
 	QSFP_GPIO_TX_DISABLE,
+	QSFP_GPIO_INTL,
 	QSFP_GPIO_NB,
 
 	/* TX state */
@@ -222,7 +222,7 @@ struct kvx_qsfp_ops {
  * @current_page: current page of the eeprom
  * @module_flat_mem: true if eeprom module is flat
  * @eeprom_cache: copy of eeprom page 0 offset 128-255
- * @irq_flags: interrupt flags (page 0 offset 3)
+ * @int_flags: interrupt flags (page 0 offset 3)
  * @qsfp_poll: struct for polling interrupt flags
  * @modprs_irq_task: task that sends event for IRQ mod-def0
  * @sm_mutex: protects state machine
@@ -245,8 +245,7 @@ struct kvx_qsfp {
 	u32 max_power_mW;
 	bool module_flat_mem;
 	struct kvx_qsfp_eeprom_cache eeprom_cache;
-	u8 irq_flags[QSFP_IRQ_FLAGS_NB];
-	struct delayed_work qsfp_poll;
+	u8 int_flags[QSFP_INT_FLAGS_LEN];
 	struct work_struct sm_task;
 	u8 sm_state;
 	struct completion sm_s_ready;
