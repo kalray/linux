@@ -273,9 +273,10 @@ static void kvx_eth_poll_link(struct timer_list *t)
 				    phy_speed_to_str(ndev->cfg.speed),
 				    phy_duplex_to_str(ndev->cfg.duplex),
 				    pause_to_str(ndev->hw->lb_f[ndev->cfg.id].pfc_f.global_pause_en));
-			netif_carrier_on(ndev->netdev);
-			netif_tx_start_all_queues(ndev->netdev);
 		}
+		kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, false);
+		netif_tx_start_all_queues(ndev->netdev);
+		netif_carrier_on(ndev->netdev);
 	} else {
 		if (netif_carrier_ok(ndev->netdev)) {
 			netdev_info(ndev->netdev, "Link is Down\n");
