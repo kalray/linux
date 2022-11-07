@@ -133,6 +133,12 @@ struct kvx_qsfp;
 
 
 enum {
+	/* GPIO */
+	QSFP_GPIO_MODPRS = 0,
+	QSFP_GPIO_RESET,
+	QSFP_GPIO_TX_DISABLE,
+	QSFP_GPIO_NB,
+
 	/* TX state */
 	QSFP_TX_ENABLE = 0,
 	QSFP_TX_DISABLE,
@@ -147,6 +153,23 @@ enum {
 	QSFP_S_READY,
 };
 
+/** struct kvx_qsfp_gpio_def - GPIO and IRQ usage definition
+ * @of_name: name in device tree
+ * @flags: gpiod flags
+ * @gpio: gpio descriptor
+ * @irq: irq for the gpio (0 if supported)
+ * @irq_flags: flags for the irq
+ * @irq_handler: handler function for the irq
+ */
+struct kvx_qsfp_gpio_def {
+	u8 id;
+	char *of_name;
+	enum gpiod_flags flags;
+	struct gpio_desc *gpio;
+	int irq;
+	unsigned long irq_flags;
+	irq_handler_t irq_handler;
+};
 
 /** struct kvx_qsfp_param - Used for setting eeprom register
  * @page: page number
@@ -192,10 +215,7 @@ struct kvx_qsfp_ops {
  * @dev: device structure
  * @i2c: i2c adapter structure
  * @i2c_lock: mutex for i2c r/w
- * @gpio_reset: gpio structure
- * @gpio_tx_disable: gpio structure
- * @gpio_modprs: gpio structure
- * @gpio_modprs_irq: irq for gpio mod-def0
+ * @gpio: gpio definition
  * @param_count: size of @param
  * @param: array of qsfp parameters parsed from DT
  * @max_power_mW: max power parsed from DT
@@ -219,8 +239,7 @@ struct kvx_qsfp {
 	struct device *dev;
 	struct i2c_adapter *i2c;
 	struct mutex i2c_lock;
-	struct gpio_desc *gpio_reset, *gpio_tx_disable, *gpio_modprs;
-	int gpio_modprs_irq;
+	struct kvx_qsfp_gpio_def *gpio;
 	int param_count;
 	struct kvx_qsfp_param *param;
 	u32 max_power_mW;
@@ -237,7 +256,6 @@ struct kvx_qsfp {
 	struct kvx_qsfp_ops *ops;
 	void *ops_data;
 };
-
 
 int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *ee);
 int kvx_qsfp_get_module_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee, u8 *data);

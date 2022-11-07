@@ -721,26 +721,32 @@ static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 	return err;
 }
 
+static struct gpio_desc *get_gpio_desc(struct kvx_qsfp *qsfp, u8 gpio_id)
+{
+	return qsfp->gpio[gpio_id].gpio;
+}
+
 /** kvx_qsfp_reset - reset qsfp eeprom via gpio
  * @qsfp: qsfp prvdata
  */
 void kvx_qsfp_reset(struct kvx_qsfp *qsfp)
 {
-	int ret = gpiod_get_value(qsfp->gpio_reset);
+	struct gpio_desc *reset = get_gpio_desc(qsfp, QSFP_GPIO_RESET);
+	int ret = gpiod_get_value(reset);
 
 	mutex_lock(&qsfp->i2c_lock);
-	if (qsfp->gpio_reset) {
-		gpiod_direction_output(qsfp->gpio_reset, 1);
+	if (reset) {
+		gpiod_direction_output(reset, 1);
 		usleep_range(RESET_INIT_ASSERT_TIME_US,
 			     RESET_INIT_ASSERT_TIME_US + 100);
-		gpiod_set_value(qsfp->gpio_reset, 0);
-		gpiod_direction_input(qsfp->gpio_reset);
+		gpiod_set_value(reset, 0);
+		gpiod_direction_input(reset);
 	}
 	/* wait for reset to take effect */
 	eeprom_wait_data_ready(qsfp->i2c, QSFP_DELAY_DATA_READY_IN_MS);
 	mutex_unlock(&qsfp->i2c_lock);
 	dev_dbg(qsfp->dev, "QSFP reset done (%d -> %d)\n", ret,
-		gpiod_get_value(qsfp->gpio_reset));
+		gpiod_get_value(reset));
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_reset);
 
@@ -833,18 +839,18 @@ static bool tx_disable_fast_path_supported(struct kvx_qsfp *qsfp)
  */
 void kvx_qsfp_set_tx_state(struct kvx_qsfp *qsfp, u8 op)
 {
+	struct gpio_desc *tx_disable = get_gpio_desc(qsfp, QSFP_GPIO_TX_DISABLE);
 	int ret = 0;
 
 	/* If tx_disable fast path support is enabled */
 	if (tx_disable_fast_path_supported(qsfp)) {
-		gpiod_direction_input(qsfp->gpio_tx_disable);
-		ret = gpiod_get_value(qsfp->gpio_tx_disable);
-		gpiod_direction_output(qsfp->gpio_tx_disable, 0);
-		gpiod_set_value(qsfp->gpio_tx_disable,
-				(op == QSFP_TX_ENABLE ? 0 : 1));
+		gpiod_direction_input(tx_disable);
+		ret = gpiod_get_value(tx_disable);
+		gpiod_direction_output(tx_disable, 0);
+		gpiod_set_value(tx_disable, (op == QSFP_TX_ENABLE ? 0 : 1));
 		usleep_range(10000, 15000);
 		dev_info(qsfp->dev, "TX is %sabled (%d -> %d)\n", (op ? "dis" : "en"),
-			ret, gpiod_get_value(qsfp->gpio_tx_disable));
+			ret, gpiod_get_value(tx_disable));
 	} else {
 		kvx_qsfp_set_ee_tx_state(qsfp, op);
 	}
@@ -1106,12 +1112,13 @@ static void kvx_qsfp_cleanup(void *data)
 
 static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 {
+	struct gpio_desc *modprs = get_gpio_desc(qsfp, QSFP_GPIO_MODPRS);
 	int next_state = qsfp->sm_state;
 	u32 power_mW;
 
 	dev_dbg(qsfp->dev, "current state: %d\n", qsfp->sm_state);
 	if (qsfp->modprs_change) {
-		qsfp->cable_connected = gpiod_get_value_cansleep(qsfp->gpio_modprs);
+		qsfp->cable_connected = gpiod_get_value_cansleep(modprs);
 		qsfp->modprs_change = false;
 
 		/* reinit eeprom cache */
@@ -1257,12 +1264,13 @@ static ssize_t sysfs_tx_disable_show(struct kobject *kobj,
 	struct platform_device *pdev = container_of(kobj, struct platform_device,
 						    dev.kobj);
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
+	struct gpio_desc *tx_dis = get_gpio_desc(qsfp, QSFP_GPIO_TX_DISABLE);
 	u8 data;
 	int ret;
 
 	if (tx_disable_fast_path_supported(qsfp)) {
-		gpiod_direction_input(qsfp->gpio_tx_disable);
-		data = gpiod_get_value(qsfp->gpio_tx_disable);
+		gpiod_direction_input(tx_dis);
+		data = gpiod_get_value(tx_dis);
 	} else {
 		ret = kvx_qsfp_eeprom_read(qsfp, &data, 0, SFF8636_TX_DISABLE_OFFSET,
 					   sizeof(data));
@@ -1330,6 +1338,15 @@ int kvx_qsfp_ops_register(struct kvx_qsfp *qsfp, struct kvx_qsfp_ops *ops,
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_ops_register);
 
+static const struct kvx_qsfp_gpio_def kvx_qsfp_gpios[QSFP_GPIO_NB] = {
+	{ .of_name = "mod-def0",
+	  .flags = GPIOD_IN,
+	  .irq_handler = kvx_qsfp_modprs_irq_handler,
+	  .irq_flags = IRQF_ONESHOT | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING },
+	{ .of_name = "reset", .flags = GPIOD_ASIS },
+	{ .of_name = "tx-disable", .flags = GPIOD_OUT_HIGH },
+};
+
 static const struct of_device_id kvx_qsfp_of_match[] = {
 	{ .compatible = "kalray,qsfp", },
 	{ },
@@ -1342,14 +1359,20 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 {
 	struct i2c_adapter *i2c;
 	struct kvx_qsfp *qsfp;
+	struct kvx_qsfp_gpio_def *gpio;
 	const struct of_device_id *id;
 	struct device_node *i2c_np, *np = pdev->dev.of_node;
-	int err, irq_flags;
+	int i, err;
 
 	qsfp = devm_kzalloc(&pdev->dev, sizeof(*qsfp), GFP_KERNEL);
 	if (!qsfp)
 		return PTR_ERR(qsfp);
 	qsfp->dev = &pdev->dev;
+
+	qsfp->gpio = devm_kzalloc(qsfp->dev, sizeof(kvx_qsfp_gpios), GFP_KERNEL);
+	if (!qsfp->gpio)
+		return PTR_ERR(qsfp->gpio);
+	memcpy(qsfp->gpio, &kvx_qsfp_gpios, sizeof(kvx_qsfp_gpios));
 
 	platform_set_drvdata(pdev, qsfp);
 
@@ -1367,15 +1390,31 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 	if (!id)
 		return -EINVAL;
 
-	qsfp->gpio_reset = devm_gpiod_get_optional(qsfp->dev,
-						   "reset", GPIOD_ASIS);
-	if (IS_ERR(qsfp->gpio_reset))
-		dev_warn(qsfp->dev, "Failed to get reset GPIO from DT\n");
+	for (i = 0; i < QSFP_GPIO_NB; i++) {
+		gpio = &qsfp->gpio[i];
+		gpio->gpio = devm_gpiod_get_optional(qsfp->dev, gpio->of_name, gpio->flags);
+		if (!gpio->gpio) {
+			dev_warn(qsfp->dev, "Failed to get %s GPIO from DT\n", gpio->of_name);
+			continue;
+		}
 
-	qsfp->gpio_tx_disable = devm_gpiod_get_optional(qsfp->dev, "tx-disable",
-							GPIOD_OUT_HIGH);
-	if (IS_ERR(qsfp->gpio_tx_disable))
-		dev_warn(qsfp->dev, "Failed to get tx-disable GPIO from DT\n");
+		if (gpio->flags != GPIOD_IN || !gpio->irq_handler)
+			continue;
+
+		gpio->irq = gpiod_to_irq(gpio->gpio);
+		if (!gpio->irq) {
+			dev_warn(qsfp->dev, "Could not configure irq for gpio %s\n", gpio->of_name);
+			return -EPROBE_DEFER;
+		}
+
+		err = devm_request_threaded_irq(qsfp->dev, gpio->irq, NULL, gpio->irq_handler,
+						gpio->irq_flags, NULL, qsfp);
+		if (err) {
+			dev_warn(qsfp->dev, "Could not request threaded irq for gpio %s\n",
+				 gpio->of_name);
+			return -EPROBE_DEFER;
+		}
+	}
 
 	device_property_read_u32(qsfp->dev, "maximum-power-milliwatt",
 				 &qsfp->max_power_mW);
@@ -1385,32 +1424,9 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 	dev_info(qsfp->dev, "Host maximum power %u.%uW\n",
 		 qsfp->max_power_mW / 1000, (qsfp->max_power_mW / 100) % 10);
 
-	qsfp->gpio_modprs = devm_gpiod_get_optional(qsfp->dev, "mod-def0",
-						    GPIOD_IN);
-	if (IS_ERR(qsfp->gpio_modprs)) {
-		dev_warn(qsfp->dev, "Failed to get mod-def0 GPIO from DT\n");
-		return -ENODEV;
-	}
-	qsfp->cable_connected = gpiod_get_value_cansleep(qsfp->gpio_modprs);
-
-	qsfp->gpio_modprs_irq = gpiod_to_irq(qsfp->gpio_modprs);
-	if (!qsfp->gpio_modprs_irq) {
-		qsfp->gpio_modprs_irq = 0;
-		dev_warn(qsfp->dev,
-			 "Could not configure irq for gpio mod-def0\n");
-		return -EPROBE_DEFER;
-	}
-
-	irq_flags = IRQF_ONESHOT | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING;
-	err = devm_request_threaded_irq(qsfp->dev, qsfp->gpio_modprs_irq, NULL,
-					kvx_qsfp_modprs_irq_handler, irq_flags,
-					NULL, qsfp);
-	if (err) {
-		qsfp->gpio_modprs_irq = 0;
-		dev_warn(qsfp->dev,
-			 "Could not request threaded irq for gpio mod-def0\n");
-		return -EPROBE_DEFER;
-	}
+	gpio = &qsfp->gpio[QSFP_GPIO_MODPRS];
+	if (gpio->gpio)
+		qsfp->cable_connected = gpiod_get_value_cansleep(gpio->gpio);
 
 	qsfp->param_count = of_property_count_u32_elems(np, "kalray,qsfp-param");
 	if (qsfp->param_count > 0) {
@@ -1459,8 +1475,11 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 static int kvx_qsfp_remove(struct platform_device *pdev)
 {
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
+	int i;
 
-	devm_free_irq(qsfp->dev, qsfp->gpio_modprs_irq, qsfp);
+	for (i = 0; i < QSFP_GPIO_NB; i++)
+		if (qsfp->gpio[i].irq)
+			devm_free_irq(qsfp->dev, qsfp->gpio[i].irq, qsfp);
 	i2c_put_adapter(qsfp->i2c);
 
 	return 0;
