@@ -82,7 +82,7 @@ static int i2c_dw_reg_slave(struct i2c_client *slave)
 	dev->msg_write_idx = 0;
 	dev->msg_read_idx = 0;
 	dev->msg_err = 0;
-	dev->status = STATUS_IDLE;
+	dev->status = 0;
 	dev->abort_source = 0;
 	dev->rx_outstanding = 0;
 
@@ -216,7 +216,7 @@ static int i2c_dw_irq_handler_slave(struct dw_i2c_dev *dev)
 
 
 	if (stat & DW_IC_INTR_STOP_DET) {
-		dev->status = STATUS_IDLE;
+		dev->status = 0;
 		dev->stop_received = 0;
 	}
 
