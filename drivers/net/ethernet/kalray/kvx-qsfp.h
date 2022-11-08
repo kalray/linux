@@ -141,6 +141,11 @@ enum {
 	QSFP_GPIO_INTL,
 	QSFP_GPIO_NB,
 
+	/* IRQ events */
+	QSFP_E_MODPRS = 0,
+	QSFP_E_INTL,
+	QSFP_E_NB, /* number of events */
+
 	/* TX state */
 	QSFP_TX_ENABLE = 0,
 	QSFP_TX_DISABLE,
@@ -301,9 +306,10 @@ struct kvx_qsfp_eeprom_cache {
  * @modprs_irq_task: task that sends event for IRQ mod-def0
  * @sm_mutex: protects state machine
  * @sm_task: task for running the main of the state machine
+ * @irq_event_task: task for running IRQ events
  * @sm_state: module current state
  * @sm_s_ready: completion for state QSFP_S_READY
- * @modprs_change: module presence change
+ * @irq_event: used to notify @irq_event_task of an IRQ event
  * @cable_connected: true if qsfp cable is plugged in
  * @monitor_enabled: true if monitoring is enabled
  * @ops: callbacks for events such as cable connect/disconnect
@@ -319,10 +325,10 @@ struct kvx_qsfp {
 	u32 max_power_mW;
 	bool module_flat_mem;
 	struct kvx_qsfp_eeprom_cache eeprom;
-	struct work_struct sm_task;
+	struct work_struct sm_task, irq_event_task;
 	u8 sm_state;
 	struct completion sm_s_ready;
-	bool modprs_change;
+	unsigned long irq_event;
 	bool cable_connected;
 	bool monitor_enabled;
 	struct kvx_qsfp_ops *ops;
