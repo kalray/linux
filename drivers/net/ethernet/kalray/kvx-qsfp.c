@@ -1096,29 +1096,46 @@ static void kvx_qsfp_cleanup(void *data)
 		i2c_put_adapter(qsfp->i2c);
 }
 
+static void kvx_qsfp_sm_event(struct work_struct *work)
+{
+	struct kvx_qsfp *qsfp = container_of(work, struct kvx_qsfp, irq_event_task);
+	struct gpio_desc *modprs = get_gpio_desc(qsfp, QSFP_GPIO_MODPRS);
+	unsigned int i;
+
+	for (i = 0; i < QSFP_E_NB; i++) {
+		if (!test_and_clear_bit(i, &qsfp->irq_event))
+			continue;
+
+		if (i == QSFP_E_MODPRS) {
+			qsfp->cable_connected = gpiod_get_value_cansleep(modprs);
+
+			/* reinit eeprom cache */
+			memset(&qsfp->eeprom, 0, sizeof(qsfp->eeprom));
+
+			/* reset the main state machine */
+			qsfp->sm_state = QSFP_S_RESET;
+			queue_work(kvx_qsfp_wq, &qsfp->sm_task);
+
+			/* calling either connect/disconect callback */
+			if (qsfp->ops) {
+				if (qsfp->cable_connected)
+					qsfp->ops->connect(qsfp);
+				else
+					qsfp->ops->disconnect(qsfp);
+			}
+		} else if (i == QSFP_E_INTL) {
+			if (qsfp->monitor_enabled)
+				update_interrupt_flags(qsfp);
+		}
+	}
+}
+
 static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 {
-	struct gpio_desc *modprs = get_gpio_desc(qsfp, QSFP_GPIO_MODPRS);
 	int next_state = qsfp->sm_state;
 	u32 power_mW;
 
 	dev_dbg(qsfp->dev, "current state: %d\n", qsfp->sm_state);
-	if (qsfp->modprs_change) {
-		qsfp->cable_connected = gpiod_get_value_cansleep(modprs);
-		qsfp->modprs_change = false;
-
-		/* reinit eeprom cache */
-		memset(&qsfp->eeprom, 0, sizeof(qsfp->eeprom));
-
-		/* calling either connect/disconect callback */
-		if (qsfp->ops) {
-			if (qsfp->cable_connected)
-				qsfp->ops->connect(qsfp);
-			else
-				qsfp->ops->disconnect(qsfp);
-		}
-	}
-
 	switch (qsfp->sm_state) {
 	case QSFP_S_TX_FAULT:
 		break;
@@ -1141,8 +1158,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 	case QSFP_S_RESET:
 		if (!is_cable_connected(qsfp))
 			return QSFP_S_DOWN;
-		/* reinit eeprom cache */
-		memset(&qsfp->eeprom, 0, sizeof(qsfp->eeprom));
 		kvx_qsfp_reset(qsfp);
 		fallthrough;
 	case QSFP_S_INIT:
@@ -1190,9 +1205,9 @@ static irqreturn_t kvx_qsfp_modprs_irq_handler(int irq, void *data)
 {
 	struct kvx_qsfp *qsfp = data;
 
-	qsfp->sm_state = QSFP_S_RESET;
-	qsfp->modprs_change = true;
-	queue_work(kvx_qsfp_wq, &qsfp->sm_task);
+	set_bit(QSFP_E_MODPRS, &qsfp->irq_event);
+	if (!work_pending(&qsfp->irq_event_task))
+		queue_work(kvx_qsfp_wq, &qsfp->irq_event_task);
 
 	return IRQ_HANDLED;
 }
@@ -1201,8 +1216,9 @@ static irqreturn_t kvx_qsfp_intl_irq_handler(int irq, void *data)
 {
 	struct kvx_qsfp *qsfp = data;
 
-	if (qsfp && qsfp->monitor_enabled)
-		update_interrupt_flags(qsfp);
+	set_bit(QSFP_E_INTL, &qsfp->irq_event);
+	if (!work_pending(&qsfp->irq_event_task))
+		queue_work(kvx_qsfp_wq, &qsfp->irq_event_task);
 
 	return IRQ_HANDLED;
 }
@@ -1445,12 +1461,12 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 	qsfp->i2c = i2c;
 	of_node_put(i2c_np);
 
-	/* recurrent tasks: interrupt flags polling */
+	/* init of state machines tasks */
 	INIT_WORK(&qsfp->sm_task, kvx_qsfp_sm_main_task);
+	INIT_WORK(&qsfp->irq_event_task, kvx_qsfp_sm_event);
 
 	/* set state machine to the initial state and start it */
 	qsfp->sm_state = QSFP_S_RESET;
-	qsfp->modprs_change = true;
 	init_completion(&qsfp->sm_s_ready);
 	queue_work(kvx_qsfp_wq, &qsfp->sm_task);
 
