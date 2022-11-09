@@ -14,8 +14,6 @@ Optional properties:
 - kalray,rtmtx-channels: retimer tx channels connected to this interface
 - kalray,rxtx-crossed: RX/TX lanes crossed
 - kalray,rx_chan_error: rx dma channel used to generate RX_CHAN_CLOSED interrupt
-- qsfp-reset-gpios: qsfp reset gpio (to force reset for QSFP not implementing this in EEPROM
-- kalray,qsfp-param: <page offset value ...> table for qsfp eeprom
 
 * Kalray netdev
 
@@ -47,14 +45,6 @@ Required properties:
   to 16 bottom ones.
 
 Example:
-
-	qsfp0:qsfp0@0 {
-		compatible = "sff,qsfp";
-		i2c-bus = <&i2c0>;
-		mod-def0-gpios = <&gpio1_banka 26 GPIO_ACTIVE_LOW>;
-		tx-disable-gpios = <&gpio1_banka 28 GPIO_ACTIVE_HIGH>;
-	};
-
 	eth0: ethernet@10050000 {
 		kalray,tictoc = <1>;
 		kalray,rtmrx = <&rtmrx>;
