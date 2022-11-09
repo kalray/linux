@@ -1,0 +1,28 @@
+ * Kalray qsfp
+
+Required properties:
+- compatible: Should be "kalray,qsfp"
+- i2c-bus: i2c bus of qsfp module
+- mod-def0-gpios: module presence gpio
+- tx-disable-gpios: TX disable gpio
+
+Optional properties:
+- maximum-power-milliwatt: max qsfp module power in mW
+- reset-gpios: qsfp reset gpio (to force reset for QSFP not implementing this in EEPROM)
+- kalray,qsfp-param: <page offset value ...> table for qsfp eeprom
+
+Example:
+	qsfp0:qsfp0@0 {
+		compatible = "kalray,qsfp";
+		i2c-bus = <&i2c0>;
+		mod-def0-gpios = <&gpio1_banka 26 GPIO_ACTIVE_LOW>;
+		tx-disable-gpios = <&gpio1_banka 28 GPIO_ACTIVE_HIGH>;
+		maximum-power-milliwatt = <3500>;
+		reset-gpios = <&gpio1_banka 27 GPIO_ACTIVE_LOW>;
+		/* qsfp param: <page, offset, value> */
+		kalray,qsfp-param = <3 241 0x0>, /* Tx adaptive equalization + Rx output */
+			<3 236 0x0>, /* Rx output emphasis control */
+			<3 237 0x0>, /* Rx output emphasis control */
+			<3 238 0x33>, /* Rx output amplitude control */
+			<3 239 0x33>; /* Rx output amplitude control */
+	      };
