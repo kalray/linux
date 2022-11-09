@@ -9,6 +9,8 @@
 
 #include "kvx-qsfp.h"
 
+#define RESET_INIT_ASSERT_TIME_US  10
+
 static struct workqueue_struct *kvx_qsfp_wq;
 
 /** i2c_read - read bytes from i2c. Make sure the eeprom is on
@@ -728,10 +730,10 @@ void kvx_qsfp_reset(struct kvx_qsfp *qsfp)
 
 	mutex_lock(&qsfp->i2c_lock);
 	if (qsfp->gpio_reset) {
-		gpiod_direction_output(qsfp->gpio_reset, 0);
-		usleep_range(10000, 20000);
-		gpiod_set_value(qsfp->gpio_reset, 1);
-		usleep_range(10000, 20000);
+		gpiod_direction_output(qsfp->gpio_reset, 1);
+		usleep_range(RESET_INIT_ASSERT_TIME_US,
+			     RESET_INIT_ASSERT_TIME_US + 100);
+		gpiod_set_value(qsfp->gpio_reset, 0);
 		gpiod_direction_input(qsfp->gpio_reset);
 	}
 	/* wait for reset to take effect */
@@ -1366,9 +1368,9 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 		return -EINVAL;
 
 	qsfp->gpio_reset = devm_gpiod_get_optional(qsfp->dev,
-						  "qsfp-reset", GPIOD_ASIS);
+						   "reset", GPIOD_ASIS);
 	if (IS_ERR(qsfp->gpio_reset))
-		dev_warn(qsfp->dev, "Failed to get qsfp-reset GPIO from DT\n");
+		dev_warn(qsfp->dev, "Failed to get reset GPIO from DT\n");
 
 	qsfp->gpio_tx_disable = devm_gpiod_get_optional(qsfp->dev, "tx-disable",
 							GPIOD_OUT_HIGH);
