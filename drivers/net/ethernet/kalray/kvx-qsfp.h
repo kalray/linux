@@ -120,15 +120,16 @@
 #define SFF8636_RX_OUT_AMPL_CTRL_OFFSET1    239
 #define SFF8636_TX_ADAPT_EQUAL_OFFSET       241
 
-#define QSFP_INT_FLAGS_LEN                  11
 #define QSFP_DELAY_DATA_READY_IN_MS         2000
 
 #define kvx_qsfp_to_ops_data(qsfp, data_t) ((data_t *)qsfp->ops_data)
 #define kvx_set_mode(bm, mode) __set_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, bm)
 #define kvx_test_mode(addr, mode) test_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, addr)
 #define qsfp_eeprom_offset(member) offsetof(struct kvx_qsfp_eeprom_cache, member)
+#define qsfp_eeprom_len(member) sizeof(((struct kvx_qsfp_eeprom_cache){0}).member)
 #define qsfp_refresh_eeprom(qsfp, m, len) kvx_qsfp_eeprom_refresh(qsfp, qsfp_eeprom_offset(m), len)
 #define qsfp_write_eeprom(qsfp, data, m, len) kvx_qsfp_eeprom_write(qsfp, data, qsfp_eeprom_offset(m), len)
+#define qsfp_update_eeprom(qsfp, m) kvx_qsfp_update_eeprom(qsfp, qsfp_eeprom_offset(m), qsfp_eeprom_len(m))
 
 struct kvx_qsfp;
 
@@ -208,6 +209,7 @@ struct kvx_qsfp_param_capability {
 struct kvx_qsfp_ops {
 	void (*connect)(struct kvx_qsfp *qsfp);
 	void (*disconnect)(struct kvx_qsfp *qsfp);
+	void (*rxlos)(struct kvx_qsfp *qsfp);
 };
 
 struct kvx_qsfp_interrupt_flags {
@@ -312,6 +314,7 @@ struct kvx_qsfp_eeprom_cache {
  * @irq_event: used to notify @irq_event_task of an IRQ event
  * @cable_connected: true if qsfp cable is plugged in
  * @monitor_enabled: true if monitoring is enabled
+ * @int_flags_supported: true if intL irq handler was triggered
  * @ops: callbacks for events such as cable connect/disconnect
  * @ops_data: data structure passed to the @ops callbacks
  */
@@ -331,6 +334,7 @@ struct kvx_qsfp {
 	unsigned long irq_event;
 	bool cable_connected;
 	bool monitor_enabled;
+	bool int_flags_supported;
 	struct kvx_qsfp_ops *ops;
 	void *ops_data;
 };
@@ -344,5 +348,6 @@ void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support);
 u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp);
 u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp);
 int kvx_qsfp_ops_register(struct kvx_qsfp *qsfp, struct kvx_qsfp_ops *ops, void *ops_data);
+bool kvx_qsfp_int_flags_supported(struct kvx_qsfp *qsfp);
 
 #endif /* NET_KVX_QSFP_H */
