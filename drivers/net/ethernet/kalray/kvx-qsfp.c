@@ -342,6 +342,60 @@ static int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, unsigned int o
 	return ret;
 }
 
+/** kvx_qsfp_update_eeprom - update eeprom via i2c byte per byte
+ *
+ * Offset needs to be in ethtool format defined as follows:
+ * page 0: [0, 255]; page 1: [256, 383]; page 2: [384, 511]; etc.
+ *
+ * @qsfp: qsfp prvdata
+ * @offset: eeprom offset (ethtool format)
+ * @len: size of data to write
+ *
+ * Returns 0 upon success
+ */
+static int kvx_qsfp_update_eeprom(struct kvx_qsfp *qsfp, unsigned int offset, size_t len)
+{
+	u8 *ee, page, *eeprom = (u8 *)&qsfp->eeprom;
+	unsigned int i, i2c_offset = page_offset_from_ethtool_offset(offset, &page);
+	int ret;
+
+	ee = kmalloc(len, GFP_KERNEL);
+	if (!ee)
+		return -ENOMEM;
+
+	mutex_lock(&qsfp->i2c_lock);
+
+	ret = select_eeprom_page(qsfp, page);
+	if (ret != 0) {
+		dev_err(qsfp->dev, "%s - failed to select page %u\n", __func__, page);
+		goto bail;
+	}
+
+	ret = i2c_read(qsfp->i2c, i2c_offset, ee, len);
+	if (ret != len) {
+		dev_err(qsfp->dev, "failed to read eeprom at offset %u\n", i2c_offset);
+		goto bail;
+	}
+
+	for (i = 0; i < len; i++) {
+		if (ee[i] == eeprom[offset + i])
+			continue;
+		ret = i2c_write(qsfp->i2c, i2c_offset + i, eeprom + offset + i,
+				sizeof(u8));
+		if (ret != sizeof(u8)) {
+			eeprom[offset + i] = ee[i];
+			dev_err(qsfp->dev, "failed to update eeprom page %u offset %u\n",
+				page, i2c_offset + i);
+			goto bail;
+		}
+	}
+	ret = 0;
+bail:
+	mutex_unlock(&qsfp->i2c_lock);
+	kfree(ee);
+	return ret;
+}
+
 /**
  * kvx_qsfp_get_module_eeprom() - Read the QSFP module EEPROM
  * @qsfp: a pointer to the &struct kvx_qsfp structure for the qsfp module
@@ -548,6 +602,36 @@ bool is_cable_passive_copper(struct kvx_qsfp *qsfp)
 
 	return  (tech == SFF8636_TRANS_COPPER_PAS_EQUAL ||
 		 tech == SFF8636_TRANS_COPPER_PAS_UNEQUAL);
+}
+
+bool kvx_qsfp_int_flags_supported(struct kvx_qsfp *qsfp)
+{
+	return qsfp->int_flags_supported;
+}
+EXPORT_SYMBOL_GPL(kvx_qsfp_int_flags_supported);
+
+static void update_interrupt_flags_mask(struct kvx_qsfp *qsfp)
+{
+	int l, ret;
+
+	if (!qsfp->int_flags_supported)
+		return;
+
+	ret = qsfp_update_eeprom(qsfp, int_flags_mask);
+	if (ret != 0) {
+		dev_err(qsfp->dev, "failed to update device flags masks\n");
+		return;
+	}
+	dev_dbg(qsfp->dev, "device flags mask: %*ph\n", l,
+		(u8 *)&qsfp->eeprom.int_flags_mask);
+
+	ret = qsfp_update_eeprom(qsfp, channel_monitor_mask);
+	if (ret != 0) {
+		dev_err(qsfp->dev, "failed to update channel monitor masks\n");
+		return;
+	}
+	dev_dbg(qsfp->dev, "channel monitor mask: %*ph\n", l,
+		(u8 *)&qsfp->eeprom.channel_monitor_mask);
 }
 
 /** kvx_qsfp_print_module_status - print module status (debug)
@@ -1034,6 +1118,27 @@ void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_parse_support);
 
+static void set_int_flags_monitoring_state(struct kvx_qsfp *qsfp, bool enable)
+{
+	if (!qsfp->int_flags_supported)
+		return;
+
+	if (!enable) {
+		memset(&qsfp->eeprom.int_flags_mask, 0xff, qsfp_eeprom_len(int_flags_mask));
+		memset(&qsfp->eeprom.channel_monitor_mask, 0xff, qsfp_eeprom_len(channel_monitor_mask));
+		goto bail;
+	}
+
+	if (qsfp->ops && qsfp->ops->rxlos && get_gpio_desc(qsfp, QSFP_GPIO_INTL)) {
+		/* enable RxLOS interrupt flags */
+		qsfp->eeprom.int_flags_mask.rx_tx_los &= 0xf0;
+	}
+
+bail:
+	update_interrupt_flags_mask(qsfp);
+	qsfp->monitor_enabled = enable;
+}
+
 /** kvx_qsfp_init - driver init, eeprom cache init
  * @qsfp: qsfp prvdata
  * Returns 0 if success
@@ -1076,6 +1181,9 @@ static int kvx_qsfp_init(struct kvx_qsfp *qsfp)
 		dev_err(qsfp->dev, "Failed to initialize qsfp eeprom cache\n");
 		return -EFAULT;
 	}
+
+	/* prevent by default all hardware interrupts and enable only on a need basis */
+	set_int_flags_monitoring_state(qsfp, false);
 
 	kvx_qsfp_print_module_status(qsfp);
 
@@ -1141,7 +1249,7 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		break;
 	case QSFP_S_ERROR:
 		if (is_cable_connected(qsfp)) {
-			qsfp->monitor_enabled = false;
+			set_int_flags_monitoring_state(qsfp, false);
 			dev_err(qsfp->dev, "qsfp state machine is in an error state\n");
 			kvx_qsfp_set_tx_state(qsfp, QSFP_TX_DISABLE);
 			break;
@@ -1158,6 +1266,11 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 	case QSFP_S_RESET:
 		if (!is_cable_connected(qsfp))
 			return QSFP_S_DOWN;
+		/* if supported, the IntL gpio will be asserted after the reset,
+		 * thus qsfp->int_flags_supported will be set to true by the
+		 * IntL irq handler
+		 */
+		qsfp->int_flags_supported = false;
 		kvx_qsfp_reset(qsfp);
 		fallthrough;
 	case QSFP_S_INIT:
@@ -1165,7 +1278,7 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 			return QSFP_S_ERROR;
 		if (kvx_qsfp_tune(qsfp) < 0)
 			return QSFP_S_ERROR;
-		qsfp->monitor_enabled = true;
+		set_int_flags_monitoring_state(qsfp, true);
 		kvx_qsfp_set_tx_state(qsfp, QSFP_TX_ENABLE);
 		fallthrough;
 	case QSFP_S_WPOWER:
@@ -1216,6 +1329,7 @@ static irqreturn_t kvx_qsfp_intl_irq_handler(int irq, void *data)
 {
 	struct kvx_qsfp *qsfp = data;
 
+	qsfp->int_flags_supported = true;
 	set_bit(QSFP_E_INTL, &qsfp->irq_event);
 	if (!work_pending(&qsfp->irq_event_task))
 		queue_work(kvx_qsfp_wq, &qsfp->irq_event_task);
@@ -1229,6 +1343,7 @@ static ssize_t sysfs_reset_store(struct kobject *kobj, struct kobj_attribute *a,
 	struct platform_device *pdev = container_of(kobj, struct platform_device, dev.kobj);
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
 
+	qsfp->monitor_enabled = false;
 	qsfp->sm_state = QSFP_S_RESET;
 	queue_work(kvx_qsfp_wq, &qsfp->sm_task);
 
@@ -1252,10 +1367,14 @@ static ssize_t sysfs_monitor_store(struct kobject *kobj, struct kobj_attribute *
 						    dev.kobj);
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
 	int ret;
+	bool mon;
 
-	ret = kstrtouint(buf, 0, (u32 *)&qsfp->monitor_enabled);
-	if (ret)
-		return ret;
+	if (qsfp->int_flags_supported) {
+		ret = kstrtouint(buf, 0, (u32 *)&mon);
+		if (ret)
+			return ret;
+		set_int_flags_monitoring_state(qsfp, mon);
+	}
 
 	return count;
 }
@@ -1328,10 +1447,13 @@ int kvx_qsfp_ops_register(struct kvx_qsfp *qsfp, struct kvx_qsfp_ops *ops,
 		return -EINVAL;
 
 	if (!ops->connect)
-		dev_warn(qsfp->dev, "connect callback is not defined\n");
+		dev_dbg(qsfp->dev, "connect callback is not defined\n");
 
 	if (!ops->disconnect)
-		dev_warn(qsfp->dev, "disconnect callback is not defined\n");
+		dev_dbg(qsfp->dev, "disconnect callback is not defined\n");
+
+	if (!ops->rxlos)
+		dev_dbg(qsfp->dev, "rxlos callback is not defined\n");
 
 	qsfp->ops = ops;
 	qsfp->ops_data = ops_data;
