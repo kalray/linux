@@ -218,7 +218,7 @@ static int kvx_smem_heap_probe(struct platform_device *pdev)
 	}
 	res = of_reserved_mem_lookup(np);
 	of_node_put(np);
-	if (ret) {
+	if (!res) {
 		dev_err(dev, "No memory address assigned to the region\n");
 		return -EINVAL;
 	}
