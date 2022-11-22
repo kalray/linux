@@ -37,15 +37,26 @@ config PCIE_XILINX_NWL
 	 support root port enabling.
 
 config PCIE_KVX_NWL
-	bool "NWL PCIe Core for KVX"
+	tristate "NWL PCIe Core for KVX"
 	depends on KVX
 	select KVX_PCI_MSI if PCI_MSI
+	select PCIE_KVX_SUBSYS
 	select MFD_SYSCON
 	help
 	 Say 'Y' here if you want kernel support for kvx
 	 NWL PCIe controller. The controller can act as Root Port
 	 or End Point. The current option selection will only
 	 support root port enabling.
+
+config PCIE_KVX_SUBSYS
+	bool "NWL PCIe subsys for KVX"
+	depends on KVX
+	select MFD_SYSCON
+	help
+	 PCIe subsys driver for kalray.
+
+	 Allow overrding/managing platform parameters related to pcie root
+	 complex driver (PCIE_KVX_NWL).
 
 config PCIE_KVX_ERR_INJECT_SYSFS
 	bool "Enable NWL PCIe core for KVX error injection via SYSFS"
