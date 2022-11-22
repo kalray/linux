@@ -466,6 +466,7 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 	kvx_eth_lb_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_parser_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_tx_f_init(ndev->hw);
+	ndev->hw->rx_dlv_pfc_f.hw = ndev->hw;
 #endif
 
 	return 0;

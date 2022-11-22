@@ -718,6 +718,14 @@ struct kvx_eth_dt_acc_f {
 	bool reset;
 };
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+struct kvx_eth_rx_dlv_pfc_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	u32 total_drop_cnt;
+};
+#endif
 /**
  * struct kvx_eth_mac_f - MAC controller features
  * @addr: MAC address
@@ -1118,6 +1126,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_tx_exp_npre_f tx_exp_npre_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_tx_pbrr_f tx_pbrr_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_tx_pbdwrr_f tx_pbdwrr_f[KVX_ETH_LANE_NB];
+	struct kvx_eth_rx_dlv_pfc_f rx_dlv_pfc_f;
 #endif
 	struct kvx_eth_lb_f lb_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_parser_f parser_f[KVX_ETH_PHYS_PARSER_NB];
@@ -1386,6 +1395,15 @@ static inline void kvx_eth_rxlbana_writel(struct kvx_eth_hw *hw, u32 val, const 
 	writel(val, hw->res[KVX_ETH_RES_ETH_RX_LB_ANA].base + off);
 }
 
+static inline u32 kvx_eth_rxlbdel_readl(struct kvx_eth_hw *hw, const u64 off)
+{
+	return readl(hw->res[KVX_ETH_RES_ETH_RX_LB_DEL].base + off);
+}
+
+static inline void kvx_eth_rxlbdel_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
+{
+	writel(val, hw->res[KVX_ETH_RES_ETH_RX_LB_DEL].base + off);
+}
 #endif
 
 u32 noc_route_c2eth(enum kvx_eth_io eth_id, int cluster_id);
