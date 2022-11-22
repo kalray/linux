@@ -38,6 +38,10 @@
 #endif
 
 #ifdef CONFIG_KVX_SUBARCH_KV3_2
+#define RX_LB_ERROR_CTRL(LANE) \
+	(KVX_ETH_LBA_CONTROL_GRP_OFFSET + ((LANE) * KVX_ETH_LBA_CONTROL_GRP_ELEM_SIZE) + \
+	KVX_ETH_LBA_CONTROL_LB_ERROR_CTRL_OFFSET)
+
 #define RX_LB_DEFAULT_RULE_DISPATCH_INFO(LANE) \
 	(KVX_ETH_LBA_CONTROL_GRP_OFFSET + ((LANE) * KVX_ETH_LBA_CONTROL_GRP_ELEM_SIZE) + \
 	KVX_ETH_LBA_CONTROL_LB_DEFAULT_PARSER_GRP_OFFSET + \
@@ -63,6 +67,7 @@
 #define RX_LB_PARSER_HIT_CNT(PARSER) \
 	(KVX_ETH_LBA_PARSER_GRP_OFFSET + ((PARSER) * KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE) + \
 	KVX_ETH_LBA_PARSER_HIT_CNT_OFFSET)
+
 #endif
 
 #define RX_DISPATCH_TABLE_ENTRY(ENTRY) \
@@ -388,11 +393,20 @@ static void lb_f_update(void *data)
 				 reg + KVX_ETH_LBA_STATUS_COUNTERS_TOTAL_DROP_CNT_OFFSET);
 	lb->default_hit_cnt = kvx_eth_rxlbana_readl(lb->hw,
 				 RX_LB_DEFAULT_RULE_HIT_CNT(lb->id));
+	lb->keep_all_crc_error_pkt = kvx_eth_rxlbana_readl(lb->hw,
+				 RX_LB_ERROR_CTRL(lb->id));
 	/* added */
 	lb->default_dispatch_info = kvx_eth_rxlbana_readl(lb->hw,
 				 RX_LB_DEFAULT_RULE_DISPATCH_INFO(lb->id));
 	lb->default_flow_type = kvx_eth_rxlbana_readl(lb->hw,
 				 RX_LB_DEFAULT_FLOW_TYPE(lb->id));
+}
+void kvx_eth_rx_dlv_pfc_f_update(void *data)
+{
+	struct kvx_eth_rx_dlv_pfc_f *rx_dlv_pfc = (struct kvx_eth_rx_dlv_pfc_f *)data;
+
+	rx_dlv_pfc->total_drop_cnt = kvx_eth_rxlbdel_readl(rx_dlv_pfc->hw, KVX_ETH_LBD_PFC_CFG_GRP_OFFSET
+							+ KVX_ETH_LBD_PFC_CFG_TOTAL_DROP_CNT_OFFSET);
 }
 #endif
 
@@ -603,8 +617,13 @@ void kvx_eth_lbana_set_default(struct kvx_eth_hw *hw, u8 dispatch_info)
 {
 	int i;
 
-	for (i = 0; i < KVX_ETH_LANE_NB; i++)
+	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
 		kvx_eth_rxlbana_writel(hw, dispatch_info, RX_LB_DEFAULT_RULE_DISPATCH_INFO(i));
+		kvx_eth_rxlbana_writel(hw,
+			hw->lb_f[i].keep_all_crc_error_pkt &
+				KVX_ETH_LBA_CONTROL_LB_ERROR_CTRL_KEEP_ALL_CRC_ERROR_PKT_MASK,
+			RX_LB_ERROR_CTRL(i));
+	}
 
 	for (i = 0; i < KVX_ETH_PHYS_PARSER_NB; ++i) {
 		kvx_eth_rxlbana_writel(hw, POLICY_PARSER, RX_LB_PARSER_DISPATCH_POLICY(i));
@@ -674,6 +693,10 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 {
 	kvx_eth_rxlbana_writel(hw, lb->default_dispatch_info,
 		RX_LB_DEFAULT_RULE_DISPATCH_INFO(lb->id));
+	kvx_eth_rxlbana_writel(hw,
+		lb->keep_all_crc_error_pkt &
+		      KVX_ETH_LBA_CONTROL_LB_ERROR_CTRL_KEEP_ALL_CRC_ERROR_PKT_MASK,
+		RX_LB_ERROR_CTRL(lb->id));
 }
 #endif
 
