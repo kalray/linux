@@ -331,6 +331,7 @@ FIELD_R_ENTRY(lb_f, drop_total_cnt, 0, U32_MAX);
 FIELD_R_ENTRY(lb_f, default_hit_cnt, 0, U32_MAX);
 FIELD_RW_ENTRY(lb_f, default_dispatch_info, 0, 0x7FFF);
 FIELD_RW_ENTRY(lb_f, default_flow_type, 0, 0xF);
+FIELD_RW_ENTRY(lb_f, keep_all_crc_error_pkt, 0, 1);
 
 static struct attribute *lb_f_attrs[] = {
 	&lb_f_drop_mtu_err_cnt_attr.attr,
@@ -340,6 +341,7 @@ static struct attribute *lb_f_attrs[] = {
 	&lb_f_default_hit_cnt_attr.attr,
 	&lb_f_default_dispatch_info_attr.attr,
 	&lb_f_default_flow_type_attr.attr,
+	&lb_f_keep_all_crc_error_pkt_attr.attr,
 	NULL,
 };
 #endif
@@ -359,6 +361,17 @@ static struct attribute *rx_noc_attrs[] = {
 	NULL,
 };
 SYSFS_TYPES(rx_noc);
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+DECLARE_SYSFS_ENTRY(rx_dlv_pfc_f);
+FIELD_R_ENTRY(rx_dlv_pfc_f, total_drop_cnt, 0, U32_MAX);
+
+static struct attribute *rx_dlv_pfc_f_attrs[] = {
+	&rx_dlv_pfc_f_total_drop_cnt_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(rx_dlv_pfc_f);
+#endif
 
 DECLARE_SYSFS_ENTRY(lut_f);
 FIELD_RW_ENTRY(lut_f, qpn_enable, 0, RX_LB_LUT_QPN_CTRL_QPN_EN_MASK);
@@ -766,6 +779,10 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 		kobject_init(&hw->dt_f[i].kobj, &dt_f_ktype);
 	kobject_init(&hw->dt_acc_f.kobj, &dt_acc_f_ktype);
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+	kobject_init(&hw->rx_dlv_pfc_f.kobj, &rx_dlv_pfc_f_ktype);
+#endif
+
 	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; i++)
 		kobject_init(&hw->lut_entry_f[i].kobj, &lut_entry_f_ktype);
 
@@ -803,6 +820,12 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 	ret = kobject_add(&hw->dt_acc_f.kobj, &ndev->netdev->dev.kobj, "dispatch_table_acc");
 	if (ret)
 		goto err;
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+	ret = kobject_add(&hw->rx_dlv_pfc_f.kobj, &ndev->netdev->dev.kobj, "rx_deliver");
+	if (ret)
+		goto err;
+#endif
 
 	ret = kvx_kset_phy_param_create(ndev, &hw->phy_f.kobj,
 		phy_param_kset, &hw->phy_f.param[0], KVX_ETH_LANE_NB);
@@ -947,6 +970,10 @@ err:
 	kobject_put(&ndev->hw->lut_f.kobj);
 	kobject_del(&ndev->hw->dt_acc_f.kobj);
 	kobject_put(&ndev->hw->dt_acc_f.kobj);
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+	kobject_del(&ndev->hw->rx_dlv_pfc_f.kobj);
+	kobject_put(&ndev->hw->rx_dlv_pfc_f.kobj);
+#endif
 	kobject_del(&ndev->hw->phy_f.kobj);
 	kobject_put(&ndev->hw->phy_f.kobj);
 	return ret;
@@ -1035,6 +1062,10 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 	kobject_put(&ndev->hw->lut_f.kobj);
 	kobject_del(&ndev->hw->dt_acc_f.kobj);
 	kobject_put(&ndev->hw->dt_acc_f.kobj);
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+	kobject_del(&ndev->hw->rx_dlv_pfc_f.kobj);
+	kobject_put(&ndev->hw->rx_dlv_pfc_f.kobj);
+#endif
 	kobject_del(&ndev->hw->phy_f.kobj);
 	kobject_put(&ndev->hw->phy_f.kobj);
 }
