@@ -14,6 +14,8 @@
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/irqnr.h>
 #include <linux/init.h>
 #include <linux/msi.h>
 #include <linux/of_address.h>
@@ -46,11 +48,6 @@
 #define CTRL_NUM_MAX			7
 #define RC_X16_ASN_OFFSET		0x400
 #define MODE_EP_RC_OFFSET		0x420
-
-/* PCIe subsys */
-#define PCIE_SUBSYS_SLAVE_ERR		0x00000400
-#define DISABLE_SLAVE_ERR		BIT(0)
-#define ENABLE_SLAVE_ERR		0
 
 /* Bridge core config registers */
 #define BRCFG_PCIE_RX0			0x00000000
@@ -185,7 +182,7 @@
 #define ERR_INJECTION_EN		BIT(3)
 
 /* number of lane override on command line support*/
-#define PCIE_NBLANE_UNINIT -1
+#define PCIE_NBLANE_UNINIT (-1)
 
 #ifdef CONFIG_PCIEAER
 #define AER_CAP_ENABLED (CSR_FTL_AER_CAP_ECRC_GEN_CHK_CAPABLE_MASK |\
@@ -200,6 +197,8 @@
 #else
 #define AER_CAP_ENABLED (0)
 #endif /* CONFIG_PCIEAER */
+
+extern int pcie_subsys_get_ctrl_lanes(struct regmap *phycore, int ctrl_id);
 
 /**
  * struct nwl_pcie
@@ -250,84 +249,14 @@ struct nwl_pcie {
 	raw_spinlock_t leg_mask_lock;
 };
 
-/**
- * [Nfurcation][controller]-indexed table specifying the number of lanes
- * attributed to each controller for a given nfurcation
- */
-static const uint8_t nfurc_ctrl_lanes[][NB_CORE_CTRL] = {
-	{16, 0, 0, 0, 0, 0, 0, 0},
-	{ 8, 0, 0, 0, 8, 0, 0, 0},
-	{ 8, 0, 0, 0, 4, 0, 4, 0},
-	{ 8, 0, 0, 0, 4, 0, 2, 2},
-	{ 8, 0, 0, 0, 2, 2, 4, 0},
-	{ 8, 0, 0, 0, 2, 2, 2, 2},
-	{ 4, 0, 4, 0, 8, 0, 0, 0},
-	{ 4, 0, 2, 2, 8, 0, 0, 0},
-	{ 2, 2, 4, 0, 8, 0, 0, 0},
-	{ 2, 2, 2, 2, 8, 0, 0, 0},
-	{ 4, 0, 4, 0, 4, 0, 4, 0},
-	{ 4, 0, 4, 0, 2, 2, 4, 0},
-	{ 4, 0, 4, 0, 4, 0, 2, 2},
-	{ 4, 0, 4, 0, 2, 2, 2, 2},
-	{ 4, 0, 2, 2, 4, 0, 4, 0},
-	{ 4, 0, 2, 2, 2, 2, 4, 0},
-	{ 4, 0, 2, 2, 4, 0, 2, 2},
-	{ 4, 0, 2, 2, 2, 2, 2, 2},
-	{ 2, 2, 4, 0, 4, 0, 4, 0},
-	{ 2, 2, 4, 0, 2, 2, 4, 0},
-	{ 2, 2, 4, 0, 4, 0, 2, 2},
-	{ 2, 2, 4, 0, 2, 2, 2, 2},
-	{ 2, 2, 2, 2, 4, 0, 4, 0},
-	{ 2, 2, 2, 2, 4, 0, 2, 2},
-	{ 2, 2, 2, 2, 2, 2, 4, 0},
-	{ 2, 2, 2, 2, 2, 2, 2, 2},
-	/* Below are the MPPA-160 specific configs */
-	{ 8, 0, 0, 0, 8, 0, 0, 0},
-	{ 4, 0, 0, 0, 8, 0, 4, 0},
-	{ 4, 0, 0, 0, 8, 0, 2, 2},
-	{ 2, 0, 0, 0, 8, 2, 4, 0},
-	{ 2, 0, 0, 0, 8, 2, 2, 2},
-};
-
 static int pcie_nb_lane = PCIE_NBLANE_UNINIT;
+module_param(pcie_nb_lane, int, 0444);
+MODULE_PARM_DESC(pcie_nb_lane, "Number of lanes to use (2/4/8/16)");
 
-/**
- * pci_nb_lane_setup - read command line parameter
- *
- * This option allows to override the number of lanes used.
- * This might be usefull when a BP04 is being used.
- * As the number of lanes cannot be detected at runtime on this board,
- * setting this parameter allows to limit the number of lanes used
- * while still keeping a clean device tree for production
- * configuration.
- *
- */
-static int __init parse_pcie_nb_lane_setup(char *arg)
-{
-	int nb_lane;
-
-	if (get_option(&arg, &nb_lane)) {
-		pcie_nb_lane = nb_lane;
-		return 0;
-	}
-
-	return -EINVAL;
-}
-early_param("pcie_nb_lane", parse_pcie_nb_lane_setup);
-
-static int pcie_probe_timeout = 10; /* should be set to 600 for Flashbox */
-static int __init parse_pcie_probe_timeout(char *arg)
-{
-	int probe_timeout;
-
-	if (get_option(&arg, &probe_timeout)) {
-		pcie_probe_timeout = probe_timeout;
-		return 0;
-	}
-
-	return -EINVAL;
-}
-early_param("pcie_probe_timeout", parse_pcie_probe_timeout);
+static int pcie_probe_timeout = 10;
+module_param(pcie_probe_timeout, int, 0444);
+MODULE_PARM_DESC(pcie_probe_timeout,
+		"Timeout for link up (100ms unit)");
 
 static void handle_aer_irq(struct nwl_pcie *pcie);
 static void nwl_pcie_aer_init(struct nwl_pcie *pcie, struct pci_bus *bus);
@@ -1035,15 +964,14 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 		bar_decoder_init(bar_decoder);
 	}
 
-	/* use nfurcation to deduce the max number of lane */
-	nfurc = kvx_phycore_readl(pcie->phycore_regmap,
-				  KVX_PCIE_PHY_CORE_NFURC_OFFSET);
-	if (nfurc > ARRAY_SIZE(nfurc_ctrl_lanes)) {
-		dev_err(dev, "Unkown n-furcation %d\n", nfurc);
-		return -EINVAL;
+	max_nb_lane = pcie_subsys_get_ctrl_lanes(
+			pcie->phycore_regmap, pcie->ctrl_num);
+	if (max_nb_lane < 0) {
+		dev_err(dev,
+			"Could not read nfurcation mode from phycore\n"
+		       );
+		max_nb_lane = 0;
 	}
-	dev_info(dev, "Active nfurcation is : %u\n", nfurc);
-	max_nb_lane = nfurc_ctrl_lanes[nfurc][pcie->ctrl_num];
 
 	if (max_nb_lane == 0) {
 		dev_err(dev, "The PCIe RC %d cannot be used with nfurcation %d\n",
@@ -1090,6 +1018,7 @@ static const struct of_device_id nwl_pcie_of_match[] = {
 	{ .compatible = "kalray,kvx-pcie-rc", },
 	{}
 };
+MODULE_DEVICE_TABLE(of, nwl_pcie_of_match);
 
 static int nwl_pcie_probe(struct platform_device *pdev)
 {
@@ -1357,6 +1286,19 @@ static void nwl_pcie_aer_init(struct nwl_pcie *pcie, struct pci_bus *bus)
 	nwl_core_writel(pcie, 0xFFFFFFFF, CSR_TLB_DL_STAT);
 }
 
+static int nwl_pcie_remove(struct platform_device *pdev)
+{
+	struct nwl_pcie *pcie = platform_get_drvdata(pdev);
+	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(pcie);
+
+	pci_lock_rescan_remove();
+	pci_stop_root_bus(bridge->bus);
+	pci_remove_root_bus(bridge->bus);
+	pci_unlock_rescan_remove();
+	irq_domain_remove(pcie->legacy_irq_domain);
+	return 0;
+}
+
 static struct platform_driver nwl_pcie_driver = {
 	.driver = {
 		.name = "nwl-pcie",
@@ -1364,177 +1306,8 @@ static struct platform_driver nwl_pcie_driver = {
 		.of_match_table = nwl_pcie_of_match,
 	},
 	.probe = nwl_pcie_probe,
+	.remove = nwl_pcie_remove,
 };
-builtin_platform_driver(nwl_pcie_driver);
-
-static inline u32 sram_ctrl_bypass_offset(int phy_num)
-{
-	u32 offset = KVX_PCIE_PHY_CORE_SRAM_CTRL_OFFSET +
-		     KVX_PCIE_PHY_CORE_SRAM_CTRL_BYPASS_OFFSET;
-	offset += phy_num * KVX_PCIE_PHY_CORE_SRAM_CTRL_ELEM_SIZE;
-
-	return offset;
-}
-
-static inline u32 sram_ctrl_load_done_offset(int phy_num)
-{
-	u32 offset = KVX_PCIE_PHY_CORE_SRAM_CTRL_OFFSET +
-		KVX_PCIE_PHY_CORE_SRAM_CTRL_LOAD_DONE_OFFSET;
-	offset += phy_num * KVX_PCIE_PHY_CORE_SRAM_CTRL_ELEM_SIZE;
-
-	return offset;
-}
-
-static int pcie_overide_fsbl_settings(struct platform_device *pdev)
-{
-	int i;
-	int ret;
-	u32 mask;
-	u32 nfurc;
-	u64 offset;
-	struct regmap *ftu;
-	struct regmap *phycore;
-
-	ftu = NULL;
-	ret = of_property_read_u32(pdev->dev.of_node,
-				   "kalray,ovrd-nfurc", &nfurc);
-	if (ret != 0)
-		nfurc = INVALID_NFURC;
-
-	phycore = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
-						  PHYCORE_REGMAP_NAME);
-	if (IS_ERR(phycore)) {
-		ret = PTR_ERR(phycore);
-		return ret;
-	}
-
-	ftu = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
-					      KVX_FTU_NAME);
-	if (IS_ERR(ftu)) {
-		ret = PTR_ERR(ftu);
-		return ret;
-	}
-
-	/**
-	 * Override and disable PCIE auto
-	 * Force PHY reset
-	 * Force CSR reset
-	 */
-	mask = 0;
-	mask |= BIT(KVX_FTU_PCIE_AUTO_OVRD_SHIFT); /* override */
-	mask &= ~BIT(KVX_FTU_PCIE_AUTO_SHIFT); /* disable auto */
-	mask &= ~BIT(KVX_FTU_PCIE_CSR_RESETN_SHIFT); /* reset CSR */
-	mask &= ~BIT(KVX_FTU_PCIE_PHY_RESETN_SHIFT); /* reset PHY*/
-	ftu_writel(ftu, mask, KVX_FTU_PCIE_RESET_CTRL);
-
-	/* release CSR or phy core registers cannot be accessed */
-	mask |= BIT(KVX_FTU_PCIE_CSR_RESETN_SHIFT); /* reset CSR */
-	ftu_writel(ftu, mask, KVX_FTU_PCIE_RESET_CTRL);
-
-	/**
-	 * Disable LTSSM on all cores.
-	 * This is required in order for PHY link equalization start
-	 * only once the PCIe core has been properly configured. This
-	 * include parameters such as link width, link speed ...
-	 */
-	offset = KVX_PCIE_PHY_CORE_CTRL_OFFSET +
-		KVX_PCIE_PHY_CORE_CTRL_LTSSM_DISABLE_OFFSET;
-	for (i = 0; i < NB_CORE_CTRL; i++) {
-		kvx_phycore_writel(phycore, 1, offset);
-		offset += KVX_PCIE_PHY_CORE_CTRL_ELEM_SIZE;
-	}
-
-	/* Change default n-furcation setting if user specified one */
-	if (nfurc != INVALID_NFURC) {
-		kvx_phycore_writel(phycore, nfurc,
-				   KVX_PCIE_PHY_CORE_NFURC_OFFSET);
-	}
-
-	/**
-	 * Ensure phy reset is driven by the FTU
-	 * (The PCIe core will remain in reset as long as phy are
-	 * in reset)
-	 */
-	offset = KVX_PCIE_PHY_CORE_PHY_RST_OFFSET +
-		KVX_PCIE_PHY_CORE_PHY_RST_OVRD_OFFSET;
-	kvx_phycore_writel(phycore, 0, offset);
-
-	/* Ensure the PHY status drive core reset */
-	offset = KVX_PCIE_PHY_CORE_CTRL_ENGINE_OFFSET +
-		KVX_PCIE_PHY_CORE_CTRL_ENGINE_OVRD_OFFSET;
-	kvx_phycore_writel(phycore, 0, offset);
-
-	/* Use PHY configuration from ROM (bypass SRAM) */
-	for (i = 0; i < NB_PHY; i++) {
-		kvx_phycore_writel(phycore, 1, sram_ctrl_bypass_offset(i));
-		kvx_phycore_writel(phycore, 1, sram_ctrl_load_done_offset(i));
-	}
-
-	/**
-	 * It is safe to release PHY reset immediatelly because the
-	 * LTSSM has been disabled on all pcie core, thus equalization
-	 * will not start immediatelly but only once the core
-	 * configuration has been completed by the driver
-	 */
-	mask |=	BIT(KVX_FTU_PCIE_PHY_RESETN_SHIFT);
-	ftu_writel(ftu, mask, KVX_FTU_PCIE_RESET_CTRL);
-
-	return 0;
-}
-
-static int pcie_subsys_probe(struct platform_device *pdev)
-{
-	void __iomem *pcie_subsys;
-	struct resource *res;
-	u32 dame;
-	u32 phy_rst;
-	int ret;
-
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "pcie_subsys");
-	pcie_subsys = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(pcie_subsys))
-		return PTR_ERR(pcie_subsys);
-
-	ret = of_property_read_u32(pdev->dev.of_node, "kalray,disable-dame",
-				   &dame);
-	if (ret == 0) {
-		if (dame == 0)
-			writel(ENABLE_SLAVE_ERR,
-				pcie_subsys + PCIE_SUBSYS_SLAVE_ERR);
-		else
-			writel(DISABLE_SLAVE_ERR,
-				pcie_subsys + PCIE_SUBSYS_SLAVE_ERR);
-
-		dev_info(&pdev->dev, "disable_dame: %s\n",
-			 dame == 0 ? "false" : "true");
-	}
-
-	ret = of_property_read_u32(pdev->dev.of_node, "kalray,force-phy-rst",
-				   &phy_rst);
-	if (ret != 0)
-		phy_rst = 0;
-
-	if (phy_rst) {
-		ret = pcie_overide_fsbl_settings(pdev);
-		if (ret != 0)
-			return ret;
-	}
-
-	return devm_of_platform_populate(&pdev->dev);
-}
-
-static const struct of_device_id subsys_pcie_of_match[] = {
-	{ .compatible = "kalray,subsys-pcie", },
-	{}
-};
-
-static struct platform_driver kvx_subsys_pcie_driver = {
-	.driver = {
-		.name = "kvx-subsys-pcie",
-		.suppress_bind_attrs = true,
-		.of_match_table = subsys_pcie_of_match,
-	},
-	.probe = pcie_subsys_probe,
-};
-builtin_platform_driver(kvx_subsys_pcie_driver);
-
+module_platform_driver(nwl_pcie_driver);
+MODULE_DESCRIPTION("Kalray PCIe root complex");
+MODULE_LICENSE("GPL v2");
