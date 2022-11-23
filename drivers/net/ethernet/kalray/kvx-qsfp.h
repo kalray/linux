@@ -198,18 +198,80 @@ struct kvx_qsfp_param_capability {
 	bool force_update;
 };
 
-
-struct kvx_qsfp_eeprom_cache {
-	u8 lower_page0[EEPROM_PAGE_SIZE];
-	u8 upper_page0[EEPROM_PAGE_SIZE];
-} __packed;
-
-
 struct kvx_qsfp_ops {
 	void (*connect)(struct kvx_qsfp *qsfp);
 	void (*disconnect)(struct kvx_qsfp *qsfp);
 };
 
+struct kvx_qsfp_interrupt_flags {
+	u8 los; /* Rx/Tx LOS indicator */
+	u8 fault; /* Tx fault indicator  */
+	u8 lol; /* Rx/Tx LOL indicator  */
+	u8 temp_alarm; /* Temperature alarm/warning */
+	u8 vcc; /* suply voltage alarm/warning  */
+	u8 vendor1; /* vendor specific */
+	u8 rx_power[2]; /* Rx power alarm/warning */
+	u8 tx_bias[2]; /* Tx bias alarm/warning */
+	u8 tx_power[2]; /* Tx power alarm/warning */
+	u8 reserved[4]; /* reserved channel monitor flags */
+	u8 vendor2[3]; /* vendor specific */
+} __packed;
+
+struct kvx_qsfp_device_flags_mask {
+	/* device flags masks: page 0 offset 100 */
+	u8 rx_tx_los; /* Rx LOS - Tx LOS */
+	u8 tx_fault_adapt; /* Tx Transmitter Fault - Tx Adapt EQ Fault  */
+	u8 rx_tx_cdr_lol; /* Rx CDR LOL - Tx CDR LOL */
+	u8 readiness_temp; /* TC readiness - Temp warning/alarm */
+	u8 vcc; /* Vcc alarm/warning */
+	u8 vendor[2]; /* vendor specific */
+} __packed;
+
+struct kvx_qsfp_channel_flags_mask {
+	/* channel flags masks: page 3 offset 242 */
+	u8 rx_power[2]; /* Rx power warning/alarm */
+	u8 tx_bias[2]; /* Tx bias warning/alarm */
+	u8 tx_power[2]; /* Tx power warning/alarm */
+	u8 reserved[4]; /* reserved */
+} __packed;
+
+struct kvx_qsfp_eeprom_cache {
+	/* lower page 0 */
+	u8 id[3];
+	struct kvx_qsfp_interrupt_flags int_flags;
+	u8 device_monitors[12];
+	u8 channel_monitors[48];
+	u8 reserved0[4];
+	u8 control[14];
+	struct kvx_qsfp_device_flags_mask int_flags_mask;
+	u8 device_properties0[4];
+	u8 pcie[2];
+	u8 device_properties1[4];
+	u8 reserved1[2];
+	u8 pwd_change[4];
+	u8 pwd_entry[4];
+	u8 page_select;
+
+	/* upper page 0 */
+	u8 identifier;
+	u8 base_id[63];
+	u8 extended_id[32];
+	u8 vendor_id[32];
+
+	/* page 01h (optional) */
+	u8 sff8079[128];
+
+	/* page 02h (optional) */
+	u8 user_data[128];
+
+	/* page 03h (optional) */
+	u8 device_thresholds[48];
+	u8 channel_thresholds[48];
+	u8 txeq_rxout[6];
+	u8 channel_controls[12];
+	struct kvx_qsfp_channel_flags_mask channel_monitor_mask;
+	u8 reserved2[4];
+} __packed;
 
 /** struct kvx_qsfp - QSFP driver private data
  * @dev: device structure
@@ -221,8 +283,7 @@ struct kvx_qsfp_ops {
  * @max_power_mW: max power parsed from DT
  * @current_page: current page of the eeprom
  * @module_flat_mem: true if eeprom module is flat
- * @eeprom_cache: copy of eeprom page 0 offset 128-255
- * @int_flags: interrupt flags (page 0 offset 3)
+ * @eeprom: copy of eeprom
  * @qsfp_poll: struct for polling interrupt flags
  * @modprs_irq_task: task that sends event for IRQ mod-def0
  * @sm_mutex: protects state machine
@@ -244,8 +305,7 @@ struct kvx_qsfp {
 	struct kvx_qsfp_param *param;
 	u32 max_power_mW;
 	bool module_flat_mem;
-	struct kvx_qsfp_eeprom_cache eeprom_cache;
-	u8 int_flags[QSFP_INT_FLAGS_LEN];
+	struct kvx_qsfp_eeprom_cache eeprom;
 	struct work_struct sm_task;
 	u8 sm_state;
 	struct completion sm_s_ready;
