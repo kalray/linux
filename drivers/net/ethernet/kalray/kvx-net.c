@@ -55,11 +55,9 @@
 /* **Sensitive** delay between link cfg done and actual link up status from HW */
 #define LINK_POLL_TIMER_IN_MS     500
 #define CHECK_LINK_DURATION_IN_MS 100
-#define REFILL_THRES              1
 
 #define KVX_TEST_BIT(name, bitmap)  test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, bitmap)
 
-#define RING_INC(r, i) do { i++; i = (i < r->count) ? i : 0; } while (0)
 
 static bool load_phy_fw = true;
 module_param(load_phy_fw, bool, 0);
@@ -124,6 +122,18 @@ static const char *pause_to_str(int pause)
 	}
 }
 
+static void RING_INC(struct kvx_eth_ring *r, unsigned int *v)
+{
+	/* Barrier for concurrent accesses */
+	unsigned int val = smp_load_acquire(v);
+	unsigned int ret, new, max = r->count - 1;
+
+	do {
+		new = ((val == max) ? 0 : val + 1);
+		ret = arch_cmpxchg(v, val, new);
+	} while (ret != val);
+}
+
 /* kvx_eth_desc_unused() - Gets the number of remaining unused buffers in ring
  * @r: Current ring
  *
@@ -131,15 +141,19 @@ static const char *pause_to_str(int pause)
  */
 int kvx_eth_desc_unused(struct kvx_eth_ring *r)
 {
-	if (r->next_to_clean > r->next_to_use)
+	/* Potential concurrent access (completion handler vs rx buffer refill) */
+	unsigned int clean = smp_load_acquire(&r->next_to_clean);
+	unsigned int use = READ_ONCE(r->next_to_use);
+
+	if (clean > use)
 		return 0;
-	return (r->count - (r->next_to_use - r->next_to_clean + 1));
+	return (r->count - (use - clean + 1));
 }
 
 static void kvx_eth_reset_ring(struct kvx_eth_ring *r)
 {
-	r->next_to_use = 0;
-	r->next_to_clean = 0;
+	WRITE_ONCE(r->next_to_use, 0);
+	WRITE_ONCE(r->next_to_clean, 0);
 }
 
 static struct netdev_queue *get_txq(const struct kvx_eth_ring *ring)
@@ -539,7 +553,7 @@ static int kvx_eth_clean_tx_irq(struct kvx_eth_ring *txr)
 
 		netdev_tx_completed_queue(get_txq(txr), 1, tx->len);
 		memset(tx, 0, sizeof(*tx));
-		RING_INC(txr, tx_r);
+		tx_r = ((tx_r >= txr->count - 1) ? 0 : tx_r + 1);
 
 		if (tx_r == txr->next_to_use)
 			break;
@@ -548,7 +562,8 @@ static int kvx_eth_clean_tx_irq(struct kvx_eth_ring *txr)
 	       comp = kvx_dma_get_tx_completed(ndev->dma_cfg.pdev,
 					       txr->dma_chan);
 	}
-	txr->next_to_clean = tx_r;
+	/* Barrier for concurrent access */
+	smp_store_mb(txr->next_to_clean, tx_r);
 
 	if (netif_carrier_ok(netdev) &&
 	    __netif_subqueue_stopped(netdev, txr->qidx))
@@ -712,8 +727,7 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 	skb_tx_timestamp(skb);
 	kvx_dma_submit_pkt(txr->dma_chan, tx->job_idx, tx->sg_len);
 
-	RING_INC(txr, tx_w);
-	txr->next_to_use = tx_w;
+	RING_INC(txr, &txr->next_to_use);
 
 	unused_tx = kvx_eth_desc_unused(txr);
 	if (unlikely(unused_tx == 0))
@@ -734,13 +748,14 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
 	struct net_device *netdev = rxr->netdev;
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
-	u32 unused_desc = kvx_eth_desc_unused(rxr);
 	u32 rx_w = rxr->next_to_use;
 	struct kvx_qdesc *qdesc;
 	struct page *p;
 	int ret = 0;
 
-	while (--unused_desc < rxr->count && count--) {
+	netdev_dbg(netdev, "%s: %d buf (rx_r: %d rx_w: %d\n", __func__,
+		    count, rxr->next_to_clean, rxr->next_to_use);
+	while (count--) {
 		qdesc = &rxr->pool.qdesc[rx_w];
 
 		if (!qdesc->dma_addr) {
@@ -753,6 +768,10 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
 			qdesc->va = p;
 			qdesc->dma_addr = page_pool_get_dma_addr(p) +
 				KVX_RX_HEADROOM;
+		} else {
+			netdev_err(netdev, "dma_addr != NULL rx chan[%d] desc id: %d\n",
+				   dma_cfg->rx_chan_id.start + rxr->qidx, rx_w);
+			break;
 		}
 		ret = kvx_dma_enqueue_rx_buffer(rxr->rx_jobq,
 					  qdesc->dma_addr, KVX_MAX_RX_BUF_SIZE);
@@ -762,9 +781,16 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
 			break;
 		}
 
-		RING_INC(rxr, rx_w);
+		rx_w = ((rx_w >= rxr->count - 1) ? 0 : rx_w + 1);
+		if (rx_w == rxr->next_to_clean) {
+			netdev_warn(netdev, "!! %s rx_r == rx_w == %d\n", __func__, rx_w);
+			break;
+		}
 	}
-	rxr->next_to_use = rx_w;
+	/* Concurrent access */
+	smp_store_mb(rxr->next_to_use, rx_w);
+	netdev_dbg(netdev, "END %s: %d buf (rx_r: %d rx_w: %d) unused: %d\n", __func__,
+		    count, rxr->next_to_clean, rxr->next_to_use, kvx_eth_desc_unused(rxr));
 }
 
 /**
@@ -879,6 +905,11 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 	int rx_count = 0;
 	int ret = 0;
 
+	if (rx_r ==  rxr->next_to_use) {
+		netdev_warn(netdev, "!! %s rx_r == rx_w == %d\n",
+			    __func__, rxr->next_to_use);
+		return work_done;
+	}
 	while (!kvx_dma_get_rx_completed(dma_cfg->pdev, rxr->dma_chan, &pkt)) {
 		work_done++;
 
@@ -890,15 +921,14 @@ static int kvx_eth_clean_rx_irq(struct napi_struct *napi, int work_left)
 			rxr->skb = NULL;
 		}
 
-		kvx_eth_alloc_rx_buffers(rxr, 1);
-		RING_INC(rxr, rx_r);
-
+		rx_r = ((rx_r >= rxr->count - 1) ? 0 : rx_r + 1);
 		if (work_done >= work_left)
 			break;
 	}
-	rxr->next_to_clean = rx_r;
+	/* Concurrent access */
+	smp_store_mb(rxr->next_to_clean, rx_r);
 	rx_count = kvx_eth_desc_unused(rxr);
-	if (rx_count > REFILL_THRES)
+	if (rx_count > (2 * rxr->count) / 3)
 		kvx_eth_alloc_rx_buffers(rxr, rx_count);
 
 	return work_done;
@@ -1124,8 +1154,10 @@ static void kvx_eth_release_rx_pool(struct kvx_eth_ring *r)
 		if (qdesc)
 			page_pool_release_page(r->pool.pagepool,
 					       (struct page *)(qdesc->va));
-		RING_INC(r, rx_r);
+		rx_r = ((rx_r >= r->count - 1) ? 0 : rx_r + 1);
 	}
+	/* Concurrent access */
+	smp_store_mb(r->next_to_clean, rx_r);
 	page_pool_destroy(r->pool.pagepool);
 	kfree(r->pool.qdesc);
 }
@@ -1657,7 +1689,7 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 
 	if (of_property_read_u32_array(np, "kalray,default-dispatch-entry",
 				(u32 *)&ndev->cfg.default_dispatch_entry, 1))
-	     ndev->cfg.default_dispatch_entry = KVX_ETH_DEFAULT_RULE_DTABLE_IDX;
+		ndev->cfg.default_dispatch_entry = KVX_ETH_DEFAULT_RULE_DTABLE_IDX;
 
 	if (of_property_read_u32(np, "kalray,lane", &ndev->cfg.id)) {
 		dev_err(ndev->dev, "Unable to get lane\n");
