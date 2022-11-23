@@ -100,9 +100,9 @@ struct kvx_eth_ring {
 	};
 	struct napi_struct napi;
 	struct sk_buff *skb;
-	u16 count;
-	u16 next_to_use;
-	u16 next_to_clean;
+	unsigned int count;
+	unsigned int next_to_use;
+	unsigned int next_to_clean;
 	int qidx;
 	bool init_done;
 	enum rx_ring_type type;
