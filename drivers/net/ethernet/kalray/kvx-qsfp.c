@@ -200,7 +200,7 @@ static int update_eeprom_cache(struct kvx_qsfp *qsfp, unsigned int offset, size_
 {
 	int ret;
 
-	ret = i2c_rw(qsfp, i2c_read, (u8 *)&qsfp->eeprom_cache + offset,
+	ret = i2c_rw(qsfp, i2c_read, (u8 *)&qsfp->eeprom + offset,
 		     0, offset, len);
 	if (ret != len)
 		dev_err(qsfp->dev, "eeprom cache update failed: offset=%d len=%lu\n",
@@ -210,7 +210,7 @@ static int update_eeprom_cache(struct kvx_qsfp *qsfp, unsigned int offset, size_
 
 static bool is_eeprom_cache_updated(struct kvx_qsfp *qsfp)
 {
-	u8 *cache = (u8 *)&qsfp->eeprom_cache;
+	u8 *cache = (u8 *)&qsfp->eeprom;
 
 	return cache[SFP_IDENTIFIER_OFFSET] != 0;
 }
@@ -231,7 +231,7 @@ static bool is_qsfp_ready_state(struct kvx_qsfp *qsfp)
 
 static u8 eeprom_cache_readb(struct kvx_qsfp *qsfp, unsigned int offset)
 {
-	u8 val, *cache = (u8 *)&qsfp->eeprom_cache;
+	u8 val, *cache = (u8 *)&qsfp->eeprom;
 	int ret;
 
 	/* if eeprom cache not initialized yet, read byte on i2c */
@@ -259,7 +259,7 @@ static u8 eeprom_cache_readb(struct kvx_qsfp *qsfp, unsigned int offset)
 int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page,
 			 unsigned int offset, size_t len)
 {
-	u8 *cache = (u8 *)&qsfp->eeprom_cache;
+	u8 *cache = (u8 *)&qsfp->eeprom;
 	unsigned int last = offset + len;
 	int ret = 0;
 	size_t l;
@@ -470,8 +470,8 @@ EXPORT_SYMBOL_GPL(kvx_qsfp_module_info);
 static void update_interrupt_flags(struct kvx_qsfp *qsfp)
 {
 	int ret;
-	u8 *flags = qsfp->int_flags;
-	int l = sizeof(qsfp->int_flags);
+	u8 *flags = (u8 *)&qsfp->eeprom.int_flags;
+	int l = sizeof(qsfp->eeprom.int_flags);
 
 	if (!qsfp->i2c)
 		return;
@@ -568,7 +568,7 @@ bool is_cable_passive_copper(struct kvx_qsfp *qsfp)
 static void kvx_qsfp_print_module_status(struct kvx_qsfp *qsfp)
 {
 	u8 *oui, sfp_status;
-	u8 *ee = (u8 *) &qsfp->eeprom_cache;
+	u8 *ee = (u8 *) &qsfp->eeprom;
 
 	oui = &ee[SFF8636_VENDOR_OUI_OFFSET];
 	sfp_status = ee[SFP_STATUS];
@@ -1044,7 +1044,7 @@ static int kvx_qsfp_init(struct kvx_qsfp *qsfp)
 {
 	int ret;
 	u8 val, sts[2];
-	size_t cache_size = sizeof(qsfp->eeprom_cache);
+	size_t cache_size = sizeof(qsfp->eeprom);
 
 	mutex_lock(&qsfp->i2c_lock);
 
@@ -1111,7 +1111,7 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		qsfp->modprs_change = false;
 
 		/* reinit eeprom cache */
-		memset(&qsfp->eeprom_cache, 0, sizeof(qsfp->eeprom_cache));
+		memset(&qsfp->eeprom, 0, sizeof(qsfp->eeprom));
 
 		/* calling either connect/disconect callback */
 		if (qsfp->ops) {
@@ -1144,6 +1144,8 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 	case QSFP_S_RESET:
 		if (!is_cable_connected(qsfp))
 			return QSFP_S_DOWN;
+		/* reinit eeprom cache */
+		memset(&qsfp->eeprom, 0, sizeof(qsfp->eeprom));
 		kvx_qsfp_reset(qsfp);
 		fallthrough;
 	case QSFP_S_INIT:
