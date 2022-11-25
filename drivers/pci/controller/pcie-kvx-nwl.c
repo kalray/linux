@@ -1291,6 +1291,7 @@ static int nwl_pcie_remove(struct platform_device *pdev)
 	struct nwl_pcie *pcie = platform_get_drvdata(pdev);
 	struct pci_host_bridge *bridge = pci_host_bridge_from_priv(pcie);
 
+	sysfs_remove_groups(&pcie->dev->kobj, aer_dbg_attr_groups);
 	pci_lock_rescan_remove();
 	pci_stop_root_bus(bridge->bus);
 	pci_remove_root_bus(bridge->bus);
