@@ -2,8 +2,11 @@
 
 Required properties:
 
-- compatible        : must be the following string:
-			"kalray,kvx-iommu"
+- compatible        : must be one of the following string:
+			"kalray,kvx-iommu" (deprecated)
+			"kalray,coolidge-iommu"
+			"kalray,coolidge-pcie-iommu-mst"
+			"kalray,coolidge-v2-pcie-iommu-mst"
 - reg               : Base address and size of the IOMMU.
 - interrupts        : List describing the wired interrupt sources.
 - interrupt-names   : To be described
@@ -18,7 +21,7 @@ Optional properties:
 
 Example:
     iommu_noc: iommu_noc@0 {
-        compatible = "kalray,kvx-iommu";
+        compatible = "kalray,coolidge-iommu";
         reg = <0x0 0x00AC2000 0x0 0x00000240>,
               <0x0 0x00AC3000 0x0 0x00000240>;
         reg-names = "rx", "tx";
@@ -63,7 +66,7 @@ Example with a PCI device:
 Example with a firmware initializes before the probe:
 
     iommu_cluster: iommu_cluster@0 {
-        compatible = "kalray,kvx-iommu";
+        compatible = "kalray,coolidge-iommu";
         ...
         maybe-initialized;
     };
