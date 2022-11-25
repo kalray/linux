@@ -9,6 +9,7 @@
  *            Julian Vetter
  *            Jérémy Fanguède
  *            Jules Maselbas
+ *            Pierre-Yves Kerbrat
  */
 
 #include <linux/device.h>
@@ -224,15 +225,17 @@ struct kvx_iommu_hw {
  * struct kvx_iommu_group - KVX IOMMU group
  * @list: used to link list
  * @group: the generic IOMMU group
+ * @iommu_drvdata: the iommu driver data
  * @asn: ASN associated to the group
  *
- * As we want to have on ASN per device associated to the IOMMU we will have
+ * As we want to have one ASN per device associated to the IOMMU we will have
  * one group per device. This structure is used to link all groups associated
  * to the IOMMU device.
  */
 struct kvx_iommu_group {
 	struct list_head list;
 	struct iommu_group *group;
+	struct kvx_iommu_drvdata *iommu_drvdata;
 	u32 asn;
 };
 
@@ -1564,6 +1567,16 @@ static phys_addr_t kvx_iommu_iova_to_phys(struct iommu_domain *domain,
 	return 0;
 }
 
+static void kvx_iommu_group_release(void *iommu_data)
+{
+	struct kvx_iommu_group *group = iommu_data;
+	struct kvx_iommu_drvdata *iommu_drvdata = group->iommu_drvdata;
+
+	mutex_lock(&iommu_drvdata->lock);
+	list_del(&group->list);
+	mutex_unlock(&iommu_drvdata->lock);
+}
+
 /**
  * kvx_iommu_device_group() - return the IOMMU group for a device
  * @dev: the device
@@ -1604,13 +1617,19 @@ static struct iommu_group *kvx_iommu_device_group(struct device *dev)
 
 	INIT_LIST_HEAD(&group->list);
 	group->asn = fwspec->ids[0];
-	group->group = iommu_group_alloc();
+	group->iommu_drvdata = iommu_dev;
+	if (dev_is_pci(dev))
+		group->group = pci_device_group(dev);
+	else
+		group->group = generic_device_group(dev);
+
 	if (IS_ERR(group->group)) {
 		devm_kfree(iommu_dev->dev, group);
 		mutex_unlock(&iommu_dev->lock);
 		dev_err(dev, "failed to allocate group for device");
 		return NULL;
 	}
+	iommu_group_set_iommudata(group->group, group, kvx_iommu_group_release);
 
 	list_add_tail(&group->list, &iommu_dev->groups);
 	mutex_unlock(&iommu_dev->lock);
