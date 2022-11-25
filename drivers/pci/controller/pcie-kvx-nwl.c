@@ -33,7 +33,6 @@
 #include "pcie-kvx-nwl.h"
 #include "pcie-kvx-phycore.h"
 
-#define ASN_DEFAULT			0
 #define INVALID_NFURC			0xFFFFFFFF
 #define NB_CORE_CTRL			8
 #define NB_PHY				4
@@ -43,11 +42,7 @@
 #define MAX_EGRESS_TRANSLATION		8
 #define PROG_ID_SHIFT			8
 
-/* Kalray controllers */
-#define MODE_RC				1
 #define CTRL_NUM_MAX			7
-#define RC_X16_ASN_OFFSET		0x400
-#define MODE_EP_RC_OFFSET		0x420
 
 /* Bridge core config registers */
 #define BRCFG_PCIE_RX0			0x00000000
@@ -209,7 +204,6 @@ extern int pcie_subsys_get_ctrl_lanes(struct regmap *phycore, int ctrl_id);
  * @phys_breg_base: Physical address Bridge Registers
  * @phys_csr_reg_base: Physical address CSR register
  * @phys_ecam_base: Physical Configuration Base
- * @mst_asn_regmap: Map to root complex ASN register
  * @phycore_regmap: Map to phycore registers
  * @bridge: Pointer to host bridge structure
  * @ctrl_num: index of controller from 0 up to 7
@@ -233,7 +227,6 @@ struct nwl_pcie {
 	phys_addr_t phys_breg_base;
 	phys_addr_t phys_csr_reg_base;
 	phys_addr_t phys_ecam_base;
-	struct regmap *mst_asn_regmap;
 	struct regmap *phycore_regmap;
 	struct pci_host_bridge *bridge;
 	u32 ctrl_num;
@@ -572,43 +565,6 @@ static void csr_pcie_lane_cfg(struct nwl_pcie *pcie)
 
 	nwl_core_writel(pcie, ltssm_rx_det, CSR_TLB_LTSSM_RX_DET);
 	nwl_core_writel(pcie, initial, CSR_FTL_INITIAL);
-}
-
-static int pcie_asn_init(struct nwl_pcie *pcie)
-{
-	int ret;
-	u32 rc_offset;
-	u32 num_to_index[] = {0, 4, 2, 5, 1, 6, 3, 7};
-
-	pcie->mst_asn_regmap = syscon_regmap_lookup_by_phandle(
-					pcie->dev->of_node,
-					"kalray,mst-asn-dev");
-
-	BUG_ON(pcie->ctrl_num >= ARRAY_SIZE(num_to_index));
-
-	if (IS_ERR(pcie->mst_asn_regmap)) {
-		ret = PTR_ERR(pcie->mst_asn_regmap);
-		return ret;
-	}
-
-	rc_offset = RC_X16_ASN_OFFSET;
-	rc_offset += sizeof(u32) * num_to_index[pcie->ctrl_num];
-
-	ret = regmap_write(pcie->mst_asn_regmap, rc_offset, ASN_DEFAULT);
-	if (ret) {
-		dev_err(pcie->dev, "regmap_write ASN failed, err = %d\n", ret);
-		return ret;
-	}
-
-	rc_offset = MODE_EP_RC_OFFSET;
-	rc_offset += sizeof(u32) * pcie->ctrl_num;
-	ret = regmap_write(pcie->mst_asn_regmap, rc_offset, MODE_RC);
-	if (ret) {
-		dev_err(pcie->dev, "regmap_write mode failed, err = %d\n", ret);
-		return ret;
-	}
-
-	return 0;
 }
 
 static inline u32 ctrl_ltssm_disable_offset(int num_rc)
@@ -1041,12 +997,6 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 	err = nwl_pcie_parse_dt(pcie, pdev);
 	if (err) {
 		dev_err(dev, "Parsing DT failed\n");
-		return err;
-	}
-
-	err = pcie_asn_init(pcie);
-	if (err) {
-		dev_err(dev, "ASN initialization failed\n");
 		return err;
 	}
 
