@@ -101,6 +101,24 @@
 #define KVX_IOMMU_ASSOCIATION_TABLE_OFFSET 0x400
 #define KVX_IOMMU_ASSOCIATION_TABLE_SIZE   0x200
 
+/* PCIE_MST_IOMMU_V2 */
+#define ASN_BDF_OFFSET                  0x0
+#define ASN_BDF_SIZE                    256
+#define ASN_MODE_OFFSET                 0x400
+#define ASN_MASK                        0x1FF
+#define ASN_MODE_FUN                    0x000
+#define ASN_BDF_ENTRY_SET_BDF(X)        (((X) & 0xFFFF) << 16)
+#define ASN_BDF_ENTRY_GET_BDF(X)        (((X) & 0xFFFF0000UL) >> 16)
+#define ASN_BDF_ENTRY_SET_VALID         BIT(15)
+#define ASN_BDF_ENTRY_ASN(X)            ((X) & ASN_MASK)
+/* PCIE_MST_IOMMU_V1 */
+#define ASN_DEFAULT			0
+#define MODE_RC				1
+/* TODO remove all references to RC controller */
+/* We shouldn't need them in iommu driver */
+#define RC_X16_ASN_OFFSET		0x400
+#define MODE_EP_RC_OFFSET		0x420
+
 /* 40 bits are used for physical addresses and 41 bits for virtual ones */
 #define KVX_IOMMU_ADDR_MASK_PHYS 0xFFFFFF0000000000UL
 #define KVX_IOMMU_ADDR_MASK_VIRT 0xFFFFFE0000000000UL
