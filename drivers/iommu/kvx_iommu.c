@@ -24,6 +24,10 @@
 #include <linux/pci.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/regmap.h>
+#include <linux/bitops.h>
+#include <linux/bitmap.h>
+#include <linux/mfd/syscon.h>
 
 /* Some fields are common between MMU and IOMMU like protection attributes */
 #include <asm/tlb_defs.h>
@@ -31,6 +35,16 @@
 #include "kvx_iommu_defs.h"
 
 static const struct iommu_ops kvx_iommu_ops;
+
+enum kalray_iommu_type {
+	IOMMU,
+	PCIE_IOMMU_MST_CV1,
+	PCIE_IOMMU_MST_CV2,
+};
+
+struct kalray_iommu_match_data {
+	enum kalray_iommu_type type;
+};
 
 /**
  * Operations available on the IOMMU TLB
@@ -248,6 +262,9 @@ struct kvx_iommu_group {
  * @global_pages: Do the mapping as global pages
  * @iommu: the core representation of the IOMMU instance
  * @iommu_hw: hardware IOMMUs managed by the driver
+ * @type: the type of IOMMU read from device tree
+ * @mst_asn_regmap: map to asn_bdf table (only present in PCIe master iommus)
+ * @asn_bdf_bitmap: track entries in asn_bdf table
  */
 struct kvx_iommu_drvdata {
 	struct list_head groups;
@@ -257,6 +274,9 @@ struct kvx_iommu_drvdata {
 	bool global_pages;
 	struct iommu_device iommu;
 	struct kvx_iommu_hw iommu_hw[KVX_IOMMU_NB_TYPE];
+	enum kalray_iommu_type type;
+	struct regmap *mst_asn_regmap;
+	unsigned long asn_bdf_bitmap[BITS_TO_LONGS(ASN_BDF_SIZE)];
 };
 
 /**
@@ -1312,6 +1332,238 @@ static void kvx_iommu_domain_free(struct iommu_domain *domain)
 }
 
 /**
+ * cv2_set_asn_bdf_entry() - set an entry in pcie_iommu_mst asn_bdf table
+ * @iommu: ptr to iommu private driver data
+ * @bdf: 16 bit value encoding bus,device,function of device
+ *       Bits [15:8] are the Bus number.
+ *       Bits [7:3] are the Device number.
+ *       Bits [2:0] are the Function number.
+ * @asn: asn associated to bdf
+ * @entry: index in asn_bdf table
+ *
+ * Return: 0 if success, negative value otherwise
+ */
+static int cv2_set_asn_bdf_entry(struct kvx_iommu_drvdata *iommu, u16 bdf, u16 asn, u8 entry)
+{
+	int ret;
+	u32 offset;
+	u32 val;
+
+	val =  ASN_BDF_ENTRY_SET_BDF(bdf);
+	val |= ASN_BDF_ENTRY_SET_VALID;
+	val |= ASN_BDF_ENTRY_ASN(asn);
+	offset = ASN_BDF_OFFSET;
+	offset += sizeof(u32) * entry;
+	ret = regmap_write(iommu->mst_asn_regmap, offset, val);
+
+	return ret;
+}
+
+/**
+ * cv2_find_asn_bdf_entry() - Look for bdf entry in asn_bdf table
+ * @iommu: ptr to the iommu private driver data
+ * @bdf: the bus:device:function we try to find in table
+ * Return: index of the entry if bdf present in table, -1 otherwise
+ */
+static int cv2_find_asn_bdf_entry(struct kvx_iommu_drvdata *iommu, u16 bdf)
+{
+	int i;
+	u32 offset;
+	u32 val;
+
+	offset = ASN_BDF_OFFSET;
+	for (i = 0; i < ASN_BDF_SIZE; i++) {
+		regmap_read(iommu->mst_asn_regmap, offset, &val);
+		val = ASN_BDF_ENTRY_GET_BDF(val);
+		if (val == bdf)
+			return i;
+		offset += sizeof(u32);
+	}
+
+	return -1;
+}
+
+/**
+ * cv2_set_asn_bdf_mode() - Set the iommu asn generation mode
+ * @drvdata: pointer to iommu private driver data
+ * @mode: asn generation mode
+ *
+ * mode bit i = 0 <-> bit i of asn tag = bit i of axi_master_id.
+ * mode bit i = 1 <-> bit i of asn tag = asn_bdf->asn[i]
+ *
+ * Return: 0 in case of success, negative value otherwise
+ */
+static int cv2_set_asn_bdf_mode(struct kvx_iommu_drvdata *drvdata, u32 mode)
+{
+	int ret;
+	u32 offset;
+
+	offset = ASN_MODE_OFFSET;
+	ret = regmap_write(drvdata->mst_asn_regmap, offset, mode);
+
+	return ret;
+}
+
+/**
+ * cv2_asn_bdf_init() - Configure asn generation for PCIe master IOMMU
+ * @drvdata: pointer to iommu driver data
+ *
+ * Return: 0 in case of success, negative value otherwise
+ */
+static int cv2_asn_bdf_init(struct kvx_iommu_drvdata *drvdata)
+{
+	int ret;
+
+	drvdata->mst_asn_regmap = syscon_regmap_lookup_by_phandle(
+			drvdata->dev->of_node,
+			"kalray,mst-asn-dev");
+
+	if (IS_ERR(drvdata->mst_asn_regmap)) {
+		ret = PTR_ERR(drvdata->mst_asn_regmap);
+		return ret;
+	}
+
+	ret = cv2_set_asn_bdf_mode(drvdata, ASN_MASK);
+	if (ret) {
+		dev_err(drvdata->dev, "setting asn generation mode failed, err = %d\n", ret);
+		return ret;
+	}
+
+	bitmap_zero(drvdata->asn_bdf_bitmap, ASN_BDF_SIZE);
+
+	return 0;
+}
+
+/**
+ * cv1_asn_bdf_init() - Configure asn generation for PCIe master IOMMU
+ * @drvdata: pointer to iommu driver data
+ *
+ * In coolidge v1, there is only one master IOMMU for all 8x PCIe controllers.
+ *
+ * RC0
+ * RC1
+ * ...  -----------> [axi_mux] -> [asn_regs] -> [pcie_iommu_mst] -> mppa
+ * RC6
+ * RC7
+ *
+ * Before arriving to the iommu, axi transactions
+ * emerging from a PCIe controller are tagged with an asn.
+ * Asn generation is programmed via registers placed before iommu
+ *
+ *                             asn_regs                   PCIe_mst_iommu
+ *                   axi_wr(@)          axi_wr(@+asn)
+ * 0001:00.0 -- RC0 ---------->[asn->0]------------->[(ASN:0 PN:0xfff7a FN:@)]
+ *
+ * In root complex mode, there is only one asn register per PCIe controller.
+ *
+ * Return: 0 in case of success, negative value otherwise
+ */
+static int cv1_asn_bdf_init(struct kvx_iommu_drvdata *drvdata)
+{
+	int ctrl_num;
+	int ret;
+	u32 rc_offset;
+	u32 num_to_index[] = {0, 4, 2, 5, 1, 6, 3, 7};
+
+	drvdata->mst_asn_regmap = syscon_regmap_lookup_by_phandle(
+			drvdata->dev->of_node,
+			"kalray,mst-asn-dev");
+
+	if (IS_ERR(drvdata->mst_asn_regmap)) {
+		ret = PTR_ERR(drvdata->mst_asn_regmap);
+		return ret;
+	}
+
+	/**
+	 * Our root complex allow splitting PCIe lanes between
+	 * several controllers using n-furcation.
+	 * Our linux applications use controller (RC0) in 16X lanes configuration
+	 */
+	ctrl_num = 0;
+	BUG_ON(ctrl_num >= ARRAY_SIZE(num_to_index));
+
+	rc_offset = RC_X16_ASN_OFFSET;
+	rc_offset += sizeof(u32) * num_to_index[ctrl_num];
+	ret = regmap_write(drvdata->mst_asn_regmap, rc_offset, ASN_DEFAULT);
+	if (ret) {
+		dev_err(drvdata->dev, "regmap_write ASN failed, err = %d\n", ret);
+		return ret;
+	}
+
+	rc_offset = MODE_EP_RC_OFFSET;
+	rc_offset += sizeof(u32) * ctrl_num;
+	ret = regmap_write(drvdata->mst_asn_regmap, rc_offset, MODE_RC);
+	if (ret) {
+		dev_err(drvdata->dev, "regmap_write mode failed, err = %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+/**
+ * cv2_set_asn_bdf() - set device asn in asn_bdf table
+ * @kvx_domain: iommu domain to attach
+ * @dev: device who needs an asn
+ *
+ * In Coolidge v2 there is one master IOMMU per PCIe controller
+ *
+ *           axi
+ *           RC0 ----->[asn_bdf_table0]->[pcie_iommu_mst0]
+ *           RC1 ----->[asn_bdf_table1]->[pcie_iommu_mst1]
+ *           ...
+ *           RC7 ----->[asn_bdf_table7]->[pcie_iommu_mst7]
+ *
+ * each PCIe Master iommu have a table with 256 entries called asn_bdf[]
+ * which associates an asn to a bdf.
+ *                                          bdf, asn
+ * 0001:00.0 -------+                    [0000:00.0, 0]
+ * 0001:00.0 -------+-Switch-- RC0 ----->[0001:00.0, 1]---->[pcie_iommu_mst0]
+ * 0002:00.0 -------+                    [0002:00.0, 2]
+ *
+ * Before reaching iommu, ingress axi transaction from PCI endpoints are tagged
+ * with the asn programmed in asn_bdf table.
+ *
+ * Return: the asn programmed in asn_bdf table
+ */
+static int cv2_set_asn_bdf(struct kvx_iommu_domain *kvx_domain, struct device *dev)
+{
+	struct kvx_iommu_drvdata *iommu_dev = dev_iommu_priv_get(dev);
+	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
+	u16 bdf;
+	u16 asn;
+	int i;
+	int ret;
+
+	/*
+	 * fwspec->ids[0] = device_id & iommu-map-mask
+	 *                = bdf & iommu-map-mask
+	 * See Documentation/devicetree/bindings/pci/pci-iommu.txt
+	 */
+	bdf = fwspec->ids[0];
+
+	i = cv2_find_asn_bdf_entry(iommu_dev, bdf);
+	if (i == -1) {
+		i = find_first_zero_bit(iommu_dev->asn_bdf_bitmap, ASN_BDF_SIZE);
+		if (i == ASN_BDF_SIZE)
+			return -1;
+	}
+
+	if (kvx_domain->iommu != NULL)
+		asn = kvx_domain->asn[0];
+	else
+		asn = i;
+
+	ret = cv2_set_asn_bdf_entry(iommu_dev, bdf, asn, i);
+	if (ret != 0)
+		return -1;
+
+	set_bit(i, iommu_dev->asn_bdf_bitmap);
+
+	return asn;
+}
+
+/**
  * kvx_iommu_attach_dev() - attach a device to an iommu domain
  * @domain: domain on which we will attach the device
  * @dev: device that holds the IOMMU device
@@ -1329,6 +1581,7 @@ kvx_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 	struct kvx_iommu_drvdata *iommu_dev;
 	unsigned long flags;
 	int i, ret = 0;
+	int asn;
 
 	if (!fwspec || !dev_iommu_priv_get(dev)) {
 		dev_err(dev, "private firmare spec not found\n");
@@ -1339,24 +1592,41 @@ kvx_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 
 	spin_lock_irqsave(&kvx_domain->lock, flags);
 
-	if (kvx_domain->iommu) {
-		if (kvx_domain->iommu == iommu_dev)
-			/* Device already attached */
-			goto out_unlock;
-
-		dev_err(dev, "iommu domain already has a device attached\n");
+	if (kvx_domain->iommu != NULL && kvx_domain->iommu != iommu_dev) {
+		dev_err(dev, "Another iommu already attached to domain\n");
 		ret = -EBUSY;
 		goto out_unlock;
 	}
 
 	if (fwspec->num_ids > ARRAY_SIZE(kvx_domain->asn))
 		dev_warn(dev, "iommu doesn't support more than %zd asn\n",
-			 ARRAY_SIZE(kvx_domain->asn));
+			ARRAY_SIZE(kvx_domain->asn));
+
+	if (iommu_dev->type == PCIE_IOMMU_MST_CV2) {
+		asn = cv2_set_asn_bdf(kvx_domain, dev);
+		if (asn == -1) {
+			dev_err(dev, "could not program asn in iommu asn_bdf table\n");
+			ret = -ENODEV;
+			goto out_unlock;
+		}
+	}
+
+	if (kvx_domain->iommu != NULL)
+		goto out_unlock;
 
 	kvx_domain->iommu = iommu_dev;
-	kvx_domain->num_asn = min_t(unsigned int, fwspec->num_ids, ARRAY_SIZE(kvx_domain->asn));
-	for (i = 0; i < kvx_domain->num_asn; i++)
-		kvx_domain->asn[i] = fwspec->ids[i];
+
+	switch (iommu_dev->type) {
+	case PCIE_IOMMU_MST_CV2:
+		kvx_domain->num_asn = 1;
+		kvx_domain->asn[0] = asn;
+		break;
+	default:
+		kvx_domain->num_asn = min_t(unsigned int, fwspec->num_ids, ARRAY_SIZE(kvx_domain->asn));
+		for (i = 0; i < kvx_domain->num_asn; i++)
+			kvx_domain->asn[i] = fwspec->ids[i];
+		break;
+	}
 
 	list_add_tail(&kvx_domain->list, &iommu_dev->domains);
 
@@ -1647,7 +1917,7 @@ static struct iommu_group *kvx_iommu_device_group(struct device *dev)
  * Return: 0 but needs to return the real translation if needed.
  */
 static int kvx_iommu_of_xlate(struct device *dev,
-			      struct of_phandle_args *spec)
+				struct of_phandle_args *spec)
 {
 	struct platform_device *pdev;
 	int i, ret;
@@ -1696,8 +1966,16 @@ static const struct iommu_ops kvx_iommu_ops = {
 	.of_xlate = kvx_iommu_of_xlate,
 };
 
+static const struct kalray_iommu_match_data iommu = { .type = IOMMU };
+static const struct kalray_iommu_match_data cv1_pcie_iommu_mst = { .type = PCIE_IOMMU_MST_CV1 };
+static const struct kalray_iommu_match_data cv2_pcie_iommu_mst = { .type = PCIE_IOMMU_MST_CV2 };
+
 static const struct of_device_id kvx_iommu_ids[] = {
-	{ .compatible = "kalray,kvx-iommu"},
+	{ .compatible = "kalray,kvx-iommu", .data = &iommu},
+	{ .compatible = "kalray,coolidge-iommu", .data = &iommu},
+	{ .compatible = "kalray,coolidge-v2-iommu", .data = &iommu},
+	{ .compatible = "kalray,coolidge-pcie-iommu-mst", .data = &cv1_pcie_iommu_mst },
+	{ .compatible = "kalray,coolidge-v2-pcie-iommu-mst", .data = &cv2_pcie_iommu_mst },
 	{}, /* sentinel */
 };
 MODULE_DEVICE_TABLE(of, kvx_iommu_ids);
@@ -1814,6 +2092,7 @@ static int kvx_iommu_probe(struct platform_device *pdev)
 {
 	struct device *dev;
 	struct kvx_iommu_drvdata *drvdata;
+	const struct kalray_iommu_match_data *data;
 	unsigned int i, j, ret;
 	bool maybe_init;
 
@@ -1834,6 +2113,29 @@ static int kvx_iommu_probe(struct platform_device *pdev)
 						      "global-pages");
 	if (drvdata->global_pages)
 		dev_dbg(dev, "Map pages with global bit\n");
+
+	data = of_device_get_match_data(dev);
+	if (!data)
+		return -EINVAL;
+
+	drvdata->type = data->type;
+	/* Configure asn generation (pcie master iommus) */
+	switch (drvdata->type) {
+	case PCIE_IOMMU_MST_CV1:
+		ret = cv1_asn_bdf_init(drvdata);
+		break;
+	case PCIE_IOMMU_MST_CV2:
+		ret = cv2_asn_bdf_init(drvdata);
+		break;
+	default:
+		ret = 0;
+		break;
+	}
+
+	if (ret) {
+		dev_err(dev, "failed to initialize PCIe master IOMMU");
+		return ret;
+	}
 
 	maybe_init = of_property_read_bool(dev->of_node,
 			"kalray,maybe-initialized");
@@ -1856,8 +2158,8 @@ static int kvx_iommu_probe(struct platform_device *pdev)
 			char irq_name[32];
 
 			ret = snprintf(irq_name, sizeof(irq_name), "%s_%s",
-				       kvx_iommu_names[i],
-				       kvx_iommu_irq_names[j]);
+					kvx_iommu_names[i],
+					kvx_iommu_irq_names[j]);
 			if (unlikely(ret >= sizeof(irq_name))) {
 				dev_err(dev, "IRQ name %s has been truncated\n",
 					irq_name);
@@ -1870,7 +2172,7 @@ static int kvx_iommu_probe(struct platform_device *pdev)
 
 		/* Configure the IOMMU structure and initialize the HW */
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-						   iommu_hw->name);
+						iommu_hw->name);
 		if (!res) {
 			dev_err(dev, "failed to get IOMMU %s\n",
 				iommu_hw->name);
