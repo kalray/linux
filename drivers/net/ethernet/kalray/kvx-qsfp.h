@@ -24,6 +24,7 @@
 #define EEPROM_LOWER_PAGE0_OFFSET           0
 #define EEPROM_UPPER_PAGE0_OFFSET           128
 #define EEPROM_PAGE_SIZE                    128
+#define EEPROM_PAGE0_SIZE                   256
 #define WAIT_STATE_READY_TIMEOUT_MS         100
 
 #define SFP_IDENTIFIER_OFFSET               0
@@ -57,7 +58,6 @@
 #define SFF8636_STATUS_OFFSET               1
 #define SFF8636_STATUS_DATA_NOT_READY       BIT(0)
 #define SFF8636_STATUS_FLAT_MEM             BIT(2)
-#define SFF8636_TX_DISABLE_OFFSET           86
 #define SFF8636_TX_DISABLE_TX1              BIT(0)
 #define SFF8636_TX_DISABLE_TX2              BIT(1)
 #define SFF8636_TX_DISABLE_TX3              BIT(2)
@@ -65,7 +65,6 @@
 #define SFF8636_RX_RATE_SELECT_OFFSET       87
 #define SFF8636_TX_RATE_SELECT_OFFSET       88
 #define SFF8636_RX_APP_SELECT_OFFSET        89
-#define SFF8636_POWER_OFFSET                93
 #define SFF8636_TX_APP_SELECT_OFFSET        94
 #define SFF8636_TX_CDR_OFFSET               98
 #define SFF8636_MAX_POWER_OFFSET            107
@@ -127,6 +126,9 @@
 #define kvx_qsfp_to_ops_data(qsfp, data_t) ((data_t *)qsfp->ops_data)
 #define kvx_set_mode(bm, mode) __set_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, bm)
 #define kvx_test_mode(addr, mode) test_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, addr)
+#define qsfp_eeprom_offset(member) offsetof(struct kvx_qsfp_eeprom_cache, member)
+#define qsfp_refresh_eeprom(qsfp, m, len) kvx_qsfp_eeprom_refresh(qsfp, qsfp_eeprom_offset(m), len)
+#define qsfp_write_eeprom(qsfp, data, m, len) kvx_qsfp_eeprom_write(qsfp, data, qsfp_eeprom_offset(m), len)
 
 struct kvx_qsfp;
 
@@ -217,6 +219,17 @@ struct kvx_qsfp_interrupt_flags {
 	u8 vendor2[3]; /* vendor specific */
 } __packed;
 
+struct kvx_qsfp_control {
+	u8 tx_disable; /* Tx software disable */
+	u8 rx_rate_select; /* Rx rate select */
+	u8 tx_rate_select; /* Tx rate select */
+	u8 reserved1[4]; /* used for SFF-8079 */
+	u8 power; /* SW reset & power set */
+	u8 reserved2[4]; /* reserved */
+	u8 cdr_control; /* Tx Rx CDR control */
+	u8 sig_control; /* LP/TxDis & IntL/LOSL ctrl */
+} __packed;
+
 struct kvx_qsfp_device_flags_mask {
 	/* device flags masks: page 0 offset 100 */
 	u8 rx_tx_los; /* Rx LOS - Tx LOS */
@@ -242,7 +255,7 @@ struct kvx_qsfp_eeprom_cache {
 	u8 device_monitors[12];
 	u8 channel_monitors[48];
 	u8 reserved0[4];
-	u8 control[14];
+	struct kvx_qsfp_control control;
 	struct kvx_qsfp_device_flags_mask int_flags_mask;
 	u8 device_properties0[4];
 	u8 pcie[2];
@@ -319,9 +332,6 @@ struct kvx_qsfp {
 int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *ee);
 int kvx_qsfp_get_module_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee, u8 *data);
 int kvx_qsfp_set_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee, u8 *data);
-int kvx_qsfp_eeprom_read(struct kvx_qsfp *qsfp, u8 *data, u8 page, unsigned int offset, size_t len);
-int kvx_qsfp_eeprom_write(struct kvx_qsfp *qsfp, u8 *data, u8 page, unsigned int offset, size_t len);
-void kvx_qsfp_reset(struct kvx_qsfp *qsfp);
 bool is_cable_connected(struct kvx_qsfp *qsfp);
 bool is_cable_copper(struct kvx_qsfp *qsfp);
 void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support);
