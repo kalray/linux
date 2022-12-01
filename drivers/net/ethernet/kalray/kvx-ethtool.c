@@ -607,12 +607,9 @@ static bool is_roce_filter(struct kvx_eth_netdev *ndev,
 		enum kvx_roce_version *version)
 {
 	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
-	struct ethtool_tcpip4_spec *l4_val  = &fs->h_u.udp_ip4_spec;
-	struct ethtool_tcpip4_spec *l4_mask = &fs->m_u.udp_ip4_spec;
-	u16 dst_port = ntohs(l4_val->pdst);
-	u16 dst_mask = ntohs(l4_mask->pdst);
+	u16 dst_port;
+	u16 dst_mask;
 	u16 etype = ntohs(fs->h_u.ether_spec.h_proto);
-	bool no_mask_provided = dst_mask == 0xffff;
 
 	switch (proto) {
 	case ETHER_FLOW:
@@ -620,10 +617,17 @@ static bool is_roce_filter(struct kvx_eth_netdev *ndev,
 			*version = ROCE_V1;
 		return etype == ROCE_V1_ETYPE;
 	case UDP_V4_FLOW:
-	case UDP_V6_FLOW:
+		dst_port = ntohs(fs->h_u.udp_ip4_spec.pdst);
+		dst_mask = ntohs(fs->m_u.udp_ip4_spec.pdst);
 		if (version != NULL)
 			*version = ROCE_V2;
-		return dst_port == ROCE_V2_PORT && no_mask_provided;
+		return (dst_port == ROCE_V2_PORT) && (dst_mask == 0xffff);
+	case UDP_V6_FLOW:
+		dst_port = ntohs(fs->h_u.udp_ip6_spec.pdst);
+		dst_mask = ntohs(fs->m_u.udp_ip6_spec.pdst);
+		if (version != NULL)
+			*version = ROCE_V2;
+		return (dst_port == ROCE_V2_PORT) && (dst_mask == 0xffff);
 	default:
 		return false;
 	}
