@@ -1000,6 +1000,8 @@ bool kvx_eth_speed_aggregated(const int speed);
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
 void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f);
 void kvx_phy_serdes_reset(struct kvx_eth_hw *hw, u32 serdes_mask);
+int kvx_serdes_handshake(struct kvx_eth_hw *hw, u32 serdes_mask,
+			 unsigned int serdes);
 int kvx_serdes_loopback(struct kvx_eth_hw *hw, int lane, int lane_nb);
 int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p);
 int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
