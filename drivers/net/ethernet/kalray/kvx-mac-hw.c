@@ -675,8 +675,8 @@ static inline bool is_lane_in_use(struct kvx_eth_hw *hw, int lane_id)
 	return test_bit(lane_id, &hw->pll_cfg.serdes_mask);
 }
 
-static int kvx_serdes_handshake(struct kvx_eth_hw *hw, u32 serdes_mask,
-				unsigned int serdes)
+int kvx_serdes_handshake(struct kvx_eth_hw *hw, u32 serdes_mask,
+			 unsigned int serdes)
 {
 	int ret = 0;
 	u32 req = 0;
@@ -990,9 +990,7 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
 		DUMP_REG(hw, PHYMAC, reg + PHY_LANE_TX_SERDES_CFG_OFFSET);
 	}
 
-	ret = kvx_serdes_loopback(hw, lane, lane_nb);
-	if (ret == NO_LOOPBACK)
-		kvx_serdes_handshake(hw, serdes_mask, SERDES_RX | SERDES_TX);
+	kvx_serdes_handshake(hw, serdes_mask, SERDES_RX | SERDES_TX);
 
 	return 0;
 }
@@ -1002,7 +1000,7 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
  * @cfg: lane configuration
  */
 static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
-				  struct kvx_eth_lane_cfg *cfg)
+				  struct kvx_eth_lane_cfg *cfg, bool phy_reset)
 {
 	int i, ret, lane_nb;
 
@@ -1026,7 +1024,11 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	 * state (typically for MDIO operations in SGMII mode)
 	 */
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
+	if (phy_reset)
+		kvx_phy_reset(hw);
 	kvx_mac_phy_enable_serdes(hw, cfg->id, lane_nb, PSTATE_P0);
+	if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK)
+		kvx_serdes_loopback(hw, cfg->id, lane_nb);
 	mutex_unlock(&hw->mac_reset_lock);
 
 	/* Update parameters with reset values */
@@ -1043,7 +1045,7 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	kvx_mac_phy_serdes_cfg(hw, cfg);
+	kvx_mac_phy_serdes_cfg(hw, cfg, 0);
 
 	/* FTTB force refclk for 100G */
 	kvx_phy_refclk_cfg(hw, SPEED_100000);
@@ -2839,10 +2841,12 @@ void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 {
 	struct kvx_eth_lane_cfg *cfg = container_of(mac_f,
 					    struct kvx_eth_lane_cfg, mac_f);
+	struct kvx_eth_netdev *ndev = container_of(cfg, struct kvx_eth_netdev, cfg);
 
 	if (mac_f->loopback_mode != hw->phy_f.loopback_mode) {
+		del_timer_sync(&ndev->link_poll);
 		hw->phy_f.loopback_mode = mac_f->loopback_mode;
-		kvx_mac_phy_serdes_cfg(hw, cfg);
+		kvx_mac_phy_serdes_cfg(hw, cfg, 1);
 	}
 	kvx_eth_mac_cfg(hw, cfg);
 }
