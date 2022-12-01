@@ -277,22 +277,32 @@ void kvx_phy_refclk_cfg(struct kvx_eth_hw *hw, unsigned int speed)
 
 static void kvx_phy_loopback(struct kvx_eth_hw *hw, int lane_id, bool enable)
 {
-	u32 mask = BIT(LANE_TX2RX_SER_LB_EN_OVRD_EN_SHIFT) |
-		BIT(LANE_TX2RX_SER_LB_EN_OVRD_VAL_SHIFT);
 	u32 serdes_mask = get_serdes_mask(lane_id, 1);
-	u32 off, val;
+	u32 off, val, mask;
 
 	if (!hw->phy_f.reg_avail)
 		return;
 
-	kvx_phy_serdes_reset(hw, serdes_mask);
+	off = PHY_LANE_OFFSET + lane_id * PHY_LANE_ELEM_SIZE;
+	mask = (PHY_LANE_RX_SERDES_CFG_DISABLE_MASK |
+		PHY_LANE_RX_SERDES_CFG_PSTATE_MASK |
+		PHY_LANE_RX_SERDES_CFG_INVERT_MASK |
+		PHY_LANE_RX_SERDES_CFG_LPD_MASK);
+	val = ((u32)PSTATE_P0 << PHY_LANE_RX_SERDES_CFG_PSTATE_SHIFT);
+	updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET, mask, val);
+
+	mask = (PHY_LANE_TX_SERDES_CFG_DISABLE_MASK |
+		PHY_LANE_TX_SERDES_CFG_PSTATE_MASK |
+		PHY_LANE_TX_SERDES_CFG_INVERT_MASK |
+		PHY_LANE_TX_SERDES_CFG_LPD_MASK);
+	val = ((u32)PSTATE_P0 << PHY_LANE_TX_SERDES_CFG_PSTATE_SHIFT);
+	updatel_bits(hw, PHYMAC, off + PHY_LANE_TX_SERDES_CFG_OFFSET, mask, val);
+
+	kvx_serdes_handshake(hw, serdes_mask, SERDES_RX | SERDES_TX);
 	off = RAWLANEX_DIG_PCS_XF_LANE_OVRD_IN + lane_id * LANE_OFFSET;
-	val = kvx_phy_readw(hw, off);
-	if (enable)
-		val |= mask;
-	else
-		val &= ~mask;
-	kvx_phy_writew(hw, val, off);
+	mask = BIT(LANE_TX2RX_SER_LB_EN_OVRD_EN_SHIFT) |
+		BIT(LANE_TX2RX_SER_LB_EN_OVRD_VAL_SHIFT);
+	updatew_bits(hw, PHY, off, mask, (enable ? mask : 0));
 }
 
 int kvx_serdes_loopback(struct kvx_eth_hw *hw, int lane, int lane_nb)
