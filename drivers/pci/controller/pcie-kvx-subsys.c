@@ -29,7 +29,10 @@
 #define DISABLE_SLAVE_ERR		BIT(0)
 #define ENABLE_SLAVE_ERR		0
 
-static struct regmap *phycore_regmap;
+struct dev_controller_attribute {
+	struct device_attribute attr;
+	int ctrl_id;
+};
 
 /**
  * [Nfurcation][controller]-indexed table specifying the number of lanes
@@ -69,6 +72,8 @@ static const uint8_t nfurc_ctrl_lanes[][NB_CORE_CTRL] = {
 	{ 2, 0, 0, 0, 8, 2, 4, 0},
 	{ 2, 0, 0, 0, 8, 2, 2, 2},
 };
+
+static struct regmap *phycore_regmap;
 
 static inline void ftu_writel(struct regmap *ftu_regmap, u32 val, u32 off)
 {
@@ -205,8 +210,128 @@ int pcie_subsys_get_ctrl_lanes(struct regmap *phycore, int ctrl_id)
 }
 EXPORT_SYMBOL_GPL(pcie_subsys_get_ctrl_lanes);
 
+static ssize_t nfurcation_show(struct device *device,
+		struct device_attribute *attr,
+		char *buf)
+{
+	u32 nfurc;
+
+	nfurc = kvx_phycore_readl(phycore_regmap,
+			KVX_PCIE_PHY_CORE_NFURC_OFFSET);
+
+	return sysfs_emit(buf, "%d\n", nfurc);
+}
+static DEVICE_ATTR_RO(nfurcation);
+
+static ssize_t max_lanes_show(struct device *device,
+		struct device_attribute *attr,
+		char *buf)
+{
+	struct dev_controller_attribute *devattr =
+		container_of(attr, struct dev_controller_attribute, attr);
+	int ctrlid = devattr->ctrl_id;
+	int lanes = 0;
+	u32 nfurc;
+
+	nfurc = kvx_phycore_readl(phycore_regmap,
+			KVX_PCIE_PHY_CORE_NFURC_OFFSET);
+	lanes = nfurc_ctrl_lanes[nfurc][ctrlid];
+	return sysfs_emit(buf, "%d\n", lanes);
+}
+
+static ssize_t link_status_show(struct device *device,
+		struct device_attribute *attr,
+		char *buf)
+{
+	struct dev_controller_attribute *devattr =
+		container_of(attr, struct dev_controller_attribute, attr);
+	u32 link_sts;
+	u32 link_sts_reg;
+	int ctrlid = devattr->ctrl_id;
+	u32 reg_offset = KVX_PCIE_PHY_CORE_CTRL_OFFSET +
+		     KVX_PCIE_PHY_CORE_CTRL_DL_LINK_UP_OFFSET;
+
+	link_sts_reg =
+		ctrlid * KVX_PCIE_PHY_CORE_CTRL_ELEM_SIZE + reg_offset;
+	link_sts = kvx_phycore_readl(phycore_regmap, link_sts_reg);
+
+	return sysfs_emit(buf, "%s\n",
+			link_sts & KVX_PCIE_PHY_CORE_CTRL_DL_LINK_UP_MASK ?
+			"up" : "down");
+}
+
+static struct attribute *pcie_subsys_attrs[] = {
+	&dev_attr_nfurcation.attr,
+	NULL,
+};
+
+static const struct attribute_group pcie_subsys_group = {
+	.attrs = pcie_subsys_attrs,
+};
+
+#define PCIE_SUBSYS_CONTROLLER_ATTR_RO(_name, _ctrl_id) \
+struct dev_controller_attribute dev_attr_##_name##_##_ctrl_id = \
+	{ __ATTR_RO(_name), _ctrl_id }
+
+#define _STRINGIFY(x) #x
+#define STRINGIFY(x) _STRINGIFY(x)
+#define _STRCONCAT(x, y) x##y
+#define STRCONCAT(x, y) _STRCONCAT(x, y)
+#define _GROUP_NAME(_name, _ctrl_id) STRCONCAT(_name, _ctrl_id)
+#define GROUP_NAME(_name, _ctrl_id) STRINGIFY(_GROUP_NAME(_name, _ctrl_id))
+
+#define PCIE_SUBSYS_CONTROLLER_GROUP(_ctrl_id) \
+PCIE_SUBSYS_CONTROLLER_ATTR_RO(max_lanes, _ctrl_id); \
+PCIE_SUBSYS_CONTROLLER_ATTR_RO(link_status, _ctrl_id); \
+static struct attribute *pcie_subsys_controller##_ctrl_id##_attrs[] = { \
+	&dev_attr_max_lanes_##_ctrl_id.attr.attr, \
+	&dev_attr_link_status_##_ctrl_id.attr.attr, \
+	NULL \
+}; \
+static const struct attribute_group pcie_subsys_controller##_ctrl_id##_group = { \
+	.name = GROUP_NAME(controller, _ctrl_id), \
+	.attrs = pcie_subsys_controller##_ctrl_id##_attrs, \
+}
+
+PCIE_SUBSYS_CONTROLLER_GROUP(0);
+PCIE_SUBSYS_CONTROLLER_GROUP(1);
+PCIE_SUBSYS_CONTROLLER_GROUP(2);
+PCIE_SUBSYS_CONTROLLER_GROUP(3);
+PCIE_SUBSYS_CONTROLLER_GROUP(4);
+PCIE_SUBSYS_CONTROLLER_GROUP(5);
+PCIE_SUBSYS_CONTROLLER_GROUP(6);
+PCIE_SUBSYS_CONTROLLER_GROUP(7);
+
+static const struct attribute_group *pcie_subsys_controllers_groups[] = {
+	&pcie_subsys_controller0_group,
+	&pcie_subsys_controller1_group,
+	&pcie_subsys_controller2_group,
+	&pcie_subsys_controller3_group,
+	&pcie_subsys_controller4_group,
+	&pcie_subsys_controller5_group,
+	&pcie_subsys_controller6_group,
+	&pcie_subsys_controller7_group,
+	&pcie_subsys_group,
+	NULL,
+};
+
+static int pcie_subsys_init_sysfs(struct device *dev)
+{
+	int ret;
+
+	ret = devm_device_add_groups(dev, pcie_subsys_controllers_groups);
+	return ret;
+}
+
+static void pcie_subsys_remove_sysfs(struct device *dev)
+{
+	devm_device_remove_groups(dev, pcie_subsys_controllers_groups);
+}
+
 static int pcie_subsys_remove(struct platform_device *pdev)
 {
+	pcie_subsys_remove_sysfs(&pdev->dev);
+
 	return 0;
 }
 
@@ -265,6 +390,10 @@ static int pcie_subsys_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 	dev_info(&pdev->dev, "Active nfurcation is : %u\n", nfurc);
+
+	ret = pcie_subsys_init_sysfs(&pdev->dev);
+	if (ret != 0)
+		dev_err(&pdev->dev, "Failed to create sysfs groups\n");
 
 	return devm_of_platform_populate(&pdev->dev);
 }
