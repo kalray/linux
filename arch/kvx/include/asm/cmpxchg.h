@@ -14,7 +14,7 @@
 #include <linux/build_bug.h>
 
 /*
- * On kvx, wa have a boolean compare and swap which means that the operation
+ * On kvx, we have a boolean compare and swap which means that the operation
  * returns only the success of operation.
  * If operation succeed, this is simple, we just need to return the provided
  * old value. However, if it fails, we need to load the value to return it for
@@ -22,7 +22,7 @@
  * caller, we can return it since it will means it failed.
  * However, if for some reason the value we read is equals to the old value
  * provided by the caller, we can't simply return it or the caller will think it
- * succeeded. So if the value we read is the same as the "old"  * provided by
+ * succeeded. So if the value we read is the same as the "old" provided by
  * the caller, we try again until either we succeed or we fail with a different
  * value than the provided one.
  */
@@ -116,9 +116,9 @@
 })
 
 /*
- * In order to optimize xchg for 16 byte, we can use insf/extfs if we know the
- * bounds. This way, we only take one more bundle than standard xchg.
- * We simply do a read modify acswap on a 32 bit word.
+ * In order to optimize xchg for 16 bits, we can use insf/extfz if we know
+ * the bounds. This way, we only take one more bundle than standard xchg.
+ * We simply do a read modify acswap on a 32 bits word.
  */
 #if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define __xchg_small_asm(ptr, new, start, stop)				\
