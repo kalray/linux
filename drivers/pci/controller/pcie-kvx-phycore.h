@@ -29,4 +29,23 @@
 #define KVX_PCIE_PHY_CORE_SRAM_CTRL_BYPASS_OFFSET   0x8
 #define KVX_PCIE_PHY_CORE_SRAM_CTRL_LOAD_DONE_OFFSET 0x4
 
+#define PHYCORE_REGMAP_NAME            "kalray,phycore-dev"
+
+static inline void kvx_phycore_writel(struct regmap *phycore_regmap, u32 val,
+				      u32 off)
+{
+	int ret = regmap_write(phycore_regmap, off, val);
+
+	WARN_ON(ret);
+}
+
+static inline u32 kvx_phycore_readl(struct regmap *phycore_regmap, u32 off)
+{
+	int val;
+	int ret = regmap_read(phycore_regmap, off, &val);
+
+	WARN_ON(ret);
+	return (u32)val;
+}
+
 #endif /* PCIE_PHY_CORE_H */
