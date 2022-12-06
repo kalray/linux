@@ -32,7 +32,6 @@
 #include "pcie-kvx-phycore.h"
 
 #define ASN_DEFAULT			0
-#define PHYCORE_REGMAP_NAME		"kalray,phycore-dev"
 #define INVALID_NFURC			0xFFFFFFFF
 #define NB_CORE_CTRL			8
 #define NB_PHY				4
@@ -341,23 +340,6 @@ static inline u32 nwl_core_readl(struct nwl_pcie *pcie, u32 off)
 static inline void nwl_core_writel(struct nwl_pcie *pcie, u32 val, u32 off)
 {
 	writel(val, pcie->csr_base + off);
-}
-
-static inline void kvx_phycore_writel(struct regmap *phycore_regmap, u32 val,
-				      u32 off)
-{
-	int ret = regmap_write(phycore_regmap, off, val);
-
-	WARN_ON(ret);
-}
-
-static inline u32 kvx_phycore_readl(struct regmap *phycore_regmap, u32 off)
-{
-	int val;
-	int ret = regmap_read(phycore_regmap, off, &val);
-
-	WARN_ON(ret);
-	return (u32)val;
 }
 
 static inline void ftu_writel(struct regmap *ftu_regmap, u32 val, u32 off)
