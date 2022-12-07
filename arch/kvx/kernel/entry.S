@@ -1491,8 +1491,8 @@ ENDPROC(__sys_clone)
 #define SAVE_TCA_REG(__reg_num, __task_reg, __zero_reg1, __zero_reg2) \
 	xso (CTX_SWITCH_TCA_REGS + (__reg_num * TCA_REG_SIZE))[__task_reg] = \
 							$a##__reg_num ;\
-	movetq $a##__reg_num##.lo = __zero_reg1, __zero_reg2 ;\
-	movetq $a##__reg_num##.hi = __zero_reg1, __zero_reg2 ;\
+	xmovetq $a##__reg_num##.lo = __zero_reg1, __zero_reg2 ;\
+	xmovetq $a##__reg_num##.hi = __zero_reg1, __zero_reg2 ;\
 	;;
 
 .macro save_tca_regs task_reg zero_reg1 zero_reg2
