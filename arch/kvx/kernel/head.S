@@ -614,9 +614,9 @@ ENDPROC(asm_init_mmu)
  */
 ENTRY(smp_secondary_start)
 #ifdef CONFIG_SMP
-	dinval
+	d1inval
 	;;
-	iinval
+	i1inval
 	;;
 	barrier
 	;;
