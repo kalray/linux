@@ -1951,22 +1951,35 @@ static int __init kvx_iommu_init(void)
 		return ret;
 	}
 
-	ret = bus_set_iommu(&pci_bus_type, &kvx_iommu_ops);
-	if (ret) {
-		pr_err("%s: failed to set PCI bus with error %d\n",
-		       __func__, ret);
-		goto unregister_drv;
+#ifdef CONFIG_PCI
+	if (!iommu_present(&pci_bus_type)) {
+		ret = bus_set_iommu(&pci_bus_type, &kvx_iommu_ops);
+		if (ret) {
+			pr_err("%s: failed to set PCI bus with error %d\n",
+			       __func__, ret);
+			goto err_reset_pci_ops;
+		}
 	}
+#endif
 
-	ret = bus_set_iommu(&platform_bus_type, &kvx_iommu_ops);
-	if (ret) {
-		pr_err("%s: failed to set platform bus with error %d\n",
-		       __func__, ret);
-		goto unregister_drv;
+	if (!iommu_present(&platform_bus_type)) {
+		ret = bus_set_iommu(&platform_bus_type, &kvx_iommu_ops);
+		if (ret) {
+			pr_err("%s: failed to set platform bus with error %d\n",
+			       __func__, ret);
+			goto err_reset_platform_ops;
+		}
 	}
 
 	return 0;
 
+
+#ifdef CONFIG_PCI
+err_reset_pci_ops:
+	bus_set_iommu(&pci_bus_type, NULL);
+#endif
+ err_reset_platform_ops:
+	bus_set_iommu(&platform_bus_type, NULL);
 unregister_drv:
 	platform_driver_unregister(&kvx_iommu_driver);
 	return ret;
