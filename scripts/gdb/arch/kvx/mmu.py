@@ -144,7 +144,7 @@ class TLBaccess(gdb.Command):
             # When idx 0 is reach we need to check if we wrapped or not. If we
             # wrapped then there is no more operations logged.
             if (current_idx == 0) and (current_idx == tlb_access_get_idx(current_idx)):
-                gdb.write("no more operations occured in TLB for cpu {}\n".format(cpu))
+                gdb.write("no more operations occurred in TLB for cpu {}\n".format(cpu))
                 break
 
             real_idx = tlb_access_get_idx(current_idx - 1)
