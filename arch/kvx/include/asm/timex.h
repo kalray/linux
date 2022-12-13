@@ -7,9 +7,10 @@
 #ifndef _ASM_KVX_TIMEX_H
 #define _ASM_KVX_TIMEX_H
 
-#include <asm/sfr.h>
+#define get_cycles get_cycles
 
-typedef unsigned long cycles_t;
+#include <asm/sfr.h>
+#include <asm-generic/timex.h>
 
 static inline cycles_t get_cycles(void)
 {
