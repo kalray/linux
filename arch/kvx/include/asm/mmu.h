@@ -38,7 +38,7 @@ typedef struct mm_context {
 	unsigned long sigpage;
 } mm_context_t;
 
-struct __attribute__((__packed__)) tlb_entry_low {
+struct __packed tlb_entry_low {
 	unsigned int es:2;       /* Entry Status */
 	unsigned int cp:2;       /* Cache Policy */
 	unsigned int pa:4;       /* Protection Attributes */
@@ -47,7 +47,7 @@ struct __attribute__((__packed__)) tlb_entry_low {
 	unsigned int fn:28;      /* Frame Number */
 };
 
-struct __attribute__((__packed__)) tlb_entry_high {
+struct __packed tlb_entry_high {
 	unsigned int asn:9;  /* Adress Space Number */
 	unsigned int g:1;    /* Global Indicator */
 	unsigned int vs:2;   /* Virtual Space */
@@ -116,7 +116,7 @@ struct mmc_t {
 	unsigned int e: 1;
 };
 
-struct __attribute__((__packed__)) kvx_tlb_access_t {
+struct __packed kvx_tlb_access_t {
 	struct kvx_tlb_format entry;  /* 128 bits */
 	union {
 		struct mmc_t mmc;
