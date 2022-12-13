@@ -14,8 +14,7 @@ void __delay(unsigned long loops)
 {
 	cycles_t target_cycle = get_cycles() + loops;
 
-	while (get_cycles() < target_cycle) {
-	};
+	while (get_cycles() < target_cycle);
 }
 EXPORT_SYMBOL(__delay);
 
