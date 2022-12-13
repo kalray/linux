@@ -41,7 +41,7 @@
  */
 #define PT_REGS_STRUCT_EXPECTED_SIZE \
 			((GPR_COUNT + SFR_COUNT + VIRT_COUNT) * REG_SIZE + \
-			2 * REG_SIZE) /* Padding for stack alignement */
+			2 * REG_SIZE) /* Padding for stack alignment */
 
 /**
  * Saved register structure. Note that we should save only the necessary
