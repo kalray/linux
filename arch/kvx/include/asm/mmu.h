@@ -19,7 +19,7 @@
 #include <asm/pgtable-bits.h>
 #include <asm/tlb_defs.h>
 
-/* Virtual adresses can use at most 41 bits */
+/* Virtual addresses can use at most 41 bits */
 #define MMU_VIRT_BITS		41
 
 /*
@@ -48,7 +48,7 @@ struct __packed tlb_entry_low {
 };
 
 struct __packed tlb_entry_high {
-	unsigned int asn:9;  /* Adress Space Number */
+	unsigned int asn:9;  /* Address Space Number */
 	unsigned int g:1;    /* Global Indicator */
 	unsigned int vs:2;   /* Virtual Space */
 	unsigned int pn:29;  /* Page Number */

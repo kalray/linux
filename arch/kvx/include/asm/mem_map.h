@@ -16,7 +16,7 @@
 
 /**
  * KVX memory mapping defines
- * For more informations on memory mapping, please see
+ * For more information on memory mapping, please see
  * Documentation/kvx/kvx-mmu.txt
  *
  * All _BASE defines are relative to PAGE_OFFSET
