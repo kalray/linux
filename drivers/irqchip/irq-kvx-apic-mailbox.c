@@ -382,9 +382,9 @@ static int kvx_apic_mailbox_msi_alloc(struct irq_domain *domain,
 	kvx_mailbox_get_from_hwirq(hwirq, &mb_num, &mb_bit);
 	mb_addr = (u64) kvx_mailbox_get_phys_addr(mb, mb_num);
 	err = iommu_dma_prepare_msi(desc, mb_addr);
-	if (err) {
+	if (err)
 		goto free_mb_bits;
-	}
+
 	for (i = 0; i < nr_irqs; i++) {
 		kd = kmalloc(sizeof(*kd), GFP_KERNEL);
 		if (!kd) {
