@@ -3,6 +3,7 @@
  * Copyright (C) 2017-2022 Kalray Inc.
  * Author(s): Clement Leger
  *            Yann Sionneau
+ *            Jules Maselbas
  */
 
 #ifndef _ASM_KVX_CMPXCHG_H
@@ -40,16 +41,16 @@
 		/* Init "update" value with new */			\
 		"copyd $r62 = %[rNew]\n"				\
 		";;\n"							\
-		"acswap" #op_suffix " 0[%[rPtr]], $r62r63\n"		\
+		"acswap" op_suffix " 0[%[rPtr]], $r62r63\n"		\
 		";;\n"							\
 		/* if acswap succeed, simply return */			\
 		"cb.dnez $r62? 2f\n"					\
 		";;\n"							\
 		/* We failed, load old value */				\
-		"l"  #op_suffix  #load_suffix" $r63 = 0[%[rPtr]]\n"	\
+		"l"  op_suffix  load_suffix " $r63 = 0[%[rPtr]]\n"	\
 		";;\n"							\
 		/* Check if equal to "old" one */			\
-		"comp" #op_suffix ".ne $r62 = $r63, %[rOld]\n"		\
+		"comp" op_suffix ".ne $r62 = $r63, %[rOld]\n"		\
 		";;\n"							\
 		/* If different from "old", return it to caller */	\
 		"cb.deqz $r62? 1b\n"					\
@@ -75,16 +76,16 @@
 		/* Init "update" value with new */			\
 		"copyd $r62 = %[rNew]\n"				\
 		";;\n"							\
-		"acswap" #op_suffix " $r62, [%[rPtr]] = $r62r63\n"		\
+		"acswap" op_suffix " $r62, [%[rPtr]] = $r62r63\n"	\
 		";;\n"							\
 		/* if acswap succeed, simply return */			\
 		"cb.dnez $r62? 2f\n"					\
 		";;\n"							\
 		/* We failed, load old value */				\
-		"l"  #op_suffix  #load_suffix" $r63 = 0[%[rPtr]]\n"	\
+		"l"  op_suffix  load_suffix" $r63 = 0[%[rPtr]]\n"	\
 		";;\n"							\
 		/* Check if equal to "old" one */			\
-		"comp" #op_suffix ".ne $r62 = $r63, %[rOld]\n"		\
+		"comp" op_suffix ".ne $r62 = $r63, %[rOld]\n"		\
 		";;\n"							\
 		/* If different from "old", return it to caller */	\
 		"cb.deqz $r62? 1b\n"					\
@@ -105,10 +106,10 @@
 	BUILD_BUG_ON(sizeof(*(ptr)) != 4 && sizeof(*(ptr)) != 8);	\
 	switch (sizeof(*(ptr))) {					\
 	case 4:								\
-		__ret = __cmpxchg((ptr), (o), (n), w, s);		\
+		__ret = __cmpxchg((ptr), (o), (n), "w", "s");		\
 		break;							\
 	case 8:								\
-		__ret = __cmpxchg((ptr), (o), (n), d, );		\
+		__ret = __cmpxchg((ptr), (o), (n), "d", "");		\
 		break;							\
 	}								\
 	(__typeof__(*(ptr))) (__ret);					\
@@ -134,7 +135,7 @@
 		/* Copy read value into "expect" */			\
 		"copyd $r63 = $r62\n"					\
 		/* Prepare new value with insf */			\
-		"insf $r62 = %[rNew], " #stop "," #start "\n"		\
+		"insf $r62 = %[rNew], " stop "," start "\n"		\
 		";;\n"							\
 		/* Try compare & swap with loaded value */		\
 		"acswapw 0[%[rPtr]], $r62r63\n"				\
@@ -142,7 +143,7 @@
 		/* Did we succeed ?, if no, try again */		\
 		"cb.deqz $r62? 1b\n"					\
 		/* Extract old value for ret value */			\
-		"extfs $r63 = $r63, " #stop "," #start "\n"		\
+		"extfs $r63 = $r63, " stop "," start "\n"		\
 		";;\n"							\
 		: "+r" (__rn), "+r" (__ro)				\
 		: [rPtr] "r" (ptr), [rNew] "r" (new)			\
@@ -164,15 +165,15 @@
 		/* Copy read value into "expect" */			\
 		"copyd $r63 = $r62\n"					\
 		/* Prepare new value with insf */			\
-		"insf $r62 = %[rNew], " #stop "," #start "\n"		\
+		"insf $r62 = %[rNew], " stop "," start "\n"		\
 		";;\n"							\
 		/* Try compare & swap with loaded value */		\
-		"acswapw $r62, [%[rPtr]] = $r62r63\n"				\
+		"acswapw $r62, [%[rPtr]] = $r62r63\n"			\
 		";;\n"							\
 		/* Did we succeed ?, if no, try again */		\
 		"cb.deqz $r62? 1b\n"					\
 		/* Extract old value for ret value */			\
-		"extfs $r63 = $r63, " #stop "," #start "\n"		\
+		"extfs $r63 = $r63, " stop "," start "\n"		\
 		";;\n"							\
 		: "+r" (__rn), "+r" (__ro)				\
 		: [rPtr] "r" (ptr), [rNew] "r" (new)			\
@@ -195,9 +196,9 @@ static inline unsigned long xchg_u16(volatile void *ptr, unsigned long new,
 	 * the offset statically
 	 */
 	if (off == 0)
-		return __xchg_small_asm(p, new, 0, 15);
+		return __xchg_small_asm(p, new, "0", "15");
 	else
-		return __xchg_small_asm(p, new, 16, 31);
+		return __xchg_small_asm(p, new, "16", "31");
 }
 
 #if defined(CONFIG_KVX_SUBARCH_KV3_1)
@@ -210,10 +211,10 @@ static inline unsigned long xchg_u16(volatile void *ptr, unsigned long new,
 		";;\n"							\
 		"1:\n"							\
 		/* Load original old value */				\
-		"l" #op_suffix #load_suffix " $r63 = 0[%[rPtr]]\n"	\
+		"l" op_suffix load_suffix " $r63 = 0[%[rPtr]]\n"	\
 		";;\n"							\
 		/* Try compare & swap with loaded value */		\
-		"acswap" #op_suffix " 0[%[rPtr]], $r62r63\n"		\
+		"acswap" op_suffix " 0[%[rPtr]], $r62r63\n"		\
 		";;\n"							\
 		/* Did we succeed ?, if no, try again */		\
 		"cb.deqz $r62? 1b\n"					\
@@ -235,10 +236,10 @@ static inline unsigned long xchg_u16(volatile void *ptr, unsigned long new,
 		";;\n"							\
 		"1:\n"							\
 		/* Load original old value */				\
-		"l" #op_suffix #load_suffix " $r63 = 0[%[rPtr]]\n"	\
+		"l" op_suffix load_suffix " $r63 = 0[%[rPtr]]\n"	\
 		";;\n"							\
 		/* Try compare & swap with loaded value */		\
-		"acswap" #op_suffix " $r62, [%[rPtr]] = $r62r63\n"		\
+		"acswap" op_suffix " $r62, [%[rPtr]] = $r62r63\n"	\
 		";;\n"							\
 		/* Did we succeed ?, if no, try again */		\
 		"cb.deqz $r62? 1b\n"					\
@@ -267,9 +268,9 @@ static inline unsigned long __xchg(volatile void *ptr, unsigned long val,
 	case 2:
 		return xchg_u16(ptr, val, size);
 	case 4:
-		return __xchg_asm(ptr, val, w, s);
+		return __xchg_asm(ptr, val, "w", "s");
 	case 8:
-		return __xchg_asm(ptr, val, d, );
+		return __xchg_asm(ptr, val, "d", "");
 	}
 	__xchg_called_with_bad_pointer();
 
