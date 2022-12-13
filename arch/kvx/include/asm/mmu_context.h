@@ -9,7 +9,7 @@
 #define __ASM_KVX_MMU_CONTEXT_H
 
 /*
- * Management of the Adress Space Number:
+ * Management of the Address Space Number:
  * Coolidge architecture provides a 9-bit ASN to tag TLB entries. This can be
  * used to allow several entries with the same virtual address (so from
  * different process) to be in the TLB at the same time. That means that won't
