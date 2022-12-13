@@ -21,7 +21,6 @@
 #include <linux/mfd/kvx-ftu.h>
 #include "pcie-kvx-phycore.h"
 
-#define INVALID_NFURC			0xFFFFFFFF
 #define NB_CORE_CTRL			8
 #define NB_PHY				4
 /* PCIe subsys */
@@ -111,10 +110,6 @@ static int pcie_overide_fsbl_settings(struct platform_device *pdev)
 	struct regmap *phycore;
 
 	ftu = NULL;
-	ret = of_property_read_u32(pdev->dev.of_node,
-				   "kalray,ovrd-nfurc", &nfurc);
-	if (ret != 0)
-		nfurc = INVALID_NFURC;
 
 	phycore = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
 						  PHYCORE_REGMAP_NAME);
@@ -159,8 +154,10 @@ static int pcie_overide_fsbl_settings(struct platform_device *pdev)
 		offset += KVX_PCIE_PHY_CORE_CTRL_ELEM_SIZE;
 	}
 
+	ret = of_property_read_u32(pdev->dev.of_node,
+				   "kalray,ovrd-nfurc", &nfurc);
+	if (ret == 0) {
 	/* Change default n-furcation setting if user specified one */
-	if (nfurc != INVALID_NFURC) {
 		kvx_phycore_writel(phycore, nfurc,
 				   KVX_PCIE_PHY_CORE_NFURC_OFFSET);
 	}
