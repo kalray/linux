@@ -90,6 +90,7 @@ void die(struct pt_regs *regs, unsigned long ea, const char *str)
 void user_do_sig(struct pt_regs *regs, int signo, int code, unsigned long addr)
 {
 	struct task_struct *tsk = current;
+
 	if (show_unhandled_signals && unhandled_signal(tsk, signo)
 	    && printk_ratelimit()) {
 		pr_info("%s[%d]: unhandled signal %d code 0x%x at 0x%lx",
