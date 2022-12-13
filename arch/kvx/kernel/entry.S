@@ -1623,7 +1623,7 @@ ENDPROC(ret_from_kernel_thread)
 
 /**
  * Return from fork.
- * start_thread will set return stack and and pc. Then copy_thread will
+ * start_thread will set return stack and pc. Then copy_thread will
  * take care of the copying logic.
  * $r20 will then contains 0 if tracing disabled (set by copy_thread)
  * The mechanism is almost the same as for ret_from_kernel_thread.
