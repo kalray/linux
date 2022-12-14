@@ -11,6 +11,7 @@
 
 #include <linux/bits.h>
 #include <linux/types.h>
+#include <linux/align.h>
 #include <linux/build_bug.h>
 
 /*
@@ -26,262 +27,144 @@
  * the caller, we try again until either we succeed or we fail with a different
  * value than the provided one.
  */
-#if defined(CONFIG_KVX_SUBARCH_KV3_1)
-#define __cmpxchg(ptr, old, new, op_suffix, load_suffix)		\
-({									\
-	register unsigned long __rn asm("r62");				\
-	register unsigned long __ro asm("r63");				\
-	__asm__ __volatile__ (						\
-		/* Fence to guarantee previous store to be committed */	\
-		"fence\n"						\
-		/* Init "expect" with previous value */			\
-		"copyd $r63 = %[rOld]\n"				\
-		";;\n"							\
-		"1:\n"							\
-		/* Init "update" value with new */			\
-		"copyd $r62 = %[rNew]\n"				\
-		";;\n"							\
-		"acswap" op_suffix " 0[%[rPtr]], $r62r63\n"		\
-		";;\n"							\
-		/* if acswap succeed, simply return */			\
-		"cb.dnez $r62? 2f\n"					\
-		";;\n"							\
-		/* We failed, load old value */				\
-		"l"  op_suffix  load_suffix " $r63 = 0[%[rPtr]]\n"	\
-		";;\n"							\
-		/* Check if equal to "old" one */			\
-		"comp" op_suffix ".ne $r62 = $r63, %[rOld]\n"		\
-		";;\n"							\
-		/* If different from "old", return it to caller */	\
-		"cb.deqz $r62? 1b\n"					\
-		";;\n"							\
-		"2:\n"							\
-		: "+r" (__rn), "+r" (__ro)				\
-		: [rPtr] "r" (ptr), [rOld] "r" (old), [rNew] "r" (new)	\
-		: "memory");						\
-	(__ro);								\
-})
-#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-#define __cmpxchg(ptr, old, new, op_suffix, load_suffix)		\
-({									\
-	register unsigned long __rn asm("r62");				\
-	register unsigned long __ro asm("r63");				\
-	__asm__ __volatile__ (						\
-		/* Fence to guarantee previous store to be committed */	\
-		"fence\n"						\
-		/* Init "expect" with previous value */			\
-		"copyd $r63 = %[rOld]\n"				\
-		";;\n"							\
-		"1:\n"							\
-		/* Init "update" value with new */			\
-		"copyd $r62 = %[rNew]\n"				\
-		";;\n"							\
-		"acswap" op_suffix " $r62, [%[rPtr]] = $r62r63\n"	\
-		";;\n"							\
-		/* if acswap succeed, simply return */			\
-		"cb.dnez $r62? 2f\n"					\
-		";;\n"							\
-		/* We failed, load old value */				\
-		"l"  op_suffix  load_suffix" $r63 = 0[%[rPtr]]\n"	\
-		";;\n"							\
-		/* Check if equal to "old" one */			\
-		"comp" op_suffix ".ne $r62 = $r63, %[rOld]\n"		\
-		";;\n"							\
-		/* If different from "old", return it to caller */	\
-		"cb.deqz $r62? 1b\n"					\
-		";;\n"							\
-		"2:\n"							\
-		: "+r" (__rn), "+r" (__ro)				\
-		: [rPtr] "r" (ptr), [rOld] "r" (old), [rNew] "r" (new)	\
-		: "memory");						\
-	(__ro);								\
-})
-#else
-#error "Unknown CONFIG_KVX_SUBARCH"
-#endif /* CONFIG_KVX_SUBARCH_KV3_X */
 
-#define arch_cmpxchg(ptr, o, n)						\
-({									\
-	unsigned long __ret;						\
-	BUILD_BUG_ON(sizeof(*(ptr)) != 4 && sizeof(*(ptr)) != 8);	\
-	switch (sizeof(*(ptr))) {					\
-	case 4:								\
-		__ret = __cmpxchg((ptr), (o), (n), "w", "s");		\
-		break;							\
-	case 8:								\
-		__ret = __cmpxchg((ptr), (o), (n), "d", "");		\
-		break;							\
-	}								\
-	(__typeof__(*(ptr))) (__ret);					\
-})
+static inline unsigned int __cmpxchg_u32(unsigned int old, unsigned int new,
+					 volatile unsigned int *ptr)
+{
+	unsigned int exp = old;
+
+	__builtin_kvx_fence();
+	while (exp == old) {
+		if (__builtin_kvx_acswapw((void *)ptr, new, exp))
+			break; /* acswap succeed */
+		exp = *ptr;
+	}
+
+	return exp;
+}
+
+static inline unsigned long __cmpxchg_u64(unsigned long old, unsigned long new,
+					  volatile unsigned long *ptr)
+{
+	unsigned long exp = old;
+
+	__builtin_kvx_fence();
+	while (exp == old) {
+		if (__builtin_kvx_acswapd((void *)ptr, new, exp))
+			break; /* acswap succeed */
+		exp = *ptr;
+	}
+
+	return exp;
+}
+
+extern unsigned long __cmpxchg_called_with_bad_pointer(void)
+	__compiletime_error("Bad argument size for cmpxchg");
+
+static __always_inline unsigned long __cmpxchg(unsigned long old,
+					       unsigned long new,
+					       volatile void *ptr, int size)
+{
+	switch (size) {
+	case 4:
+		return __cmpxchg_u32(old, new, ptr);
+	case 8:
+		return __cmpxchg_u64(old, new, ptr);
+	default:
+		return __cmpxchg_called_with_bad_pointer();
+	}
+}
+
+#define arch_cmpxchg(ptr, old, new)					\
+	((__typeof__(*(ptr))) __cmpxchg(				\
+		(unsigned long)(old), (unsigned long)(new),		\
+		(ptr), sizeof(*(ptr))))
 
 /*
  * In order to optimize xchg for 16 bits, we can use insf/extfz if we know
  * the bounds. This way, we only take one more bundle than standard xchg.
  * We simply do a read modify acswap on a 32 bits word.
  */
-#if defined(CONFIG_KVX_SUBARCH_KV3_1)
-#define __xchg_small_asm(ptr, new, start, stop)				\
-({									\
-	register unsigned long __rn asm("r62");				\
-	register unsigned long __ro asm("r63");				\
-	__asm__ __volatile__ (						\
-		"fence\n"						\
-		";;\n"							\
-		"1:\n"							\
-		/* Load original old value */				\
-		"lws $r62 = 0[%[rPtr]]\n"				\
-		";;\n"							\
-		/* Copy read value into "expect" */			\
-		"copyd $r63 = $r62\n"					\
-		/* Prepare new value with insf */			\
-		"insf $r62 = %[rNew], " stop "," start "\n"		\
-		";;\n"							\
-		/* Try compare & swap with loaded value */		\
-		"acswapw 0[%[rPtr]], $r62r63\n"				\
-		";;\n"							\
-		/* Did we succeed ?, if no, try again */		\
-		"cb.deqz $r62? 1b\n"					\
-		/* Extract old value for ret value */			\
-		"extfs $r63 = $r63, " stop "," start "\n"		\
-		";;\n"							\
-		: "+r" (__rn), "+r" (__ro)				\
-		: [rPtr] "r" (ptr), [rNew] "r" (new)			\
-		: "memory");						\
-	(__ro);								\
-})
-#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-#define __xchg_small_asm(ptr, new, start, stop)				\
-({									\
-	register unsigned long __rn asm("r62");				\
-	register unsigned long __ro asm("r63");				\
-	__asm__ __volatile__ (						\
-		"fence\n"						\
-		";;\n"							\
-		"1:\n"							\
-		/* Load original old value */				\
-		"lws $r62 = 0[%[rPtr]]\n"				\
-		";;\n"							\
-		/* Copy read value into "expect" */			\
-		"copyd $r63 = $r62\n"					\
-		/* Prepare new value with insf */			\
-		"insf $r62 = %[rNew], " stop "," start "\n"		\
-		";;\n"							\
-		/* Try compare & swap with loaded value */		\
-		"acswapw $r62, [%[rPtr]] = $r62r63\n"			\
-		";;\n"							\
-		/* Did we succeed ?, if no, try again */		\
-		"cb.deqz $r62? 1b\n"					\
-		/* Extract old value for ret value */			\
-		"extfs $r63 = $r63, " stop "," start "\n"		\
-		";;\n"							\
-		: "+r" (__rn), "+r" (__ro)				\
-		: [rPtr] "r" (ptr), [rNew] "r" (new)			\
-		: "memory");						\
-	(__ro);								\
-})
-#else
-#error "Unknown CONFIG_KVX_SUBARCH"
-#endif /* CONFIG_KVX_SUBARCH_KV3_X */
+
+#define __kvx_insf(org, val, start, stop) __asm__ __volatile__(	\
+		"insf %[_org] = %[_val], %[_stop], %[_start]\n\t;;"	\
+		: [_org]"+r"(org)					\
+		: [_val]"r"(val), [_stop]"i"(stop), [_start]"i"(start))
+
+#define __kvx_extfz(out, val, start, stop) __asm__ __volatile__(	\
+		"extfz %[_out] = %[_val], %[_stop], %[_start]\n\t;;"	\
+		: [_out]"=r"(out)					\
+		: [_val]"r"(val), [_stop]"i"(stop), [_start]"i"(start))
 
 /* Needed for generic qspinlock implementation */
-static inline unsigned long xchg_u16(volatile void *ptr, unsigned long new,
-				     int size)
+static inline unsigned int __xchg_u16(unsigned int old, unsigned int new,
+				      volatile unsigned int *ptr)
 {
-	int off = (unsigned long)ptr % sizeof(u32);
-	volatile u32 *p = ptr - off;
+	unsigned int off = ((unsigned long)ptr) % sizeof(unsigned int);
+	unsigned int val;
 
-	/*
-	 * GCC is smart enough to eliminate the dead branches by detecting
-	 * the offset statically
-	 */
+	ptr = PTR_ALIGN_DOWN(ptr, sizeof(unsigned int));
+	__builtin_kvx_fence();
+	do {
+		old = *ptr;
+		val = old;
+		if (off == 0)
+			__kvx_insf(val, new, 0, 15);
+		else
+			__kvx_insf(val, new, 16, 31);
+	} while (!__builtin_kvx_acswapw((void *)ptr, val, old));
+
 	if (off == 0)
-		return __xchg_small_asm(p, new, "0", "15");
+		__kvx_extfz(old, old, 0, 15);
 	else
-		return __xchg_small_asm(p, new, "16", "31");
+		__kvx_extfz(old, old, 16, 31);
+
+	return old;
 }
 
-#if defined(CONFIG_KVX_SUBARCH_KV3_1)
-#define __xchg_asm(ptr, new, op_suffix, load_suffix)			\
-({									\
-	register unsigned long __rn asm("r62") = (unsigned long) (new);	\
-	register unsigned long __ro asm("r63");				\
-	__asm__ __volatile__ (						\
-		"fence\n"						\
-		";;\n"							\
-		"1:\n"							\
-		/* Load original old value */				\
-		"l" op_suffix load_suffix " $r63 = 0[%[rPtr]]\n"	\
-		";;\n"							\
-		/* Try compare & swap with loaded value */		\
-		"acswap" op_suffix " 0[%[rPtr]], $r62r63\n"		\
-		";;\n"							\
-		/* Did we succeed ?, if no, try again */		\
-		"cb.deqz $r62? 1b\n"					\
-		/* $r62 has been cloberred by acswap, restore it */	\
-		"copyd $r62 = %[rNew]\n"				\
-		";;\n"							\
-		: "+r" (__rn), "+r" (__ro)				\
-		: [rPtr] "r" (ptr), [rNew] "r" (new)			\
-		: "memory");						\
-	(__ro);								\
-})
-#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-#define __xchg_asm(ptr, new, op_suffix, load_suffix)			\
-({									\
-	register unsigned long __rn asm("r62") = (unsigned long) (new);	\
-	register unsigned long __ro asm("r63");				\
-	__asm__ __volatile__ (						\
-		"fence\n"						\
-		";;\n"							\
-		"1:\n"							\
-		/* Load original old value */				\
-		"l" op_suffix load_suffix " $r63 = 0[%[rPtr]]\n"	\
-		";;\n"							\
-		/* Try compare & swap with loaded value */		\
-		"acswap" op_suffix " $r62, [%[rPtr]] = $r62r63\n"	\
-		";;\n"							\
-		/* Did we succeed ?, if no, try again */		\
-		"cb.deqz $r62? 1b\n"					\
-		/* $r62 has been cloberred by acswap, restore it */	\
-		"copyd $r62 = %[rNew]\n"				\
-		";;\n"							\
-		: "+r" (__rn), "+r" (__ro)				\
-		: [rPtr] "r" (ptr), [rNew] "r" (new)			\
-		: "memory");						\
-	(__ro);								\
-})
-#else
-#error "Unknown CONFIG_KVX_SUBARCH"
-#endif /* CONFIG_KVX_SUBARCH_KV3_X */
-/*
- * This function doesn't exist, so you'll get a linker error if
- * something tries to do an invalidly-sized xchg().
- */
+static inline unsigned int __xchg_u32(unsigned int old, unsigned int new,
+				      volatile unsigned int *ptr)
+{
+	__builtin_kvx_fence();
+	do
+		old = *ptr;
+	while (!__builtin_kvx_acswapw((void *)ptr, new, old));
+
+	return old;
+}
+
+static inline unsigned long __xchg_u64(unsigned long old, unsigned long new,
+				       volatile unsigned long *ptr)
+{
+	__builtin_kvx_fence();
+	do
+		old = *ptr;
+	while (!__builtin_kvx_acswapd((void *)ptr, new, old));
+
+	return old;
+}
+
 extern unsigned long __xchg_called_with_bad_pointer(void)
 	__compiletime_error("Bad argument size for xchg");
 
-static inline unsigned long __xchg(volatile void *ptr, unsigned long val,
-				   int size)
+static __always_inline unsigned long __xchg(unsigned long val,
+					    volatile void *ptr, int size)
 {
 	switch (size) {
 	case 2:
-		return xchg_u16(ptr, val, size);
+		return __xchg_u16(0, val, ptr);
 	case 4:
-		return __xchg_asm(ptr, val, "w", "s");
+		return __xchg_u32(0, val, ptr);
 	case 8:
-		return __xchg_asm(ptr, val, "d", "");
+		return __xchg_u64(0, val, ptr);
+	default:
+		return __xchg_called_with_bad_pointer();
 	}
-	__xchg_called_with_bad_pointer();
-
-	return val;
 }
 
-#define arch_xchg(ptr, with)						\
-	({								\
-		(__typeof__(*(ptr))) __xchg((ptr),			\
-					    (unsigned long)(with),	\
-					    sizeof(*(ptr)));		\
-	})
+#define arch_xchg(ptr, val)						\
+	((__typeof__(*(ptr))) __xchg(					\
+		(unsigned long)(val),					\
+		(ptr), sizeof(*(ptr))))
 
 #endif
