@@ -86,27 +86,49 @@ int kvx_insns_write_nostop(u32 *insns, u8 insns_len, u32 *insn_addr)
 	return ret;
 }
 
+/* This function is called by all CPUs in parallel */
 static int patch_insns_percpu(void *data)
 {
 	struct insns_patch *ip = data;
+	unsigned long insn_addr = (unsigned long) ip->addr;
 	int ret;
 
+	/* Only the first CPU writes the instruction(s) */
 	if (atomic_inc_return(&ip->cpu_count) == 1) {
+
+		/*
+		 * This will write the instruction(s) through uncached mapping
+		 * and then flush/inval L2$ lines which itself will inval all
+		 * PE L1d$ lines. It will after Invalid current PE L1i$ lines.
+		 * Therefore cache coherency is handled for the calling CPU.
+		 */
 		ret = kvx_insns_write_nostop(ip->insns, ip->insns_len,
-					     ip->addr);
-		/* Additionnal up to release other processors */
+					     insn_addr);
+		/*
+		 * Increment once more to signal that instructions have been written
+		 * to memory.
+		 */
 		atomic_inc(&ip->cpu_count);
 
 		return ret;
-	} else {
-		unsigned long insn_addr = (unsigned long) ip->addr;
-		/* Wait for first processor to update instructions */
-		while (atomic_read(&ip->cpu_count) <= num_online_cpus())
-			cpu_relax();
-
-		/* Simply invalidate L1 I-cache to reload from L2 or memory */
-		l1_inval_icache_range(insn_addr, insn_addr + ip->insns_len);
 	}
+
+	/*
+	 * Synchronization point: remaining CPUs need to wait for the first
+	 * CPU to complete patching the instruction(s).
+	 * The completion is signaled when the counter reaches
+	 * `num_online_cpus + 1`: meaning that every CPU has entered this
+	 * function and the first CPU has completed its operations.
+	 */
+	while (atomic_read(&ip->cpu_count) <= num_online_cpus())
+		cpu_relax();
+
+	/*
+	 * Other CPUs simply invalidate their L1 I-cache to reload
+	 * from L2 or memory. Their L1 D-cache as well as the L2$ have
+	 * already been invalidated by the kvx_insns_write_nostop() call.
+	 */
+	l1_inval_icache_range(insn_addr, insn_addr + ip->insns_len);
 	return 0;
 }
 
