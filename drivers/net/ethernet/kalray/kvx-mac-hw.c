@@ -2507,13 +2507,6 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 	return ret;
 }
 
-static bool is_kr_cable(struct link_capability *ln)
-{
-	return !!(ln->rate & (RATE_10GBASE_KR | RATE_40GBASE_KR4 |
-			      RATE_100GBASE_KR4 | RATE_25GBASE_KR_CR_S |
-			      RATE_25GBASE_KR_CR));
-}
-
 /**
  * kvx_eth_lt_execute() - Enable link training and starts its FSM
  * @hw: hardware description
@@ -2532,9 +2525,6 @@ static int kvx_eth_lt_execute(struct kvx_eth_hw *hw,
 		struct kvx_eth_lane_cfg *cfg)
 {
 	int ret;
-
-	if (!is_kr_cable(&cfg->ln))
-		return 0;
 
 	kvx_eth_link_training(hw, cfg, true);
 	ret = kvx_eth_perform_link_training(hw, cfg);
