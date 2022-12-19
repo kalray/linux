@@ -50,7 +50,7 @@
 #define PCS_STATUS1_PCS_RECEIVE_LINK_MASK  0x4
 
 #define AN_DBG(dev, fmt, ...) dev_dbg(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define LT_DBG(dev, fmt, ...) dev_info(dev, dev_fmt(fmt), ##__VA_ARGS__)
+#define LT_DBG(dev, fmt, ...) dev_dbg(dev, dev_fmt(fmt), ##__VA_ARGS__)
 #define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 #define AN_REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 
