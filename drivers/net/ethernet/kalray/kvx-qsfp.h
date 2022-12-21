@@ -127,12 +127,28 @@
 #define kvx_test_mode(addr, mode) test_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, addr)
 #define qsfp_eeprom_offset(member) offsetof(struct kvx_qsfp_eeprom_cache, member)
 #define qsfp_eeprom_len(member) sizeof(((struct kvx_qsfp_eeprom_cache){0}).member)
-#define qsfp_refresh_eeprom(qsfp, m, len) kvx_qsfp_eeprom_refresh(qsfp, qsfp_eeprom_offset(m), len)
-#define qsfp_write_eeprom(qsfp, data, m, len) kvx_qsfp_eeprom_write(qsfp, data, qsfp_eeprom_offset(m), len)
-#define qsfp_update_eeprom(qsfp, m) kvx_qsfp_update_eeprom(qsfp, qsfp_eeprom_offset(m), qsfp_eeprom_len(m))
+#define qsfp_refresh_eeprom(qsfp, m)                                           \
+	({                                                                     \
+		size_t len = qsfp_eeprom_len(m);                               \
+		int ret = kvx_qsfp_eeprom_refresh(qsfp, qsfp_eeprom_offset(m), \
+						  len);                        \
+		if (ret != len)                                                \
+			dev_err(qsfp->dev, "eeprom read failure: ##m##\n");    \
+		ret == len ? 0 : -EINVAL;                                      \
+	})
+#define qsfp_write_eeprom(qsfp, data, m)                                       \
+	({                                                                     \
+		size_t len = qsfp_eeprom_len(m);                               \
+		int ret = kvx_qsfp_eeprom_write(qsfp, data,                    \
+						qsfp_eeprom_offset(m), len);   \
+		if (ret != len)                                                \
+			dev_err(qsfp->dev, "eeprom write failure: ##mm##\n");  \
+		ret == qsfp_eeprom_len(m) ? 0 : -EINVAL;                       \
+	})
+#define qsfp_update_eeprom(qsfp, m)                                            \
+	kvx_qsfp_update_eeprom(qsfp, qsfp_eeprom_offset(m), qsfp_eeprom_len(m))
 
 struct kvx_qsfp;
-
 
 enum {
 	/* GPIO */
