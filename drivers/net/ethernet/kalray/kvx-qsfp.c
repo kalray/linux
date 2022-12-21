@@ -513,18 +513,17 @@ EXPORT_SYMBOL_GPL(kvx_qsfp_module_info);
 static void update_interrupt_flags(struct kvx_qsfp *qsfp)
 {
 	int ret;
-	int l = sizeof(qsfp->eeprom.int_flags);
 
 	if (!qsfp->i2c)
 		return;
 
-	ret = qsfp_refresh_eeprom(qsfp, int_flags, l);
-	if (ret != l) {
+	ret = qsfp_refresh_eeprom(qsfp, int_flags);
+	if (ret < 0) {
 		dev_err(qsfp->dev, "int flags - i2c reads failed\n");
 		return;
 	}
 
-	dev_dbg(qsfp->dev, "interrupt flags: %*ph\n", l,
+	dev_dbg(qsfp->dev, "interrupt flags: %*ph\n", (int)qsfp_eeprom_len(int_flags),
 		(u8 *)&qsfp->eeprom.int_flags);
 }
 
@@ -818,13 +817,16 @@ static void kvx_qsfp_reset(struct kvx_qsfp *qsfp)
 static void set_power_override(struct kvx_qsfp *qsfp, u8 op)
 {
 	u8 val, mask = SFF8636_CTRL_93_POWER_ORIDE;
-	size_t l = sizeof(val);
 	int ret;
 
-	ret = qsfp_refresh_eeprom(qsfp, control.power, l);
-	val = qsfp->eeprom.control.power;
-	if (ret != l)
+	/* power override not applicable on passive copper */
+	if (is_cable_passive_copper(qsfp))
 		return;
+
+	ret = qsfp_refresh_eeprom(qsfp, control.power);
+	if (ret < 0)
+		return;
+	val = qsfp->eeprom.control.power;
 
 	/* Prevent useless write */
 	if (((op == QSFP_TX_DISABLE) && !(val & mask)) ||
@@ -836,7 +838,9 @@ static void set_power_override(struct kvx_qsfp *qsfp, u8 op)
 	else
 		val &= (~mask);
 
-	qsfp_write_eeprom(qsfp, &val, control.power, sizeof(val));
+	ret = qsfp_write_eeprom(qsfp, &val, control.power);
+	if (ret < 0)
+		dev_err(qsfp->dev, "i2 write failure - failed to override power\n");
 }
 
 static bool tx_disable_supported(struct kvx_qsfp *qsfp)
@@ -855,17 +859,16 @@ static void kvx_qsfp_set_ee_tx_state(struct kvx_qsfp *qsfp, u8 op)
 	int ret;
 	u8 val, tx_dis = SFF8636_TX_DISABLE_TX1 | SFF8636_TX_DISABLE_TX2
 		       | SFF8636_TX_DISABLE_TX3 | SFF8636_TX_DISABLE_TX4;
-	size_t l = sizeof(val);
 
 	if (!tx_disable_supported(qsfp))
 		return;
 
 	set_power_override(qsfp, op);
 
-	ret = qsfp_refresh_eeprom(qsfp, control.tx_disable, l);
-	val = qsfp->eeprom.control.tx_disable;
-	if (ret != l)
+	ret = qsfp_refresh_eeprom(qsfp, control.tx_disable);
+	if (ret < 0)
 		return;
+	val = qsfp->eeprom.control.tx_disable;
 
 	switch (op) {
 	case QSFP_TX_DISABLE:
@@ -879,8 +882,8 @@ static void kvx_qsfp_set_ee_tx_state(struct kvx_qsfp *qsfp, u8 op)
 		return;
 	}
 
-	ret = qsfp_write_eeprom(qsfp, &val, control.tx_disable, sizeof(val));
-	if (ret != l) {
+	ret = qsfp_write_eeprom(qsfp, &val, control.tx_disable);
+	if (ret < 0) {
 		dev_err(qsfp->dev, "TX %sable failed (eeprom write failed)\n", op ? "dis" : "en");
 		return;
 	}
@@ -992,13 +995,12 @@ static u32 kvx_qsfp_parse_max_power(struct kvx_qsfp *qsfp)
 static int kvx_qsfp_set_module_power(struct kvx_qsfp *qsfp, u32 power_mW)
 {
 	u8 ext_id, val;
-	size_t l = sizeof(val);
 	int ret;
 
-	ret = qsfp_refresh_eeprom(qsfp, control.power, l);
-	val = qsfp->eeprom.control.power;
-	if (ret != l)
+	ret = qsfp_refresh_eeprom(qsfp, control.power);
+	if (ret < 0)
 		return ret;
+	val = qsfp->eeprom.control.power;
 
 	if (!tx_disable_fast_path_supported(qsfp))
 		set_power_override(qsfp, QSFP_TX_ENABLE);
@@ -1015,8 +1017,8 @@ static int kvx_qsfp_set_module_power(struct kvx_qsfp *qsfp, u32 power_mW)
 	 * thus we don't need to do anything
 	 */
 	if (val != qsfp->eeprom.control.power) {
-		ret = qsfp_write_eeprom(qsfp, &val, control.power, l);
-		if (ret != l)
+		ret = qsfp_write_eeprom(qsfp, &val, control.power);
+		if (ret < 0)
 			dev_err(qsfp->dev, "%s Can not override power settings\n", __func__);
 	}
 
@@ -1393,11 +1395,10 @@ static ssize_t sysfs_tx_disable_show(struct kobject *kobj,
 		gpiod_direction_input(tx_dis);
 		data = gpiod_get_value(tx_dis);
 	} else {
-		ret = qsfp_refresh_eeprom(qsfp, control.tx_disable, sizeof(data));
-		data = qsfp->eeprom.control.tx_disable;
-		if (ret != sizeof(data))
+		ret = qsfp_refresh_eeprom(qsfp, control.tx_disable);
+		if (ret < 0)
 			return ret;
-
+		data = qsfp->eeprom.control.tx_disable;
 		data &= (SFF8636_TX_DISABLE_TX1 | SFF8636_TX_DISABLE_TX2
 			 | SFF8636_TX_DISABLE_TX3 | SFF8636_TX_DISABLE_TX4);
 	}
