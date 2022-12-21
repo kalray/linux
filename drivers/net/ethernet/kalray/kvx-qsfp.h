@@ -228,6 +228,11 @@ struct kvx_qsfp_ops {
 	void (*rxlos)(struct kvx_qsfp *qsfp);
 };
 
+/* callback is NULL if not supported */
+struct kvx_qsfp_opt_features {
+	void (*set_int_flags_mask)(struct kvx_qsfp *qsfp); /* configure interrupt flags mask */
+};
+
 struct kvx_qsfp_interrupt_flags {
 	u8 los; /* Rx/Tx LOS indicator */
 	u8 fault; /* Tx fault indicator  */
@@ -273,7 +278,9 @@ struct kvx_qsfp_channel_flags_mask {
 
 struct kvx_qsfp_eeprom_cache {
 	/* lower page 0 */
-	u8 id[3];
+	u8 id;
+	u8 sff_revision;
+	u8 status;
 	struct kvx_qsfp_interrupt_flags int_flags;
 	u8 device_monitors[12];
 	u8 channel_monitors[48];
@@ -329,8 +336,7 @@ struct kvx_qsfp_eeprom_cache {
  * @sm_s_ready: completion for state QSFP_S_READY
  * @irq_event: used to notify @irq_event_task of an IRQ event
  * @cable_connected: true if qsfp cable is plugged in
- * @monitor_enabled: true if monitoring is enabled
- * @int_flags_supported: true if intL irq handler was triggered
+ * @opt_features: optionnal features
  * @ops: callbacks for events such as cable connect/disconnect
  * @ops_data: data structure passed to the @ops callbacks
  */
@@ -349,8 +355,7 @@ struct kvx_qsfp {
 	struct completion sm_s_ready;
 	unsigned long irq_event;
 	bool cable_connected;
-	bool monitor_enabled;
-	bool int_flags_supported;
+	struct kvx_qsfp_opt_features opt_features;
 	struct kvx_qsfp_ops *ops;
 	void *ops_data;
 };
