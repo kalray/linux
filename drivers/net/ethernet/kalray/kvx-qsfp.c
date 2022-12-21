@@ -605,16 +605,13 @@ bool is_cable_passive_copper(struct kvx_qsfp *qsfp)
 
 bool kvx_qsfp_int_flags_supported(struct kvx_qsfp *qsfp)
 {
-	return qsfp->int_flags_supported;
+	return qsfp->opt_features.set_int_flags_mask != NULL;
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_int_flags_supported);
 
 static void update_interrupt_flags_mask(struct kvx_qsfp *qsfp)
 {
 	int l, ret;
-
-	if (!qsfp->int_flags_supported)
-		return;
 
 	ret = qsfp_update_eeprom(qsfp, int_flags_mask);
 	if (ret != 0) {
@@ -1120,32 +1117,29 @@ void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_parse_support);
 
-static void set_int_flags_monitoring_state(struct kvx_qsfp *qsfp, bool enable)
+/** kvx_qsfp_set_int_flags_masks - set the int flags mask bits based on the callbacks defined
+ * @qsfp: qsfp prvdata
+ *
+ * Firstly, all interrupts are masked, then only those needed are unmasked.
+ */
+static void kvx_qsfp_set_int_flags_mask(struct kvx_qsfp *qsfp)
 {
 	size_t len;
 
-	if (!qsfp->int_flags_supported)
-		return;
+	/* avoid overwriting vendor specific section (2 bytes at the end) */
+	len = qsfp_eeprom_len(int_flags_mask) - qsfp_eeprom_len(int_flags_mask.vendor);
+	memset(&qsfp->eeprom.int_flags_mask, 0xff, len);
 
-	if (!enable) {
-		/* avoid overwriting vendor specific section (2 bytes at the end) */
-		len = qsfp_eeprom_len(int_flags_mask) - qsfp_eeprom_len(int_flags_mask.vendor);
-		memset(&qsfp->eeprom.int_flags_mask, 0xff, len);
+	/* avoid overwriting reserved section (4 bytes at the end) */
+	len = qsfp_eeprom_len(channel_monitor_mask) - qsfp_eeprom_len(channel_monitor_mask.reserved);
+	memset(&qsfp->eeprom.channel_monitor_mask, 0xff, len);
 
-		/* avoid overwriting reserved section (4 bytes at the end) */
-		len = qsfp_eeprom_len(channel_monitor_mask) - qsfp_eeprom_len(channel_monitor_mask.reserved);
-		memset(&qsfp->eeprom.channel_monitor_mask, 0xff, len);
-		goto bail;
-	}
-
-	if (qsfp->ops && qsfp->ops->rxlos && get_gpio_desc(qsfp, QSFP_GPIO_INTL)) {
+	if (qsfp->ops && qsfp->ops->rxlos) {
 		/* enable RxLOS interrupt flags */
 		qsfp->eeprom.int_flags_mask.rx_tx_los &= 0xf0;
 	}
 
-bail:
 	update_interrupt_flags_mask(qsfp);
-	qsfp->monitor_enabled = enable;
 }
 
 /** kvx_qsfp_init - driver init, eeprom cache init
@@ -1191,15 +1185,20 @@ static int kvx_qsfp_init(struct kvx_qsfp *qsfp)
 		return -EFAULT;
 	}
 
-	/* prevent by default all hardware interrupts and enable only on a need basis */
-	set_int_flags_monitoring_state(qsfp, false);
-
 	kvx_qsfp_print_module_status(qsfp);
 
 	return 0;
 err:
 	mutex_unlock(&qsfp->i2c_lock);
 	return ret;
+}
+
+/** kvx_qsfp_reset_opt_features - reset all optionnal features
+ * @qsfp: qsfp prvdata
+ */
+static inline void kvx_qsfp_reset_opt_features(struct kvx_qsfp *qsfp)
+{
+	qsfp->opt_features.set_int_flags_mask = NULL;
 }
 
 /** kvx_qsfp_cleanup - cleanup callback
@@ -1241,8 +1240,17 @@ static void kvx_qsfp_sm_event(struct work_struct *work)
 					qsfp->ops->disconnect(qsfp);
 			}
 		} else if (i == QSFP_E_INTL) {
-			if (qsfp->monitor_enabled)
-				update_interrupt_flags(qsfp);
+			/* An IntL IRQ was triggered, it means that interrupt flags are supported by the cable.
+			 * According to SFF-8636: if supported, the IntL pin shall be asserted upon completion
+			 * of reset. Thus, we enable int flags masking here.
+			 * Note: IntL interrupt register cannot be checked in the init function (timing issue).
+			 */
+			if (qsfp->opt_features.set_int_flags_mask == NULL) {
+				qsfp->opt_features.set_int_flags_mask = kvx_qsfp_set_int_flags_mask;
+				qsfp->opt_features.set_int_flags_mask(qsfp);
+			}
+
+			update_interrupt_flags(qsfp);
 		}
 	}
 }
@@ -1258,7 +1266,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		break;
 	case QSFP_S_ERROR:
 		if (is_cable_connected(qsfp)) {
-			set_int_flags_monitoring_state(qsfp, false);
 			dev_err(qsfp->dev, "qsfp state machine is in an error state\n");
 			kvx_qsfp_set_tx_state(qsfp, QSFP_TX_DISABLE);
 			break;
@@ -1267,7 +1274,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		fallthrough;
 	case QSFP_S_DOWN:
 		if (!is_cable_connected(qsfp)) {
-			qsfp->monitor_enabled = false;
 			dev_info(qsfp->dev, "Cable unplugged\n");
 			break;
 		}
@@ -1275,11 +1281,7 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 	case QSFP_S_RESET:
 		if (!is_cable_connected(qsfp))
 			return QSFP_S_DOWN;
-		/* if supported, the IntL gpio will be asserted after the reset,
-		 * thus qsfp->int_flags_supported will be set to true by the
-		 * IntL irq handler
-		 */
-		qsfp->int_flags_supported = false;
+		kvx_qsfp_reset_opt_features(qsfp);
 		kvx_qsfp_reset(qsfp);
 		fallthrough;
 	case QSFP_S_INIT:
@@ -1287,7 +1289,6 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 			return QSFP_S_ERROR;
 		if (kvx_qsfp_tune(qsfp) < 0)
 			return QSFP_S_ERROR;
-		set_int_flags_monitoring_state(qsfp, true);
 		kvx_qsfp_set_tx_state(qsfp, QSFP_TX_ENABLE);
 		fallthrough;
 	case QSFP_S_WPOWER:
@@ -1338,8 +1339,8 @@ static irqreturn_t kvx_qsfp_intl_irq_handler(int irq, void *data)
 {
 	struct kvx_qsfp *qsfp = data;
 
-	qsfp->int_flags_supported = true;
 	set_bit(QSFP_E_INTL, &qsfp->irq_event);
+
 	if (!work_pending(&qsfp->irq_event_task))
 		queue_work(kvx_qsfp_wq, &qsfp->irq_event_task);
 
@@ -1352,40 +1353,35 @@ static ssize_t sysfs_reset_store(struct kobject *kobj, struct kobj_attribute *a,
 	struct platform_device *pdev = container_of(kobj, struct platform_device, dev.kobj);
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
 
-	qsfp->monitor_enabled = false;
 	qsfp->sm_state = QSFP_S_RESET;
 	queue_work(kvx_qsfp_wq, &qsfp->sm_task);
 
 	return count;
 }
 
-static ssize_t sysfs_monitor_show(struct kobject *kobj,
+static ssize_t sysfs_int_flags_show(struct kobject *kobj,
 				 struct kobj_attribute *attr, char *buf)
 {
 	struct platform_device *pdev = container_of(kobj, struct platform_device,
 						    dev.kobj);
 	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
-
-	return sprintf(buf, "%i\n", qsfp->monitor_enabled);
-}
-
-static ssize_t sysfs_monitor_store(struct kobject *kobj, struct kobj_attribute *a,
-				const char *buf, size_t count)
-{
-	struct platform_device *pdev = container_of(kobj, struct platform_device,
-						    dev.kobj);
-	struct kvx_qsfp *qsfp = platform_get_drvdata(pdev);
 	int ret;
-	bool mon;
+	const char *msg = "supported: %u\n"
+		    "interrupt flags: %*ph\n"
+		    "device masks: %*ph\n"
+		    "channel monitor masks: %*ph\n";
 
-	if (qsfp->int_flags_supported) {
-		ret = kstrtouint(buf, 0, (u32 *)&mon);
-		if (ret)
-			return ret;
-		set_int_flags_monitoring_state(qsfp, mon);
-	}
+	ret = qsfp_refresh_eeprom(qsfp, int_flags);
+	if (ret < 0)
+		return ret;
 
-	return count;
+	return sprintf(buf, msg, kvx_qsfp_int_flags_supported(qsfp),
+		       (int)qsfp_eeprom_len(int_flags),
+		       (u8 *)&qsfp->eeprom.int_flags,
+		       (int)qsfp_eeprom_len(int_flags_mask),
+		       (u8 *)&qsfp->eeprom.int_flags_mask,
+		       (int)qsfp_eeprom_len(channel_monitor_mask),
+		       (u8 *)&qsfp->eeprom.channel_monitor_mask);
 }
 
 static ssize_t sysfs_tx_disable_show(struct kobject *kobj,
@@ -1433,7 +1429,7 @@ static ssize_t sysfs_tx_disable_store(struct kobject *kobj, struct kobj_attribut
 static struct kobj_attribute sysfs_attr_qsfp_reset =
 	__ATTR(reset, 0200, NULL, sysfs_reset_store);
 static struct kobj_attribute sysfs_attr_qsfp_monitor =
-	__ATTR(monitor, 0664, sysfs_monitor_show, sysfs_monitor_store);
+	__ATTR(int_flags, 0444, sysfs_int_flags_show, NULL);
 static struct kobj_attribute sysfs_attr_qsfp_tx_disable =
 	__ATTR(tx_disable, 0664, sysfs_tx_disable_show, sysfs_tx_disable_store);
 
