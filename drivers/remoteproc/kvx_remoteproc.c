@@ -257,7 +257,7 @@ struct kvx_vring_mbox_data {
  * @params_env: Env for remote processor
  */
 struct kvx_rproc {
-	int cluster_id;
+	unsigned int cluster_id;
 	struct device *dev;
 	struct rproc *rproc;
 	struct regmap *ftu_regmap;
