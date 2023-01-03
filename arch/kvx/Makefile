@@ -6,7 +6,7 @@ ifeq ($(CROSS_COMPILE),)
 CROSS_COMPILE := kvx-elf-
 endif
 
-KBUILD_DEFCONFIG := default_defconfig
+KBUILD_DEFCONFIG := defconfig
 
 LDFLAGS_vmlinux := -X
 OBJCOPYFLAGS := -O binary -R .comment -R .note -R .bootloader -S

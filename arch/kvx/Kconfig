@@ -108,7 +108,6 @@ config KVX
 	select ZONE_DMA32
 
 config PGTABLE_LEVELS
-	int
 	default 3
 
 config HAVE_KPROBES
@@ -120,9 +119,8 @@ config POISON_INITMEM
 	bool "Enable to poison freed initmem"
 	default y
 	help
-	  In order to debug initmem, using poison allows to verify if
-	  some data/code is stille using them. Enable this for debug
-	  purposes
+	  In order to debug initmem, using poison allows to verify if some
+	  data/code is still using them. Enable this for debug purposes.
 
 config KVX_PHYS_OFFSET
 	hex "RAM address of memory base"
@@ -150,7 +148,7 @@ config STACK_MAX_DEPTH_TO_PRINT
 	default "24"
 
 config L2_CACHE
-	bool "Enable l2 cache driver"
+	bool "Enable L2 cache driver"
 	default y
 	help
 	  Enable L2 cache driver in order to handle it. This driver can be
@@ -164,12 +162,12 @@ config SECURE_DAME_HANDLING
 	help
 	  In order to securely handle Data Asynchronous Memory Errors, we need
 	  to do a barrier upon kernel entry when coming from userspace. This
-	  barrier guarantee us that any pending DAME will be serviced right
+	  barrier guarantees us that any pending DAME will be serviced right
 	  away. We also need to do a barrier when returning from kernel to user.
 	  This way, if the kernel or the user triggered a DAME, it will be
 	  serviced by knowing we are coming from kernel or user and avoid
 	  pulling the wrong lever (panic for kernel or sigfault for user).
-	  This can be costly but ensure that user cannot interfere with kernel.
+	  This can be costly but ensures that user cannot interfere with kernel.
 	  /!\ Do not disable unless you want to open a giant breach between
 	  user and kernel /!\
 
@@ -179,7 +177,7 @@ config CACHECTL_UNSAFE_PHYS_OPERATIONS
 	help
 	  Enable cachectl syscall to allow writebacking/invalidating ranges
 	  based on physical addresses. These operations requires the
-	  CAP_SYS_ADMIN capability
+	  CAP_SYS_ADMIN capability.
 
 config ENABLE_TCA
 	bool "Enable TCA coprocessor support"
