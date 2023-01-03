@@ -506,6 +506,12 @@ static union ipv4_filter_desc *fill_ipv4_filter(struct kvx_eth_netdev *ndev,
 #else
 			filter->da_fk_mask = 0xffffffff;
 #endif
+		if ((rx_hash_field & KVX_HASH_FIELD_SEL_L3_PROT) != 0)
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
+			filter->protocol_hash_mask = 0xff;
+#else
+			filter->protocol_fk_mask = 0xff;
+#endif
 	}
 
 	return filter;
@@ -1137,7 +1143,7 @@ static int set_rss_hash_opt(struct kvx_eth_netdev *ndev,
 		return -EOPNOTSUPP;
 
 	if (nfc->data & ~(RXH_IP_SRC | RXH_IP_DST | RXH_L4_B_0_1 |
-				RXH_L4_B_2_3 | RXH_VLAN | RXH_L2DA))
+				RXH_L4_B_2_3 | RXH_VLAN | RXH_L2DA | RXH_L3_PROTO))
 		return -EOPNOTSUPP;
 
 	tt = flow_type_to_traffic_type(nfc->flow_type);
@@ -1156,6 +1162,8 @@ static int set_rss_hash_opt(struct kvx_eth_netdev *ndev,
 		rx_hash_field |= KVX_HASH_FIELD_SEL_VLAN;
 	if (nfc->data & RXH_L2DA)
 		rx_hash_field |= KVX_HASH_FIELD_SEL_DST_MAC;
+	if (nfc->data & RXH_L3_PROTO)
+		rx_hash_field |= KVX_HASH_FIELD_SEL_L3_PROT;
 
 	/* If no change don't reprogram parsers */
 	if (rx_hash_field == ndev->hw->parsing.rx_hash_fields[tt])
@@ -1192,6 +1200,8 @@ static int kvx_get_rss_hash_opt(struct kvx_eth_netdev *ndev,
 		nfc->data |= RXH_L4_B_2_3;
 	if (hash_field & KVX_HASH_FIELD_SEL_VLAN)
 		nfc->data |= RXH_VLAN;
+	if (hash_field & KVX_HASH_FIELD_SEL_L3_PROT)
+		nfc->data |= RXH_L3_PROTO;
 
 	return 0;
 }
