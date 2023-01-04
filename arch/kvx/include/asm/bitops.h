@@ -16,14 +16,6 @@
 
 #include <asm/cmpxchg.h>
 
-static inline unsigned long __ffs(unsigned long word);
-
-#include <asm-generic/bitops/const_hweight.h>
-#include <asm-generic/bitops/ffz.h>
-#include <asm-generic/bitops/non-atomic.h>
-#include <asm-generic/bitops/lock.h>
-#include <asm-generic/bitops/sched.h>
-
 static inline int fls(int x)
 {
 	return 32 - __builtin_kvx_clzw(x);
@@ -78,7 +70,6 @@ static inline int ffs(int x)
 	return __builtin_kvx_ctzw(x) + 1;
 }
 
-
 static inline unsigned int __arch_hweight32(unsigned int w)
 {
 	unsigned int count;
@@ -111,106 +102,14 @@ static inline unsigned int __arch_hweight8(unsigned int w)
 	return __arch_hweight32(w & 0xff);
 }
 
+#include <asm-generic/bitops/ffz.h>
 
-/* Bitmask modifiers */
-#define __NOP(x)	(x)
-#define __NOT(x)	(~(x))
+#include <asm-generic/bitops/sched.h>
+#include <asm-generic/bitops/const_hweight.h>
 
-
-#define __test_and_op_bit(nr, addr, op, mod)				\
-({									\
-	unsigned long __mask = BIT_MASK(nr);				\
-	unsigned long __new, __old, __ret;				\
-	do {								\
-		__old = *(&addr[BIT_WORD(nr)]);				\
-		__new = __old op mod(__mask);				\
-		__ret = cmpxchg(addr, __old, __new);			\
-	} while (__ret != __old);					\
-	(__old & __mask);						\
-})
-
-/**
- * test_and_set_bit - Set a bit and return its old value
- * @nr: Bit to set
- * @addr: Address to count from
- *
- * This operation may be reordered on other architectures than x86.
- */
-static inline int test_and_set_bit(int nr, volatile unsigned long *addr)
-{
-	return __test_and_op_bit(nr, addr, |, __NOP) != 0;
-}
-
-/**
- * test_and_clear_bit - Clear a bit and return its old value
- * @nr: Bit to clear
- * @addr: Address to count from
- *
- * This operation can be reordered on other architectures other than x86.
- */
-static inline int test_and_clear_bit(int nr, volatile unsigned long *addr)
-{
-	return __test_and_op_bit(nr, addr, &, __NOT);
-}
-
-#define __atomic_op(nr, addr, op, mod)					\
-({									\
-	unsigned long __new, __old, __ret;				\
-	__ret = addr[BIT_WORD(nr)];					\
-	do {								\
-		__old = __ret;						\
-		__new = __old op mod(BIT_MASK(nr));			\
-		__ret = cmpxchg(&addr[BIT_WORD(nr)], __old, __new);	\
-	} while (__ret != __old);					\
-})
-
-/**
- * set_bit - Atomically set a bit in memory
- * @nr: the bit to set
- * @addr: the address to start counting from
- *
- * Note: there are no guarantees that this function will not be reordered
- * on non x86 architectures, so if you are writing portable code,
- * make sure not to rely on its reordering guarantees.
- *
- * Note that @nr may be almost arbitrarily large; this function is not
- * restricted to acting on a single-word quantity.
- */
-static inline void set_bit(int nr, volatile unsigned long *addr)
-{
-	__atomic_op(nr, addr, |, __NOP);
-}
-
-/**
- * clear_bit - Clears a bit in memory
- * @nr: Bit to clear
- * @addr: Address to start counting from
- *
- * Note: there are no guarantees that this function will not be reordered
- * on non x86 architectures, so if you are writing portable code,
- * make sure not to rely on its reordering guarantees.
- */
-static inline void clear_bit(int nr, volatile unsigned long *addr)
-{
-	__atomic_op(nr, addr, &, __NOT);
-}
-
-/**
- * change_bit - Toggle a bit in memory
- * @nr: Bit to change
- * @addr: Address to start counting from
- *
- * change_bit()  may be reordered on other architectures than x86.
- * Note that @nr may be almost arbitrarily large; this function is not
- * restricted to acting on a single-word quantity.
- */
-static inline void change_bit(int nr, volatile unsigned long *addr)
-{
-	__atomic_op(nr, addr, ^, __NOP);
-}
-
-#include <asm-generic/bitops/lock.h>
+#include <asm-generic/bitops/atomic.h>
 #include <asm-generic/bitops/non-atomic.h>
+#include <asm-generic/bitops/lock.h>
 #include <asm-generic/bitops/le.h>
 #include <asm-generic/bitops/ext2-atomic.h>
 #include <asm-generic/bitops/find.h>
