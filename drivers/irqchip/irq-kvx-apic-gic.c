@@ -7,7 +7,6 @@
 
 #define pr_fmt(fmt)	"kvx_apic_gic: " fmt
 
-#include <linux/irqchip/irq-kvx-apic-gic.h>
 #include <linux/of_address.h>
 #include <linux/cpuhotplug.h>
 #include <linux/interrupt.h>
@@ -23,8 +22,19 @@
  * However, the two upper lines are for Secure RM and DMA engine
  * Thus, we do not have to use them
  */
-#define GIC_CPU_OUT_COUNT	16
-#define GIC_PER_CPU_IT_COUNT	4
+#define KVX_GIC_PER_CPU_IT_COUNT	4
+#define KVX_GIC_INPUT_IT_COUNT		0x9D
+#define KVX_GIC_OUTPUT_IT_COUNT		0x10
+
+/* GIC enable register definitions */
+#define KVX_GIC_ENABLE_OFFSET		0x0
+#define KVX_GIC_ENABLE_ELEM_SIZE	0x1
+#define KVX_GIC_ELEM_SIZE		0x400
+
+/* GIC status lac register definitions */
+#define KVX_GIC_STATUS_LAC_OFFSET	0x120
+#define KVX_GIC_STATUS_LAC_ELEM_SIZE	0x8
+#define KVX_GIC_STATUS_LAC_ARRAY_SIZE	0x3
 
 /**
  * For each CPU, there is 4 output lines coming from the apic GIC.
@@ -65,9 +75,8 @@ struct kvx_apic_gic {
 	void __iomem *base;
 	struct irq_domain *domain;
 	uint32_t input_nr_irqs;
-	/* For each cpu, there is a output IT line */
-	struct gic_out_irq_line output_irq[GIC_CPU_OUT_COUNT];
-
+	/* For each cpu, there is an output IT line */
+	struct gic_out_irq_line output_irq[KVX_GIC_OUTPUT_IT_COUNT];
 	/* Input interrupt status */
 	struct gic_in_irq_line input_irq[KVX_GIC_INPUT_IT_COUNT];
 };
@@ -237,11 +246,11 @@ static void __init apic_gic_init(struct kvx_apic_gic *gic)
 	}
 
 	/* Clear all output lines (-> cpus) */
-	for (cpu = 0; cpu < GIC_CPU_OUT_COUNT; cpu++) {
+	for (cpu = 0; cpu < KVX_GIC_OUTPUT_IT_COUNT; cpu++) {
 		output_irq_line = &gic->output_irq[cpu];
 		output_irq_line->cpu = cpu;
 		output_irq_line->base = gic->base +
-			cpu * (KVX_GIC_ELEM_SIZE * GIC_PER_CPU_IT_COUNT);
+			cpu * (KVX_GIC_ELEM_SIZE * KVX_GIC_PER_CPU_IT_COUNT);
 
 		/* Disable all external lines on this core */
 		for (line = 0; line < KVX_GIC_INPUT_IT_COUNT; line++)
