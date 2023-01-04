@@ -1,15 +1,18 @@
+.. SPDX-License-Identifier: GPL-2.0
+
+===
 MMU
 ===
 
 Virtual addresses are on 41 bits for kvx when using 64-bit mode.
 To differentiate kernel from user space, we use the high order bit
-(bit 40). When bit 40 is set, then the higher remaining bits must also be set to
-1. The virtual address must be extended with 1 when the bit 40 is set,
+(bit 40). When bit 40 is set, then the higher remaining bits must also be
+set to 1. The virtual address must be extended with 1 when the bit 40 is set,
 if not the address must be zero extended. Bit 40 is set for kernel space
 mappings and not set for user space mappings.
 
 Memory Map
-==========
+----------
 
 In Linux physical memories are arranged into banks according to the cost of an
 access in term of distance to a memory. As we are UMA architecture we only have
@@ -24,20 +27,20 @@ only one ZONE_NORMAL. This will be updated if DMA cannot access all memory.
 
 Currently, the memory mapping is the following for 4KB page:
 
-+-----------------------+-----------------------+------+-------+--------------+
-| Start                 | End                   | Attr | Size  | Name         |
-+-----------------------+-----------------------+------+-------+--------------+
-| 0000 0000 0000 0000   | 0000 003F FFFF FFFF   | ---  | 256GB | User         |
-| 0000 0040 0000 0000   | 0000 007F FFFF FFFF   | ---  | 256GB |   MMAP       |
-| 0000 0080 0000 0000   | FFFF FF7F FFFF FFFF   | ---  | ---   | Gap          |
-| FFFF FF80 0000 0000   | FFFF FFFF FFFF FFFF   | ---  | 512GB | Kernel       |
-|   FFFF FF80 0000 0000 |   FFFF FF8F FFFF FFFF | RWX  | 64GB  |   Direct Map |
-|   FFFF FF90 0000 0000 |   FFFF FF90 3FFF FFFF | RWX  | 1GB   |   Vmalloc    |
-|   FFFF FF90 4000 0000 |   FFFF FFFF FFFF FFFF | RW   | 447GB |   Free area  |
-+-----------------------+-----------------------+------+-------+--------------+
+  ======================== ======================= ====== ======= ==============
+  Start                    End                     Attr   Size    Name
+  ======================== ======================= ====== ======= ==============
+  0000 0000 0000 0000      0000 003F FFFF FFFF     ---    256GB    User
+  0000 0040 0000 0000      0000 007F FFFF FFFF     ---    256GB     MMAP
+  0000 0080 0000 0000      FFFF FF7F FFFF FFFF     ---    ---      Gap
+  FFFF FF80 0000 0000      FFFF FFFF FFFF FFFF     ---    512GB    Kernel
+    FFFF FF80 0000 0000     FFFF FF8F FFFF FFFF    RWX    64GB      Direct Map
+    FFFF FF90 0000 0000     FFFF FF90 3FFF FFFF    RWX    1GB       Vmalloc
+    FFFF FF90 4000 0000     FFFF FFFF FFFF FFFF    RW     447GB     Free area
+  ======================== ======================= ====== ======= ==============
 
 Enable the MMU
-==============
+--------------
 
 All kernel functions and symbols are in virtual memory except for kvx_start()
 function which is loaded at 0x0 in physical memory.
@@ -57,10 +60,10 @@ this approach is that mapped entries are using RWX protection attributes,
 leading to no protection at all.
 
 Kernel strict RWX
-=================
+-----------------
 
-CONFIG_STRICT_KERNEL_RWX is enabled by default in default_defconfig.
-Once booted, if CONFIG_STRICT_KERNEL_RWX is enable, the kernel text and memory
+``CONFIG_STRICT_KERNEL_RWX`` is enabled by default in defconfig.
+Once booted, if ``CONFIG_STRICT_KERNEL_RWX`` is enable, the kernel text and memory
 will be mapped in the init_mm page table. Once mapped, the refill routine for
 the kernel is patched to always do a page table walk, bypassing the faster
 comparison but enforcing page protection attributes when refilling.
@@ -71,23 +74,26 @@ routine which would (obviously) not work... Once this is done, we can flush the
 entries and that new entries inserted in JTLB will apply.
 
 By default, the following policy is applied on vmlinux sections:
-- init_data: RW
-- init_text: RX (or RWX if parameter rodata=off)
-- text: RX (or RWX if parameter rodata=off)
-- rodata: RW before init, RO after init
-- sdata: RW
+
+ - init_data: RW
+ - init_text: RX (or RWX if parameter rodata=off)
+ - text: RX (or RWX if parameter rodata=off)
+ - rodata: RW before init, RO after init
+ - sdata: RW
 
 Kernel RWX mode can then be switched on/off using /sys/kvx/kernel_rwx file.
 
 Privilege Level
-================
+---------------
+
 Since we are using privilege levels on kvx, we make use of the virtual
 spaces to be in the same space as the user. The kernel will have the
 $ps.mmup set in kernel (PL1) and unset for user (PL2).
 As said in kvx documentation, we have two cases when the kernel is
 booted:
-- Either we have been booted by someone (bootloader, hypervisor, etc)
-- Or we are alone (boot from flash)
+
+ - Either we have been booted by someone (bootloader, hypervisor, etc)
+ - Or we are alone (boot from flash)
 
 In both cases, we will use the virtual space 0. Indeed, if we are alone
 on the core, then it means nobody is using the MMU and we can take the
@@ -103,15 +109,16 @@ step in the kernel is to detect the amount of DDR available by getting this
 information in the device tree and initialize the low-level "memblock" allocator.
 
 We start by reserving memory for the whole kernel. For instance with a device
-tree containing 512Mo of DDR you could see the following boot messages:
+tree containing 512MB of DDR you could see the following boot messages::
 
-setup_bootmem: Memory  : 0x100000000 - 0x120000000
-setup_bootmem: Reserved: 0x10001f000 - 0x1002d1bc0
+  setup_bootmem: Memory  : 0x100000000 - 0x120000000
+  setup_bootmem: Reserved: 0x10001f000 - 0x1002d1bc0
 
 During the paging init we need to set:
-  - min_low_pfn that is the lowest PFN available in the system
-  - max_low_pfn that indicates the end if NORMAL zone
-  - max_pfn that is the number of pages in the system
+
+ - min_low_pfn that is the lowest PFN available in the system
+ - max_low_pfn that indicates the end if NORMAL zone
+ - max_pfn that is the number of pages in the system
 
 This setting is used for dividing memory into pages and for configuring the
 zone. See the memory map section for more information about ZONE.
@@ -127,13 +134,13 @@ reserved for the kernel are still used and remain in physical memory. All pages
 released will now be used by the buddy allocator.
 
 Peripherals
-===========
+-----------
 
 Peripherals are mapped using standard ioremap infrastructure, therefore
 mapped addresses are located in the vmalloc space.
 
 LTLB Usage
-==========
+----------
 
 LTLB is used to add resident mapping which allows for faster MMU lookup.
 Currently, the LTLB is used to map some mandatory kernel pages and to allow fast
@@ -151,14 +158,17 @@ We only support three levels for the page table and 4KB for page size.
 3 levels page table
 -------------------
 
-...-----+--------+--------+--------+--------+--------+
-      40|39    32|31    24|23    16|15     8|7      0|
-...-----++-------+--+-----+---+----+----+---+--------+
-         |          |         |         |
-         |          |         |         +--->  [11:0] Offset (12 bits)
-         |          |         +------------->  [20:12] PTE offset (9 bits)
-         |          +----------------------->  [29:21] PMD offset (9 bits)
-         +---------------------------------->  [39:30] PGD offset (10 bits)
+::
+
+  ...-----+--------+--------+--------+--------+--------+
+        40|39    32|31    24|23    16|15     8|7      0|
+  ...-----++-------+--+-----+---+----+----+---+--------+
+           |          |         |         |
+           |          |         |         +--->  [11:0] Offset (12 bits)
+           |          |         +------------->  [20:12] PTE offset (9 bits)
+           |          +----------------------->  [29:21] PMD offset (9 bits)
+           +---------------------------------->  [39:30] PGD offset (10 bits)
+
 Bits 40 to 64 are signed extended according to bit 39. If bit 39 is equal to 1
 we are in kernel space.
 
@@ -169,25 +179,25 @@ PTE format
 
 About the format of the PTE entry, as we are not forced by hardware for choices,
 we choose to follow the format described in the RiscV implementation as a
-starting point.
+starting point::
 
- +---------+--------+----+--------+---+---+---+---+---+---+------+---+---+
- | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3..2 | 1 | 0 |
- +---------+--------+----+--------+---+---+---+---+---+---+------+---+---+
-     PFN     Unused   S    PageSZ   H   G   X   W   R   D    CP    A   P
-       where:
-        P: Present
-        A: Accessed
-        CP: Cache policy
-        D: Dirty
-        R: Read
-        W: Write
-        X: Executable
-        G: Global
-        H: Huge page
-        PageSZ: Page size as set in TLB format (0:4Ko, 1:64Ko, 2:2Mo, 3:512Mo)
-        S: Soft/Special
-        PFN: Page frame number (depends on page size)
+   +---------+--------+----+--------+---+---+---+---+---+---+------+---+---+
+   | 63..23  | 22..13 | 12 | 11..10 | 9 | 8 | 7 | 6 | 5 | 4 | 3..2 | 1 | 0 |
+   +---------+--------+----+--------+---+---+---+---+---+---+------+---+---+
+       PFN     Unused   S    PageSZ   H   G   X   W   R   D    CP    A   P
+         where:
+          P: Present
+          A: Accessed
+          CP: Cache policy
+          D: Dirty
+          R: Read
+          W: Write
+          X: Executable
+          G: Global
+          H: Huge page
+          PageSZ: Page size as set in TLB format (0:4KB, 1:64KB, 2:2MB, 3:512MB)
+          S: Soft/Special
+          PFN: Page frame number (depends on page size)
 
 Huge bit must be somewhere in the first 12 bits to be able to detect it
 when reading the PMD entry.
@@ -202,16 +212,21 @@ kvx core does not feature a hardware page walker. This work must be done
 by the core in software. In order to optimize TLB refill, a special fast
 path is taken when entering in kernel space.
 In order to speed up the process, the following actions are taken:
-# Save some registers in a per process scratchpad
-# If the trap is a nomapping then try the fastpath
-# Save some more registers for this fastpath
-# Check if faulting address is a memory direct mapping one.
- # If entry is a direct mapping one and RWX is not enabled, add an entry into LTLB
- # If not, continue
-# Try to walk the page table
- # If entry is not present, take the slowpath (do_page_fault)
-# Refill the tlb properly
-# Exit by restoring only a few registers
+
+ 1. Save some registers in a per process scratchpad
+ 2. If the trap is a nomapping then try the fastpath
+ 3. Save some more registers for this fastpath
+ 4. Check if faulting address is a memory direct mapping one.
+
+    * If entry is a direct mapping one and RWX is not enabled, add an entry into LTLB
+    * If not, continue
+
+ 5. Try to walk the page table
+
+    * If entry is not present, take the slowpath (do_page_fault)
+
+ 6. Refill the tlb properly
+ 7. Exit by restoring only a few registers
 
 ASN Handling
 ============
@@ -225,10 +240,12 @@ kvx implementation to use them is based on other architectures (such as arc
 or xtensa) and uses a wrapping ASN counter containing both cycle/generation and
 asn.
 
-+---------+--------+
-|63     10|9      0|
-+---------+--------+
-  Cycle      ASN
+::
+
+  +---------+--------+
+  |63     10|9      0|
+  +---------+--------+
+    Cycle      ASN
 
 This ASN counter is incremented monotonously to allocate new ASNs. When the
 counter reaches 511 (9 bit), TLB is completely flushed and a new cycle is
@@ -245,14 +262,14 @@ generated value with the same operation (XOR on cycle).
 Huge page
 =========
 
-Currently only 3 level page table has been implemented for 4Ko base page size.
-So the page shift is 12 bits, the pmd shift is 21 and the pgdir shift is 30
-bits. This choice implies that for 4Ko base page size if we use a PMD as a huge
-page the size will be 2Mo and if we use a PUD as a huge page it will be 1Go.
+Currently only 3 level page table has been implemented for 4KB base page size.
+So the page shift is 12 bits, the pmd shift is 21 and the pgdir shift is 30 bits.
+This choice implies that for 4KB base page size if we use a PMD as a huge
+page the size will be 2MB and if we use a PUD as a huge page it will be 1GB.
 
-To support other huge page sizes (64Ko and 512Mo) we need to use several
-contiguous entries in the page table. For huge page of 64Ko we will need to
-use 16 entries in the PTE and for a huge page of 512Mo it means that 256
+To support other huge page sizes (64KB and 512MB) we need to use several
+contiguous entries in the page table. For huge page of 64KB we will need to
+use 16 entries in the PTE and for a huge page of 512MB it means that 256
 entries in PMD will be used.
 
 Debug
@@ -260,13 +277,11 @@ Debug
 
 In order to debug the page table and tlb entries, gdb scripts contains commands
 which allows to dump the page table:
-- lx-kvx-page-table-walk
- - Display the current process page table by default
-- lx-kvx-tlb-decode
- - Display the content of $tel and $teh into something readable
+
+:``lx-kvx-page-table-walk``: Display the current process page table by default
+:``lx-kvx-tlb-decode``: Display the content of $tel and $teh into something readable
 
 Other commands available in kvx-gdb are the following:
-- mppa-dump-tlb
- - Display the content of TLBs (JTLB and LTLB)
-- mppa-lookup-addr
- - Find physical address matching a virtual one
+
+:``mppa-dump-tlb``: Display the content of TLBs (JTLB and LTLB)
+:``mppa-lookup-addr``: Find physical address matching a virtual one
