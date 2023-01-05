@@ -11,6 +11,5 @@ obj-y	:= head.o setup.o process.o traps.o common.o time.o prom.o kvx_ksyms.o \
 obj-$(CONFIG_SMP) 			+= smp.o smpboot.o
 obj-$(CONFIG_MODULES)			+= module.o
 CFLAGS_module.o				+= -Wstrict-overflow -fstrict-overflow
-obj-$(CONFIG_L2_CACHE)			+= l2_cache.o
 
 extra-y					+= vmlinux.lds
