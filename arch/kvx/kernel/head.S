@@ -311,8 +311,7 @@ ENTRY(asm_memzero)
 ENDPROC(asm_memzero)
 
 /**
- * Configure the power controller to be accessible by PEs and start the
- * rm firmware
+ * Configure the power controller to be accessible by PEs
  */
 ENTRY(asm_rm_cfg_pwr_ctrl)
 	/* Enable hwloop for memzero */
@@ -329,9 +328,6 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	;;
 	/* Store parameters for PE0 */
 	sq 0[$r28] = $r0r1
-	/* Copy parameters before calling asm_memzero */
-	copyd $r20 = $r0
-	copyd $r21 = $r1
 	make $r29 = pe_start_wrapper
 	;;
 	/* Set PE reset PC to arguments wrapper */
@@ -339,11 +335,6 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	;;
 	/* Fence to make sure parameters will be visible by PE 0 */
 	fence
-	;;
-	/* Clear L2 registers */
-	make $r0 = __rm_firmware_regs_start
-	make $r1 = __rm_firmware_regs_end
-	call asm_memzero
 	;;
 	/* Start PE 0 (1 << cpu) */
 	make $r27 = 1
@@ -355,27 +346,8 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	/* And clear wakeup to allow PE0 to sleep */
 	sd PWR_CTRL_WUP_CLEAR_OFFSET[$r26] = $r27
 	;;
-	/* Restore parameters */
-	copyd $r0 = $r20
-	copyd $r1 = $r21
+	make $r20 = proc_power_off
 	;;
-	/* Load device tree for RM firmware  */
-	make $r21 = __PA(__dtb_start)
-	/* Check if magic is in $r0, if so, device tree to use is in $r1 */
-	compd.eq $r20 = $r0, LINUX_BOOT_PARAM_MAGIC
-	;;
-	cmoved.dnez $r20? $r21 = $r1
-	;;
-	/* Second argument is regs size */
-	make $r1 = __rm_firmware_regs_end
-	/* First argument is regs address */
-	make $r0 = __rm_firmware_regs_start
-	;;
-	make $r20 = __rm_firmware_start
-	/* Third argument is dtb address */
-	copyd $r2 = $r21
-	;;
-	/* Go to firmware */
 	igoto $r20
 	;;
 ENDPROC(asm_rm_cfg_pwr_ctrl)
@@ -563,11 +535,6 @@ ENTRY(smp_secondary_start)
 	;;
 	barrier
 	;;
-	/* Enable L2$ in $ps since it is mandatory for SMP */
-	make $r25 = PS_VAL_WFXL(L2E, 1)
-	;;
-	wfxl $ps = $r25
-	;;
 	make $r25 = __cpu_up_task_pointer
 	make $r26 = __cpu_up_stack_pointer
 	;;
@@ -599,14 +566,3 @@ ENTRY(proc_power_off)
 	goto 1b
 	;;
 ENDPROC(proc_power_off)
-
-/**
- * This code will be put in rm_firmware section by default.
- * If the rm_firmware section is overridden using another firmware,
- * this default code will be overridden.
- */
-.section .rm_firmware.default, "ax", @progbits
-ENTRY(rm_firmware)
-	goto proc_power_off
-	;;
-ENDPROC(rm_firmware)
