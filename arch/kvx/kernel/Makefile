@@ -21,7 +21,6 @@ obj-$(CONFIG_HAVE_HW_BREAKPOINT)	+= hw_breakpoint.o
 obj-$(CONFIG_MODULES)			+= module.o
 obj-$(CONFIG_KGDB)			+= kgdb.o
 CFLAGS_module.o				+= -Wstrict-overflow -fstrict-overflow
-obj-$(CONFIG_L2_CACHE)			+= l2_cache.o
 obj-$(CONFIG_FUNCTION_TRACER)		+= mcount.o ftrace.o
 
 extra-y					+= vmlinux.lds
