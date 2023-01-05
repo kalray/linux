@@ -942,7 +942,6 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
 	struct kvx_eth_polarities clear_pol = {.rx = 0, .tx = 0};
 	struct kvx_eth_polarities *pol;
 	u32 i, val, mask, reg;
-	int ret;
 
 	dev_dbg(hw->dev, "%s lane[%d->%d] serdes_mask: 0x%x serdes_pll_master: 0x%x\n",
 		__func__, lane, lane + lane_nb,
