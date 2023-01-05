@@ -146,7 +146,7 @@ int kvx_eth_desc_unused(struct kvx_eth_ring *r)
 	unsigned int use = READ_ONCE(r->next_to_use);
 
 	if (clean > use)
-		return 0;
+		return clean - use - 1;
 	return (r->count - (use - clean + 1));
 }
 
@@ -530,40 +530,33 @@ static int kvx_eth_clean_tx_irq(struct kvx_eth_ring *txr)
 {
 	struct net_device *netdev = txr->netdev;
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	u32 tx_r = txr->next_to_clean;
-	struct kvx_eth_netdev_tx *tx = &txr->tx_buf[tx_r];
+	struct kvx_eth_netdev_tx *tx = &txr->tx_buf[txr->next_to_clean];
 	u64 comp = kvx_dma_get_tx_completed(ndev->dma_cfg.pdev, txr->dma_chan);
-
-	if (tx_r == txr->next_to_use)
-		return 0;
+	unsigned int d;
 
 	while (tx->job_idx + tx->sg_len <= comp) {
+		if (kvx_eth_desc_unused(txr) == txr->count - 1)
+			break;
 		if (!tx->sg_len || !tx->skb)
 			break;
-		netdev_dbg(netdev, "queue[%d] sent skb[%d]: 0x%llx job_idx: %lld sg_len: %ld comp: %lld len: %ld\n",
-			  txr->qidx, tx_r, (u64)tx->skb,
-			  tx->job_idx, tx->sg_len, comp, tx->len);
+		netdev_dbg(netdev, "queue[%d] sent skb[%d]: 0x%llx job_idx: %lld sg_len: %ld comp: %lld len: %ld (cnt: %d)\n",
+			   txr->qidx, txr->next_to_clean, (u64)tx->skb,
+			   tx->job_idx, tx->sg_len, comp, tx->len, d);
 
 		/* consume_skb */
 		kvx_eth_unmap_skb(ndev->dev, tx);
 		ndev->stats.ring.tx_bytes += tx->len;
 		ndev->stats.ring.tx_pkts++;
 		dev_consume_skb_any(tx->skb);
-		tx->skb = NULL;
 
 		netdev_tx_completed_queue(get_txq(txr), 1, tx->len);
 		memset(tx, 0, sizeof(*tx));
-		tx_r = ((tx_r >= txr->count - 1) ? 0 : tx_r + 1);
+		RING_INC(txr, &txr->next_to_clean);
 
-		if (tx_r == txr->next_to_use)
-			break;
-
-	       tx = &txr->tx_buf[tx_r];
-	       comp = kvx_dma_get_tx_completed(ndev->dma_cfg.pdev,
-					       txr->dma_chan);
+		tx = &txr->tx_buf[txr->next_to_clean];
+		comp = kvx_dma_get_tx_completed(ndev->dma_cfg.pdev,
+						txr->dma_chan);
 	}
-	/* Barrier for concurrent access */
-	smp_store_mb(txr->next_to_clean, tx_r);
 
 	if (netif_carrier_ok(netdev) &&
 	    __netif_subqueue_stopped(netdev, txr->qidx))
@@ -696,7 +689,8 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 		return NETDEV_TX_OK;
 	}
 
-	if (kvx_eth_desc_unused(txr) == 0) {
+	unused_tx = kvx_eth_desc_unused(txr);
+	if (unused_tx == 0) {
 		netdev_warn(netdev, "Tx ring full\n");
 		goto busy;
 	}
@@ -725,8 +719,8 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 	netdev_tx_sent_queue(get_txq(txr), tx->len);
 
 	skb_tx_timestamp(skb);
-	kvx_dma_submit_pkt(txr->dma_chan, tx->job_idx, tx->sg_len);
 
+	kvx_dma_submit_pkt(txr->dma_chan, tx->job_idx, tx->sg_len);
 	RING_INC(txr, &txr->next_to_use);
 
 	unused_tx = kvx_eth_desc_unused(txr);
