@@ -19,7 +19,6 @@
 #include <linux/smp.h>
 
 #include <asm/processor.h>
-#include <asm/l2_cache.h>
 #include <asm/sections.h>
 #include <asm/hw_irq.h>
 #include <asm/setup.h>
