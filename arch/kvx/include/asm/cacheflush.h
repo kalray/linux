@@ -13,8 +13,6 @@
 #include <linux/mm.h>
 #include <linux/io.h>
 
-#include <asm/l2_cache.h>
-
 #define ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE 0
 
 #define flush_cache_mm(mm)			do { } while (0)
@@ -40,14 +38,8 @@ void dcache_wb_inval_phys_range(phys_addr_t addr, unsigned long len, bool wb,
 				bool inval);
 
 /*
- * In the following functions, if L2$ is enabled, line invalidations
- * in the L2$ will also trigger (via hw) invalidations in L1D caches of the
- * same Cluster in case the lines are present in such L1D caches.
- */
-
-/*
- * L1 is indexed by virtual addresses and as such, invalidation takes virtual
- * addresses as arguments.
+ * The L1 is indexed by virtual addresses and as such, invalidation takes
+ * virtual addresses as arguments.
  */
 static inline
 void l1_inval_dcache_range(unsigned long vaddr, unsigned long size)
@@ -68,14 +60,7 @@ void l1_inval_dcache_range(unsigned long vaddr, unsigned long size)
 static inline
 void inval_dcache_range(phys_addr_t paddr, unsigned long size)
 {
-	/*
-	 * Inval L2 first to avoid refilling from cached L2 values.
-	 * If L2 cache is not enabled, it will return false and hence, we will
-	 * fall back on L1 invalidation.
-	 */
-	if (!l2_cache_inval_range(paddr, size))
-		l1_inval_dcache_range((unsigned long) phys_to_virt(paddr),
-				      size);
+	l1_inval_dcache_range((unsigned long) phys_to_virt(paddr), size);
 }
 
 static inline
@@ -83,8 +68,6 @@ void wb_dcache_range(phys_addr_t paddr, unsigned long size)
 {
 	/* Fence to ensure all write are committed */
 	kvx_fence();
-
-	l2_cache_wb_range(paddr, size);
 }
 
 static inline
@@ -93,9 +76,7 @@ void wbinval_dcache_range(phys_addr_t paddr, unsigned long size)
 	/* Fence to ensure all write are committed */
 	kvx_fence();
 
-	if (!l2_cache_wbinval_range(paddr, size))
-		l1_inval_dcache_range((unsigned long) phys_to_virt(paddr),
-				      size);
+	l1_inval_dcache_range((unsigned long) phys_to_virt(paddr), size);
 }
 
 static inline
@@ -125,19 +106,15 @@ void wbinval_icache_range(phys_addr_t paddr, unsigned long size)
 	/* Fence to ensure all write are committed */
 	kvx_fence();
 
-	l2_cache_wbinval_range(paddr, size);
-	/* invalidating l2 cache will invalidate l1 dcache
-	 * but not l1 icache
-	 */
 	l1_inval_icache_range(vaddr, vaddr + size);
 }
 
 static inline
 void sync_dcache_icache(unsigned long start, unsigned long end)
 {
-	/* Fence to ensure all write are committed to L2 */
+	/* Fence to ensure all write are committed */
 	kvx_fence();
-	/* Then invalidate the L1 icache to reload from L2 */
+	/* Then invalidate the L1 icache */
 	l1_inval_icache_range(start, end);
 }
 
