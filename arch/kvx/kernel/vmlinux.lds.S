@@ -18,8 +18,6 @@
 
 #define BOOT_ENTRY		0x0
 #define DTB_DEFAULT_SIZE	(64 * 1024)
-#define RM_FIRMWARE_SIZE	(64 * 1024)
-#define RM_FIRMWARE_ADDRESS	(64 * 1024)
 
 #define LOAD_OFFSET  (PAGE_OFFSET - PHYS_OFFSET)
 #include <asm-generic/vmlinux.lds.h>
@@ -54,27 +52,6 @@ SECTIONS
 		KEEP(*(.boot.startup));
 		KEEP(*(.boot.*));
 		__kernel_smem_code_end = .;
-	}
-
-	/**
-	 * Special section to patch rm_firmware binary after compiling
-	 * the kernel.
-	 */
-	. = RM_FIRMWARE_ADDRESS;
-	.rm_firmware :
-	{
-		__rm_firmware_start = .;
-		KEEP(*(.rm_firmware.default));
-		/* Force minimum size */
-		. = __rm_firmware_start + RM_FIRMWARE_SIZE;
-		__rm_firmware_end = .;
-
-		/* Registers for RM firmware */
-		. = ALIGN(PAGE_SIZE);
-		__rm_firmware_regs_start = .;
-		/* Force minimum size */
-		. = __rm_firmware_regs_start + RM_FIRMWARE_REGS_SIZE;
-		__rm_firmware_regs_end = .;
 	}
 
 	. = PAGE_OFFSET;
