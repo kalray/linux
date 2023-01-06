@@ -18,12 +18,12 @@
 
 static inline long arch_atomic64_read(const atomic64_t *v)
 {
-	return v->counter;
+	return READ_ONCE(v->counter);
 }
 
 static inline void arch_atomic64_set(atomic64_t *v, long i)
 {
-	v->counter = i;
+	WRITE_ONCE(v->counter, i);
 }
 
 static inline long arch_atomic64_add_return(long i, atomic64_t *v)
