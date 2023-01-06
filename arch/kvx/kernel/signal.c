@@ -258,9 +258,8 @@ asmlinkage void do_work_pending(struct pt_regs *regs,
 				resume_user_mode_work(regs);
 			}
 		}
-		/* Guarantee task flag atomic read */
 		local_irq_disable();
-		thread_flags = READ_ONCE(current_thread_info()->flags);
+		thread_flags = read_thread_flags();
 	} while (thread_flags & _TIF_WORK_MASK);
 }
 
