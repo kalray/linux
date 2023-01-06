@@ -348,6 +348,14 @@ config KVX_ITGEN
 	select IRQ_DOMAIN
 	select IRQ_DOMAIN_HIERARCHY
 
+config KVX_APIC_MAILBOX
+       bool
+       depends on KVX
+       select GENERIC_IRQ_IPI if SMP
+       select GENERIC_MSI_IRQ_DOMAIN
+       select IRQ_DOMAIN
+       select IRQ_DOMAIN_HIERARCHY
+
 config INGENIC_IRQ
 	bool
 	depends on MACH_INGENIC
