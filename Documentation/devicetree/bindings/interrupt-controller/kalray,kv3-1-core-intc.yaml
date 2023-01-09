@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/interrupt-controller/kalray,kv3-1-core-intc#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Kalray kv3-1 Core Interrupt Controller
+
+description: |
+  The Kalray Core Interrupt Controller is tightly integrated in each kv3 core
+  present in the Coolidge SoC.
+
+  It provides the following features:
+  - 32 independent interrupt sources
+  - 2-bit configurable priority level
+  - 2-bit configurable ownership level
+
+allOf:
+  - $ref: /schemas/interrupt-controller.yaml#
+
+properties:
+  compatible:
+    const: kalray,kv3-1-core-intc
+  "#interrupt-cells":
+    const: 1
+    description:
+      The IRQ number.
+  reg:
+    maxItems: 0
+  "kalray,intc-nr-irqs":
+    description: Number of irqs handled by the controller.
+
+required:
+  - compatible
+  - "#interrupt-cells"
+  - interrupt-controller
+
+examples:
+  - |
+    intc: interrupt-controller {
+        compatible = "kalray,kv3-1-core-intc";
+        #interrupt-cells = <1>;
+        interrupt-controller;
+    };
+
+...
