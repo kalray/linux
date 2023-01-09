@@ -1122,12 +1122,19 @@ EXPORT_SYMBOL_GPL(kvx_qsfp_parse_support);
 
 static void set_int_flags_monitoring_state(struct kvx_qsfp *qsfp, bool enable)
 {
+	size_t len;
+
 	if (!qsfp->int_flags_supported)
 		return;
 
 	if (!enable) {
-		memset(&qsfp->eeprom.int_flags_mask, 0xff, qsfp_eeprom_len(int_flags_mask));
-		memset(&qsfp->eeprom.channel_monitor_mask, 0xff, qsfp_eeprom_len(channel_monitor_mask));
+		/* avoid overwriting vendor specific section (2 bytes at the end) */
+		len = qsfp_eeprom_len(int_flags_mask) - qsfp_eeprom_len(int_flags_mask.vendor);
+		memset(&qsfp->eeprom.int_flags_mask, 0xff, len);
+
+		/* avoid overwriting reserved section (4 bytes at the end) */
+		len = qsfp_eeprom_len(channel_monitor_mask) - qsfp_eeprom_len(channel_monitor_mask.reserved);
+		memset(&qsfp->eeprom.channel_monitor_mask, 0xff, len);
 		goto bail;
 	}
 
