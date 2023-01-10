@@ -24,12 +24,14 @@
 typedef uint64_t elf_greg_t;
 typedef uint64_t elf_fpregset_t;
 
-#define ELF_NGREG	(sizeof(struct user_pt_regs) / sizeof(elf_greg_t))
+#define ELF_NGREG	(sizeof(struct user_regs_struct) / sizeof(elf_greg_t))
 typedef elf_greg_t elf_gregset_t[ELF_NGREG];
 
-/* Copy user_pt_regs from pt_regs into the elf_gregset_t */
-#define ELF_CORE_COPY_REGS(dest, regs) \
-	*(struct user_pt_regs *)&(dest) = (regs)->user_regs;
+#define ELF_CORE_COPY_REGS(dest, regs)			\
+do {							\
+	*(struct user_regs_struct *)&(dest) =		\
+		*(struct user_regs_struct *)regs;	\
+} while (0);
 
 /*
  * This is used to ensure we don't load something for the wrong architecture.

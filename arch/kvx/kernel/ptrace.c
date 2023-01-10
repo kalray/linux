@@ -228,9 +228,8 @@ static int kvx_gpr_get(struct task_struct *target,
 			 const struct user_regset *regset,
 			 struct membuf to)
 {
-	struct user_pt_regs *regs = &task_pt_regs(target)->user_regs;
-
-	return membuf_write(&to, regs, sizeof(*regs));
+	return membuf_write(&to, task_pt_regs(target),
+			    sizeof(struct user_regs_struct));
 }
 
 static int kvx_gpr_set(struct task_struct *target,
@@ -238,7 +237,7 @@ static int kvx_gpr_set(struct task_struct *target,
 			 unsigned int pos, unsigned int count,
 			 const void *kbuf, const void __user *ubuf)
 {
-	struct user_pt_regs *regs = &task_pt_regs(target)->user_regs;
+	struct pt_regs *regs = task_pt_regs(target);
 
 	return user_regset_copyin(&pos, &count, &kbuf, &ubuf, regs, 0, -1);
 }
