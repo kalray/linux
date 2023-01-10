@@ -38,6 +38,7 @@ typedef elf_greg_t elf_gregset_t[ELF_NGREG];
 
 #define ELF_CORE_EFLAGS 0x1308
 
+#define CORE_DUMP_USE_REGSET
 #define ELF_EXEC_PAGESIZE	(PAGE_SIZE)
 
 /*
