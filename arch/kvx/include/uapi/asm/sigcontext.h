@@ -10,7 +10,7 @@
 #include <asm/ptrace.h>
 
 struct sigcontext {
-	struct user_pt_regs sc_regs;
+	struct user_regs_struct sc_regs;
 };
 
 #endif	/* _UAPI_ASM_KVX_SIGCONTEXT_H */
