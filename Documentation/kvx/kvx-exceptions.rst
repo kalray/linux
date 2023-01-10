@@ -3,9 +3,8 @@ Exceptions
 ==========
 
 On kvx, handlers are set using ``$ev`` (exception vector) register which
-specifies a base address.
-An offset is added to ``$ev`` upon exception and the result is used as
-"Next $pc".
+specifies a base address. An offset is added to ``$ev`` upon exception
+and the result is used as the new ``$pc``.
 The offset depends on which exception vector the cpu wants to jump to:
 
   ============== =========
@@ -32,7 +31,7 @@ Then, handlers are laid in the following order::
     BASE -> |_____________| v
 
 
-Interrupts, and traps are serviced similarly, ie:
+Interrupts and traps are serviced similarly, ie:
 
  - Jump to handler
  - Save all registers
@@ -46,39 +45,36 @@ It contains all assembly routines related to interrupts/traps/syscall.
 Syscall handling
 ----------------
 
-When executing a syscall, it must be done using "scall $r6"
-where $r6 contains the syscall number. Using this convention allow to
-modify and restart a syscall from the kernel.
+When executing a syscall, it must be done using ``scall $r6`` where ``$r6``
+contains the syscall number. This convention allows to modify and restart
+a syscall from the kernel.
 
 Syscalls are handled differently than interrupts/exceptions. From an ABI
-point of view, scalls are like function calls: any caller saved register
+point of view, syscalls are like function calls: any caller-saved register
 can be clobbered by the syscall. However, syscall parameters are passed
 using registers r0 through r7. These registers must be preserved to avoid
-cloberring them before the actual syscall function.
+clobberring them before the actual syscall function.
 
-On syscall from userspace (scall instruction), the processor will put
+On syscall from userspace (``scall`` instruction), the processor will put
 the syscall number in $es.sn and switch from user to kernel privilege
-mode. kvx_syscall_handler will be called in kernel mode.
+mode. ``kvx_syscall_handler`` will be called in kernel mode.
 
 The following steps are then taken:
 
  1. Switch to kernel stack
  2. Extract syscall number
- 3. Check that the syscall number is not bogus
+ 3. If the syscall number is bogus, set the syscall function to ``sys_ni_syscall``
+ 4. If tracing is enabled
 
-    - If so, set syscall func to a not implemented one
-
- 4. Check if tracing is enabled
-
-    - If so, jump to trace_syscall_enter
-    - Save syscall arguments (r0 -> r7) on stack in pt_regs
-    - Call do_trace_syscall_enter function
+    - Jump to ``trace_syscall_enter``
+    - Save syscall arguments (``r0`` -> ``r7``) on stack in ``pt_regs``.
+    - Call ``do_trace_syscall_enter`` function.
 
  5. Restore syscall arguments since they have been modified by C call
  6. Call the syscall function
- 7. Save $r0 in pt_regs since it can be cloberred afterward
- 8. If tracing was enabled, call trace_syscall_exit
- 9. Call work_pending
+ 7. Save ``$r0`` in ``pt_regs`` since it can be clobberred afterward
+ 8. If tracing is enabled, call ``trace_syscall_exit``.
+ 9. Call ``work_pending``
  10. Return to user !
 
 The trace call is handled out of the fast path. All slow path handling
@@ -94,18 +90,18 @@ When handling a signal, the path is the following:
     Then any exception happens (syscall, interrupt, trap)
  2. The exception handling path is taken
     and before returning to user, pending signals are checked
- 3. Signal are handled by do_signal
+ 3. Signal are handled by ``do_signal``.
     Registers are saved and a special part of the stack is modified
-    to create a trampoline to call rt_sigreturn
-    $spc is modified to jump to user signal handler
-    $ra is modified to jump to sigreturn trampoline directly after
+    to create a trampoline to call ``rt_sigreturn``,
+    ``$spc`` is modified to jump to user signal handler;
+    ``$ra`` is modified to jump to sigreturn trampoline directly after
     returning from user signal handler.
- 4. User signal handler is called after rfe from exception
-    when returning, $ra is retored to $pc, resulting in a call
+ 4. User signal handler is called after ``rfe`` from exception
+    when returning, ``$ra`` is retored to ``$pc``, resulting in a call
     to the syscall trampoline.
  5. syscall trampoline is executed, leading to rt_sigreturn syscall
- 6. rt_sigreturn syscall is executed
-    Previous registers are restored to allow returning to user correctly
+ 6. ``rt_sigreturn`` syscall is executed. Previous registers are restored to
+    allow returning to user correctly.
  7. User application is restored at the exact point it was interrupted
     before.
 
@@ -179,14 +175,14 @@ This will prevent from triggering MMU fault (such as TLB miss) which could
 clobber the current register state. Such event can occurs when RWX mode is
 enabled and the memory accessed to save register can trigger a TLB miss.
 Aside from that which is common for all exceptions path, registers are saved
-differently regarding the type of exception.
+differently depending on the exception type.
 
 Interrupts and traps
 --------------------
 
-When interrupt and traps are triggered, we only save the caller-saved registers.
+When interrupt and traps are triggered, only caller-saved registers are saved.
 Indeed, we rely on the fact that C code will save and restore callee-saved and
-hence, there is no need to save them. This path is the following::
+hence, there is no need to save them. The path is::
 
        +------------+          +-----------+        +---------------+
   IT   | Save caller| C Call   | Execute C |  Ret   | Restore caller| Ret from IT
@@ -195,11 +191,12 @@ hence, there is no need to save them. This path is the following::
        +------------+                               +---------------+
 
 However, when returning to user, we check if there is work_pending. If a signal
-is pending and there is a signal handler to be called, then we need all
-registers to be saved on the stack in the pt_regs before executing the signal
-handler and restored after that. Since we only saved caller-saved registers, we
-need to also save callee-saved registers to restore them correctly when
-returning to user. This path is the following (a bit more complicated !)::
+is pending and there is a signal handler to be called, then all registers are
+saved on the stack in ``pt_regs`` before executing the signal handler and
+restored after that. Since only caller-saved registers have been saved before
+checking for pending work, callee-saved registers also need to be saved to
+restore everything correctly when before returning to user.
+This path is the following (a bit more complicated !)::
 
         +------------+
         | Save caller|          +-----------+  Ret   +------------+

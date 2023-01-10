@@ -114,7 +114,7 @@ IOMMU is related to a specific bus like PCIe we will be able to specify that
 all peripherals will go through this IOMMU.
 
 IOMMU Page table
-----------------
+~~~~~~~~~~~~~~~~
 
 We need to be able to know which IO virtual addresses (IOVA) are mapped in the
 TLB in order to be able to remove entries when a device finishes a transfer and
@@ -142,7 +142,7 @@ As we won't refill the TLB we know that we won't have more than 128*16 entries.
 In this case we can simply keep a table with all possible entries.
 
 Maintenance interface
----------------------
+~~~~~~~~~~~~~~~~~~~~~
 
 It is possible to have several "maintainers" for the same IOMMU. The driver is
 using two of them. One that writes the TLB and another interface reads TLB. For
@@ -155,7 +155,7 @@ Since different management interface are used for read and write it is safe to
 execute the above command at any moment.
 
 Interrupts
-----------
+~~~~~~~~~~
 
 IOMMU can have 3 kind of interrupts that corresponds to 3 different types of
 errors (no mapping. protection, parity). When the IOMMU is shared between
@@ -170,7 +170,7 @@ interrupts that occurs are stored and the IOMMU is stalled. When driver cleans
 the first interrupt others will be managed one by one.
 
 ASN (Address Space Number)
---------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This is also know as ASID in some other architecture. Each device will have a
 given ASN that will be given through the device tree. As address space is
