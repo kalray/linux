@@ -205,8 +205,8 @@ asn_error_panic_str_label:
  * Save registers for entry in kernel space.
  * sp_reg should point to the original stack pointer when entering kernel space
  * task_reg is a register containing the current task pointer
- * both task_reg and sp_reg must be in saved_quad since they have been cloberred
- * and will be restored when restoring saved_quad.
+ * both task_reg and sp_reg must be in saved_quad since they have been
+ * clobberred and will be restored when restoring saved_quad.
  * pt_regs_sp is a single register which will be filled by pt_regs addr.
  * When "returning" from this macro, hardware loop are enabled and exception
  * is cleared, allowing to call kernel function without any risk.
@@ -901,7 +901,7 @@ asn_check_ok:
 	;;
 	get $r0 = $sr
 	;;
-	/* Restore cloberred registers */
+	/* Restore clobberred registers */
 	lo $r4r5r6r7 = __PA(TASK_THREAD_SAVE_AREA_QUAD(1))[$r0]
 	;;
 	lo $r0r1r2r3 = __PA(TASK_THREAD_SAVE_AREA_QUAD(0))[$r0]
@@ -1173,7 +1173,7 @@ EXCEPTION_ENTRY(kvx_syscall_handler):
 	 * Note that r0 -> r11 MUST not be used since they are
 	 * containing syscall parameters !
 	 * During this function, $r38 is the syscall handler address. Hence,
-	 * this register must not be cloberred during function calls (tracing
+	 * this register must not be clobberred during function calls (tracing
 	 * for instance.
 	 */
 	disable_mmu $r43
@@ -1282,9 +1282,9 @@ do_syscall:
 	;;
 	andd $r37 = $r38, _TIF_SYSCALL_WORK
 	;;
-	/* Save r0 which was returned from do_scall previously and
-	 * will be cloberred by do_work_pending(and potentially
-	 * do_syscall_trace_exit if tracing is enabled)
+	/* Save r0 which was returned from do_scall previously and will be
+	 * clobberred by do_work_pending (and potentially do_syscall_trace_exit
+	 * if tracing is enabled)
 	 * If do_signal is called and that syscall is restarted,
 	 * it will be modified by handle_restart to restore original
 	 * r0 value
@@ -1440,7 +1440,7 @@ ENDPROC(kvx_syscall_handler)
  * In restore sigcontext, they have been restored onto entry stack (stack to be
  * restored). However, the standard syscall path do not restore it completely
  * since only callee-saved registers are restored for fork and al.
- * Here, we will restore all registers which might have been cloberred.
+ * Here, we will restore all registers which might have been clobberred.
  */
 ENTRY(sys_rt_sigreturn)
 	/*
