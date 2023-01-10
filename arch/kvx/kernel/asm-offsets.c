@@ -34,8 +34,8 @@ int foo(void)
 	BUILD_BUG_ON(!IS_ALIGNED(sizeof(struct pt_regs), STACK_ALIGNMENT));
 
 	/* Check that user_pt_regs size matches the beginning of pt_regs */
-	BUILD_BUG_ON((offsetof(struct user_pt_regs, spc) + sizeof(uint64_t)) !=
-		     sizeof(struct user_pt_regs));
+	BUILD_BUG_ON((offsetof(struct user_regs_struct, spc) + sizeof(uint64_t)) !=
+		     sizeof(struct user_regs_struct));
 
 	DEFINE(FIX_GDB_MEM_BASE_IDX, FIX_GDB_BARE_DISPLACED_MEM_BASE);
 
