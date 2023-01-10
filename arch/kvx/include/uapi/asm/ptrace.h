@@ -15,7 +15,7 @@
  * This decouples struct pt_regs from the userspace ABI.
  * struct user_regs_struct must form a prefix of struct pt_regs.
  */
-struct user_pt_regs {
+struct user_regs_struct {
 	/* GPR */
 	unsigned long r0;
 	unsigned long r1;
