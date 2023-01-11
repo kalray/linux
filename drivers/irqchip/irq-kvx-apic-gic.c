@@ -339,8 +339,6 @@ static int __init kvx_init_apic_gic(struct device_node *node,
 		goto err_irq_unmap;
 	}
 
-	pr_info("Initialized interrupt controller with %d interrupts\n",
-							gic->input_nr_irqs);
 	return 0;
 
 err_irq_unmap:
