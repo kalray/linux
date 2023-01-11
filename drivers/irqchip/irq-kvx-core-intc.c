@@ -74,8 +74,6 @@ kvx_init_core_intc(struct device_node *intc, struct device_node *parent)
 	 */
 	irq_set_default_host(root_domain);
 
-	pr_info("Initialized with %d interrupts\n", core_nr_irqs);
-
 	return 0;
 }
 
