@@ -209,8 +209,6 @@ kvx_itgen_device_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	dev_info(&pdev->dev, "Probed with %d interrupts\n", it_count);
-
 	platform_set_drvdata(pdev, itgen);
 
 	return 0;
