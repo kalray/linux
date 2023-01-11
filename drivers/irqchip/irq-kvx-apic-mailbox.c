@@ -462,9 +462,6 @@ kvx_init_apic_mailbox(struct device_node *node,
 						 mb);
 	}
 
-	pr_info("Init with %d device interrupt\n",
-					mb->mb_count * MAILBOXES_BIT_SIZE);
-
 	return 0;
 
 err_irq_domain_msi_create:
