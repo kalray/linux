@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/interrupt-controller/kalray,coolidge-itgen#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Kalray Coolidge SoC Interrupt Generator (ITGEN)
+
+description: |
+  The Interrupt Generator (ITGEN) is an interrupt controller block.
+  It's purpose is to convert IRQ lines coming from SoC peripherals into writes
+  on the AXI bus. The ITGEN intended purpose is to write into the APIC mailboxes.
+
+allOf:
+  - $ref: /schemas/interrupt-controller.yaml#
+
+properties:
+  compatible:
+    const: kalray,coolidge-itgen
+
+  "#interrupt-cells":
+    const: 2
+    description: |
+      - 1st cell is for the IRQ number
+      - 2nd cell is for the trigger type as defined dt-bindings/interrupt-controller/irq.h
+
+  interrupt-controller: true
+
+  msi-parent: true
+
+required:
+  - compatible
+  - reg
+  - "#interrupt-cells"
+  - interrupt-controller
+  - msi-parent
+
+examples:
+  - |
+    itgen: interrupt-controller@27000000 {
+        compatible = "kalray,coolidge-itgen";
+        reg = <0 0x27000000 0 0x1104>;
+        #interrupt-cells = <2>;
+        interrupt-controller;
+        msi-parent = <&apic_mailbox>;
+    };
+
+...
