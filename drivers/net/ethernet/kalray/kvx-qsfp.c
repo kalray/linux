@@ -840,25 +840,22 @@ static void set_power_override(struct kvx_qsfp *qsfp, u8 op)
 		dev_err(qsfp->dev, "i2 write failure - failed to override power\n");
 }
 
-static bool tx_disable_supported(struct kvx_qsfp *qsfp)
+static inline bool tx_disable_supported(struct kvx_qsfp *qsfp)
 {
-	u8 val = eeprom_cache_readb(qsfp, SFF8636_OPTIONS_OFFSET2);
-
-	return (val & SFF8636_TX_DIS_CAP);
+	return qsfp->eeprom.options.offset2 & SFF8636_TX_DIS_CAP;
 }
 
-/** kvx_qsfp_set_ee_tx_state - enable/disable TX via I2C (eeprom)
+/** kvx_qsfp_tx_disable_ee - enable/disable TX via I2C (eeprom)
  * @qsfp: qsfp prvdata
  * @op: QSFP_TX_ENABLE or QSFP_TX_DISABLE
+ *
+ * This function is a callback for the optional feature tx_disable
  */
-static void kvx_qsfp_set_ee_tx_state(struct kvx_qsfp *qsfp, u8 op)
+static void kvx_qsfp_tx_disable_ee(struct kvx_qsfp *qsfp, u8 op)
 {
 	int ret;
 	u8 val, tx_dis = SFF8636_TX_DISABLE_TX1 | SFF8636_TX_DISABLE_TX2
 		       | SFF8636_TX_DISABLE_TX3 | SFF8636_TX_DISABLE_TX4;
-
-	if (!tx_disable_supported(qsfp))
-		return;
 
 	set_power_override(qsfp, op);
 
@@ -901,27 +898,24 @@ static bool tx_disable_fast_path_supported(struct kvx_qsfp *qsfp)
 	return (val & SFF8636_TIMING_TXDIS_FASTPATH_MASK);
 }
 
-/** kvx_qsfp_set_tx_state - enable/disable TX via GPIO
+/** kvx_qsfp_tx_disable_gpio - enable/disable TX via GPIO
  * @qsfp: qsfp prvdata
  * @op: QSFP_TX_ENABLE or QSFP_TX_DISABLE
+ *
+ * This function is a callback for the optional feature tx_disable.
  */
-void kvx_qsfp_set_tx_state(struct kvx_qsfp *qsfp, u8 op)
+void kvx_qsfp_tx_disable_gpio(struct kvx_qsfp *qsfp, u8 op)
 {
 	struct gpio_desc *tx_disable = get_gpio_desc(qsfp, QSFP_GPIO_TX_DISABLE);
 	int ret = 0;
 
-	/* If tx_disable fast path support is enabled */
-	if (tx_disable_fast_path_supported(qsfp)) {
-		gpiod_direction_input(tx_disable);
-		ret = gpiod_get_value(tx_disable);
-		gpiod_direction_output(tx_disable, 0);
-		gpiod_set_value(tx_disable, (op == QSFP_TX_ENABLE ? 0 : 1));
-		usleep_range(10000, 15000);
-		dev_info(qsfp->dev, "TX is %sabled (%d -> %d)\n", (op ? "dis" : "en"),
-			ret, gpiod_get_value(tx_disable));
-	} else {
-		kvx_qsfp_set_ee_tx_state(qsfp, op);
-	}
+	gpiod_direction_input(tx_disable);
+	ret = gpiod_get_value(tx_disable);
+	gpiod_direction_output(tx_disable, 0);
+	gpiod_set_value(tx_disable, (op == QSFP_TX_ENABLE ? 0 : 1));
+	usleep_range(10000, 15000);
+	dev_info(qsfp->dev, "TX is %sabled (%d -> %d)\n", (op ? "dis" : "en"),
+		 ret, gpiod_get_value(tx_disable));
 }
 
 static bool is_qsfp_module(u8 phys_id)
@@ -1187,6 +1181,13 @@ static int kvx_qsfp_init(struct kvx_qsfp *qsfp)
 
 	kvx_qsfp_print_module_status(qsfp);
 
+	/* If tx_disable fast path supported -> use gpio to disable tx */
+	if (tx_disable_fast_path_supported(qsfp))
+		qsfp->opt_features.tx_disable = kvx_qsfp_tx_disable_gpio;
+	else if (tx_disable_supported(qsfp)) /* disable tx via eeprom */
+		qsfp->opt_features.tx_disable = kvx_qsfp_tx_disable_ee;
+	/* else tx_disable is not supported (copper passive cables) */
+
 	return 0;
 err:
 	mutex_unlock(&qsfp->i2c_lock);
@@ -1199,6 +1200,13 @@ err:
 static inline void kvx_qsfp_reset_opt_features(struct kvx_qsfp *qsfp)
 {
 	qsfp->opt_features.set_int_flags_mask = NULL;
+	qsfp->opt_features.tx_disable = NULL;
+}
+
+static inline void kvx_qsfp_set_tx_state(struct kvx_qsfp *qsfp, u8 op)
+{
+	if (qsfp->opt_features.tx_disable != NULL)
+		qsfp->opt_features.tx_disable(qsfp, op);
 }
 
 /** kvx_qsfp_cleanup - cleanup callback
