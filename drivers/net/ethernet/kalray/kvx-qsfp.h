@@ -231,6 +231,7 @@ struct kvx_qsfp_ops {
 /* callback is NULL if not supported */
 struct kvx_qsfp_opt_features {
 	void (*set_int_flags_mask)(struct kvx_qsfp *qsfp); /* configure interrupt flags mask */
+	void (*tx_disable)(struct kvx_qsfp *qsfp, u8 op);
 };
 
 struct kvx_qsfp_interrupt_flags {
@@ -276,6 +277,12 @@ struct kvx_qsfp_channel_flags_mask {
 	u8 reserved[4]; /* reserved */
 } __packed;
 
+struct kvx_qsfp_options {
+	u8 offset0;
+	u8 offset1;
+	u8 offset2;
+} __packed;
+
 struct kvx_qsfp_eeprom_cache {
 	/* lower page 0 */
 	u8 id;
@@ -298,7 +305,14 @@ struct kvx_qsfp_eeprom_cache {
 	/* upper page 0 */
 	u8 identifier;
 	u8 base_id[63];
-	u8 extended_id[32];
+	u8 link_codes;
+	struct kvx_qsfp_options options;
+	u8 vendor_sn[16];
+	u8 date_code[8];
+	u8 diag_monitoring_type;
+	u8 enhanced_options;
+	u8 baud_rate_nominal;
+	u8 cc_ext;
 	u8 vendor_id[32];
 
 	/* page 01h (optional) */
