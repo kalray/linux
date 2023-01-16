@@ -909,11 +909,9 @@ void kvx_qsfp_tx_disable_gpio(struct kvx_qsfp *qsfp, u8 op)
 	struct gpio_desc *tx_disable = get_gpio_desc(qsfp, QSFP_GPIO_TX_DISABLE);
 	int ret = 0;
 
-	gpiod_direction_input(tx_disable);
 	ret = gpiod_get_value(tx_disable);
-	gpiod_direction_output(tx_disable, 0);
-	gpiod_set_value(tx_disable, (op == QSFP_TX_ENABLE ? 0 : 1));
-	usleep_range(10000, 15000);
+	gpiod_direction_output(tx_disable, (op == QSFP_TX_ENABLE ? 0 : 1));
+	usleep_range(1000, 1500);
 	dev_info(qsfp->dev, "TX is %sabled (%d -> %d)\n", (op ? "dis" : "en"),
 		 ret, gpiod_get_value(tx_disable));
 }
@@ -1403,7 +1401,6 @@ static ssize_t sysfs_tx_disable_show(struct kobject *kobj,
 	int ret;
 
 	if (tx_disable_fast_path_supported(qsfp)) {
-		gpiod_direction_input(tx_dis);
 		data = gpiod_get_value(tx_dis);
 	} else {
 		ret = qsfp_refresh_eeprom(qsfp, control.tx_disable);
