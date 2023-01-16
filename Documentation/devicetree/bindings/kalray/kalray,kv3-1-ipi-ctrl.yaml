@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/kalray/kalray,kv3-1-ipi-ctrl#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Kalray kv3-1 Inter-Processor Interrupt Controller (IPI)
+
+description: |
+  The Inter-Processor Interrupt Controller (IPI) provides a fast synchronization
+  mechanism to the software. It exposes eight independent set of registers that
+  can be use to notify each processor in the cluster.
+  A set of registers contains two 32-bit registers:
+    - 17-bit interrupt control, one bit per core, raise an interrupt on write
+    - 17-bit mask, one per core, to enable interrupts
+
+  Bit at offsets 0 to 15 selects cores in the cluster, respectively PE0 to PE15,
+  while bit at offset 16 is for the cluster Resource Manager (RM) core.
+
+  The eight output interrupts are connected to each processor core interrupt
+  controller (intc).
+
+properties:
+  compatible:
+    const: kalray,kv3-1-ipi-ctrl
+  reg:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+  - interrupt-parent
+  - interrupts
+
+examples:
+  - |
+    ipi: inter-processor-interrupt@ad0000 {
+        compatible = "kalray,kv3-1-ipi-ctrl";
+        reg = <0x00 0xad0000 0x00 0x1000>;
+        interrupt-parent = <&intc>;
+        interrupts = <24>;
+    };
+
+...
