@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/kalray/kalray,kv3-1-pwr-ctrl#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Kalray cluster Power Controller (pwr-ctrl)
+
+description: |
+  The Power Controller (pwr-ctrl) control cores reset and wake-up procedure.
+
+properties:
+  compatible:
+    const: kalray,kv3-1-pwr-ctrl
+  reg:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+
+examples:
+  - |
+    pwr_ctrl: power-controller@a40000 {
+        compatible = "kalray,kv3-1-pwr-ctrl";
+        reg = <0x00 0xa40000 0x00 0x4158>;
+    };
+
+...
