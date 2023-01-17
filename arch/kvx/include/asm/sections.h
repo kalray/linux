@@ -13,6 +13,5 @@ extern char __rodata_start[], __rodata_end[];
 extern char __initdata_start[], __initdata_end[];
 extern char __inittext_start[], __inittext_end[];
 extern char __exception_start[], __exception_end[];
-extern char __rm_firmware_regs_start[];
 
 #endif
