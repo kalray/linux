@@ -23,7 +23,6 @@
 #include <asm/sections.h>
 #include <asm/hw_irq.h>
 #include <asm/setup.h>
-#include <asm/rm_fw.h>
 #include <asm/page.h>
 #include <asm/sfr.h>
 #include <asm/mmu.h>
