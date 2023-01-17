@@ -4,10 +4,14 @@
  * Author(s): Clement Leger
  */
 
-#define __ARCH_WANT_RENAMEAT
-#define __ARCH_WANT_NEW_STAT
-#define __ARCH_WANT_SET_GET_RLIMIT
 #define __ARCH_WANT_SYS_CLONE3
+
+#if 1
+/* keep them for now */
+ #define __ARCH_WANT_RENAMEAT
+ #define __ARCH_WANT_NEW_STAT
+ #define __ARCH_WANT_SET_GET_RLIMIT
+#endif
 
 #include <asm-generic/unistd.h>
 
