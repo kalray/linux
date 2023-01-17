@@ -31,17 +31,10 @@
  */
 #define access_ok(addr, size) ({					\
 	__chk_user_ptr(addr);						\
-	likely(__access_ok((unsigned long __force)(addr), (size)));	\
+	likely(__access_ok((addr), (size)));				\
 })
 
-/*
- * Ensure that the range [addr, addr+size) is within the process's
- * address space
- */
-static inline int __access_ok(unsigned long addr, unsigned long size)
-{
-	return size <= TASK_SIZE && addr <= TASK_SIZE - size;
-}
+#include <asm-generic/access_ok.h>
 
 /*
  * The exception table consists of pairs of addresses: the first is the
