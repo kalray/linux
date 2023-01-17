@@ -15,7 +15,6 @@
 #include <linux/of_address.h>
 #include <linux/irqchip/irq-kvx-apic-mailbox.h>
 
-#include <asm/rm_fw.h>
 #include <asm/l2_cache.h>
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
@@ -358,10 +357,6 @@ static phys_addr_t __init l2_get_regs_addr(struct device_node *np)
 	phys_addr_t l2_regs_addr;
 	int ret;
 
-	/*
-	 * If regs is specified in device tree, then the L2$ has been loaded by
-	 * someone else and not by ourself.
-	 */
 	reg = of_get_property(np, "reg", NULL);
 	if (reg) {
 		ret = of_address_to_resource(np, 0, &res);
@@ -376,7 +371,8 @@ static phys_addr_t __init l2_get_regs_addr(struct device_node *np)
 
 		l2_regs_addr = res.start;
 	} else {
-		l2_regs_addr = (phys_addr_t) __rm_firmware_regs_start;
+		pr_err("reg property missing in l2-cache node\n");
+		return 0;
 	}
 
 	if (!IS_ALIGNED(l2_regs_addr, PAGE_SIZE)) {

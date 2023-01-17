@@ -11,13 +11,16 @@ for SMP.
 Booting
 =======
 
-When booting the KVX processor, only the RM is woken up. This RM will
-execute a portion of code located in a section named .rm_firmware.
-By default, a simple power off code is embedded in this section.
-To avoid embedding the firmware in kernel sources, the section is patched
-using external tools to add the L2$ firmware (and replace the default firmware).
-Before executing this firmware, the RM boots the PE0. PE0 will then enable L2
-coherency and request will be stalled until RM boots the L2$ firmware.
+When booting the KVX processor, only the RM is woken up. This RM should be
+executing a firmware handling L2 cache requests if L2 coherency is needed
+(only required on real hardware: simulators are already coherent).
+Execution of this firmware is let to the lower-levels of the boot chain.
+The generated vmlinux should thus be booted directly on PE0 and L2 cache
+driver will then bind to the L2 firmware interface if compatible is exposed
+in the devicetree.
+
+When PE0 enables L2 coherency, all requests will be stalled until L2 firmware
+answers them.
 
 Locking primitives
 ==================
