@@ -141,6 +141,20 @@ static int select_eeprom_page(struct kvx_qsfp *qsfp, u8 page)
 	return 0;
 }
 
+static inline struct gpio_desc *get_gpio_desc(struct kvx_qsfp *qsfp, u8 gpio_id)
+{
+	return qsfp->gpio[gpio_id].gpio;
+}
+
+static void kvx_qsfp_check_modsel(struct kvx_qsfp *qsfp)
+{
+	struct gpio_desc *modsel = get_gpio_desc(qsfp, QSFP_GPIO_MODSEL);
+	u8 val = gpiod_get_value(modsel);
+
+	if (val == QSFP_MODSEL_DISABLE)
+		dev_err(qsfp->dev, "modsel disabled val=%u\n", val);
+}
+
 /** i2c_rw - perform r/w transfer after selecting page on eeprom
  * @qsfp: qsfp prvdata
  * @op: i2c_read i2c_write
@@ -159,6 +173,9 @@ static int i2c_rw(struct kvx_qsfp *qsfp,
 
 	if (len == 0)
 		return -EINVAL;
+
+	/* make sure the qsfp module listens */
+	kvx_qsfp_check_modsel(qsfp);
 
 	remaining = len;
 
@@ -784,11 +801,6 @@ static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 	if (err == 0)
 		dev_info(qsfp->dev, "QSFP param tuning successful\n");
 	return err;
-}
-
-static struct gpio_desc *get_gpio_desc(struct kvx_qsfp *qsfp, u8 gpio_id)
-{
-	return qsfp->gpio[gpio_id].gpio;
 }
 
 /** kvx_qsfp_reset - reset qsfp eeprom via gpio
@@ -1484,7 +1496,8 @@ static const struct kvx_qsfp_gpio_def kvx_qsfp_gpios[QSFP_GPIO_NB] = {
 	{ .of_name = "intl",
 	  .flags = GPIOD_IN,
 	  .irq_handler = kvx_qsfp_intl_irq_handler,
-	  .irq_flags = IRQF_ONESHOT | IRQF_TRIGGER_FALLING }
+	  .irq_flags = IRQF_ONESHOT | IRQF_TRIGGER_FALLING },
+	{ .of_name = "modsel", .flags = GPIOD_OUT_LOW },
 };
 
 static const struct of_device_id kvx_qsfp_of_match[] = {
@@ -1534,7 +1547,7 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 		gpio = &qsfp->gpio[i];
 		gpio->gpio = devm_gpiod_get_optional(qsfp->dev, gpio->of_name, gpio->flags);
 		if (!gpio->gpio) {
-			dev_warn(qsfp->dev, "Failed to get %s GPIO from DT\n", gpio->of_name);
+			dev_dbg(qsfp->dev, "Failed to get %s GPIO from DT\n", gpio->of_name);
 			continue;
 		}
 
