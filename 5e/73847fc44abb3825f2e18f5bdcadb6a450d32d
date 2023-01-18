@@ -1,0 +1,4 @@
+V1 -> V2:
+ - typos and formatting fixes, removed int from PGTABLE_LEVELS
+ - renamed default_defconfig to defconfig in arch/kvx/Makefile
+ - Fix clean target raising an error from gcc (LIBGCC)

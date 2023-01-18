@@ -1,0 +1,5 @@
+V1 -> V2:
+ - use {READ,WRITE}_ONCE for arch_atomic64_{read,set}
+ - use asm-generic/bitops/atomic.h instead of __test_and_*_bit
+ - removed duplicated includes
+ - rewrite xchg and cmpxchg in C using builtins for acswap insn
