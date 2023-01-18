@@ -1,0 +1,4 @@
+V1 -> V2: new patch
+ - removed header include/linux/irqchip/irq-kvx-apic-gic.h
+ - header moved to drivers/irqchip/ but in another patch
+ - removed print on probe success
