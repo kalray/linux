@@ -1,0 +1,2 @@
+V1 -> V2:
+ - use read_thread_flags() as suggested by Mark Rutland
