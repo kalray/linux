@@ -121,6 +121,7 @@
 #define SFF8636_TX_ADAPT_EQUAL_OFFSET       241
 
 #define QSFP_DELAY_DATA_READY_IN_MS         2000
+#define QSFP_DELAY_MODSEL_SETUP_IN_MS       2
 
 #define kvx_qsfp_to_ops_data(qsfp, data_t) ((data_t *)qsfp->ops_data)
 #define kvx_set_mode(bm, mode) __set_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, bm)
@@ -156,6 +157,7 @@ enum {
 	QSFP_GPIO_RESET,
 	QSFP_GPIO_TX_DISABLE,
 	QSFP_GPIO_INTL,
+	QSFP_GPIO_MODSEL,
 	QSFP_GPIO_NB,
 
 	/* IRQ events */
@@ -166,6 +168,10 @@ enum {
 	/* TX state */
 	QSFP_TX_ENABLE = 0,
 	QSFP_TX_DISABLE,
+
+	/* ModSel gpio state */
+	QSFP_MODSEL_ENABLE = 0,
+	QSFP_MODSEL_DISABLE = 1,
 
 	/* State machine */
 	QSFP_S_DOWN = 0,
