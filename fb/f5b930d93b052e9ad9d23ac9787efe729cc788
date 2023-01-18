@@ -1,0 +1,5 @@
+V1 -> V2:
+ - removed irq-kvx-itgen driver (moved in its own patch)
+ - removed irq-kvx-apic-mailbox driver (moved in its own patch)
+ - removed irq-kvx-core-intc driver (moved in its own patch)
+ - removed print on probe success
