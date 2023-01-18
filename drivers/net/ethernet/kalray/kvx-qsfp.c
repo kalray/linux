@@ -85,6 +85,9 @@ static int i2c_write(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
 
 	ret = i2c_transfer(i2c, msgs, ARRAY_SIZE(msgs));
 
+	/* QSFP require a 2-3 msec delay after write operations (sff8636 table 5-2) */
+	usleep_range(2000, 3000);
+
 	kfree(msgs[0].buf);
 
 	if (ret < 0)
