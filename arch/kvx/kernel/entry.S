@@ -1101,18 +1101,8 @@ EXCEPTION_START(kvx_interrupt_handler):
 	;;
 	switch_stack $r1 $r0 it_save_regs
 	;;
-#ifdef CONFIG_SECURE_DAME_HANDLING
-	/**
-	 * In order to securely Handle Data Asynchronous Memory Error,
-	 * we need to have a correct entry point. This means we do not
-	 * want to handle a user induced DAME interrupt when entering
-	 * kernel.
-	 * In order to do that, we need to do a barrier, which will
-	 * reflect the DAME status in $ilr (if any).
-	 */
 	barrier
 	;;
-#endif
 it_save_regs:
 	save_regs_for_exception $r1 $r0 $r0r1r2r3 $r1
 	;;
@@ -1220,7 +1210,6 @@ EXCEPTION_START(kvx_syscall_handler):
 	addd $r36 = $sp, VA_TO_PA_OFFSET
 	get $r60 = $lc
 	;;
-#ifdef CONFIG_SECURE_DAME_HANDLING
 	get $r44 = $ilr
 	make $r45 = SFR_CLEAR_WFXL(ILR, IT16);
 	;;
@@ -1231,7 +1220,6 @@ EXCEPTION_START(kvx_syscall_handler):
 	/* Clear $ilr.dame */
 	wfxl $ilr = $r45
 	;;
-#endif
 	so PT_CS_SPC_SPS_ES[$r36] = $r40r41r42r43
 	get $r61 = $le
 	make $r43 = 0x0
@@ -1270,11 +1258,9 @@ do_syscall:
 	/* Reload task flags since the syscall might have generated a signal*/
 	get $r36 = $sr
 	;;
-#ifdef CONFIG_SECURE_DAME_HANDLING
 	/* Barrier to force DAME interrupt to be generated if any pending */
 	barrier
 	;;
-#endif
 	/* Disable interrupt to check task flags atomically */
 	disable_interrupt $r60
 	;;
