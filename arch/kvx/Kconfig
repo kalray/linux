@@ -169,21 +169,6 @@ config L2_CACHE
 	  inval/writeback. Note that L2 cache is mandatory for SMP in order
 	  to maintain coherency on DDR between all PEs.
 
-config SECURE_DAME_HANDLING
-	bool "Secure DAME handling"
-	default y
-	help
-	  In order to securely handle Data Asynchronous Memory Errors, we need
-	  to do a barrier upon kernel entry when coming from userspace. This
-	  barrier guarantee us that any pending DAME will be serviced right
-	  away. We also need to do a barrier when returning from kernel to user.
-	  This way, if the kernel or the user triggered a DAME, it will be
-	  serviced by knowing we are coming from kernel or user and avoid
-	  pulling the wrong lever (panic for kernel or sigfault for user).
-	  This can be costly but ensure that user cannot interfere with kernel.
-	  /!\ Do not disable unless you want to open a giant breach between
-	  user and kernel /!\
-
 config CACHECTL_UNSAFE_PHYS_OPERATIONS
 	bool "Enable cachectl syscall unsafe physical operations"
 	default n
