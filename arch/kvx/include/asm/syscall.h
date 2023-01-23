@@ -41,6 +41,12 @@ static inline int syscall_get_nr(struct task_struct *task, struct pt_regs *regs)
 	return es_sysno(regs);
 }
 
+static inline void syscall_rollback(struct task_struct *task,
+				    struct pt_regs *regs)
+{
+	regs->r0 = regs->orig_r0;
+}
+
 static inline long syscall_get_error(struct task_struct *task,
 				     struct pt_regs *regs)
 {
@@ -52,6 +58,16 @@ static inline long syscall_get_return_value(struct task_struct *task,
 					    struct pt_regs *regs)
 {
 	return regs->r0;
+}
+
+static inline void syscall_set_return_value(struct task_struct *task,
+					    struct pt_regs *regs,
+					    int error, long val)
+{
+	if (error)
+		val = error;
+
+	regs->r0 = val;
 }
 
 static inline int syscall_get_arch(struct task_struct *task)
