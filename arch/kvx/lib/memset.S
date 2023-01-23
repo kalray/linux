@@ -113,7 +113,7 @@
 
 .text
 .align 16
-ENTRY(memset):
+SYM_FUNC_START(memset):
 	/* Preserve return value */
 	copyd $r3 = $r0
 	/* Replicate the first pattern byte on all bytes */
@@ -213,4 +213,4 @@ ENTRY(memset):
 	copyd $r0 = $r3
 	ret
 	;;
-ENDPROC(memset)
+SYM_FUNC_END(memset)
