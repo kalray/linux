@@ -303,26 +303,26 @@ asn_error_panic_str_label:
 ***********************************************************************/
 #define exception_trampoline(__type) \
 .section .exception.## __type, "ax", @progbits ;\
-ENTRY(kvx_##__type ##_handler_trampoline): ;\
+SYM_FUNC_START(kvx_##__type ##_handler_trampoline): ;\
 	goto kvx_## __type ##_handler ;\
 	;; ;\
-ENDPROC(kvx_ ## __type ## _handler_trampoline) ;\
+SYM_FUNC_END(kvx_ ## __type ## _handler_trampoline) ;\
 .section .early_exception.## __type, "ax", @progbits ;\
-ENTRY(kvx_## __type ##_early_handler): ;\
+SYM_FUNC_START(kvx_## __type ##_early_handler): ;\
 1:	nop ;\
 	;; ;\
 	goto 1b ;\
 	;; ;\
-ENDPROC(kvx_ ## __type ## _early_handler)
+SYM_FUNC_END(kvx_ ## __type ## _early_handler)
 
 exception_trampoline(debug)
 exception_trampoline(trap)
 exception_trampoline(interrupt)
 exception_trampoline(syscall)
 
-#define EXCEPTION_ENTRY(__name) \
+#define EXCEPTION_START(__name) \
 .section .exception.text, "ax", @progbits ;\
-ENTRY(__name)
+SYM_FUNC_START(__name)
 
 
 /***********************************************************************
@@ -333,7 +333,7 @@ ENTRY(__name)
  * When entering this macro, $sp must be located right before regs
  * storage.
  */
-EXCEPTION_ENTRY(return_from_exception)
+EXCEPTION_START(return_from_exception)
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	ld $r1 = 0[$sp]
 	;;
@@ -468,12 +468,12 @@ _restore_regs:
 	;;
 	rfe
 	;;
-ENDPROC(return_from_exception)
+SYM_FUNC_END(return_from_exception)
 
 /***********************************************************************
 *                      Debug handling
 ***********************************************************************/
-EXCEPTION_ENTRY(kvx_debug_handler):
+EXCEPTION_START(kvx_debug_handler):
 	exception_entry_disable_mmu
 	;;
 	save_quad_regs $r0r1r2r3 $r4
@@ -493,14 +493,14 @@ debug_save_regs:
 	;;
 	goto debug_handler
 	;;
-ENDPROC(kvx_debug_handler)
+SYM_FUNC_END(kvx_debug_handler)
 
 /***********************************************************************
 *                      Traps handling
 ***********************************************************************/
 /* These labels will be used for instruction patching */
 .global kvx_perf_tlb_refill, kvx_std_tlb_refill
-EXCEPTION_ENTRY(kvx_trap_handler):
+EXCEPTION_START(kvx_trap_handler):
 	/* Enable DAUS for physical data access */
 	exception_entry_disable_mmu
 	;;
@@ -1087,12 +1087,12 @@ trap_save_regs:
 	;;
 	goto trap_handler
 	;;
-ENDPROC(kvx_trap_handler)
+SYM_FUNC_END(kvx_trap_handler)
 
 /***********************************************************************
 *                      Interrupts handling
 ***********************************************************************/
-EXCEPTION_ENTRY(kvx_interrupt_handler):
+EXCEPTION_START(kvx_interrupt_handler):
 	exception_entry_disable_mmu
 	;;
 	save_quad_regs $r0r1r2r3 $r4
@@ -1159,12 +1159,12 @@ it_save_regs:
 	;;
 	goto return_from_exception
 	;;
-ENDPROC(kvx_interrupt_handler)
+SYM_FUNC_END(kvx_interrupt_handler)
 
 /***********************************************************************
 *                      Syscall handling
 ***********************************************************************/
-EXCEPTION_ENTRY(kvx_syscall_handler):
+EXCEPTION_START(kvx_syscall_handler):
 	/**
 	 * Syscalls are seen as standard func call from ABI POV
 	 * We may use all caller saved register whithout causing havoc
@@ -1427,7 +1427,7 @@ trace_syscall_exit:
 	ld $r38 = TASK_TI_FLAGS[$r36]
 	goto check_work_pending
 	;;
-ENDPROC(kvx_syscall_handler)
+SYM_FUNC_END(kvx_syscall_handler)
 
 .text
 /**
@@ -1442,7 +1442,7 @@ ENDPROC(kvx_syscall_handler)
  * since only callee-saved registers are restored for fork and al.
  * Here, we will restore all registers which might have been cloberred.
  */
-ENTRY(sys_rt_sigreturn)
+SYM_FUNC_START(sys_rt_sigreturn)
 	/*
 	 * If syscall tracing is enable (stored in $r37 during syscall
 	 * fastpath), tail-call to trace_exit. If not, tail-call to
@@ -1461,7 +1461,7 @@ scall_trace_exit:
 	;;
 	goto ret_from_kernel
 	;;
-ENDPROC(sys_rt_sigreturn)
+SYM_FUNC_END(sys_rt_sigreturn)
 
 /**
  * __sys_clone: slow path handler for clone
@@ -1474,7 +1474,7 @@ ENDPROC(sys_rt_sigreturn)
  * This slow path saves them out of the fast path to avoid bloating all syscall
  * just for one special case.
  */
-ENTRY(__sys_clone)
+SYM_FUNC_START(__sys_clone)
 	save_callee
 	;;
 	/*
@@ -1483,7 +1483,7 @@ ENTRY(__sys_clone)
 	 */
 	goto sys_clone
 	;;
-ENDPROC(__sys_clone)
+SYM_FUNC_END(__sys_clone)
 /***********************************************************************
 *                      Context switch
 ***********************************************************************/
@@ -1609,7 +1609,7 @@ ENDPROC(__sys_clone)
  * These registers contains the values needed to call a function
  * specified by the switch_to caller (or where set by copy_thread).
  */
-ENTRY(ret_from_kernel_thread)
+SYM_FUNC_START(ret_from_kernel_thread)
 	call schedule_tail
 	;;
 	/* Call fn(arg) */
@@ -1619,7 +1619,7 @@ ENTRY(ret_from_kernel_thread)
 	;;
 	goto ret_from_kernel
 	;;
-ENDPROC(ret_from_kernel_thread)
+SYM_FUNC_END(ret_from_kernel_thread)
 
 /**
  * Return from fork.
@@ -1628,7 +1628,7 @@ ENDPROC(ret_from_kernel_thread)
  * $r20 will then contains 0 if tracing disabled (set by copy_thread)
  * The mechanism is almost the same as for ret_from_kernel_thread.
  */
-ENTRY(ret_from_fork)
+SYM_FUNC_START(ret_from_fork)
 	call schedule_tail
 	;;
 	/* $r20 contains 0 if tracing disable */
@@ -1663,7 +1663,7 @@ ret_from_kernel:
 	;;
 	goto return_from_exception
 	;;
-ENDPROC(ret_from_fork)
+SYM_FUNC_END(ret_from_fork)
 
 /*
  * The callee-saved registers must be saved and restored.
@@ -1675,7 +1675,7 @@ ENDPROC(ret_from_fork)
  * - r20 = Func to call
  * - r21 = Argument for function
  */
-ENTRY(__switch_to)
+SYM_FUNC_START(__switch_to)
 	sd CTX_SWITCH_FP[$r0] = $fp
 	;;
 	/* Save previous task context */
@@ -1737,7 +1737,7 @@ restore_tca_registers:
 	goto restore_fast_path
 	;;
 #endif
-ENDPROC(__switch_to)
+SYM_FUNC_END(__switch_to)
 
 /***********************************************************************
 *          		 Misc functions
@@ -1749,11 +1749,11 @@ ENDPROC(__switch_to)
  */
 .pushsection .text
 .global user_scall_rt_sigreturn_end
-ENTRY(user_scall_rt_sigreturn)
+SYM_FUNC_START(user_scall_rt_sigreturn)
 	make $r6 = __NR_rt_sigreturn
 	;;
 	scall $r6
 	;;
 user_scall_rt_sigreturn_end:
-ENDPROC(user_scall_rt_sigreturn)
+SYM_FUNC_END(user_scall_rt_sigreturn)
 .popsection
