@@ -22,7 +22,7 @@
  * Parameters:
  *	r0 - dest page
  */
-ENTRY(clear_page)
+SYM_FUNC_START(clear_page)
 	make $r1 = CLEAR_PAGE_LOOP_COUNT
 	;;
 	make $r4 = 0
@@ -39,4 +39,4 @@ ENTRY(clear_page)
 	clear_page_done:
 	ret
 	;;
-ENDPROC(clear_page)
+SYM_FUNC_END(clear_page)
