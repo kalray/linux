@@ -16,8 +16,8 @@
  * The next step are described later !
  */
 .text
-ENTRY(raw_copy_from_user)
-ENTRY(raw_copy_to_user)
+SYM_FUNC_START(raw_copy_from_user)
+SYM_FUNC_START(raw_copy_to_user)
 	/**
 	 * naive implementation byte per byte
 	 */
@@ -37,8 +37,8 @@ ENTRY(raw_copy_to_user)
 	copyd $r0 = $r2
 	ret
 	;;
-ENDPROC(raw_copy_to_user)
-ENDPROC(raw_copy_from_user)
+SYM_FUNC_END(raw_copy_to_user)
+SYM_FUNC_END(raw_copy_from_user)
 
 /**
  * Exception table
@@ -62,7 +62,7 @@ ENDPROC(raw_copy_from_user)
  * r1 = size to clear
  */
 .text
-ENTRY(asm_clear_user)
+SYM_FUNC_START(asm_clear_user)
 	/**
 	 * naive implementation byte per byte
 	 */
@@ -81,7 +81,7 @@ ENTRY(asm_clear_user)
 	copyd $r0 = $r1
 	ret
 	;;
-ENDPROC(asm_clear_user)
+SYM_FUNC_END(asm_clear_user)
 
 .pushsection __ex_table,"a"
 .balign 8

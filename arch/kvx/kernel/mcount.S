@@ -139,7 +139,7 @@
 	.cfi_def_cfa_offset 0
 .endm
 
-ENTRY(__mcount)
+SYM_FUNC_START(__mcount)
 .cfi_startproc
 #ifdef CONFIG_DYNAMIC_FTRACE
 	/*
@@ -257,11 +257,11 @@ ftrace_graph_end:
 	ret
 	;;
 .cfi_endproc
-ENDPROC(__mcount)
+SYM_FUNC_END(__mcount)
 
 /* Required by ftrace_graph_ret_addr */
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
-ENTRY(return_to_handler)
+SYM_FUNC_START(return_to_handler)
 	addd $r12 = $r12, -128
 	;;
 	so 0[$r12] = $r0r1r2r3
@@ -282,11 +282,11 @@ ENTRY(return_to_handler)
 	;;
 	ret
 	;;
-ENDPROC(return_to_handler)
+SYM_FUNC_END(return_to_handler)
 #endif
 
 #ifdef CONFIG_DYNAMIC_FTRACE
-ENTRY(ftrace_caller)
+SYM_FUNC_START(ftrace_caller)
 .cfi_startproc
 
 	addd $r12 = $r12, -STACK_SIZE
@@ -330,11 +330,11 @@ GLOBAL(ftrace_call)
 	ret
 	;;
 .cfi_endproc
-ENDPROC(ftrace_caller)
+SYM_FUNC_END(ftrace_caller)
 #endif // CONFIG_DYNAMIC_FTRACE
 
-ENTRY(ftrace_stub)
+SYM_FUNC_START(ftrace_stub)
 	ret
 	;;
-ENDPROC(ftrace_stub)
+SYM_FUNC_END(ftrace_stub)
 
