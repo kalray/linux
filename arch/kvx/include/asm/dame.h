@@ -12,7 +12,6 @@
 
 static inline void dame_irq_check(struct pt_regs *regs)
 {
-#ifdef CONFIG_SECURE_DAME_HANDLING
 	unsigned long ilr;
 	/* If we are returning to the kernel, no need to check for DAME */
 	if (!user_mode(regs))
@@ -25,7 +24,6 @@ static inline void dame_irq_check(struct pt_regs *regs)
 	ilr = kvx_sfr_get(ILR);
 	if (ilr & KVX_SFR_ILR_IT16_MASK)
 		panic("DAME error encountered while in kernel !!!!\n");
-#endif
 }
 
 #endif /* _ASM_KVX_DAME_H */
