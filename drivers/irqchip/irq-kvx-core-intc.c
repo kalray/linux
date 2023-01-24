@@ -16,7 +16,6 @@
 
 #define KVX_CORE_INTC_IRQ	32
 
-
 static void kvx_irq_mask(struct irq_data *data)
 {
 	kvx_sfr_clear_bit(ILE, data->hwirq);
@@ -52,18 +51,14 @@ static int __init
 kvx_init_core_intc(struct device_node *intc, struct device_node *parent)
 {
 	struct irq_domain *root_domain;
-	uint32_t core_nr_irqs;
 
 	if (parent)
 		panic("DeviceTree core intc not a root irq controller\n");
 
-	if (of_property_read_u32(intc, "kalray,intc-nr-irqs", &core_nr_irqs))
-		core_nr_irqs = KVX_CORE_INTC_IRQ;
-
 	/* We only have up to 32 interrupts, according to IRQ-domain.txt,
 	 * linear is likely to be the best choice
 	 */
-	root_domain = irq_domain_add_linear(intc, core_nr_irqs,
+	root_domain = irq_domain_add_linear(intc, KVX_CORE_INTC_IRQ,
 						&kvx_irq_ops, NULL);
 	if (!root_domain)
 		panic("root irq domain not avail\n");
