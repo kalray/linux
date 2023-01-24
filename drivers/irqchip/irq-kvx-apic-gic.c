@@ -65,7 +65,6 @@ struct gic_in_irq_line {
  * struct kvx_apic_gic - kvx apic gic
  * @base: Base address of the controller
  * @domain Domain for this controller
- * @input_nr_irqs: maximum number of supported input interrupts
  * @cpus: Per cpu interrupt configuration
  * @output_irq: Array of output irq lines
  * @input_irq: Array of input irq lines
@@ -74,7 +73,6 @@ struct kvx_apic_gic {
 	raw_spinlock_t lock;
 	void __iomem *base;
 	struct irq_domain *domain;
-	uint32_t input_nr_irqs;
 	/* For each cpu, there is an output IT line */
 	struct gic_out_irq_line output_irq[KVX_GIC_OUTPUT_IT_COUNT];
 	/* Input interrupt status */
@@ -95,7 +93,7 @@ static void irq_line_set_enable(struct gic_out_irq_line *irq_line,
 	       KVX_GIC_ENABLE_OFFSET +
 	       in_irq_line->it_num * KVX_GIC_ENABLE_ELEM_SIZE;
 
-	writeb((uint8_t) enable ? 1 : 0, enable_line_addr);
+	writeb((uint8_t) !!enable, enable_line_addr);
 	in_irq_line->enabled = enable;
 }
 
@@ -291,15 +289,6 @@ static int __init kvx_init_apic_gic(struct device_node *node,
 	if (!gic)
 		return -ENOMEM;
 
-	if (of_property_read_u32(node, "kalray,intc-nr-irqs",
-						&gic->input_nr_irqs))
-		gic->input_nr_irqs = KVX_GIC_INPUT_IT_COUNT;
-
-	if (WARN_ON(gic->input_nr_irqs > KVX_GIC_INPUT_IT_COUNT)) {
-		ret = -EINVAL;
-		goto err_kfree;
-	}
-
 	gic->base = of_io_request_and_map(node, 0, node->name);
 	if (!gic->base) {
 		ret = -EINVAL;
@@ -310,9 +299,8 @@ static int __init kvx_init_apic_gic(struct device_node *node,
 	apic_gic_init(gic);
 
 	gic->domain = irq_domain_add_linear(node,
-					gic->input_nr_irqs,
-					&kvx_apic_gic_domain_ops,
-					gic);
+			ARRAY_SIZE(gic->input_irq),
+			&kvx_apic_gic_domain_ops, gic);
 	if (!gic->domain) {
 		pr_err("Failed to add IRQ domain\n");
 		ret = -EINVAL;
