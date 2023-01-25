@@ -1141,12 +1141,56 @@ static void kvx_qsfp_set_int_flags_mask(struct kvx_qsfp *qsfp)
 	len = qsfp_eeprom_len(channel_monitor_mask) - qsfp_eeprom_len(channel_monitor_mask.reserved);
 	memset(&qsfp->eeprom.channel_monitor_mask, 0xff, len);
 
-	if (qsfp->ops && qsfp->ops->rxlos) {
-		/* enable RxLOS interrupt flags */
-		qsfp->eeprom.int_flags_mask.rx_tx_los &= 0xf0;
+	if (qsfp->ops && qsfp->ops->cdr_lol) {
+		/* enable CDR LOL interrupt flags */
+		qsfp->eeprom.int_flags_mask.rx_tx_cdr_lol = 0;
 	}
 
 	update_interrupt_flags_mask(qsfp);
+}
+
+static inline bool kvx_qsfp_cdr_rx_tx_supported(struct kvx_qsfp *qsfp)
+{
+	u8 ext_id = qsfp->eeprom.ext_identifier;
+
+	return !!(ext_id & (SFF8636_CDR_RX_CAP_MASK | SFF8636_CDR_TX_CAP_MASK));
+}
+
+static inline bool kvx_qsfp_cdr_rx_tx_lol_supported(struct kvx_qsfp *qsfp)
+{
+	u8 options = qsfp->eeprom.options.offset1;
+
+	if (!kvx_qsfp_cdr_rx_tx_supported(qsfp))
+		return false;
+
+	return !!(options & (SFF8636_CDR_RX_LOL_CAP_MASK | SFF8636_CDR_TX_LOL_CAP_MASK));
+}
+
+static inline bool kvx_qsfp_cdr_rx_tx_ctrl_supported(struct kvx_qsfp *qsfp)
+{
+	u8 options = qsfp->eeprom.options.offset1;
+
+	return !!(options & (SFF8636_CDR_RX_CRTL_CAP_MASK | SFF8636_CDR_TX_CRTL_CAP_MASK));
+}
+
+static void kvx_qsfp_set_cdr_ctrl(struct kvx_qsfp *qsfp, u8 mask)
+{
+	int ret;
+
+	/* check that CDR is controllable */
+	if (!kvx_qsfp_cdr_rx_tx_ctrl_supported(qsfp)) {
+		dev_dbg(qsfp->dev, "cdr tx & rx not controllable\n");
+		return;
+	}
+
+	/* CDR is usually enabled by default */
+	if (qsfp->eeprom.control.cdr_control == mask)
+		return;
+	qsfp->eeprom.control.cdr_control = mask;
+
+	ret = qsfp_update_eeprom(qsfp, control.cdr_control);
+	if (ret != 0)
+		dev_err(qsfp->dev, "failed to set CDR control\n");
 }
 
 /** kvx_qsfp_init - driver init, eeprom cache init
@@ -1201,6 +1245,14 @@ static int kvx_qsfp_init(struct kvx_qsfp *qsfp)
 		qsfp->opt_features.tx_disable = kvx_qsfp_tx_disable_ee;
 	/* else tx_disable is not supported (copper passive cables) */
 
+	/* if any cdr-related callback is defined, then enable all CDRs both Rx/Tx */
+	if (qsfp->ops && qsfp->ops->cdr_lol) {
+		if (kvx_qsfp_cdr_rx_tx_supported(qsfp))
+			kvx_qsfp_set_cdr_ctrl(qsfp, 0xff);
+		else
+			qsfp->ops->cdr_lol = NULL;
+	}
+
 	return 0;
 err:
 	mutex_unlock(&qsfp->i2c_lock);
@@ -1238,6 +1290,7 @@ static void kvx_qsfp_sm_event(struct work_struct *work)
 	struct kvx_qsfp *qsfp = container_of(work, struct kvx_qsfp, irq_event_task);
 	struct gpio_desc *modprs = get_gpio_desc(qsfp, QSFP_GPIO_MODPRS);
 	unsigned int i;
+	u8 cdr_lol[2];
 
 	for (i = 0; i < QSFP_E_NB; i++) {
 		if (!test_and_clear_bit(i, &qsfp->irq_event))
@@ -1271,7 +1324,12 @@ static void kvx_qsfp_sm_event(struct work_struct *work)
 				qsfp->opt_features.set_int_flags_mask(qsfp);
 			}
 
+			cdr_lol[0] = !!qsfp->eeprom.int_flags.lol;
 			update_interrupt_flags(qsfp);
+			cdr_lol[1] = !!qsfp->eeprom.int_flags.lol;
+
+			if (qsfp->ops && qsfp->ops->cdr_lol && cdr_lol[0] != cdr_lol[1])
+				qsfp->ops->cdr_lol(qsfp, cdr_lol[1]);
 		}
 	}
 }
@@ -1476,8 +1534,8 @@ int kvx_qsfp_ops_register(struct kvx_qsfp *qsfp, struct kvx_qsfp_ops *ops,
 	if (!ops->disconnect)
 		dev_dbg(qsfp->dev, "disconnect callback is not defined\n");
 
-	if (!ops->rxlos)
-		dev_dbg(qsfp->dev, "rxlos callback is not defined\n");
+	if (!ops->cdr_lol)
+		dev_dbg(qsfp->dev, "cdr_lol callback is not defined\n");
 
 	qsfp->ops = ops;
 	qsfp->ops_data = ops_data;
@@ -1496,7 +1554,7 @@ static const struct kvx_qsfp_gpio_def kvx_qsfp_gpios[QSFP_GPIO_NB] = {
 	{ .of_name = "intl",
 	  .flags = GPIOD_IN,
 	  .irq_handler = kvx_qsfp_intl_irq_handler,
-	  .irq_flags = IRQF_ONESHOT | IRQF_TRIGGER_FALLING },
+	  .irq_flags = IRQF_ONESHOT | IRQF_TRIGGER_LOW },
 	{ .of_name = "modsel", .flags = GPIOD_OUT_LOW },
 };
 
