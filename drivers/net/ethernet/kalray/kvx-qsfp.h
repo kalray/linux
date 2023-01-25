@@ -70,6 +70,8 @@
 #define SFF8636_MAX_POWER_OFFSET            107
 #define SFF8636_DEVICE_ID_OFFSET            128
 #define SFF8636_EXT_ID_OFFSET               129
+#define SFF8636_CDR_RX_CAP_MASK             BIT(2)
+#define SFF8636_CDR_TX_CAP_MASK             BIT(3)
 #define SFF8636_NOMINAL_BITRATE_OFFSET      140
 #define SFF8636_NOMINAL_BITRATE_250_OFFSET  222
 #define SFF8636_DEVICE_TECH_OFFSET          147
@@ -106,6 +108,10 @@
 #define SFF8636_RX_OUT_EMPH_CAP             BIT(1)
 #define SFF8636_TX_IN_AUTO_EQUALIZER_CAP    BIT(3)
 #define SFF8636_OPTIONS_OFFSET1             194
+#define SFF8636_CDR_RX_LOL_CAP_MASK         BIT(4)
+#define SFF8636_CDR_TX_LOL_CAP_MASK         BIT(5)
+#define SFF8636_CDR_RX_CRTL_CAP_MASK        BIT(6)
+#define SFF8636_CDR_TX_CRTL_CAP_MASK        BIT(7)
 #define SFF8636_OPTIONS_OFFSET2             195
 #define SFF8636_TX_DIS_CAP                  BIT(4)
 #define SFF8636_PAGE1_PROVIDED              BIT(6)
@@ -231,7 +237,7 @@ struct kvx_qsfp_param_capability {
 struct kvx_qsfp_ops {
 	void (*connect)(struct kvx_qsfp *qsfp);
 	void (*disconnect)(struct kvx_qsfp *qsfp);
-	void (*rxlos)(struct kvx_qsfp *qsfp);
+	void (*cdr_lol)(struct kvx_qsfp *qsfp, bool lol);
 };
 
 /* callback is NULL if not supported */
@@ -310,7 +316,8 @@ struct kvx_qsfp_eeprom_cache {
 
 	/* upper page 0 */
 	u8 identifier;
-	u8 base_id[63];
+	u8 ext_identifier;
+	u8 base_id[62];
 	u8 link_codes;
 	struct kvx_qsfp_options options;
 	u8 vendor_sn[16];
