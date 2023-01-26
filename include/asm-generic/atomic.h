@@ -12,6 +12,9 @@
 #include <asm/cmpxchg.h>
 #include <asm/barrier.h>
 
+#define arch_atomic_read(v)			READ_ONCE((v)->counter)
+#define arch_atomic_set(v, i)			WRITE_ONCE(((v)->counter), (i))
+
 #ifdef CONFIG_SMP
 
 /* we can build all atomic primitives from cmpxchg */
@@ -21,7 +24,7 @@ static inline void generic_atomic_##op(int i, atomic_t *v)		\
 {									\
 	int c, old;							\
 									\
-	c = v->counter;							\
+	c = arch_atomic_read(v);					\
 	while ((old = arch_cmpxchg(&v->counter, c, c c_op i)) != c)	\
 		c = old;						\
 }
@@ -31,7 +34,7 @@ static inline int generic_atomic_##op##_return(int i, atomic_t *v)	\
 {									\
 	int c, old;							\
 									\
-	c = v->counter;							\
+	c = arch_atomic_read(v);					\
 	while ((old = arch_cmpxchg(&v->counter, c, c c_op i)) != c)	\
 		c = old;						\
 									\
@@ -43,7 +46,7 @@ static inline int generic_atomic_fetch_##op(int i, atomic_t *v)		\
 {									\
 	int c, old;							\
 									\
-	c = v->counter;							\
+	c = arch_atomic_read(v);					\
 	while ((old = arch_cmpxchg(&v->counter, c, c c_op i)) != c)	\
 		c = old;						\
 									\
@@ -58,9 +61,11 @@ static inline int generic_atomic_fetch_##op(int i, atomic_t *v)		\
 static inline void generic_atomic_##op(int i, atomic_t *v)		\
 {									\
 	unsigned long flags;						\
+	int c;								\
 									\
 	raw_local_irq_save(flags);					\
-	v->counter = v->counter c_op i;					\
+	c = arch_atomic_read(v);					\
+	arch_atomic_set(v, c c_op i);					\
 	raw_local_irq_restore(flags);					\
 }
 
@@ -68,27 +73,28 @@ static inline void generic_atomic_##op(int i, atomic_t *v)		\
 static inline int generic_atomic_##op##_return(int i, atomic_t *v)	\
 {									\
 	unsigned long flags;						\
-	int ret;							\
+	int c;								\
 									\
 	raw_local_irq_save(flags);					\
-	ret = (v->counter = v->counter c_op i);				\
+	c = arch_atomic_read(v);					\
+	arch_atomic_set(v, c c_op i);					\
 	raw_local_irq_restore(flags);					\
 									\
-	return ret;							\
+	return c c_op i;						\
 }
 
 #define ATOMIC_FETCH_OP(op, c_op)					\
 static inline int generic_atomic_fetch_##op(int i, atomic_t *v)		\
 {									\
 	unsigned long flags;						\
-	int ret;							\
+	int c;								\
 									\
 	raw_local_irq_save(flags);					\
-	ret = v->counter;						\
-	v->counter = v->counter c_op i;					\
+	c = arch_atomic_read(v);					\
+	arch_atomic_set(v, c c_op i);					\
 	raw_local_irq_restore(flags);					\
 									\
-	return ret;							\
+	return c;							\
 }
 
 #endif /* CONFIG_SMP */
@@ -126,9 +132,6 @@ ATOMIC_OP(xor, ^)
 #define arch_atomic_and				generic_atomic_and
 #define arch_atomic_or				generic_atomic_or
 #define arch_atomic_xor				generic_atomic_xor
-
-#define arch_atomic_read(v)			READ_ONCE((v)->counter)
-#define arch_atomic_set(v, i)			WRITE_ONCE(((v)->counter), (i))
 
 #define arch_atomic_xchg(ptr, v)		(arch_xchg(&(ptr)->counter, (v)))
 #define arch_atomic_cmpxchg(v, old, new)	(arch_cmpxchg(&((v)->counter), (old), (new)))
