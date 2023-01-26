@@ -1,10 +1,15 @@
-# SPDX-License-Identifier: GPL-2.0
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 %YAML 1.2
 ---
-$id: http://devicetree.org/schemas/interrupt-controller/kalray,kv3-1-apic-gic#
+$id: http://devicetree.org/schemas/interrupt-controller/kalray,coolidge-apic-gic.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Kalray kv3-1 APIC-GIC
+title: Kalray Coolidge SoC APIC-GIC
+
+maintainers:
+  - Yann Sionneau <ysionneau@kalray.eu>
+  - Jules Maselbas <jmaselbas@kalray.eu>
+  - Julian Vetter <jvetter@kalray.eu>
 
 description: |
   Each cluster in the Coolidge SoC includes an Advanced Programmable Interrupt
@@ -12,7 +17,7 @@ description: |
     - a Generic Interrupt Controller (referred as APIC-GIC)
     - a Mailbox Controller           (referred as APIC-Mailbox)
   The APIC-GIC acts as an intermediary interrupt controller, muxing/routing
-  incoming interrupts to output interrupts connected to kvx cores interrupts lines.
+  incoming interrupts to output interrupts connected to cores interrupts lines.
   The 139 possible input interrupt lines are organized as follow:
      - 128 from the mailbox controller (one it per mailboxes)
      - 1   from the NoC router
@@ -22,22 +27,27 @@ description: |
      - 2   for SECC, DECC
      - 1   from Data NoC
   The 72 possible output interrupt lines:
-     -  68 : 4 interrupts per cores (17 cores)
+     -  68 : 4 interrupts per core (17 cores)
      -  1 for L2 cache controller
-     -  3 extra that are for padding
+     -  3 extra, unused, for padding
 
 allOf:
   - $ref: /schemas/interrupt-controller.yaml#
 
 properties:
   compatible:
-    const: kalray,kv3-1-apic-gic
+    const: kalray,coolidge-v1-apic-gic
+
+  reg:
+    maxItems: 1
+
   "#interrupt-cells":
     const: 1
     description:
       The IRQ number.
+
   interrupt-controller: true
-  interrupt-parent: true
+
   interrupts:
     maxItems: 4
     description: |
@@ -49,18 +59,19 @@ required:
   - reg
   - "#interrupt-cells"
   - interrupt-controller
-  - interrupt-parent
   - interrupts
+
+additionalProperties: false
 
 examples:
   - |
     apic_gic: interrupt-controller@a20000 {
-        compatible = "kalray,kv3-1-apic-gic";
-        reg = <0 0xa20000 0 0x12000>;
+        compatible = "kalray,coolidge-v1-apic-gic";
+        reg = <0xa20000 0x12000>;
         #interrupt-cells = <1>;
         interrupt-controller;
         interrupt-parent = <&intc>;
-        interrups = <4 5 6 7>;
+        interrupts = <4>, <5>, <6>, <7>;
     };
 
 ...
