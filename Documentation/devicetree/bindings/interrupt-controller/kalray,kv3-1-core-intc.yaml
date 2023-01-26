@@ -1,10 +1,15 @@
-# SPDX-License-Identifier: GPL-2.0
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 %YAML 1.2
 ---
-$id: http://devicetree.org/schemas/interrupt-controller/kalray,kv3-1-core-intc#
+$id: http://devicetree.org/schemas/interrupt-controller/kalray,kv3-1-intc.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Kalray kv3-1 Core Interrupt Controller
+title: Kalray kv3-1 core Interrupt Controller
+
+maintainers:
+  - Yann Sionneau <ysionneau@kalray.eu>
+  - Jules Maselbas <jmaselbas@kalray.eu>
+  - Julian Vetter <jvetter@kalray.eu>
 
 description: |
   The Kalray Core Interrupt Controller is tightly integrated in each kv3 core
@@ -20,25 +25,28 @@ allOf:
 
 properties:
   compatible:
-    const: kalray,kv3-1-core-intc
+    items:
+      - const: kalray,kv3-1-intc
+
+  reg:
+    maxItems: 0
+
   "#interrupt-cells":
     const: 1
     description:
       The IRQ number.
-  reg:
-    maxItems: 0
-  "kalray,intc-nr-irqs":
-    description: Number of irqs handled by the controller.
 
 required:
   - compatible
   - "#interrupt-cells"
   - interrupt-controller
 
+additionalProperties: false
+
 examples:
   - |
     intc: interrupt-controller {
-        compatible = "kalray,kv3-1-core-intc";
+        compatible = "kalray,kv3-1-intc";
         #interrupt-cells = <1>;
         interrupt-controller;
     };
