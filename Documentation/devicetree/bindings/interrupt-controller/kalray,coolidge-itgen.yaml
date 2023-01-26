@@ -1,10 +1,15 @@
-# SPDX-License-Identifier: GPL-2.0
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 %YAML 1.2
 ---
-$id: http://devicetree.org/schemas/interrupt-controller/kalray,coolidge-itgen#
+$id: http://devicetree.org/schemas/interrupt-controller/kalray,coolidge-itgen.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
 title: Kalray Coolidge SoC Interrupt Generator (ITGEN)
+
+maintainers:
+  - Yann Sionneau <ysionneau@kalray.eu>
+  - Jules Maselbas <jmaselbas@kalray.eu>
+  - Julian Vetter <jvetter@kalray.eu>
 
 description: |
   The Interrupt Generator (ITGEN) is an interrupt controller block.
@@ -16,7 +21,11 @@ allOf:
 
 properties:
   compatible:
-    const: kalray,coolidge-itgen
+    items:
+      - const: kalray,coolidge-v1-itgen
+
+  reg:
+    maxItems: 1
 
   "#interrupt-cells":
     const: 2
@@ -35,11 +44,13 @@ required:
   - interrupt-controller
   - msi-parent
 
+additionalProperties: false
+
 examples:
   - |
     itgen: interrupt-controller@27000000 {
-        compatible = "kalray,coolidge-itgen";
-        reg = <0 0x27000000 0 0x1104>;
+        compatible = "kalray,coolidge-v1-itgen";
+        reg = <0x27000000 0x1104>;
         #interrupt-cells = <2>;
         interrupt-controller;
         msi-parent = <&apic_mailbox>;
