@@ -106,11 +106,10 @@ static int kvx_tca_reg_set(struct task_struct *target,
 {
 	struct ctx_switch_regs *ctx_regs = &target->thread.ctx_switch;
 	struct tca_reg *regs = ctx_regs->tca_regs;
-	int ret;
+	int ret = 0;
 
 	if (!ctx_regs->tca_regs_saved)
-		ret = user_regset_copyin_ignore(&pos, &count, &kbuf, &ubuf,
-						0, -1);
+		user_regset_copyin_ignore(&pos, &count, &kbuf, &ubuf, 0, -1);
 	else
 		ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf, regs,
 					 0, -1);
