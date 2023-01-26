@@ -32,7 +32,7 @@ static inline long arch_atomic64_##op##_return(long i, atomic64_t *v)	\
 	long new, old, ret;						\
 									\
 	do {								\
-		old = v->counter;					\
+		old = arch_atomic64_read(v);				\
 		new = old c_op i;					\
 		ret = arch_cmpxchg(&v->counter, old, new);		\
 	} while (ret != old);						\
@@ -46,7 +46,7 @@ static inline void arch_atomic64_##op(long i, atomic64_t *v)		\
 	long new, old, ret;						\
 									\
 	do {								\
-		old = v->counter;					\
+		old = arch_atomic64_read(v);				\
 		new = old c_op i;					\
 		ret = arch_cmpxchg(&v->counter, old, new);		\
 	} while (ret != old);						\
@@ -58,7 +58,7 @@ static inline long arch_atomic64_fetch_##op(long i, atomic64_t *v)	\
 	long new, old, ret;						\
 									\
 	do {								\
-		old = v->counter;					\
+		old = arch_atomic64_read(v);				\
 		new = old c_op i;					\
 		ret = arch_cmpxchg(&v->counter, old, new);		\
 	} while (ret != old);						\
@@ -79,25 +79,8 @@ ATOMIC64_OPS(sub, -)
 
 #undef ATOMIC64_OPS
 #undef ATOMIC64_FETCH_OP
+#undef ATOMIC64_RETURN_OP
 #undef ATOMIC64_OP
-
-static inline int arch_atomic_add_return(int i, atomic_t *v)
-{
-	int new, old, ret;
-
-	do {
-		old = v->counter;
-		new = old + i;
-		ret = arch_cmpxchg(&v->counter, old, new);
-	} while (ret != old);
-
-	return new;
-}
-
-static inline int arch_atomic_sub_return(int i, atomic_t *v)
-{
-	return arch_atomic_add_return(-i, v);
-}
 
 #include <asm-generic/atomic.h>
 
