@@ -199,4 +199,6 @@ void kvx_set_dcb_ops(struct net_device *netdev);
 static inline void kvx_set_dcb_ops(struct net_device *netdev) {};
 #endif
 
+bool kvx_eth_is_haps(struct kvx_eth_netdev *ndev);
+
 #endif /* KVX_NET_H */
