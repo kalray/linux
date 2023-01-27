@@ -247,8 +247,8 @@ static void kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 	WRITE_ONCE(ndev->cfg.mac_cfg_done, true);
 	netif_tx_start_all_queues(ndev->netdev);
 	netdev_dbg(ndev->netdev, "%s done\n", __func__);
-	mod_timer(&ndev->link_poll, jiffies +
-		  msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
+	queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
+			   msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
 }
 
 void kvx_setup_link(struct kvx_eth_netdev *ndev)
@@ -259,9 +259,10 @@ void kvx_setup_link(struct kvx_eth_netdev *ndev)
 	queue_delayed_work(system_power_efficient_wq, &ndev->link_cfg, 0);
 }
 
-static void kvx_eth_poll_link(struct timer_list *t)
+static void kvx_eth_poll_link(struct work_struct *w)
 {
-	struct kvx_eth_netdev *ndev = from_timer(ndev, t, link_poll);
+	struct kvx_eth_netdev *ndev =
+		container_of(w, struct kvx_eth_netdev, link_poll.work);
 	bool link;
 
 	if (kvx_eth_phy_is_bert_en(ndev->hw) || !is_cable_connected(ndev->qsfp))
@@ -304,7 +305,8 @@ static void kvx_eth_poll_link(struct timer_list *t)
 		goto mac_cfg;
 	}
 
-	mod_timer(t, jiffies + msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
+	queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
+			   msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
 	return;
 
 mac_cfg:
@@ -365,7 +367,7 @@ void kvx_eth_down(struct net_device *netdev)
 	int qidx;
 
 	netdev_dbg(netdev, "%s\n", __func__);
-	del_timer_sync(&ndev->link_poll);
+	cancel_delayed_work_sync(&ndev->link_poll);
 
 	kvx_eth_reset_tx(ndev);
 	for (qidx = 0; qidx < ndev->dma_cfg.rx_chan_id.nb; qidx++)
@@ -1864,7 +1866,7 @@ void kvx_eth_qsfp_disconnect(struct kvx_qsfp *qsfp)
 {
 	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
 
-	del_timer_sync(&ndev->link_poll);
+	cancel_delayed_work_sync(&ndev->link_poll);
 	kvx_eth_reset_tx(ndev);
 	netif_carrier_off(ndev->netdev);
 }
@@ -1910,7 +1912,7 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	ndev->hw = &dev->hw;
 	ndev->cfg.hw = ndev->hw;
 	INIT_LIST_HEAD(&ndev->cfg.tx_fifo_list);
-	timer_setup(&ndev->link_poll, kvx_eth_poll_link, 0);
+	INIT_DELAYED_WORK(&ndev->link_poll, kvx_eth_poll_link);
 	INIT_DELAYED_WORK(&ndev->link_cfg, kvx_eth_link_cfg);
 
 	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
@@ -1970,7 +1972,7 @@ exit:
  */
 static int kvx_eth_free_netdev(struct kvx_eth_netdev *ndev)
 {
-	del_timer_sync(&ndev->link_poll);
+	cancel_delayed_work_sync(&ndev->link_poll);
 	kvx_eth_release_tx_res(ndev->netdev, 0);
 	kvx_eth_release_rx_res(ndev->netdev, 0);
 	list_del(&ndev->node);
