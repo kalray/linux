@@ -2833,7 +2833,7 @@ void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 	struct kvx_eth_netdev *ndev = container_of(cfg, struct kvx_eth_netdev, cfg);
 
 	if (mac_f->loopback_mode != hw->phy_f.loopback_mode) {
-		del_timer_sync(&ndev->link_poll);
+		cancel_delayed_work_sync(&ndev->link_poll);
 		hw->phy_f.loopback_mode = mac_f->loopback_mode;
 		kvx_mac_phy_serdes_cfg(hw, cfg, 1);
 	}
