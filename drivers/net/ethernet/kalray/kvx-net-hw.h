@@ -62,6 +62,7 @@ enum kvx_eth_io {
 	KVX_ETH1
 };
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 enum kvx_eth_resource {
 	KVX_ETH_RES_PHY = 0,
 	KVX_ETH_RES_PHYMAC,
@@ -69,6 +70,27 @@ enum kvx_eth_resource {
 	KVX_ETH_RES_ETH,
 	KVX_ETH_NUM_RES
 };
+#else
+enum kvx_eth_resource {
+	KVX_ETH_RES_PHY = 0,
+	KVX_ETH_RES_PHYCTL,
+	KVX_ETH_RES_MAC,
+	KVX_ETH_RES_ETH_RX,
+	KVX_ETH_RES_ETH_RX_LB_ANA,
+	KVX_ETH_RES_ETH_RX_LB_DEL,
+	KVX_ETH_RES_ETH_RX_LB_RFS,
+	KVX_ETH_RES_ETH_TX,
+	KVX_ETH_NUM_RES
+};
+#endif
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_2 /* temporary - FIXME */
+#define KVX_ETH_RES_PHYMAC		KVX_ETH_RES_PHYCTL
+#endif
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_2 /* temporary - FIXME */
+#define KVX_ETH_RES_ETH		KVX_ETH_RES_ETH_RX
+#endif
 
 enum kvx_eth_phy_supply_voltage {
 	KVX_PHY_SUPLY_1_5V = 0x10,
