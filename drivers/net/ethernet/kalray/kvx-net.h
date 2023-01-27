@@ -162,7 +162,7 @@ struct kvx_eth_netdev {
 	u16    rx_buffer_len;
 	struct kvx_eth_ring tx_ring[TX_FIFO_NB];
 	struct kvx_eth_hw_stats stats;
-	struct timer_list link_poll;
+	struct delayed_work link_poll;
 	struct kbx_dcb_cfg dcb_cfg;
 	struct delayed_work link_cfg;
 };
