@@ -294,6 +294,7 @@
 #define PMAC_TX_IPG_LEN_TXIPG_MASK                 0x3CUL
 #define PMAC_TX_IPG_LEN_COMPENSATION_SHIFT         0x10
 #define PMAC_TX_IPG_LEN_COMPENSATION_MASK          0xFFFF0000UL
+#define PMAC_BR_CONTROL_OFFSET                     0xA8
 
 /* XPCS */
 #define XPCS_OFFSET                                0x4000
