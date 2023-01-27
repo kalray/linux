@@ -549,6 +549,9 @@ static void update_interrupt_flags(struct kvx_qsfp *qsfp)
 
 bool is_cable_connected(struct kvx_qsfp *qsfp)
 {
+	/* Check qsfp for haps configs */
+	if (!qsfp)
+		return true;
 	return qsfp->cable_connected;
 }
 EXPORT_SYMBOL_GPL(is_cable_connected);
