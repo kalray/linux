@@ -96,6 +96,7 @@ char *kvx_eth_speed_units[KVX_ETH_UNITS_NB] = {
  * @speed_fmt: formatted speed value
  * @unit: matching unit string
  */
+
 void kvx_eth_get_formated_speed(int speed, int *speed_fmt,
 		char **unit)
 {
@@ -387,7 +388,9 @@ void kvx_eth_up(struct net_device *netdev)
 		napi_enable(&r->napi);
 	}
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_setup_link(ndev, true);
+#endif
 }
 
 /* kvx_eth_netdev_open() - Open ops
@@ -446,11 +449,13 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 	ndev->cfg.duplex = DUPLEX_FULL;
 	ndev->cfg.fec = 0;
 	kvx_eth_mac_f_init(ndev->hw, &ndev->cfg);
+#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 	kvx_eth_dt_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_lb_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_pfc_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_parser_f_init(ndev->hw, &ndev->cfg);
 	kvx_net_init_dcb(ndev->netdev);
+#endif
 
 	return 0;
 }
@@ -1242,8 +1247,10 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 		dt.rx_channel = rx_chan;
 		dt.split_trigger = 0;
 		dt.vchan = ndev->hw->vchan;
+#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 		kvx_eth_add_dispatch_table_entry(ndev->hw, &ndev->cfg, &dt,
 			 ndev->cfg.default_dispatch_entry + dt.rx_channel);
+#endif
 		r->init_done = true;
 	}
 	return 0;
@@ -1759,21 +1766,23 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 			ndev->hw->phy_f.param[i].ovrd_en = true;
 	}
 
-	/* get qsfp platform device */
-	sfp_node = of_parse_phandle(np, "sfp", 0);
-	if (!sfp_node) {
-		dev_err(&pdev->dev, "Unable to find sfp in DT\n");
-		return -EINVAL;
-	}
+	if (!kvx_eth_is_haps(ndev)) {
+		/* get qsfp platform device */
+		sfp_node = of_parse_phandle(np, "sfp", 0);
+		if (!sfp_node) {
+			dev_err(&pdev->dev, "Unable to find sfp in DT\n");
+			return -EINVAL;
+		}
 
-	sfp_pdev = of_find_device_by_node(sfp_node);
-	if (!sfp_pdev) {
-		dev_err(&pdev->dev, "Failed to find sfp platform device\n");
-		return -EINVAL;
+		sfp_pdev = of_find_device_by_node(sfp_node);
+		if (!sfp_pdev) {
+			dev_err(&pdev->dev, "Failed to find sfp platform device\n");
+			return -EINVAL;
+		}
+		ndev->qsfp = platform_get_drvdata(sfp_pdev);
+		if (!ndev->qsfp)
+			return -EINVAL;
 	}
-	ndev->qsfp = platform_get_drvdata(sfp_pdev);
-	if (!ndev->qsfp)
-		return -EINVAL;
 
 	return 0;
 }
@@ -1873,6 +1882,9 @@ void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev)
 	if (!bitmap_empty(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS))
 		return;
 
+	if (kvx_eth_is_haps(ndev))
+		return;
+
 	if (!is_cable_connected(ndev->qsfp))
 		return;
 
@@ -1958,7 +1970,9 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	if (ret)
 		return NULL;
 
-	ret = kvx_qsfp_ops_register(ndev->qsfp, &qsfp_ops, ndev);
+	if (!kvx_eth_is_haps(ndev))
+		ret = kvx_qsfp_ops_register(ndev->qsfp, &qsfp_ops, ndev);
+
 	if (ret)
 		goto exit;
 
@@ -2050,6 +2064,7 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	 * Rx LB ctrl registers for lanes 0/2 must be set the same way
 	 * Program all lane LB accordingly
 	 */
+#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 	for (i = 0; i < KVX_ETH_LANE_NB; i++)
 		kvx_eth_lb_set_default(&dev->hw, i);
 	kvx_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
@@ -2060,11 +2075,13 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 
 	for (i = 0; i < KVX_ETH_LANE_NB; i++)
 		kvx_eth_lb_f_cfg(&dev->hw, &ndev->hw->lb_f[i]);
+#endif
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 	ret = kvx_eth_netdev_sysfs_init(ndev);
 	if (ret)
 		netdev_warn(ndev->netdev, "Failed to initialize sysfs\n");
-
+#endif
 	dev_info(&pdev->dev, "KVX netdev[%d] probed\n", ndev->cfg.id);
 
 	return 0;
@@ -2136,12 +2153,16 @@ static int kvx_eth_phy_fw_update(struct platform_device *pdev)
 	return ret;
 }
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 static const char *kvx_eth_res_names[KVX_ETH_NUM_RES] = {
 	"phy", "phymac", "mac", "eth" };
+#else
+static const char *kvx_eth_res_names[KVX_ETH_NUM_RES] = {
+	"phy", "phyctl", "mac", "ethrx", "ethrx_lb_analyzer", "ethrx_lb_deliver", "ethrx_lb_rfs", "ethtx" };
+#endif
 
 static struct kvx_eth_type kvx_haps_data = {
 	.phy_init = kvx_eth_haps_phy_init,
-
 };
 
 static struct kvx_eth_type kvx_eth_data = {
@@ -2149,8 +2170,19 @@ static struct kvx_eth_type kvx_eth_data = {
 	.phy_cfg = kvx_eth_phy_cfg,
 	.phy_fw_update = kvx_eth_phy_fw_update,
 	.phy_lane_rx_serdes_data_enable = kvx_eth_phy_lane_rx_serdes_data_enable,
-	.phy_rx_adaptation = kvx_eth_phy_rx_adaptation
+	.phy_rx_adaptation = kvx_eth_phy_rx_adaptation,
 };
+
+
+bool kvx_eth_is_haps(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_hw *hw = ndev->hw;
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
+
+	if (dev->type == &kvx_haps_data)
+		return true;
+	return false;
+}
 
 /* kvx_eth_probe() - Probe generic device
  * @pdev: Platform device
@@ -2218,12 +2250,13 @@ static int kvx_eth_probe(struct platform_device *pdev)
 		if (ret)
 			kvx_phy_reset(&dev->hw);
 	}
-
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_init_dispatch_table(&dev->hw);
 	kvx_eth_tx_init(&dev->hw);
 	kvx_eth_parsers_init(&dev->hw);
 	kvx_eth_phy_f_init(&dev->hw);
 	kvx_eth_hw_sysfs_init(&dev->hw);
+#endif
 
 	dev_info(&pdev->dev, "KVX network driver\n");
 	return devm_of_platform_populate(&pdev->dev);
