@@ -190,10 +190,9 @@ kvx_itgen_device_probe(struct platform_device *pdev)
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	itgen->base = devm_ioremap_resource(&pdev->dev, mem);
-	if (IS_ERR(itgen->base)) {
-		dev_err(&pdev->dev, "Failed to ioremap itgen\n");
-		return PTR_ERR(itgen->base);
-	}
+	if (IS_ERR(itgen->base))
+		return dev_err_probe(&pdev->dev, PTR_ERR(itgen->base),
+				     "Failed to ioremap itgen\n");
 
 	itgen->pdev = pdev;
 	it_count = readl(get_itgen_param_offset(itgen) +
