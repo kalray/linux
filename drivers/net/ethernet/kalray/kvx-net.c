@@ -2216,6 +2216,22 @@ bool kvx_eth_is_haps(struct kvx_eth_netdev *ndev)
 	return false;
 }
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+static irqreturn_t rx_error_irq_handler(int irq, void *data)
+{
+	struct kvx_eth_dev *dev = data;
+
+	if (kvx_lbrfs_readl(&dev->hw,
+			KVX_ETH_LBR_INTERRUPT_STATUS_OFFSET) & 0x1) {
+		kvx_lbrfs_readl(&dev->hw,
+			KVX_ETH_LBR_INTERRUPT_STATUS_LAC_OFFSET);
+		if (dev->hw.lb_rfs_f.it_tbl_corrupt_cnt < U32_MAX)
+			dev->hw.lb_rfs_f.it_tbl_corrupt_cnt++;
+	}
+	return IRQ_HANDLED;
+}
+#endif
+
 /* kvx_eth_probe() - Probe generic device
  * @pdev: Platform device
  *
@@ -2226,7 +2242,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	struct kvx_eth_dev *dev;
 	struct resource *res = NULL;
 	struct kvx_eth_res *hw_res;
-	int i, ret = 0;
+	int i, ret, irq = 0;
 
 	dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
 	if (!dev)
@@ -2291,6 +2307,22 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	kvx_eth_phy_f_init(&dev->hw);
 #endif
 	kvx_eth_hw_sysfs_init(&dev->hw);
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+	irq = platform_get_irq_byname(pdev, "rx_error");
+	if (irq < 0) {
+		dev_err(&pdev->dev, "Rx error Irq not found (ret: %d)\n",
+			irq);
+		goto err;
+	}
+	ret = devm_request_irq(&pdev->dev, irq,	rx_error_irq_handler,
+		IRQF_TRIGGER_HIGH, dev_name(&pdev->dev), dev);
+	if (ret) {
+		dev_err(&pdev->dev, "Rx error Irq request failed (ret: %d)\n",
+			ret);
+		goto err;
+	}
+#endif
 
 	dev_info(&pdev->dev, "KVX network driver\n");
 	return devm_of_platform_populate(&pdev->dev);
