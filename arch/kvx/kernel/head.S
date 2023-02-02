@@ -167,7 +167,7 @@ __HEAD
 .align 8
 .section .boot.startup, "ax", @progbits
 
-ENTRY(kvx_start)
+SYM_FUNC_START(kvx_start)
 	/* Setup 64 bit really early to avoid bugs */
 	make $r21 = PS_VAL_WFXL(V64, 1)
 	;;
@@ -261,7 +261,7 @@ clear_bss:
 	;;
 	igoto $r20
 	;;
-ENDPROC(kvx_start)
+SYM_FUNC_END(kvx_start)
 
 /**
  * When PE 0 is started from the RM, arguments from the bootloaders are copied
@@ -269,7 +269,7 @@ ENDPROC(kvx_start)
  * Note that the 4K alignment is required by the reset pc register...
  */
 .align (4 * 1024)
-ENTRY(pe_start_wrapper)
+SYM_FUNC_START(pe_start_wrapper)
 	make $r0 = rm_boot_args
 	make $r27 = PWR_CTRL_ADDR
 	make $r28 = kvx_start
@@ -282,14 +282,14 @@ ENTRY(pe_start_wrapper)
 	fence
 	goto kvx_start
 	;;
-ENDPROC(pe_start_wrapper)
+SYM_FUNC_END(pe_start_wrapper)
 
 /**
  * asm_memzero - Clear a memory zone with zeroes
  * $r0 is the start of memory zone (must be align on 32 bytes boundary)
  * $r1 is the end of memory zone (must be align on 32 bytes boundary)
  */
-ENTRY(asm_memzero)
+SYM_FUNC_START(asm_memzero)
 	sbfd $r32 = $r0, $r1
 	make $r36 = 0
 	make $r37 = 0
@@ -308,12 +308,12 @@ ENTRY(asm_memzero)
 	clear_mem_done:
 	ret
 	;;
-ENDPROC(asm_memzero)
+SYM_FUNC_END(asm_memzero)
 
 /**
  * Configure the power controller to be accessible by PEs
  */
-ENTRY(asm_rm_cfg_pwr_ctrl)
+SYM_FUNC_START(asm_rm_cfg_pwr_ctrl)
 	/* Enable hwloop for memzero */
 	make $r32 = PS_VAL_WFXL(HLE, 1)
 	;;
@@ -350,7 +350,7 @@ ENTRY(asm_rm_cfg_pwr_ctrl)
 	;;
 	igoto $r20
 	;;
-ENDPROC(asm_rm_cfg_pwr_ctrl)
+SYM_FUNC_END(asm_rm_cfg_pwr_ctrl)
 
 #define request_ownership(__pl) ;\
 	make $r21 = SYO_WFXL_VALUE_##__pl ;\
@@ -390,7 +390,7 @@ ENDPROC(asm_rm_cfg_pwr_ctrl)
 /**
  * Initialize privilege level for Kernel
  */
-ENTRY(asm_init_pl)
+SYM_FUNC_START(asm_init_pl)
 	get $r21 = $ps
 	;;
 	/* Extract privilege level from $ps to check if we need to
@@ -432,12 +432,12 @@ delegate_pl:
 	;;
 	rfe
 	;;
-ENDPROC(asm_init_pl)
+SYM_FUNC_END(asm_init_pl)
 
 /**
  * Reset and initialize minimal tlb entries
  */
-ENTRY(asm_init_mmu)
+SYM_FUNC_START(asm_init_mmu)
 	make $r20 = MMC_CLEAR_ERROR
 	;;
 	wfxl $mmc = $r20
@@ -521,13 +521,13 @@ ENTRY(asm_init_mmu)
 	;;
 	ret
 	;;
-ENDPROC(asm_init_mmu)
+SYM_FUNC_END(asm_init_mmu)
 
 /**
  * Entry point for secondary processors
  * $r24 has been set in caller and is the proc id
  */
-ENTRY(smp_secondary_start)
+SYM_FUNC_START(smp_secondary_start)
 #ifdef CONFIG_SMP
 	dinval
 	;;
@@ -553,9 +553,9 @@ ENTRY(smp_secondary_start)
 	icall $r26
 	;;
 #endif
-ENDPROC(smp_secondary_start)
+SYM_FUNC_END(smp_secondary_start)
 
-ENTRY(proc_power_off)
+SYM_FUNC_START(proc_power_off)
 	make $r1 = WS_WFXL_VALUE
 	;;
 	/* Enable STOP */
@@ -565,4 +565,4 @@ ENTRY(proc_power_off)
 	;;
 	goto 1b
 	;;
-ENDPROC(proc_power_off)
+SYM_FUNC_END(proc_power_off)

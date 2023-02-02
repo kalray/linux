@@ -1076,7 +1076,7 @@ entry_handler syscall
  * These registers contains the values needed to call a function
  * specified by the switch_to caller (or where set by copy_thread).
  */
-ENTRY(ret_from_kernel_thread)
+SYM_FUNC_START(ret_from_kernel_thread)
 	call schedule_tail
 	;;
 	/* Call fn(arg) */
@@ -1086,7 +1086,7 @@ ENTRY(ret_from_kernel_thread)
 	;;
 	goto _ret_from_kernel
 	;;
-ENDPROC(ret_from_kernel_thread)
+SYM_FUNC_END(ret_from_kernel_thread)
 
 /**
  * Return from fork.
@@ -1095,7 +1095,7 @@ ENDPROC(ret_from_kernel_thread)
  * $r20 will then contain 0 if tracing disabled (set by copy_thread)
  * The mechanism is almost the same as for ret_from_kernel_thread.
  */
-ENTRY(ret_from_fork)
+SYM_FUNC_START(ret_from_fork)
 	call schedule_tail
 	;;
 _ret_from_kernel:
@@ -1108,7 +1108,7 @@ _ret_from_kernel:
 	restore_all_from_pt_regs
 	rfe
 	;;
-ENDPROC(ret_from_fork)
+SYM_FUNC_END(ret_from_fork)
 
 /*
  * The callee-saved registers must be saved and restored.
@@ -1120,7 +1120,7 @@ ENDPROC(ret_from_fork)
  * - r20 = Func to call
  * - r21 = Argument for function
  */
-ENTRY(__switch_to)
+SYM_FUNC_START(__switch_to)
 	sd CTX_SWITCH_FP[$r0] = $fp
 	;;
 	/* Save previous task context */
@@ -1182,7 +1182,7 @@ restore_tca_registers:
 	goto restore_fast_path
 	;;
 #endif
-ENDPROC(__switch_to)
+SYM_FUNC_END(__switch_to)
 
 /**
  * Avoid hardcoding trampoline for rt_sigreturn by using this code and
@@ -1190,11 +1190,11 @@ ENDPROC(__switch_to)
  */
 .pushsection .text
 .global user_scall_rt_sigreturn_end
-ENTRY(user_scall_rt_sigreturn)
+SYM_FUNC_START(user_scall_rt_sigreturn)
 	make $r6 = __NR_rt_sigreturn
 	;;
 	scall $r6
 	;;
 user_scall_rt_sigreturn_end:
-ENDPROC(user_scall_rt_sigreturn)
+SYM_FUNC_END(user_scall_rt_sigreturn)
 .popsection
