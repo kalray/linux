@@ -28,9 +28,6 @@ properties:
     items:
       - const: kalray,kv3-1-intc
 
-  reg:
-    maxItems: 0
-
   "#interrupt-cells":
     const: 1
     description:
