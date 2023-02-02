@@ -118,7 +118,7 @@
 
 .text
 .align 16
-ENTRY(memset):
+SYM_FUNC_START(memset):
 	make $r32 = 0
 	make $r33 = 0
 	/* Check if length < KVX_DCACHE_LINE_SIZE */
@@ -348,4 +348,4 @@ memset_non_0_pattern:
 	copyd $r0 = $r3
 	ret
 	;;
-ENDPROC(memset)
+SYM_FUNC_END(memset)

@@ -24,7 +24,7 @@
  *	r0 - dest
  *	r1 - src
  */
-ENTRY(copy_page)
+SYM_FUNC_START(copy_page)
 	make $r2 = COPY_PAGE_LOOP_COUNT
 	make $r3 = 0
 	;;
@@ -87,4 +87,4 @@ ENTRY(copy_page)
 	copy_page_done:
 	ret
 	;;
-ENDPROC(copy_page)
+SYM_FUNC_END(copy_page)

@@ -80,7 +80,7 @@
 
 .text
 .align 16
-ENTRY(strlen)
+SYM_FUNC_START(strlen)
 	andd  $r1 = $r0, ~0x7
 	andd  $r2 = $r0,  0x7
 	make $r10 = -0x0101010101010101
@@ -118,5 +118,5 @@ ENTRY(strlen)
 	addd $r0 = $r4, $r1
 	ret
 	;;
-ENDPROC(strlen)
+SYM_FUNC_END(strlen)
 EXPORT_SYMBOL(strlen)
