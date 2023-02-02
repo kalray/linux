@@ -259,6 +259,36 @@ enum parser_dispatch_info_drop {
 	DISPATCH_INFO_DROP = 0x1,
 };
 
+enum kvx_rfs_param_fk_cmd {
+	RFS_PARAM_FK_CMD_WRITE = 0x1,
+	RFS_PARAM_FK_NO_CMD = 0xFF,
+};
+
+enum kvx_rfs_hash_rss_enable {
+	RFS_HASH_RSS_DISABLE = 0x0,
+	RFS_HASH_RSS_ENABLE = 0x1,
+	RFS_HASH_RSS_NO_CMD = 0xFF,
+};
+
+enum kvx_rfs_ctrl_enable {
+	RFS_CTRL_RFS_DISABLE = 0x0,
+	RFS_CTRL_RFS_ENABLE = 0x1,
+	RFS_CTRL_RFS_NO_CMD = 0xFF,
+};
+
+enum kvx_rfs_seed_cmd {
+	RFS_WRITE_IN_SEED_0 = 0x0,
+	RFS_WRITE_IN_SEED_1 = 0x1,
+	RFS_CTRL_SEED_NO_CMD = 0xFF,
+};
+
+enum kvx_rfs_fk_command {
+	RFS_FK_CMD_PROBE = 0x0,
+	RFS_FK_CMD_WRITE = 0x1,
+	RFS_FK_CMD_DELETE = 0x2,
+	RFS_FK_CMD_CLR_TABLE = 0x3,
+	RFS_FK_NO_CMD = 0xFF,
+};
 #endif
 
 #define RATE_1GBASE_KX              BIT(0)
@@ -294,6 +324,41 @@ struct kvx_eth_lut_f {
 };
 
 #ifdef CONFIG_KVX_SUBARCH_KV3_2
+
+struct kvx_eth_lb_rfs_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	u32 version;
+	enum kvx_rfs_ctrl_enable ctrl_rfs_ena;
+	enum kvx_rfs_hash_rss_enable ctrl_hash_rss_ena;
+	u8 param_fk_idx;
+	u32 param_fk_part;
+	enum kvx_rfs_param_fk_cmd param_fk_cmd;
+	u8 param_ftype;
+	u32 param_dpatch_info;
+	u32 param_flow_id;
+	enum kvx_rfs_fk_command fk_command;
+	u32 status;
+	u32 status_tables;
+	u32 status_wmark;
+	u32 status_mgmt;
+	u8  status_fk_idx;
+	u32 status_fk_part;
+	u8  status_ftype;
+	u32 status_dpatch_info;
+	u32 it_tbl_corrupt_cnt;
+	u32 status_flow_id;
+	u32 corr_status;
+	u8 corr_fk_idx;
+	u32 corr_fk_part;
+	u32 corr_fk_type;
+	u32 corr_tables;
+	enum kvx_rfs_seed_cmd seed_command;
+	u8 seed_row;
+	u8 seed_idx;
+	u32 seed_part;
+};
 struct kvx_eth_tx_stage_one_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
@@ -1127,6 +1192,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_tx_pbrr_f tx_pbrr_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_tx_pbdwrr_f tx_pbdwrr_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_rx_dlv_pfc_f rx_dlv_pfc_f;
+	struct kvx_eth_lb_rfs_f lb_rfs_f;
 #endif
 	struct kvx_eth_lb_f lb_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_parser_f parser_f[KVX_ETH_PHYS_PARSER_NB];
@@ -1375,34 +1441,42 @@ static inline void kvx_mac_writeq(struct kvx_eth_hw *hw, u64 val, u64 off)
 }
 
 #ifdef CONFIG_KVX_SUBARCH_KV3_2
-static inline void kvx_eth_tx_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
+static inline void kvx_tx_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_ETH_TX].base + off);
 }
 
-static inline u32 kvx_eth_tx_readl(struct kvx_eth_hw *hw, const u64 off)
+static inline u32 kvx_tx_readl(struct kvx_eth_hw *hw, const u64 off)
 {
 	return readl(hw->res[KVX_ETH_RES_ETH_TX].base + off);
 }
 
-static inline u32 kvx_eth_rxlbana_readl(struct kvx_eth_hw *hw, const u64 off)
+static inline u32 kvx_lbana_readl(struct kvx_eth_hw *hw, const u64 off)
 {
 	return readl(hw->res[KVX_ETH_RES_ETH_RX_LB_ANA].base + off);
 }
 
-static inline void kvx_eth_rxlbana_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
+static inline void kvx_lbana_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_ETH_RX_LB_ANA].base + off);
 }
 
-static inline u32 kvx_eth_rxlbdel_readl(struct kvx_eth_hw *hw, const u64 off)
+static inline u32 kvx_lbdel_readl(struct kvx_eth_hw *hw, const u64 off)
 {
 	return readl(hw->res[KVX_ETH_RES_ETH_RX_LB_DEL].base + off);
 }
 
-static inline void kvx_eth_rxlbdel_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
+static inline void kvx_lbdel_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_ETH_RX_LB_DEL].base + off);
+}
+static inline u32 kvx_lbrfs_readl(struct kvx_eth_hw *hw, const u64 off)
+{
+	return readl(hw->res[KVX_ETH_RES_ETH_RX_LB_RFS].base + off);
+}
+static inline void kvx_lbrfs_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
+{
+	writel(val, hw->res[KVX_ETH_RES_ETH_RX_LB_RFS].base + off);
 }
 #endif
 
@@ -1518,6 +1592,7 @@ void kvx_eth_tx_init(struct kvx_eth_hw *hw);
 void kvx_eth_tx_f_init(struct kvx_eth_hw *hw);
 void kvx_eth_tx_cfg_speed_settings(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_tx_stage_one_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_stage_one_f *stage_one);
+void kvx_eth_lb_rfs_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_rfs_f *lb_rfs);
 void kvx_eth_tx_tdm_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_tdm_f *tdm);
 void kvx_eth_tx_pfc_xoff_subsc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pfc_xoff_subsc_f *subsc);
 void kvx_eth_tx_stage_two_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_stage_two_f *tx_stage_two);

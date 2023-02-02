@@ -125,6 +125,71 @@ static struct attribute *mac_f_attrs[] = {
 SYSFS_TYPES(mac_f);
 
 #ifdef CONFIG_KVX_SUBARCH_KV3_2
+DECLARE_SYSFS_ENTRY(lb_rfs_f);
+FIELD_R_ENTRY(lb_rfs_f, version, 0, 0xFFFFFFFF);
+FIELD_W_ENTRY(lb_rfs_f, ctrl_rfs_ena, 0, RFS_CTRL_RFS_ENABLE);
+FIELD_W_ENTRY(lb_rfs_f, ctrl_hash_rss_ena, 0, RFS_HASH_RSS_ENABLE);
+FIELD_W_ENTRY(lb_rfs_f, param_fk_idx, 0, 13);
+FIELD_W_ENTRY(lb_rfs_f, param_fk_part, 0, 0xFFFFFFFF);
+FIELD_W_ENTRY(lb_rfs_f, param_fk_cmd, 0, RFS_PARAM_FK_CMD_WRITE);
+FIELD_W_ENTRY(lb_rfs_f, param_ftype, 0, 0xF);
+FIELD_W_ENTRY(lb_rfs_f, param_dpatch_info, 0, 0x7FFFFFF);
+FIELD_W_ENTRY(lb_rfs_f, param_flow_id, 0, 0xFFFFF);
+FIELD_W_ENTRY(lb_rfs_f, fk_command, 0, RFS_FK_CMD_CLR_TABLE);
+FIELD_R_ENTRY(lb_rfs_f, status, 0, 0xFFFFFFFF);
+FIELD_R_ENTRY(lb_rfs_f, status_tables, 0, 0xFFFFFFFF);
+FIELD_R_ENTRY(lb_rfs_f, status_wmark, 0, 0xFFFFFFFF);
+FIELD_R_ENTRY(lb_rfs_f, status_mgmt, 0, 0xFFFFFFFF);
+FIELD_R_ENTRY(lb_rfs_f, it_tbl_corrupt_cnt, 0, 0xFFFFFFFF);
+FIELD_RW_ENTRY(lb_rfs_f, status_fk_idx, 0, 13);
+FIELD_R_ENTRY(lb_rfs_f, status_fk_part, 0, 0xFFFFFFFF);
+FIELD_R_ENTRY(lb_rfs_f, status_ftype, 0, 0xF);
+FIELD_R_ENTRY(lb_rfs_f, status_dpatch_info, 0, 0xFFFFFFFF);
+FIELD_R_ENTRY(lb_rfs_f, status_flow_id, 0, 0xFFFFF);
+FIELD_R_ENTRY(lb_rfs_f, corr_status, 0, 0xFFFFFFFF);
+FIELD_RW_ENTRY(lb_rfs_f, corr_fk_idx, 0, 13);
+FIELD_R_ENTRY(lb_rfs_f, corr_fk_part, 0, 0xFFFFFFFF);
+FIELD_R_ENTRY(lb_rfs_f, corr_fk_type, 0, 0xFFFFFFFF);
+FIELD_R_ENTRY(lb_rfs_f, corr_tables, 0, 0xFFFFFFFF);
+FIELD_W_ENTRY(lb_rfs_f, seed_command, 0, RFS_WRITE_IN_SEED_1);
+FIELD_W_ENTRY(lb_rfs_f, seed_row, 0, 10);
+FIELD_W_ENTRY(lb_rfs_f, seed_idx, 0, 14);
+FIELD_W_ENTRY(lb_rfs_f, seed_part, 0, 0xFFFFFFFF);
+
+static struct attribute *lb_rfs_f_attrs[] = {
+	&lb_rfs_f_version_attr.attr,
+	&lb_rfs_f_ctrl_rfs_ena_attr.attr,
+	&lb_rfs_f_ctrl_hash_rss_ena_attr.attr,
+	&lb_rfs_f_param_fk_idx_attr.attr,
+	&lb_rfs_f_param_fk_part_attr.attr,
+	&lb_rfs_f_param_fk_cmd_attr.attr,
+	&lb_rfs_f_param_ftype_attr.attr,
+	&lb_rfs_f_param_dpatch_info_attr.attr,
+	&lb_rfs_f_param_flow_id_attr.attr,
+	&lb_rfs_f_fk_command_attr.attr,
+	&lb_rfs_f_status_attr.attr,
+	&lb_rfs_f_status_tables_attr.attr,
+	&lb_rfs_f_status_wmark_attr.attr,
+	&lb_rfs_f_status_mgmt_attr.attr,
+	&lb_rfs_f_it_tbl_corrupt_cnt_attr.attr,
+	&lb_rfs_f_status_fk_idx_attr.attr,
+	&lb_rfs_f_status_fk_part_attr.attr,
+	&lb_rfs_f_status_ftype_attr.attr,
+	&lb_rfs_f_status_dpatch_info_attr.attr,
+	&lb_rfs_f_status_flow_id_attr.attr,
+	&lb_rfs_f_corr_status_attr.attr,
+	&lb_rfs_f_corr_fk_idx_attr.attr,
+	&lb_rfs_f_corr_fk_part_attr.attr,
+	&lb_rfs_f_corr_fk_type_attr.attr,
+	&lb_rfs_f_corr_tables_attr.attr,
+	&lb_rfs_f_seed_command_attr.attr,
+	&lb_rfs_f_seed_row_attr.attr,
+	&lb_rfs_f_seed_idx_attr.attr,
+	&lb_rfs_f_seed_part_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(lb_rfs_f);
+
 DECLARE_SYSFS_ENTRY(tx_stage_one_f);
 FIELD_R_ENTRY(tx_stage_one_f, credit, 0, 0x1F);
 FIELD_RW_ENTRY(tx_stage_one_f, config, 0, 0x3);
@@ -774,6 +839,7 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 					&tx_pbdwrr_priority_f_ktype);
 		}
 	}
+	kobject_init(&hw->lb_rfs_f.kobj, &lb_rfs_f_ktype);
 #endif
 	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; i++)
 		kobject_init(&hw->dt_f[i].kobj, &dt_f_ktype);
@@ -877,6 +943,9 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 		goto err;
 #else
 	ret = kobject_add(&hw->tx_stage_one_f.kobj, &ndev->netdev->dev.kobj, "tx_stage_one");
+	if (ret)
+		goto err;
+	ret = kobject_add(&hw->lb_rfs_f.kobj, &ndev->netdev->dev.kobj, "lb_rfs");
 	if (ret)
 		goto err;
 	ret = kobject_add(&hw->tx_tdm_f.kobj, &ndev->netdev->dev.kobj, "tx_tdm");
@@ -1018,6 +1087,8 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 				 KVX_ETH_LANE_NB);
 	kobject_del(&ndev->hw->tx_stage_one_f.kobj);
 	kobject_put(&ndev->hw->tx_stage_one_f.kobj);
+	kobject_del(&ndev->hw->lb_rfs_f.kobj);
+	kobject_put(&ndev->hw->lb_rfs_f.kobj);
 	kvx_kset_tx_stage_two_f_remove(ndev, tx_stage_two_kset, &ndev->hw->tx_stage_two_f[0],
 				 KVX_ETH_LANE_NB);
 	for (i = 0; i < ARRAY_SIZE(ndev->hw->tx_stage_two_f); i++) {
