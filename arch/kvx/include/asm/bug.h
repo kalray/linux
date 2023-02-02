@@ -61,6 +61,7 @@ do {									\
 struct pt_regs;
 
 void die(struct pt_regs *regs, unsigned long ea, const char *str);
+void do_trap(struct pt_regs *regs, int signo, int code, unsigned long addr);
 
 #include <asm-generic/bug.h>
 

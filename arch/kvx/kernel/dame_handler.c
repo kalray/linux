@@ -8,7 +8,6 @@
 #include <linux/bug.h>
 #include <linux/init.h>
 #include <linux/of_irq.h>
-#include <linux/hardirq.h>
 #include <linux/irqchip.h>
 #include <linux/irqdomain.h>
 #include <linux/interrupt.h>

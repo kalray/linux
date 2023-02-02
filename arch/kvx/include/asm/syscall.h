@@ -68,6 +68,29 @@ static inline void syscall_get_arguments(struct task_struct *task,
 	memcpy(args, &regs->r1, 5 * sizeof(args[0]));
 }
 
+typedef long (*syscall_t)(ulong, ulong, ulong, ulong, ulong, ulong, ulong);
+static inline void syscall_handler(struct pt_regs *regs, ulong syscall)
+{
+	syscall_t fn;
+
+	regs->orig_r0 = regs->r0;
+
+	if (syscall >= NR_syscalls) {
+		regs->r0 = -ENOSYS;
+		return;
+	}
+
+	fn = sys_call_table[syscall];
+
+	regs->r0 = fn(regs->orig_r0, regs->r1, regs->r2,
+		      regs->r3, regs->r4, regs->r5, regs->r6);
+}
+
 int __init setup_syscall_sigreturn_page(void *sigpage_addr);
+
+static inline bool arch_syscall_is_vdso_sigreturn(struct pt_regs *regs)
+{
+	return false;
+}
 
 #endif

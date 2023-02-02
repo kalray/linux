@@ -38,8 +38,8 @@ ENTRY(kvx_start)
 #define EXCEPTION_SECTIONS(__sec) \
 	__ ## __sec ## _start = ABSOLUTE(.); \
 	HANDLER_SECTION(__sec,debug) \
-	HANDLER_SECTION(__sec,trap) \
-	HANDLER_SECTION(__sec,interrupt) \
+	HANDLER_SECTION(__sec,hwtrap) \
+	HANDLER_SECTION(__sec,irq) \
 	HANDLER_SECTION(__sec,syscall)
 
 jiffies = jiffies_64;

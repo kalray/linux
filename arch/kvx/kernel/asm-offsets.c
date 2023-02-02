@@ -24,7 +24,7 @@
 #include <asm/mmu_stats.h>
 #include <asm/stacktrace.h>
 
-int foo(void)
+int asm_offsets(void)
 {
 	BUILD_BUG_ON(sizeof(struct pt_regs) != PT_REGS_STRUCT_EXPECTED_SIZE);
 	/*
@@ -38,10 +38,6 @@ int foo(void)
 		     sizeof(struct user_pt_regs));
 
 	DEFINE(FIX_GDB_MEM_BASE_IDX, FIX_GDB_BARE_DISPLACED_MEM_BASE);
-
-#ifdef CONFIG_DEBUG_EXCEPTION_STACK
-	DEFINE(STACK_REG_SIZE, ALIGN(sizeof(uint64_t), STACK_ALIGNMENT));
-#endif
 
 	/*
 	 * We allocate a pt_regs on the stack when entering the kernel.  This
@@ -94,7 +90,7 @@ int foo(void)
 	OFFSET(TASK_TI_FLAGS, task_struct, thread_info.flags);
 
 	/*
-	 * Stack pointers
+	 * Stack pointer
 	 */
 	OFFSET(TASK_THREAD_KERNEL_SP, task_struct, thread.kernel_sp);
 

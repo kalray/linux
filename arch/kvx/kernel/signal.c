@@ -10,7 +10,7 @@
 #include <asm/ucontext.h>
 #include <asm/processor.h>
 #include <asm/cacheflush.h>
-#include <linux/resume_user_mode.h>
+#include <asm/syscall.h>
 
 struct rt_sigframe {
 	struct siginfo info;
@@ -42,7 +42,7 @@ static long restore_sigcontext(struct pt_regs *regs,
 	return err;
 }
 
-long _sys_rt_sigreturn(void)
+SYSCALL_DEFINE0(rt_sigreturn)
 {
 	struct pt_regs *regs = current_pt_regs();
 	struct rt_sigframe __user *frame;
@@ -171,7 +171,7 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 	sigset_t *oldset = sigmask_to_save();
 	int ret;
 
-	/* Are we from a system call? */
+	/* Are we coming from a system call? */
 	if (in_syscall(regs)) {
 		/* If so, check system call restarting.. */
 		switch (regs->r0) {
@@ -197,22 +197,23 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 	signal_setup_done(ret, ksig, 0);
 }
 
-asmlinkage void do_signal(struct pt_regs *regs)
+asmlinkage void arch_do_signal_or_restart(struct pt_regs *regs,
+					  bool has_signal)
 {
 	struct ksignal ksig;
 
-	if (get_signal(&ksig)) {
+	if (has_signal && get_signal(&ksig)) {
 		handle_signal(&ksig, regs);
 		return;
 	}
 
 	/* Are we from a system call? */
-	if (in_syscall(regs)) {
+	if (syscall_get_error(current, regs) != -1) {
 		/*
 		 * If we are here, this means there is no handler
 		 * present and we must restart the syscall.
 		 */
-		switch (regs->r0) {
+		switch (syscall_get_error(current, regs)) {
 		case -ERESTART_RESTARTBLOCK:
 			/* Modify the syscall number in order to restart it */
 			regs->r6 = __NR_restart_syscall;
@@ -237,29 +238,3 @@ asmlinkage void do_signal(struct pt_regs *regs)
 	 */
 	restore_saved_sigmask();
 }
-
-
-asmlinkage void do_work_pending(struct pt_regs *regs,
-				unsigned long thread_flags)
-{
-	/* We are called with IRQs disabled */
-	trace_hardirqs_off();
-
-	do {
-		if (thread_flags & _TIF_NEED_RESCHED) {
-			schedule();
-		} else {
-			local_irq_enable();
-			if (thread_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
-				do_signal(regs);
-
-			if (thread_flags & _TIF_NOTIFY_RESUME) {
-				clear_thread_flag(TIF_NOTIFY_RESUME);
-				resume_user_mode_work(regs);
-			}
-		}
-		local_irq_disable();
-		thread_flags = read_thread_flags();
-	} while (thread_flags & _TIF_WORK_MASK);
-}
-

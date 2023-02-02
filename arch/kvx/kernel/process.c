@@ -117,11 +117,6 @@ int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 		/* Copy current process registers */
 		*childregs = *regs;
 
-		/* Store tracing status in r20 to avoid computing it
-		 * in assembly
-		 */
-		p->thread.ctx_switch.r20 =
-			task_thread_info(p)->flags & _TIF_SYSCALL_WORK;
 		p->thread.ctx_switch.ra = (unsigned long) ret_from_fork;
 
 		childregs->r0 = 0; /* Return value of fork() */

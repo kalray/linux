@@ -23,22 +23,18 @@
  *   - pending work-to-be-done flags are in LSW
  *   - other flags in MSW
  */
-#define TIF_SYSCALL_TRACE	0	/* syscall trace active */
 #define TIF_NOTIFY_RESUME	1	/* resumption notification requested */
 #define TIF_SIGPENDING		2	/* signal pending */
 #define TIF_NEED_RESCHED	3	/* rescheduling necessary */
 #define TIF_SINGLESTEP		4	/* restore singlestep on return to user mode */
-#define TIF_UPROBE		5
-#define TIF_SYSCALL_TRACEPOINT  6	/* syscall tracepoint instrumentation */
-#define TIF_SYSCALL_AUDIT	7	/* syscall auditing active */
-#define TIF_RESTORE_SIGMASK     9
-#define TIF_NOTIFY_SIGNAL	10	/* signal notifications exist */
-#define TIF_POLLING_NRFLAG	16	/* true if poll_idle() is polling TIF_NEED_RESCHED */
-#define TIF_MEMDIE              17
+#define TIF_UPROBE		5	/* uprobe breakpoint or singlestep */
 
-#define _TIF_SYSCALL_TRACE	(1 << TIF_SYSCALL_TRACE)
-#define _TIF_SYSCALL_TRACEPOINT	(1 << TIF_SYSCALL_TRACEPOINT)
-#define _TIF_SYSCALL_AUDIT	(1 << TIF_SYSCALL_AUDIT)
+
+#define TIF_NOTIFY_SIGNAL	9	/* signal notifications exist */
+
+#define TIF_POLLING_NRFLAG	16	/* true if poll_idle() is polling TIF_NEED_RESCHED */
+#define TIF_MEMDIE		17	/* is terminating due to OOM killer */
+
 #define _TIF_POLLING_NRFLAG	(1 << TIF_POLLING_NRFLAG)
 #define _TIF_NOTIFY_RESUME	(1 << TIF_NOTIFY_RESUME)
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
@@ -47,9 +43,6 @@
 
 #define _TIF_WORK_MASK \
 	(_TIF_NOTIFY_RESUME | _TIF_SIGPENDING | _TIF_NEED_RESCHED)
-
-#define _TIF_SYSCALL_WORK \
-	(_TIF_SYSCALL_TRACE | _TIF_SYSCALL_TRACEPOINT | _TIF_SYSCALL_AUDIT)
 
 #ifndef __ASSEMBLY__
 /*
@@ -67,6 +60,7 @@ struct thread_info {
 #ifdef CONFIG_SMP
 	u32 cpu;					/* current CPU */
 #endif
+	unsigned long syscall_work;			/* SYSCALL_WORK_ flags */
 };
 
 #define INIT_THREAD_INFO(tsk)			\

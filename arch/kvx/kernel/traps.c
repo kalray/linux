@@ -4,24 +4,29 @@
  * Author(s): Clement Leger
  *            Guillaume Thouvenin
  *            Marius Gligor
+ *            Julian Vetter
  */
 
 #include <linux/context_tracking.h>
-#include <linux/sched/task_stack.h>
-#include <linux/sched/debug.h>
+#include <linux/entry-common.h>
+#include <linux/init.h>
+#include <linux/irqdomain.h>
 #include <linux/irqflags.h>
-#include <linux/uaccess.h>
 #include <linux/kdebug.h>
 #include <linux/module.h>
 #include <linux/printk.h>
-#include <linux/init.h>
 #include <linux/ptrace.h>
+#include <linux/sched/task_stack.h>
+#include <linux/sched/debug.h>
+#include <linux/uaccess.h>
 
-#include <asm/dame.h>
-#include <asm/traps.h>
-#include <asm/ptrace.h>
 #include <asm/break_hook.h>
+#include <asm/dame.h>
+#include <asm/debug.h>
+#include <asm/ptrace.h>
 #include <asm/stacktrace.h>
+#include <asm/syscall.h>
+#include <asm/traps.h>
 
 int show_unhandled_signals = 1;
 
@@ -87,7 +92,7 @@ void die(struct pt_regs *regs, unsigned long ea, const char *str)
 		make_task_dead(SIGSEGV);
 }
 
-void user_do_sig(struct pt_regs *regs, int signo, int code, unsigned long addr)
+void do_trap(struct pt_regs *regs, int signo, int code, unsigned long addr)
 {
 	struct task_struct *tsk = current;
 
@@ -106,11 +111,22 @@ void user_do_sig(struct pt_regs *regs, int signo, int code, unsigned long addr)
 	force_sig_fault(signo, code, (void __user *) addr);
 }
 
-static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
+static void do_trap_error(struct pt_regs *regs, int signo, int code,
+	unsigned long addr, const char *str)
+{
+	if (user_mode(regs)) {
+		do_trap(regs, signo, code, addr);
+	} else {
+		if (!fixup_exception(regs))
+			die(regs, addr, str);
+	}
+}
+
+static void panic_or_kill(struct pt_regs *regs, uint64_t es, uint64_t ea,
 			  int signo, int sigcode)
 {
 	if (user_mode(regs)) {
-		user_do_sig(regs, signo, sigcode, ea);
+		do_trap(regs, signo, sigcode, ea);
 		return;
 	}
 
@@ -130,7 +146,7 @@ int is_valid_bugaddr(unsigned long pc)
 	return 1;
 }
 
-static int bug_break_handler(struct break_hook *brk_hook, struct pt_regs *regs)
+static int bug_break_handler(struct pt_regs *regs, struct break_hook *brk_hook)
 {
 	enum bug_trap_type type;
 
@@ -157,11 +173,11 @@ static struct break_hook bug_break_hook = {
 	.mode = MODE_KERNEL,
 };
 
-#define GEN_TRAP_HANDLER(__name, __sig, __code) \
-static void __name ## _trap_handler(uint64_t es, uint64_t ea, \
-				 struct pt_regs *regs) \
-{ \
-	panic_or_kill(es, ea, regs, __sig, __code); \
+#define GEN_TRAP_HANDLER(__name, __sig, __code)				\
+static void __name ## _trap_handler(struct pt_regs *regs, uint64_t es,	\
+				    uint64_t ea)			\
+{									\
+	panic_or_kill(regs, es, ea, __sig, __code);			\
 }
 
 GEN_TRAP_HANDLER(default, SIGKILL, SI_KERNEL);
@@ -179,12 +195,12 @@ static void register_trap_handler(unsigned int trap_nb, trap_handler_func fn)
 	trap_handler_table[trap_nb] = fn;
 }
 
-static void do_vsfr_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
+static void do_vsfr_fault(struct pt_regs *regs, uint64_t es, uint64_t ea)
 {
-	if (break_hook_handler(es, regs) == BREAK_HOOK_HANDLED)
+	if (break_hook_handler(regs, es) == BREAK_HOOK_HANDLED)
 		return;
 
-	panic_or_kill(es, ea, regs, SIGILL, ILL_PRVREG);
+	panic_or_kill(regs, es, ea, SIGILL, ILL_PRVREG);
 }
 
 void __init trap_init(void)
@@ -209,35 +225,78 @@ void __init trap_init(void)
 	register_trap_handler(KVX_TRAP_VSFR, do_vsfr_fault);
 }
 
-/**
- * trap_handler - trap handler called by _trap_handler routine in trap_handler.S
- * This handler will redirect to other trap handlers if present
- * If not then it will do a generic action
- * @es: Exception Syndrome register value
- * @ea: Exception Address register
- * @regs: pointer to registers saved when trapping
- */
-void trap_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
+asmlinkage void do_debug(struct pt_regs *regs, unsigned long ea)
 {
-	enum ctx_state prev_state = exception_enter();
+	irqentry_state_t state = irqentry_enter(regs);
+
+	debug_handler(regs, ea);
+
+	irqentry_exit(regs, state);
+}
+
+asmlinkage void do_irq(struct pt_regs *regs, unsigned long hwirq_mask)
+{
+	struct pt_regs *old_regs;
+	int irq;
+	unsigned long hwirq;
+
+	irqentry_state_t state = irqentry_enter(regs);
+
+	irq_enter_rcu();
+	old_regs = set_irq_regs(regs);
+
+	while (hwirq_mask) {
+		hwirq = __ffs(hwirq_mask);
+		irq = irq_find_mapping(NULL, hwirq);
+		generic_handle_irq(irq);
+		hwirq_mask &= ~BIT_ULL(hwirq);
+	}
+
+	set_irq_regs(old_regs);
+	irq_exit_rcu();
+	irqentry_exit(regs, state);
+}
+
+void do_hwtrap(struct pt_regs *regs, uint64_t es, uint64_t ea)
+{
+	irqentry_state_t state = irqentry_enter(regs);
+
 	int htc = trap_cause(es);
 	trap_handler_func trap_func = trap_handler_table[htc];
 
-	trace_hardirqs_off();
-
-	/* Normal traps number should and must be between 0 and 15 included */
+	/* Normal traps are between 0 and 15 */
 	if (unlikely(htc >= KVX_TRAP_COUNT)) {
 		pr_err("Invalid trap %d !\n", htc);
 		goto done;
 	}
 
 	/* If irqs were enabled in the preempted context, reenable them */
-	if (regs->sps & KVX_SFR_PS_IE_MASK)
+	if (!regs_irqs_disabled(regs))
 		local_irq_enable();
 
-	trap_func(es, ea, regs);
+	trap_func(regs, es, ea);
 
 done:
-	dame_irq_check(regs);
-	exception_exit(prev_state);
+	local_irq_disable();
+	irqentry_exit(regs, state);
+}
+
+void do_syscall(struct pt_regs *regs)
+{
+	if (user_mode(regs)) {
+		long syscall = (regs->es & KVX_SFR_ES_SN_MASK) >> KVX_SFR_ES_SN_SHIFT;
+
+		syscall = syscall_enter_from_user_mode(regs, syscall);
+
+		syscall_handler(regs, (ulong)syscall);
+
+		syscall_exit_to_user_mode(regs);
+	} else {
+		irqentry_state_t state = irqentry_nmi_enter(regs);
+
+		do_trap_error(regs, SIGILL, ILL_ILLTRP, regs->spc,
+			"Oops - scall from PL2");
+
+		irqentry_nmi_exit(regs, state);
+	}
 }

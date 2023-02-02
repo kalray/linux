@@ -17,7 +17,7 @@
 #include <linux/syscalls.h>
 #include <linux/signal.h>
 #include <linux/regset.h>
-#include <linux/hw_breakpoint.h>
+#include <trace/events/syscalls.h>
 
 #include <asm/dame.h>
 #include <asm/ptrace.h>
@@ -26,7 +26,6 @@
 #include <asm/debug.h>
 #include <asm/cacheflush.h>
 
-#define CREATE_TRACE_POINTS
 #include <trace/events/syscalls.h>
 
 #define HW_PT_CMD_GET_CAPS	0
@@ -157,48 +156,7 @@ long arch_ptrace(struct task_struct *child, long request,
 	return ptrace_request(child, request, addr, data);
 }
 
-/*
- * Allows PTRACE_SYSCALL to work.  These are called from entry.S in
- * {handle,ret_from}_syscall.
- */
-int do_syscall_trace_enter(struct pt_regs *regs, unsigned long syscall)
-{
-	int ret = 0;
-
-#ifdef CONFIG_CONTEXT_TRACKING_USER
-	user_exit_callable();
-#endif
-	if (test_thread_flag(TIF_SYSCALL_TRACE))
-		ret = ptrace_report_syscall_entry(regs);
-
-#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
-	if (test_thread_flag(TIF_SYSCALL_TRACEPOINT))
-		trace_sys_enter(regs, syscall_get_nr(current, regs));
-#endif
-
-	audit_syscall_entry(syscall, regs->r0, regs->r1, regs->r2, regs->r3);
-
-	return ret;
-}
-
-void do_syscall_trace_exit(struct pt_regs *regs)
-{
-	if (test_thread_flag(TIF_SYSCALL_TRACE))
-		ptrace_report_syscall_exit(regs, 0);
-
-	audit_syscall_exit(regs);
-
-#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
-	if (test_thread_flag(TIF_SYSCALL_TRACEPOINT))
-		trace_sys_exit(regs, regs_return_value(regs));
-#endif
-
-#ifdef CONFIG_CONTEXT_TRACKING_USER
-	user_enter_callable();
-#endif
-}
-
-static int kvx_bkpt_handler(struct break_hook *brk_hook, struct pt_regs *regs)
+static int kvx_bkpt_handler(struct pt_regs *regs, struct break_hook *brk_hook)
 {
 	/* Unexpected breakpoint */
 	if (!(current->ptrace & PT_PTRACED))
@@ -237,7 +195,7 @@ void user_disable_single_step(struct task_struct *child)
  * @ea: Exception Address register
  * @regs: pointer to registers saved when enter debug
  */
-int ptrace_debug_handler(u64 ea, struct pt_regs *regs)
+int ptrace_debug_handler(struct pt_regs *regs, u64 ea)
 {
 
 	int debug_cause = debug_dc(regs->es);

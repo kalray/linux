@@ -2,7 +2,10 @@
 /*
  * Copyright (C) 2017-2023 Kalray Inc.
  * Author(s): Clement Leger
+ *            Julian Vetter
  */
+
+#include <linux/entry-common.h>
 #include <linux/list.h>
 #include <linux/rculist.h>
 #include <linux/spinlock.h>
@@ -20,14 +23,14 @@ static struct list_head *debug_hook_list(bool user_mode)
 	return user_mode ? &user_debug_hook : &kernel_debug_hook;
 }
 
-static void call_debug_hook(u64 ea, struct pt_regs *regs)
+void debug_handler(struct pt_regs *regs, u64 ea)
 {
 	int ret;
 	struct debug_hook *hook;
 	struct list_head *list = debug_hook_list(user_mode(regs));
 
 	list_for_each_entry_rcu(hook, list, node) {
-		ret = hook->handler(ea, regs);
+		ret = hook->handler(regs, ea);
 		if (ret == DEBUG_HOOK_HANDLED)
 			return;
 	}
@@ -50,15 +53,4 @@ void debug_hook_unregister(struct debug_hook *dbg_hook)
 	list_del_rcu(&dbg_hook->node);
 	spin_unlock(&debug_hook_lock);
 	synchronize_rcu();
-}
-
-/**
- * Main debug handler called by the _debug_handler routine in entry.S
- * This handler will perform the required action
- */
-void debug_handler(u64 ea, struct pt_regs *regs)
-{
-	trace_hardirqs_off();
-	call_debug_hook(ea, regs);
-	dame_irq_check(regs);
 }
