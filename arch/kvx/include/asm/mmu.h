@@ -23,7 +23,7 @@
 #define MMU_VIRT_BITS		41
 
 /*
- * See Documentation/kvx/kvx-mmu.txt for details about the division of the
+ * See Documentation/kvx/kvx-mmu.rst for details about the division of the
  * virtual memory space.
  */
 #if defined(CONFIG_KVX_4K_PAGES)
