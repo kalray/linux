@@ -1505,43 +1505,31 @@ static const struct of_device_id kvx_qsfp_of_match[] = {
 	{ },
 };
 
-/** kvx_qsfp_probe - probe callback
- * @pdev: platform device
- */
-static int kvx_qsfp_probe(struct platform_device *pdev)
+static int kvx_qsfp_parse_device_tree(struct kvx_qsfp *qsfp, struct device_node *np)
 {
-	struct i2c_adapter *i2c;
-	struct kvx_qsfp *qsfp;
+	struct device_node *i2c_np;
+	const struct of_device_id *id = of_match_node(kvx_qsfp_of_match, np);
 	struct kvx_qsfp_gpio_def *gpio;
-	const struct of_device_id *id;
-	struct device_node *i2c_np, *np = pdev->dev.of_node;
 	int i, err;
 
-	qsfp = devm_kzalloc(&pdev->dev, sizeof(*qsfp), GFP_KERNEL);
-	if (!qsfp)
-		return PTR_ERR(qsfp);
-	qsfp->dev = &pdev->dev;
-
-	qsfp->gpio = devm_kzalloc(qsfp->dev, sizeof(kvx_qsfp_gpios), GFP_KERNEL);
-	if (!qsfp->gpio)
-		return PTR_ERR(qsfp->gpio);
-	memcpy(qsfp->gpio, &kvx_qsfp_gpios, sizeof(kvx_qsfp_gpios));
-
-	platform_set_drvdata(pdev, qsfp);
-
-	mutex_init(&qsfp->i2c_lock);
-
-	err = devm_add_action(qsfp->dev, kvx_qsfp_cleanup, qsfp);
-	if (err < 0)
-		return err;
-
-	if (!pdev->dev.of_node)
-		return -EINVAL;
-
 	/* make sure the 'compatible' in DT is matching */
-	id = of_match_node(kvx_qsfp_of_match, np);
 	if (!id)
 		return -EINVAL;
+
+	/* parse i2c adapter (must be before any irq request) */
+	i2c_np = of_parse_phandle(np, "i2c-bus", 0);
+	if (!i2c_np) {
+		dev_err(qsfp->dev, "missing 'i2c-bus' property\n");
+		return -ENODEV;
+	}
+
+	qsfp->i2c = of_find_i2c_adapter_by_node(i2c_np);
+	if (!qsfp->i2c) {
+		dev_err(qsfp->dev, "Failed to find QSFP i2c adapter\n");
+		i2c_put_adapter(qsfp->i2c);
+		return -EPROBE_DEFER;
+	}
+	of_node_put(i2c_np);
 
 	for (i = 0; i < QSFP_GPIO_NB; i++) {
 		gpio = &qsfp->gpio[i];
@@ -1577,10 +1565,6 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 	dev_info(qsfp->dev, "Host maximum power %u.%uW\n",
 		 qsfp->max_power_mW / 1000, (qsfp->max_power_mW / 100) % 10);
 
-	gpio = &qsfp->gpio[QSFP_GPIO_MODPRS];
-	if (gpio->gpio)
-		qsfp->cable_connected = gpiod_get_value_cansleep(gpio->gpio);
-
 	qsfp->param_count = of_property_count_u32_elems(np, "kalray,qsfp-param");
 	if (qsfp->param_count > 0) {
 		qsfp->param = devm_kzalloc(qsfp->dev,
@@ -1593,24 +1577,52 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 		}
 	}
 
-	i2c_np = of_parse_phandle(np, "i2c-bus", 0);
-	if (!i2c_np) {
-		dev_err(qsfp->dev, "missing 'i2c-bus' property\n");
-		return -ENODEV;
-	}
+	return 0;
+}
 
-	i2c = of_find_i2c_adapter_by_node(i2c_np);
-	if (!i2c) {
-		dev_err(qsfp->dev, "Failed to find QSFP i2c adapter\n");
-		i2c_put_adapter(qsfp->i2c);
-		return -EPROBE_DEFER;
-	}
-	qsfp->i2c = i2c;
-	of_node_put(i2c_np);
+/** kvx_qsfp_probe - probe callback
+ * @pdev: platform device
+ */
+static int kvx_qsfp_probe(struct platform_device *pdev)
+{
+	struct kvx_qsfp *qsfp;
+	struct kvx_qsfp_gpio_def *gpio;
+	int err;
 
-	/* init of state machines tasks */
+	qsfp = devm_kzalloc(&pdev->dev, sizeof(*qsfp), GFP_KERNEL);
+	if (!qsfp)
+		return PTR_ERR(qsfp);
+	qsfp->dev = &pdev->dev;
+
+	qsfp->gpio = devm_kzalloc(qsfp->dev, sizeof(kvx_qsfp_gpios), GFP_KERNEL);
+	if (!qsfp->gpio)
+		return PTR_ERR(qsfp->gpio);
+	memcpy(qsfp->gpio, &kvx_qsfp_gpios, sizeof(kvx_qsfp_gpios));
+
+	platform_set_drvdata(pdev, qsfp);
+
+	err = devm_add_action(qsfp->dev, kvx_qsfp_cleanup, qsfp);
+	if (err < 0)
+		return err;
+
+	mutex_init(&qsfp->i2c_lock);
+
+	/* init of state machines tasks (must be before any irq request) */
 	INIT_WORK(&qsfp->sm_task, kvx_qsfp_sm_main_task);
 	INIT_WORK(&qsfp->irq_event_task, kvx_qsfp_sm_event);
+
+	if (!pdev->dev.of_node)
+		return -EINVAL;
+
+	err = kvx_qsfp_parse_device_tree(qsfp, pdev->dev.of_node);
+	if (err < 0) {
+		dev_err(qsfp->dev, "failed to parse device tree\n");
+		return err;
+	}
+
+	gpio = &qsfp->gpio[QSFP_GPIO_MODPRS];
+	if (gpio->gpio)
+		qsfp->cable_connected = gpiod_get_value_cansleep(gpio->gpio);
 
 	/* set state machine to the initial state and start it */
 	qsfp->sm_state = QSFP_S_RESET;
