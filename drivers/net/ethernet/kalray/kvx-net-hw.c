@@ -136,14 +136,17 @@ bool kvx_eth_speed_aggregated(const int speed)
 
 void kvx_eth_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu)
 {
-	updatel_bits(hw, ETH, RX_LB_CTRL(lane), RX_LB_CTRL_MTU_SIZE_MASK, mtu);
 #ifdef CONFIG_KVX_SUBARCH_KV3_1
+	updatel_bits(hw, ETH, RX_LB_CTRL(lane), RX_LB_CTRL_MTU_SIZE_MASK, mtu);
 	kvx_eth_writel(hw, mtu, TX_OFFSET + TX_LANE +
 		       lane * TX_LANE_ELEM_SIZE + TX_LANE_MTU);
 #else
 	kvx_tx_writel(hw, mtu, KVX_ETH_TX_STAGE_TWO_GRP_OFFSET +
 		KVX_ETH_TX_STAGE_TWO_GRP_ELEM_SIZE * lane +
 		KVX_ETH_TX_STAGE_TWO_MTU_OFFSET);
+	kvx_lbana_writel(hw, mtu, KVX_ETH_LBA_CONTROL_GRP_OFFSET+
+		KVX_ETH_LBA_CONTROL_GRP_ELEM_SIZE * lane +
+		KVX_ETH_LBA_CONTROL_LB_MTU_SIZE_OFFSET);
 #endif
 	kvx_mac_hw_change_mtu(hw, lane, mtu);
 }
