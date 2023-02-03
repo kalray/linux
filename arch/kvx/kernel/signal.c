@@ -192,28 +192,29 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 		}
 	}
 
+	rseq_signal_deliver(ksig, regs);
+
 	ret = setup_rt_frame(ksig, oldset, regs);
 
 	signal_setup_done(ret, ksig, 0);
 }
 
-asmlinkage void arch_do_signal_or_restart(struct pt_regs *regs,
-					  bool has_signal)
+asmlinkage void arch_do_signal_or_restart(struct pt_regs *regs)
 {
 	struct ksignal ksig;
 
-	if (has_signal && get_signal(&ksig)) {
+	if (get_signal(&ksig)) {
 		handle_signal(&ksig, regs);
 		return;
 	}
 
 	/* Are we from a system call? */
-	if (syscall_get_error(current, regs) != -1) {
-		/*
+	if (in_syscall(regs)) {
+		 /*
 		 * If we are here, this means there is no handler
 		 * present and we must restart the syscall.
 		 */
-		switch (syscall_get_error(current, regs)) {
+		switch (regs->r0) {
 		case -ERESTART_RESTARTBLOCK:
 			/* Modify the syscall number in order to restart it */
 			regs->r6 = __NR_restart_syscall;
