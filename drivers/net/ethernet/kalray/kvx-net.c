@@ -53,8 +53,8 @@
 /* Max segment size sent to DMA */
 #define KVX_SEG_SIZE              1024
 /* **Sensitive** delay between link cfg done and actual link up status from HW */
-#define LINK_POLL_TIMER_IN_MS     500
-#define CHECK_LINK_DURATION_IN_MS 100
+#define LINK_POLL_DELAY_IN_MS     1000
+#define POST_LINK_UP_DELAY_IN_MS  3000
 
 #define KVX_TEST_BIT(name, bitmap)  test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, bitmap)
 
@@ -161,7 +161,8 @@ static struct netdev_queue *get_txq(const struct kvx_eth_ring *ring)
 	return netdev_get_tx_queue(ring->netdev, ring->qidx);
 }
 
-static bool kvx_eth_check_link(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+static bool kvx_eth_check_link(struct kvx_eth_hw *hw,
+			       struct kvx_eth_lane_cfg *cfg)
 {
 	bool link = false;
 	int retry = 10;
@@ -169,7 +170,7 @@ static bool kvx_eth_check_link(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 	/* Prevent false detection */
 	while (retry--) {
 		link = (!kvx_eth_pmac_linklos(hw, cfg)) &&
-			kvx_eth_mac_getlink(hw, cfg);
+		       kvx_eth_mac_getlink(hw, cfg);
 		if (link)
 			break;
 	}
@@ -212,106 +213,146 @@ static void kvx_eth_reset_tx(struct kvx_eth_netdev *ndev)
 	}
 }
 
-static void kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
+static void kvx_eth_update_carrier(struct kvx_eth_netdev *ndev, bool en)
+{
+	if (en) {
+		kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, false);
+		netif_tx_start_all_queues(ndev->netdev);
+		netif_carrier_on(ndev->netdev);
+		netdev_info(ndev->netdev, "Link is Up - %s/%s - flow control %s\n",
+			    phy_speed_to_str(ndev->cfg.speed),
+			    phy_duplex_to_str(ndev->cfg.duplex),
+			    pause_to_str(ndev->hw->lb_f[ndev->cfg.id].pfc_f.global_pause_en));
+	} else {
+		kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
+		netif_tx_stop_all_queues(ndev->netdev);
+		netif_carrier_off(ndev->netdev);
+		netdev_info(ndev->netdev, "Link is down\n");
+	}
+}
+
+void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes)
+{
+	/* if ndev->cfg.restart_serdes is true, avoid setting it to false.
+	 * This way, we avoid the following scenario:
+	 *     kvx_eth_setup_link(restart_serdes=true)
+	 *       ndev->cfg.restart_serdes = true
+	 *       queue_work(link_cfg)
+	 *     kvx_eth_setup_link(restart_serdes=false)
+	 *       ndev->cfg.restart_serdes = false
+	 *     kvx_eth_link_cfg()
+	 *       kvx_eth_link_configure(restart_serdes=false)  <-- we need true
+	 * Note: the reverse "false then true" is ok.
+	 */
+	if (!ndev->cfg.restart_serdes)
+		ndev->cfg.restart_serdes = restart_serdes;
+
+	/* if work is pending or running, no need to queue it  */
+	if (atomic_read(&ndev->link_cfg_running) || work_pending(&ndev->link_cfg))
+		return;
+
+	queue_work(system_power_efficient_wq, &ndev->link_cfg);
+}
+
+static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_serdes)
 {
 	int ret = 0;
-
-	if (kvx_eth_phy_is_bert_en(ndev->hw) || !is_cable_connected(ndev->qsfp))
-		return;
-
-	if (ndev->hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK) {
-		netdev_warn(ndev->netdev, "%s PHY loopback is enabled\n", __func__);
-		return;
-	}
+	bool link;
 
 	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
 		   ndev->cfg.speed, ndev->cfg.autoneg_en);
-	WRITE_ONCE(ndev->cfg.mac_cfg_done, false);
+
 	if (ndev->cfg.autoneg_en && !ndev->cfg.mac_f.loopback_mode) {
 		ret = kvx_eth_autoneg(ndev);
 		if (ret)
 			netdev_dbg(ndev->netdev, "Autonegotiation failed\n");
-		ndev->cfg.restart_serdes = false;
+		restart_serdes = false;
 	}
 
 	if (ndev->cfg.speed == SPEED_UNKNOWN)
 		ndev->cfg.speed = SPEED_100000;
 	if (ndev->cfg.duplex == DUPLEX_UNKNOWN)
 		ndev->cfg.duplex = DUPLEX_FULL;
-	ret = kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg,
-					    ndev->cfg.restart_serdes);
-	if (ret)
-		netdev_warn(ndev->netdev, "Failed to setup link\n");
 
-	ndev->cfg.restart_serdes = false;
-	WRITE_ONCE(ndev->cfg.mac_cfg_done, true);
-	netif_tx_start_all_queues(ndev->netdev);
+	ret = kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, restart_serdes);
+	if (ret) {
+		netdev_warn(ndev->netdev, "Failed to setup link\n");
+		return false;
+	}
 	netdev_dbg(ndev->netdev, "%s done\n", __func__);
-	queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
-			   msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
+
+	/* avoid false detection: check mac link other a period of 10ms */
+	read_poll_timeout(kvx_eth_mac_getlink, link, link == true, 1000, 10000, false,
+			  ndev->hw, &ndev->cfg);
+	if (link) {
+		kvx_eth_update_carrier(ndev, link);
+		/* link is up: start polling link status after 3s */
+		queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
+				   msecs_to_jiffies(POST_LINK_UP_DELAY_IN_MS));
+	} /* else, no need to update carrier, it's already down */
+
+	return link;
 }
 
-void kvx_setup_link(struct kvx_eth_netdev *ndev)
+static inline void cancel_link_cfg(struct kvx_eth_netdev *ndev)
 {
-	if (delayed_work_pending(&ndev->link_cfg))
-		flush_delayed_work(&ndev->link_cfg);
+	atomic_set(&ndev->link_cfg_running, 0);
+	cancel_work_sync(&ndev->link_cfg);
+}
 
-	queue_delayed_work(system_power_efficient_wq, &ndev->link_cfg, 0);
+static void kvx_eth_link_cfg(struct work_struct *w)
+{
+	struct kvx_eth_netdev *ndev = container_of(w, struct kvx_eth_netdev, link_cfg);
+
+	atomic_set(&ndev->link_cfg_running, 1);
+
+	/* make sure carrier is off before starting link config  */
+	if (netif_carrier_ok(ndev->netdev))
+		kvx_eth_update_carrier(ndev, false);
+
+	/* keep looping while link config is not successful
+	 * however, link_cfg_running can be set to 0 remotely to stop
+	 * the work, followed by cancel_work_sync()
+	 */
+	while (atomic_read(&ndev->link_cfg_running)) {
+		/* if no cable, qsfp connect callback will restart link cfg */
+		if (!is_cable_connected(ndev->qsfp))
+			break;
+
+		if (kvx_eth_link_configure(ndev, ndev->cfg.restart_serdes))
+			break;
+
+		msleep(LINK_POLL_DELAY_IN_MS);
+	}
+	ndev->cfg.restart_serdes = false;
+	atomic_set(&ndev->link_cfg_running, 0); /* in case of break */
 }
 
 static void kvx_eth_poll_link(struct work_struct *w)
 {
-	struct kvx_eth_netdev *ndev =
-		container_of(w, struct kvx_eth_netdev, link_poll.work);
-	bool link;
+	struct kvx_eth_netdev *ndev = container_of(w, struct kvx_eth_netdev, link_poll.work);
 
-	if (kvx_eth_phy_is_bert_en(ndev->hw) || !is_cable_connected(ndev->qsfp))
-		return;
+	/* sanity check: no link status polling while link is down  */
+	if (!netif_carrier_ok(ndev->netdev))
+		goto link_cfg;
 
-	if (!READ_ONCE(ndev->cfg.mac_cfg_done))
-		return;
+	if (kvx_eth_phy_is_bert_en(ndev->hw))
+		goto bail;
 
-	if (ndev->cfg.restart_serdes) {
-		/* Deals with setting change (e.g. speed) */
-		if (netif_carrier_ok(ndev->netdev)) {
-			netdev_info(ndev->netdev, "Link is Down\n");
-			netif_carrier_off(ndev->netdev);
-			kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
-		}
-		goto mac_cfg;
+	if (ndev->hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK) {
+		netdev_warn(ndev->netdev, "%s PHY loopback is enabled\n", __func__);
+		goto bail;
 	}
 
-	link = kvx_eth_check_link(ndev->hw, &ndev->cfg);
-	if (link) {
-		if (!netif_carrier_ok(ndev->netdev)) {
-			netdev_info(ndev->netdev, "Link is Up - %s/%s - flow control %s\n",
-				    phy_speed_to_str(ndev->cfg.speed),
-				    phy_duplex_to_str(ndev->cfg.duplex),
-				    pause_to_str(ndev->hw->lb_f[ndev->cfg.id].pfc_f.global_pause_en));
-		}
-		kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, false);
-		netif_tx_start_all_queues(ndev->netdev);
-		netif_carrier_on(ndev->netdev);
-	} else {
-		if (netif_carrier_ok(ndev->netdev)) {
-			netdev_info(ndev->netdev, "Link is Down\n");
-			netif_carrier_off(ndev->netdev);
-			kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
-		}
-	}
+	if (kvx_eth_check_link(ndev->hw, &ndev->cfg))
+		goto bail;
 
-	if (!netif_carrier_ok(ndev->netdev)) {
-		ndev->cfg.restart_serdes = true;
-		goto mac_cfg;
-	}
-
-	queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
-			   msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
+link_cfg:
+	kvx_eth_setup_link(ndev, false);
 	return;
-
-mac_cfg:
-	queue_delayed_work(system_power_efficient_wq, &ndev->link_cfg,
-			   msecs_to_jiffies(LINK_POLL_TIMER_IN_MS));
+bail:
+	queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
+			   msecs_to_jiffies(LINK_POLL_DELAY_IN_MS));
 }
 
 /* kvx_eth_netdev_init() - Init netdev (called once)
@@ -345,7 +386,8 @@ void kvx_eth_up(struct net_device *netdev)
 		kvx_eth_alloc_rx_buffers(r, kvx_eth_desc_unused(r));
 		napi_enable(&r->napi);
 	}
-	kvx_setup_link(ndev);
+
+	kvx_eth_setup_link(ndev, true);
 }
 
 /* kvx_eth_netdev_open() - Open ops
@@ -366,12 +408,14 @@ void kvx_eth_down(struct net_device *netdev)
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	int qidx;
 
-	netdev_dbg(netdev, "%s\n", __func__);
-	cancel_delayed_work_sync(&ndev->link_poll);
+	cancel_delayed_work(&ndev->link_poll);
+	cancel_link_cfg(ndev);
 
 	kvx_eth_reset_tx(ndev);
 	for (qidx = 0; qidx < ndev->dma_cfg.rx_chan_id.nb; qidx++)
 		napi_disable(&ndev->rx_ring[qidx].napi);
+
+	kvx_eth_update_carrier(ndev, false);
 }
 
 /* kvx_eth_netdev_stop() - Stop all netdev queues
@@ -1824,14 +1868,6 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 	return 0;
 }
 
-static void kvx_eth_link_cfg(struct work_struct *w)
-{
-	struct kvx_eth_netdev *ndev =
-		container_of(w, struct kvx_eth_netdev, link_cfg.work);
-
-	kvx_eth_link_configure(ndev);
-}
-
 void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev)
 {
 	if (!bitmap_empty(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS))
@@ -1857,18 +1893,15 @@ void kvx_eth_qsfp_connect(struct kvx_qsfp *qsfp)
 {
 	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
 
-	ndev->cfg.restart_serdes = true;
 	bitmap_zero(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS);
-	kvx_setup_link(ndev);
+	kvx_eth_up(ndev->netdev);
 }
 
 void kvx_eth_qsfp_disconnect(struct kvx_qsfp *qsfp)
 {
 	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
 
-	cancel_delayed_work_sync(&ndev->link_poll);
-	kvx_eth_reset_tx(ndev);
-	netif_carrier_off(ndev->netdev);
+	kvx_eth_down(ndev->netdev);
 }
 
 static struct kvx_qsfp_ops qsfp_ops = {
@@ -1913,7 +1946,7 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	ndev->cfg.hw = ndev->hw;
 	INIT_LIST_HEAD(&ndev->cfg.tx_fifo_list);
 	INIT_DELAYED_WORK(&ndev->link_poll, kvx_eth_poll_link);
-	INIT_DELAYED_WORK(&ndev->link_cfg, kvx_eth_link_cfg);
+	INIT_WORK(&ndev->link_cfg, kvx_eth_link_cfg);
 
 	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
 	if (phy_mode < 0) {
