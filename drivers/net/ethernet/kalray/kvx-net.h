@@ -146,9 +146,10 @@ extern const union roce_filter_desc roce_filter_default;
  * @rx_buffer_len: Max RX buffer length
  * @tx_ring: TX buffer ring
  * @stats: hardware statistics
- * @link_poll: link check timer
+ * @link_poll: link polling delayed work
  * @dcb_cfg: dcbnl configuration
  * @link_cfg: work for link configuration (serdes + MAC)
+ * @link_cfg_running: en/dis-able link cfg
  */
 struct kvx_eth_netdev {
 	struct net_device *netdev;
@@ -164,7 +165,8 @@ struct kvx_eth_netdev {
 	struct kvx_eth_hw_stats stats;
 	struct delayed_work link_poll;
 	struct kbx_dcb_cfg dcb_cfg;
-	struct delayed_work link_cfg;
+	struct work_struct link_cfg;
+	atomic_t link_cfg_running;
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
@@ -177,7 +179,7 @@ void kvx_eth_release_rx_ring(struct kvx_eth_ring *ring, int keep_dma_chan);
 void kvx_eth_up(struct net_device *netdev);
 void kvx_eth_down(struct net_device *netdev);
 void kvx_set_ethtool_ops(struct net_device *netdev);
-void kvx_setup_link(struct kvx_eth_netdev *ndev);
+void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes);
 
 int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw);
 int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev);
