@@ -1380,6 +1380,7 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 				      const struct ethtool_link_ksettings *cmd)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	bool restart_serdes = false;
 
 	netdev_dbg(netdev, "%s requested speed: %d\n", __func__, cmd->base.speed);
 
@@ -1388,13 +1389,12 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 		goto bail;
 	}
 
-	ndev->cfg.restart_serdes = (ndev->cfg.autoneg_en != cmd->base.autoneg);
+	restart_serdes = (ndev->cfg.autoneg_en != cmd->base.autoneg);
 	ndev->cfg.autoneg_en = cmd->base.autoneg;
-	WRITE_ONCE(ndev->cfg.mac_cfg_done, false);
 
-	if (cmd->base.speed != SPEED_UNKNOWN)
-		ndev->cfg.restart_serdes = (ndev->cfg.speed != cmd->base.speed ||
-					    ndev->cfg.duplex != cmd->base.duplex);
+	if (!restart_serdes && cmd->base.speed != SPEED_UNKNOWN)
+		restart_serdes = (ndev->cfg.speed != cmd->base.speed ||
+				  ndev->cfg.duplex != cmd->base.duplex);
 
 	if (cmd->base.speed <= SPEED_1000) {
 		/*
@@ -1411,7 +1411,7 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 		 * This avoid a timeout and make link up faster.
 		 */
 		ndev->cfg.autoneg_en = false;
-		ndev->cfg.restart_serdes = true;
+		restart_serdes = true;
 	}
 
 	if (!ndev->cfg.autoneg_en) {
@@ -1421,9 +1421,9 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 		}
 	}
 
-	netdev_dbg(netdev, "%s set speed: %d\n", __func__, ndev->cfg.speed);
-	kvx_setup_link(ndev);
+	kvx_eth_setup_link(ndev, restart_serdes);
 
+	netdev_dbg(netdev, "%s set speed: %d\n", __func__, ndev->cfg.speed);
 bail:
 	return 0;
 }
@@ -1450,7 +1450,8 @@ int kvx_eth_set_pauseparam(struct net_device *netdev,
 
 	pfc_f->global_pause_en = pause_mask;
 	kvx_eth_pfc_f_cfg(ndev->hw, pfc_f);
-	kvx_setup_link(ndev);
+
+	kvx_eth_setup_link(ndev, false);
 
 	return 0;
 }
