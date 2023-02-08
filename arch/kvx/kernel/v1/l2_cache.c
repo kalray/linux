@@ -21,7 +21,8 @@
 #include <asm/cacheflush.h>
 
 #define L2_START_TIMEOUT_MS	10
-#define L2_CMD_TIMEOUT_MS	200
+#define L2_CMD_WARN_TIMEOUT_MS	200
+#define L2_CMD_PANIC_TIMEOUT_MS	400
 
 #define L2_MK_OP(__cmd, __sync) (BIT(L2_CMD_OP_VALID_SHIFT) | \
 			 ((u64) __sync << L2_CMD_OP_SYNC_SHIFT) | \
@@ -91,13 +92,15 @@ static u64 l2_cache_get_cmd_idx(unsigned int cmd_count)
 static void l2_wait_completion(u64 cmd_idx)
 {
 	u64 *read_idx_ptr = l2_cmd_regs_addr() + L2_CMD_READ_IDX_OFFSET;
-	unsigned long timeout = jiffies + msecs_to_jiffies(L2_CMD_TIMEOUT_MS);
+	unsigned long warn_timeout = jiffies + msecs_to_jiffies(L2_CMD_WARN_TIMEOUT_MS);
+	unsigned long panic_timeout = jiffies + msecs_to_jiffies(L2_CMD_PANIC_TIMEOUT_MS);
 
 	/* Wait for completion */
 	while (cmd_idx >= readq(read_idx_ptr)) {
 		cpu_relax();
-		if (time_after(jiffies, timeout))
+		if (time_after(jiffies, panic_timeout))
 			panic("L2 cache completion timeout\n");
+		WARN_ONCE(time_after(jiffies, warn_timeout), "L2 cache completion takes more than %d ms\n", L2_CMD_WARN_TIMEOUT_MS);
 	}
 }
 
