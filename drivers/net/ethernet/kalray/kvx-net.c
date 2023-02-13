@@ -294,9 +294,11 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_ser
 			  ndev->hw, &ndev->cfg);
 	if (link) {
 		kvx_eth_update_carrier(ndev, link);
+
 		/* link is up: start polling link status after 3s */
-		queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
-				   msecs_to_jiffies(POST_LINK_UP_DELAY_IN_MS));
+		if (ndev->link_poll_en)
+			queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
+					   msecs_to_jiffies(POST_LINK_UP_DELAY_IN_MS));
 	} /* else, no need to update carrier, it's already down */
 
 	return link;
@@ -359,8 +361,9 @@ link_cfg:
 	kvx_eth_setup_link(ndev, false);
 	return;
 bail:
-	queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
-			   msecs_to_jiffies(LINK_POLL_DELAY_IN_MS));
+	if (ndev->link_poll_en)
+		queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
+				   msecs_to_jiffies(LINK_POLL_DELAY_IN_MS));
 }
 
 /* kvx_eth_netdev_init() - Init netdev (called once)
@@ -1947,9 +1950,29 @@ void kvx_eth_qsfp_disconnect(struct kvx_qsfp *qsfp)
 	kvx_eth_down(ndev->netdev);
 }
 
+/* This callback is usually not supported by passive copper cables.
+ * In this case, MAC link status is polled at regular interval.
+ */
+void kvx_eth_qsfp_cdr_lol(struct kvx_qsfp *qsfp)
+{
+	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
+
+	/* disable link polling  */
+	if (ndev->link_poll_en) {
+		ndev->link_poll_en = false;
+		cancel_delayed_work(&ndev->link_poll);
+	}
+
+	if (kvx_eth_mac_getlink(ndev->hw, &ndev->cfg))
+		netdev_warn(ndev->netdev, "inconsistency detected: MAC status OK while qsfp lol asserted\n");
+
+	kvx_eth_setup_link(ndev, true);
+}
+
 static struct kvx_qsfp_ops qsfp_ops = {
 	.connect    = kvx_eth_qsfp_connect,
 	.disconnect = kvx_eth_qsfp_disconnect,
+	.cdr_lol    = kvx_eth_qsfp_cdr_lol,
 };
 
 /* kvx_eth_create_netdev() - Create new netdev
@@ -1990,6 +2013,7 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	INIT_LIST_HEAD(&ndev->cfg.tx_fifo_list);
 	INIT_DELAYED_WORK(&ndev->link_poll, kvx_eth_poll_link);
 	INIT_WORK(&ndev->link_cfg, kvx_eth_link_cfg);
+	ndev->link_poll_en = true;
 
 	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
 	if (phy_mode < 0) {
