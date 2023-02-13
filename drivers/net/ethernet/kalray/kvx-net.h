@@ -147,6 +147,7 @@ extern const union roce_filter_desc roce_filter_default;
  * @tx_ring: TX buffer ring
  * @stats: hardware statistics
  * @link_poll: link polling delayed work
+ * @link_poll_en: en/dis-able link polling (default: true)
  * @dcb_cfg: dcbnl configuration
  * @link_cfg: work for link configuration (serdes + MAC)
  * @link_cfg_running: en/dis-able link cfg
@@ -164,6 +165,7 @@ struct kvx_eth_netdev {
 	struct kvx_eth_ring tx_ring[TX_FIFO_NB];
 	struct kvx_eth_hw_stats stats;
 	struct delayed_work link_poll;
+	bool link_poll_en;
 	struct kbx_dcb_cfg dcb_cfg;
 	struct work_struct link_cfg;
 	atomic_t link_cfg_running;
