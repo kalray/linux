@@ -9,6 +9,7 @@
 
 #include <linux/err.h>
 #include <linux/audit.h>
+#include <linux/syscalls.h>
 
 #include <asm/ptrace.h>
 
@@ -82,6 +83,24 @@ static inline void syscall_get_arguments(struct task_struct *task,
 	args[0] = regs->orig_r0;
 	args++;
 	memcpy(args, &regs->r1, 5 * sizeof(args[0]));
+}
+
+typedef long (*syscall_fn)(ulong, ulong, ulong, ulong, ulong, ulong, ulong);
+static inline void syscall_handler(struct pt_regs *regs, ulong syscall)
+{
+	syscall_fn fn;
+
+	regs->orig_r0 = regs->r0;
+
+	if (syscall >= NR_syscalls) {
+		regs->r0 = sys_ni_syscall();
+		return;
+	}
+
+	fn = sys_call_table[syscall];
+
+	regs->r0 = fn(regs->orig_r0, regs->r1, regs->r2,
+		      regs->r3, regs->r4, regs->r5, regs->r6);
 }
 
 int __init setup_syscall_sigreturn_page(void *sigpage_addr);
