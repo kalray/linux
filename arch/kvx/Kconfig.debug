@@ -48,16 +48,6 @@ config KVX_MMU_STATS
 	  - Number of nomapping traps handled
 	  - avg/min/max time for nomapping refill (user/kernel)
 
-config DEBUG_EXCEPTION_STACK
-	bool "Enable exception stack debugging"
-	default n
-	help
-	  Enable stack check debugging when entering/exiting
-	  exception handlers.
-	  This can be particularly helpful after modifying stack
-	  handling to see if stack when exiting is the same as the one
-	  when entering exception handler.
-
 config DEBUG_SFR_SET_MASK
 	bool "Enable sfr set_mask debugging"
 	default n
