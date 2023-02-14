@@ -32,14 +32,10 @@
 #define PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS	\
 	(PS_HWLOOP_ENABLE | KVX_SFR_PS_ET_MASK | SFR_SET_VAL_WFXL(PS, DAUS, 0))
 #define PS_ET_CLEAR KVX_SFR_PS_ET_MASK
-#define PS_HLE_EN_IT_EN_ET_CLEAR_DAUS_DIS	\
+#define PS_HLE_EN_ET_CLEAR_DAUS_DIS	\
 		(SFR_SET_VAL_WFXL(PS, HLE, 1) | \
-		SFR_SET_VAL_WFXL(PS, IE, 1) | \
 		SFR_SET_VAL_WFXL(PS, ET, 0) | \
 		SFR_SET_VAL_WFXL(PS, DAUS, 0))
-
-#define PS_IT_DIS		KVX_SFR_PS_IE_MASK
-#define PS_IL_CLEAR		KVX_SFR_PS_IL_WFXL_CLEAR
 
 #define MMC_CLEAR_TLB_CLEAR_WAY \
 	(SFR_CLEAR_WFXL(MMC, SB) | SFR_CLEAR_WFXL(MMC, SW))
@@ -61,12 +57,6 @@
 #define TASK_THREAD_SAVE_AREA_QUAD(__q) \
 				(TASK_THREAD_SAVE_AREA + (__q) * QUAD_REG_SIZE)
 
-#ifdef CONFIG_DEBUG_EXCEPTION_STACK
-.section .rodata
-stack_error_panic_str_label:
-	.string "Stack has been messed up !"
-#endif
-
 #ifdef CONFIG_KVX_DEBUG_TLB_WRITE
 .section .rodata
 mmc_error_panic_str_label:
@@ -80,21 +70,10 @@ asn_error_panic_str_label:
 #endif
 
 /**
- * call_trace_hardirqs: hardirqs tracing call
- * state: State of hardirqs to be reported (on/off)
- */
-.macro call_trace_hardirqs state
-#ifdef CONFIG_TRACE_IRQFLAGS
-	call trace_hardirqs_\state
-	;;
-#endif
-.endm
-
-/**
  * disable_interrupts: Disable interrupts
  * tmp_reg: Temporary register to use for interrupt disabling
  */
-.macro disable_interrupt tmp_reg
+.macro disable_interrupts tmp_reg
 	make \tmp_reg = KVX_SFR_PS_IE_MASK
 	;;
 	wfxl $ps, \tmp_reg
@@ -276,12 +255,6 @@ asn_error_panic_str_label:
 	;;
 	/* Copy regs stack pointer for macro caller */
 	copyd $r0 = $sp
-#ifdef CONFIG_DEBUG_EXCEPTION_STACK
-	addd $sp = $sp, -STACK_REG_SIZE
-	;;
-	sd VA_TO_PA_OFFSET[$sp] = $sp
-	;;
-#endif
 	/* Reenable hwloop, MMU and clear exception taken */
 	make $r8 = PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS
 	;;
@@ -325,28 +298,12 @@ SYM_FUNC_START(__name)
  * storage.
  */
 EXCEPTION_START(return_from_exception)
-#ifdef CONFIG_DEBUG_EXCEPTION_STACK
-	ld $r1 = 0[$sp]
-	;;
-	sbfd $r1 = $r1, $sp
-	;;
-	cb.deqz $r1? _check_ok
-	;;
-	make $r2 = panic
-	make $r0 = stack_error_panic_str_label
-	;;
-	icall $r2
-	;;
-_check_ok:
-	addd $sp = $sp, STACK_REG_SIZE
-	;;
-#endif
 	get $r11 = $sr
 	/* Load sps value from saved registers */
 	ld $r6 = PT_SPS[$sp]
 	;;
-	/* Disable interrupt to check task flags atomically */
-	disable_interrupt $r60
+	/* Disable interrupts to check task flags atomically */
+	disable_interrupts $r60
 	;;
 	/* Check PL bit of sps, if set, then it means we are returning
 	 * to a lower privilege level (ie to user), if so, we need to
@@ -460,6 +417,113 @@ _restore_regs:
 	rfe
 	;;
 SYM_FUNC_END(return_from_exception)
+
+EXCEPTION_START(return_from_syscall)
+	get $r11 = $sr
+	/* Load sps value from saved registers */
+	ld $r6 = PT_SPS[$sp]
+	;;
+	/* Disable interrupts to check task flags atomically */
+	disable_interrupts $r60
+	;;
+	/* Check PL bit of sps, if set, then it means we are returning
+	 * to a lower privilege level (ie to user), if so, we need to
+	 * check work pending. If coming from kernel, directly go to
+	 * register restoration */
+	cb.even $r6? 1f
+	ld $r1 = TASK_TI_FLAGS[$r11]
+	;;
+	/* Do we have work pending ? */
+	andd $r5 = $r1, _TIF_WORK_MASK
+	;;
+	/**
+	 * If we do not have work pending (ie $r5 == 0) then we can
+	 * directly jump to _restore_regs without calling do_work_pending
+	 */
+	cb.deqz $r5? 1f
+	;;
+	call_do_work_pending
+	;;
+1:
+	disable_mmu PS_HWLOOP_DISABLE
+	;;
+	lo $r0r1r2r3 = __PA(PT_CS_SPC_SPS_ES)[$sp]
+	/* Compute physical address of stack to avoid using 64bits immediate */
+	addd $r11 = $sp, VA_TO_PA_OFFSET
+	;;
+	lo $r4r5r6r7 = PT_LC_LE_LS_RA[$r11]
+	;;
+	lo $r60r61r62r63 = PT_Q60[$r11]
+	;;
+	lo $r56r57r58r59 = PT_Q56[$r11]
+	;;
+	lq $r18r19 = PT_R18R19[$r11]
+	;;
+	lo $r20r21r22r23 = PT_Q20[$r11]
+	;;
+	lo $r24r25r26r27 = PT_Q24[$r11]
+	;;
+	lo $r28r29r30r31 = PT_Q28[$r11]
+	;;
+	lo $r52r53r54r55 = PT_Q52[$r11]
+	get $r14 = $sps
+	;;
+	lo $r48r49r50r51 = PT_Q48[$r11]
+	/* Generate a mask of ones at each bit where the current $sps
+	 * differs from the $sps to be restored
+	 */
+	xord $r14 = $r2, $r14
+	/* prepare wfxl clear mask on LSBs */
+	notd $r15 = $r2
+	/* prepare wfxl set mask on MSBs */
+	slld $r13 = $r2, 32
+	;;
+	lo $r44r45r46r47 = PT_Q44[$r11]
+	/* Replicate mask of ones on the 32 MSBs */
+	sbmm8 $r14 = $r14, REPLICATE_32_MASK
+	/* Combine the set and clear mask for wfxl */
+	insf  $r13 = $r15, 31, 0
+	;;
+	lo $r40r41r42r43 = PT_Q40[$r11]
+	set $lc = $r4
+	/* Mask to drop identical bits in order to avoid useless
+	 * privilege traps
+	 */
+	andd $r13 = $r13, $r14
+	;;
+	lq $r16r17 = PT_R16R17[$r11]
+	set $le = $r5
+	;;
+	lo $r32r33r34r35 = PT_Q32[$r11]
+	set $ls = $r6
+	;;
+	lo $r36r37r38r39 = PT_Q36[$r11]
+	copyd $r14 = $r11
+	set $ra = $r7
+	;;
+	lo $r8r9r10r11 = PT_Q8[$r14]
+	set $cs = $r0
+	/* MME was disabled by disable_mmu, reenable it before leaving */
+	ord $r13 = $r13, SFR_SET_VAL_WFXL(SPS, MME, 1)
+	;;
+	lo $r4r5r6r7 = PT_Q4[$r14]
+	set $spc = $r1
+	;;
+	lo $r0r1r2r3 = PT_Q0[$r14]
+	/* Store $sps wfxl value in scratch system register */
+	set TMP_SCRATCH_SR = $r13
+	;;
+	lo $r12r13r14r15 = PT_Q12[$r14]
+	rswap $r0 = TMP_SCRATCH_SR
+	;;
+	wfxl $sps = $r0
+	;;
+	/* Finally, restore $r0 value */
+	rswap $r0 = TMP_SCRATCH_SR
+	;;
+	rfe
+	;;
+SYM_FUNC_END(return_from_syscall)
 
 /***********************************************************************
 *                      Debug handling
@@ -1127,7 +1191,7 @@ EXCEPTION_START(kvx_interrupt_handler):
 	 * If returning to kernel and with CONFIG_PREEMPT, we will call
 	 * preempt_schedule_irq which will do the same.
 	 */
-	make $r0 = PS_IL_CLEAR
+	make $r0 = KVX_SFR_PS_IL_WFXL_CLEAR
 	;;
 	wfxl $ps, $r0
 	;;
@@ -1139,321 +1203,35 @@ SYM_FUNC_END(kvx_interrupt_handler)
 *                      Syscall handling
 ***********************************************************************/
 EXCEPTION_START(kvx_syscall_handler):
-	/**
-	 * Syscalls are seen as standard func call from ABI POV
-	 * We may use all caller saved register whithout causing havoc
-	 * in the userspace. We need to save callee registers because they
-	 * will be restored when returning from fork.
-	 * Note that r0 -> r11 MUST not be used since they are
-	 * containing syscall parameters !
-	 * During this function, $r38 is the syscall handler address. Hence,
-	 * this register must not be cloberred during function calls (tracing
-	 * for instance.
-	 */
 	disable_mmu
 	;;
-	get $r43 = $es
-	copyd $r52 = $sp
-	copyd $r53 = $tp
+	save_r0r1r2r3
 	;;
-	get $r36 = $sr
-	copyd $r54 = $fp
-	copyd $r55 = $r15
+	switch_stack
 	;;
-	/* Extract syscall number */
-	extfz $r32 = $r43, KVX_SFR_END(ES_SN), KVX_SFR_START(ES_SN)
-	/* Get regs to save on stack */
-	get $r63 = $ra
-	addd $r36 = $r36, VA_TO_PA_OFFSET
+	save_regs_for_exception
 	;;
-	ld $r39 = TASK_TI_FLAGS[$r36]
-	get $r41 = $spc
-	make $r42 = __PA(sys_call_table)
+	save_callee
 	;;
-	/* Check for out-of-bound syscall number */
-	sbfd $r50 = $r32, __NR_syscalls
-	/* Compute syscall func addr (ie sys_call_table[$r32])*/
-	ld.xs $r38 = $r32[$r42]
-	get $r42 = $sps
+	/* Reenable hardware loops, exceptions and disable DAUS */
+	make $r1 = PS_HLE_EN_ET_CLEAR_DAUS_DIS
 	;;
-	/* True if trace syscall enable */
-	andd $r37 = $r39, _TIF_SYSCALL_WORK
-	/* Restore kernel stack pointer */
-	ld $sp = TASK_THREAD_KERNEL_SP[$r36]
-	/* If the syscall number is invalid, set invalid handler */
-	cmoved.dlez $r50? $r38 = sys_ni_syscall
-	;;
-	/* Prepare space on stack */
-	addd $sp = $sp, -PT_SIZE_ON_STACK
-	get $r40 = $cs
-	/* Save regs r0 -> r3 in pt_regs for restart & trace if needed */
-	so __PA(PT_Q0 - PT_SIZE_ON_STACK)[$sp] = $r0r1r2r3
-	;;
-	/* Store user stack pointer, frame pointer, thread pointer and r15 */
-	so __PA(PT_Q12)[$sp] = $r52r53r54r55
-	addd $r36 = $sp, VA_TO_PA_OFFSET
-	get $r60 = $lc
-	;;
-	get $r44 = $ilr
-	make $r45 = SFR_CLEAR_WFXL(ILR, IT16);
-	;;
-	/* Extract $ilr.dame bit */
-	extfz $r44 = $r44, KVX_SFR_END(ILR_IT16), KVX_SFR_START(ILR_IT16)
-	/* Save $ilr value */
-	sd PT_ILR[$r36] = $r44
-	/* Clear $ilr.dame */
-	wfxl $ilr, $r45
-	;;
-	so PT_CS_SPC_SPS_ES[$r36] = $r40r41r42r43
-	get $r61 = $le
-	make $r43 = 0x0
-	;;
-	/* Reenable hardware loops, IT, exceptions and disable DAUS */
-	make $r44 = PS_HLE_EN_IT_EN_ET_CLEAR_DAUS_DIS
-	get $r62 = $ls
-	/* Save regs r4 -> r7 in pt_regs for restart & trace if needed */
-	so PT_Q4[$r36] = $r4r5r6r7
+	make $r2 = 0
 	;;
 	/* Clear $le on entry */
-	set $le = $r43
-	/* Save hw loop stuff */
-	so PT_LC_LE_LS_RA[$r36] = $r60r61r62r63
+	set $le = $r2
 	/* Clear frame pointer for kernel */
 	make $fp = 0
 	;;
-	/* Enable hwloop and interrupts and MMU
-	 * Note that we have to reenable interrupts after saving context
-	 * to avoid losing registers content */
-	wfxl $ps, $r44
+	/* Re-enable hwloop and MMU */
+	wfxl $ps, $r1
 	;;
-	/* Do we have to trace the syscall ? */
-	cb.dnez $r37? trace_syscall_enter
-	/* Stroe original r0 value */
-	sd PT_ORIG_R0[$sp] = $r0
+	call do_syscall
 	;;
-do_syscall:
-	/* Call the syscall handler */
-	icall $r38
-	;;
-	/*
-	 * rt_sigreturn syscall will not take this exit path (see
-	 * sys_rt_sigreturn for more information).
-	 */
-	/* Reload task flags since the syscall might have generated a signal*/
-	get $r36 = $sr
-	;;
-	/* Barrier to force DAME interrupt to be generated if any pending */
-	barrier
-	;;
-	/* Disable interrupt to check task flags atomically */
-	disable_interrupt $r60
-	;;
-	ld $r38 = TASK_TI_FLAGS[$r36]
-	;;
-	andd $r37 = $r38, _TIF_SYSCALL_WORK
-	;;
-	/* Save r0 which was returned from do_scall previously and
-	 * will be cloberred by do_work_pending(and potentially
-	 * do_syscall_trace_exit if tracing is enabled)
-	 * If do_signal is called and that syscall is restarted,
-	 * it will be modified by handle_restart to restore original
-	 * r0 value
-	 */
-	sd PT_Q0[$sp] = $r0
-	/* used to store if trace system */
-	cb.dnez $r37? trace_syscall_exit
-	;;
-check_work_pending:
-	/* Do we have work pending ? */
-	andd $r1 = $r38, _TIF_WORK_MASK
-	;;
-	/* If no work pending, directly continue to ret_to_user */
-	cb.dnez $r1? call_work_pending
-	;;
-ret_to_user:
-	disable_mmu PS_HWLOOP_DISABLE
-	;;
-	/* Compute $sp virtual address to avoid using 64 bits offset */
-	addd $r15 = $sp, VA_TO_PA_OFFSET
-	;;
-	/* Restore registers */
-	lo $r60r61r62r63 = PT_LC_LE_LS_RA[$r15]
-	get $r33 = $sps
-	;;
-	lo $r40r41r42r43 = PT_CS_SPC_SPS_ES[$r15];
-	set $ra = $r63
-	;;
-	/* Restore syscall arguments since they might be needed for
-	 * syscall restart
-	 */
-	lo $r0r1r2r3 = PT_Q0[$r15]
-	set $cs = $r40
-	/* Generate a mask of ones at each bit where the current $sps
-	 * differs from the $sps to be restored
-	 */
-	xord $r33 = $r42, $r33
-	/* prepare wfxl clear mask on LSBs */
-	notd $r34 = $r42
-	/* prepare wfxl set mask on MSBs */
-	slld $r35 = $r42, 32
-	;;
-	set $lc = $r60
-	/* Replicate mask of ones on the 32 MSBs */
-	sbmm8 $r33 = $r33, REPLICATE_32_MASK
-	/* Combine the set and clear mask for wfxl */
-	insf  $r35 = $r34, 31, 0
-	;;
-	lo $r4r5r6r7 = PT_Q4[$r15]
-	set $le = $r61
-	/* Mask to drop identical bits in order to avoid useless
-	 * privilege traps
-	 */
-	andd $r35 = $r35, $r33
-	;;
-	/* Restore $ilr */
-	ld $r44 = PT_ILR[$r15]
-	set $ls = $r62
-	/* Reenable MMU in $sps */
-	ord $r35 = $r35, SFR_SET_VAL_WFXL(SPS, MME, 1)
-	;;
-	/* Restore user pointer */
-	lo $r12r13r14r15 = PT_Q12[$r15]
-	/* Prepare $r44 as a set mask for $ilr wfxl */
-	slld $r44 = $r44,  32
-	;;
-	/**
-	 * wfxl on $ilr to avoid privilege traps when restoring with set
-	 * Note that we do that after disabling interrupt since we explicitly
-	 * want to serve DAME itnerrupt to the user (ie not in kernel mode).
-	 */
-	wfxl $ilr, $r44
-	;;
-	wfxl $sps, $r35
-	;;
-	set $spc = $r41
-	;;
-	/* TODO: we might have to clear some registers to avoid leaking
-	 * information to user space ! callee saved regs have been
-	 * restored by called function but caller saved regs might
-	 * have been used without being cleared */
-	rfe
-	;;
-
-/* Slow paths handling */
-call_work_pending:
-	/*
-	 * Work pending can potentially call a signal handler and then return
-	 * via rt_sigreturn. Return path will be different (restore all regs)
-	 * and hence all registers are needed to be saved.
-	 */
-	save_callee
-	;;
-	call_do_work_pending
-	;;
-	/* Since we are returning to user, interrupts will be reenabled */
-	call_trace_hardirqs on
-	;;
-	goto ret_to_user
-	;;
-
-trace_syscall_enter:
-	/* Save $r38 (syscall handler) which was computed above */
-	sd PT_R38[$sp] = $r38
-	;;
-	/* do_syscall_trace_enter expect pt_regs and syscall number
-	 * as argument */
-	copyd $r0 = $sp
-	copyd $r1 = $r32
-	;;
-	call do_syscall_trace_enter
-	;;
-	/* Restore r38 (syscall handler) which might has been clobbered by
-	 * do_syscall_trace_enter */
-	ld $r38 = PT_R38[$sp]
-	;;
-	/* if the trace system requested to abort syscall, set $r38 to
-	 * non implemented syscall */
-	cmoved.dnez $r0? $r38 = sys_ni_syscall
-	;;
-	/* Restore registers since the do_syscall_trace_enter call might
-	 * have clobbered them and we need them for the actual syscall
-	 * call */
-	lo $r0r1r2r3 = PT_Q0[$sp]
-	;;
-	lo $r4r5r6r7 = PT_Q4[$sp]
-	;;
-	goto do_syscall
-	;;
-trace_syscall_exit:
-	copyd $r0 = $sp
-	call do_syscall_trace_exit
-	;;
-	/* ptrace_notify might re-enable interrupts, disable them to be sure
-	 * it will not mess up context restoration path */
-	disable_interrupt $r36
-	;;
-	get $r36 = $sr
-	;;
-	ld $r38 = TASK_TI_FLAGS[$r36]
-	goto check_work_pending
+	goto return_from_syscall
 	;;
 SYM_FUNC_END(kvx_syscall_handler)
 
-.text
-/**
- * sys_rt_sigreturn: Special handler for sigreturn
- * rt_sigreturn is called after invoking a user signal handler (see
- * user_scall_rt_sigreturn). Since this signal handler can be invoked after
- * interrupts have been handled, this means we must restore absolutely all user
- * registers. Normally, this has been done by setup_sigcontext which saved all
- * user registers on the user stack.
- * In restore sigcontext, they have been restored onto entry stack (stack to be
- * restored). However, the standard syscall path do not restore it completely
- * since only callee-saved registers are restored for fork and al.
- * Here, we will restore all registers which might have been cloberred.
- */
-SYM_FUNC_START(sys_rt_sigreturn)
-	/*
-	 * If syscall tracing is enable (stored in $r37 during syscall
-	 * fastpath), tail-call to trace_exit. If not, tail-call to
-	 * ret_from_kernel.
-	 */
-	cmoved.dnez $r37? $r38 = scall_trace_exit
-	cmoved.deqz $r37? $r38 = ret_from_kernel
-	;;
-	set $ra = $r38
-	;;
-	goto _sys_rt_sigreturn
-	;;
-scall_trace_exit:
-	copyd $r0 = $sp
-	call do_syscall_trace_exit
-	;;
-	goto ret_from_kernel
-	;;
-SYM_FUNC_END(sys_rt_sigreturn)
-
-/**
- * __sys_clone: slow path handler for clone
- *
- * Save callee registers (from $r18 to $31) since they are needed for
- * child process when restoring it.
- * Indeed, when forking we want it to have the same registers contents
- * as its parent. These registers will then be restored in
- * ret_from_fork.
- * This slow path saves them out of the fast path to avoid bloating all syscall
- * just for one special case.
- */
-SYM_FUNC_START(__sys_clone)
-	save_callee
-	;;
-	/*
-	 * Use goto since we want sys_clone to "ret" to the previous caller.
-	 * This allows to simply go back in the normal syscall fastpath
-	 */
-	goto sys_clone
-	;;
-SYM_FUNC_END(__sys_clone)
 /***********************************************************************
 *                      Context switch
 ***********************************************************************/
@@ -1608,30 +1386,7 @@ SYM_FUNC_START(ret_from_fork)
 	call do_syscall_trace_exit
 	;;
 ret_from_kernel:
-	/*
-	 * When returning from a fork, the child will take this path.
-	 * Since we did not restore callee in return_from_exception, we
-	 * must do it before.
-	 */
-	lo $r28r29r30r31 = PT_Q28[$sp]
-	;;
-	lo $r24r25r26r27 = PT_Q24[$sp]
-	;;
-	lo $r20r21r22r23 = PT_Q20[$sp]
-	;;
-	lq $r18r19 = PT_R18R19[$sp]
-	;;
-#ifdef CONFIG_DEBUG_EXCEPTION_STACK
-	/**
-	* Debug code expect entry stack to be stored at current $sp.
-	* Make some room and store current $sp to avoid triggering false alarm.
-	*/
-	addd $sp = $sp, -STACK_REG_SIZE
-	;;
-	sd 0[$sp] = $sp
-#endif
-	;;
-	goto return_from_exception
+	goto return_from_syscall
 	;;
 SYM_FUNC_END(ret_from_fork)
 
@@ -1710,7 +1465,7 @@ restore_tca_registers:
 SYM_FUNC_END(__switch_to)
 
 /***********************************************************************
-*          		 Misc functions
+*                       Misc functions
 ***********************************************************************/
 
 /**
