@@ -39,10 +39,6 @@ int foo(void)
 
 	DEFINE(FIX_GDB_MEM_BASE_IDX, FIX_GDB_BARE_DISPLACED_MEM_BASE);
 
-#ifdef CONFIG_DEBUG_EXCEPTION_STACK
-	DEFINE(STACK_REG_SIZE, ALIGN(sizeof(uint64_t), STACK_ALIGNMENT));
-#endif
-
 	/*
 	 * We allocate a pt_regs on the stack when entering the kernel.  This
 	 * ensures the alignment is sane.
