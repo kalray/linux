@@ -194,19 +194,18 @@ asn_error_panic_str_label:
 .endm
 
 /**
- * Save registers for entry in kernel space.
- * sp_reg should point to the original stack pointer when entering kernel space
- * task_reg is a register containing the current task pointer
- * both task_reg and sp_reg must be in saved_quad since they have been cloberred
- * and will be restored when restoring saved_quad.
- * pt_regs_sp is a single register which will be filled by pt_regs addr.
- * When "returning" from this macro, hardware loop are enabled and exception
- * is cleared, allowing to call kernel function without any risk.
+ * Save all caller saved registers and some special purpose registers for entry
+ * into kernel space. This macro expects to be called immediately after the
+ * switch_stack macro, because it expects the following register assignments
+ * $r1  -> original $sp (when entering into the kernel)
+ * $r2  -> task_struct ($sr)
+ * When leaving this macro $r0 will contain the address of the pt_regs struct.
+ * So, each exception handler (e.g., do_IRQ, do_syscall, etc.) can directly be
+ * called with pt_regs in the right register for the function arguments. Also,
+ * hardware loops are enabled and PS.ET is cleared allowing to call kernel
+ * functions without any risk.
  */
-.macro save_regs_for_exception sp_reg task_reg saved_quad pt_regs_sp
-.if (\saved_quad==$r4r5r6r7 || \saved_quad==$r60r61r62r63)
-.error "saved_quad must not be $r4r5r6r7 or $r60r61r62r63 !"
-.endif
+.macro save_regs_for_exception
 	/* make some room on stack to save registers */
 	addd $sp = $sp, -(PT_SIZE_ON_STACK)
 	so __PA(PT_Q4-PT_SIZE_ON_STACK)[$sp] = $r4r5r6r7
@@ -224,11 +223,11 @@ asn_error_panic_str_label:
 	 * quad since the scratch reg is contained in it, so reloading
 	 * it before copying it would overwrite it.
 	 */
-	copyd $r60 = \sp_reg
+	copyd $r60 = $r1
 	;;
 	/* Reload the saved quad registers to save correct values
 	 * Since we use the scratch reg before that */
-	lo \saved_quad = __PA(TASK_THREAD_SAVE_AREA_QUAD(0))[\task_reg]
+	lo $r0r1r2r3 = __PA(TASK_THREAD_SAVE_AREA_QUAD(0))[$r2]
 	;;
 	so PT_Q8[$r6] = $r8r9r10r11
 	;;
@@ -276,7 +275,7 @@ asn_error_panic_str_label:
 	make $fp = 0
 	;;
 	/* Copy regs stack pointer for macro caller */
-	copyd \pt_regs_sp = $sp
+	copyd $r0 = $sp
 #ifdef CONFIG_DEBUG_EXCEPTION_STACK
 	addd $sp = $sp, -STACK_REG_SIZE
 	;;
@@ -472,14 +471,15 @@ EXCEPTION_START(kvx_debug_handler):
 	;;
 	switch_stack
 	;;
-	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r1
+	save_regs_for_exception
 	;;
-	get $r0 = $ea
+	get $r1 = $ea
 	/* tail-call for return_from_exception */
 	make $r3 = return_from_exception
 	;;
 	set $ra = $r3
 	;;
+	/* debug_handler($r0: pt_regs, $r1: ea) */
 	goto debug_handler
 	;;
 SYM_FUNC_END(kvx_debug_handler)
@@ -1059,17 +1059,17 @@ trap_slow_path:
 trap_switch_stack:
 	switch_stack
 	;;
-	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r2
+	save_regs_for_exception
 	;;
-	get $r1 = $ea
+	get $r2 = $ea
 	/* tail-call for return_from_exception */
 	make $r3 = return_from_exception
 	;;
 	set $ra = $r3
 	;;
-	/* Handler call */
-	get $r0 = $es
+	get $r1 = $es
 	;;
+	/* trap_handler($r0: pt_regs, $r1: es, $r2: ea) */
 	goto trap_handler
 	;;
 SYM_FUNC_END(kvx_trap_handler)
@@ -1086,9 +1086,9 @@ EXCEPTION_START(kvx_interrupt_handler):
 	;;
 	barrier
 	;;
-	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r1
+	save_regs_for_exception
 	;;
-	get $r0 = $ilr
+	get $r1 = $ilr
 	;;
 	get $r2 = $ile
 	;;
@@ -1109,14 +1109,16 @@ EXCEPTION_START(kvx_interrupt_handler):
 	 * interrupt lines (ie not enabled in $ile) and we want to respect the
 	 * current state of interrupt lines.
 	 */
-	andd $r0 = $r0, $r2
+	andd $r1 = $r1, $r2
 	;;
 	/* Clear $ilr with bits we are going to handle */
-	wfxl $ilr, $r0
+	wfxl $ilr, $r1
 	slld $r4 = $r4, $r3
 	;;
 	/* Or the irq mask with the current pending irq */
-	ord $r0 = $r0, $r4
+	ord $r1 = $r1, $r4
+
+	/* do_IRQ($r0: pt_regs, $r1: hwirq_mask) */
 	call do_IRQ
 	;;
 	/* From now on, lower the interrupt level (IL) to allow IT nesting.
