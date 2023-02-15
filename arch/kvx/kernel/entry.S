@@ -157,33 +157,25 @@ asn_error_panic_str_label:
 .endm
 
 /**
- * Disable MMU using a specified register
- * scratch_reg: Scratch register to be used for $ps modification (clobbered)
- * ps_val: Additionnal $ps modifications after returning disabling MMU
+ * Disable MMU when entering the kernel
+ * This macro does not require any register because the used register ($r0)
+ * is restored after use. This macro can safely be used directly after entering
+ * exceptions.
+ * ps_val: Additional $ps modification while disabling the MMU
  */
-.macro disable_mmu scratch_reg ps_val=0
-	/* Disable MME in $sps */
-	make \scratch_reg = MME_WFXL(0)
+.macro disable_mmu ps_val=0
+	set TMP_SCRATCH_SR = $r0
 	;;
-	wfxl $sps, \scratch_reg
+	/* Disable MME in $sps */
+	make $r0 = MME_WFXL(0)
+	;;
+	wfxl $sps, $r0
 	;;
 	/* Enable DAUS in $ps */
-	make \scratch_reg = SFR_SET_VAL_WFXL(PS, DAUS, 1) | \ps_val
+	make $r0 = SFR_SET_VAL_WFXL(PS, DAUS, 1) | \ps_val
 	;;
-	wfxl $ps, \scratch_reg
+	wfxl $ps, $r0
 	/* We are now accessing data with MMU disabled */
-	;;
-.endm
-
-/**
- * Disable MMU when entering exception path
- * This macro does not require any register since used register will be
- * restored after use. This can safely be used directly after entering
- * exceptions.
- */
-.macro exception_entry_disable_mmu
-	set TMP_SCRATCH_SR = $r0
-	disable_mmu $r0
 	;;
 	get $r0 = TMP_SCRATCH_SR
 	;;
@@ -398,7 +390,7 @@ _restore_regs:
 	;;
 1:
 #endif
-	disable_mmu $r0, PS_HWLOOP_DISABLE
+	disable_mmu PS_HWLOOP_DISABLE
 	;;
 	lo $r0r1r2r3 = __PA(PT_CS_SPC_SPS_ES)[$sp]
 	/* Compute physical address of stack to avoid using 64bits immediate */
@@ -474,7 +466,7 @@ SYM_FUNC_END(return_from_exception)
 *                      Debug handling
 ***********************************************************************/
 EXCEPTION_START(kvx_debug_handler):
-	exception_entry_disable_mmu
+	disable_mmu
 	;;
 	save_r0r1r2r3
 	;;
@@ -498,8 +490,7 @@ SYM_FUNC_END(kvx_debug_handler)
 /* These labels will be used for instruction patching */
 .global kvx_perf_tlb_refill, kvx_std_tlb_refill
 EXCEPTION_START(kvx_trap_handler):
-	/* Enable DAUS for physical data access */
-	exception_entry_disable_mmu
+	disable_mmu
 	;;
 	/* Save r3 in a temporary system register to check if the trap is a
 	* nomapping or not */
@@ -1087,7 +1078,7 @@ SYM_FUNC_END(kvx_trap_handler)
 *                      Interrupts handling
 ***********************************************************************/
 EXCEPTION_START(kvx_interrupt_handler):
-	exception_entry_disable_mmu
+	disable_mmu
 	;;
 	save_r0r1r2r3
 	;;
@@ -1157,7 +1148,7 @@ EXCEPTION_START(kvx_syscall_handler):
 	 * this register must not be cloberred during function calls (tracing
 	 * for instance.
 	 */
-	disable_mmu $r43
+	disable_mmu
 	;;
 	get $r43 = $es
 	copyd $r52 = $sp
@@ -1278,7 +1269,7 @@ check_work_pending:
 	cb.dnez $r1? call_work_pending
 	;;
 ret_to_user:
-	disable_mmu $r60, PS_HWLOOP_DISABLE
+	disable_mmu PS_HWLOOP_DISABLE
 	;;
 	/* Compute $sp virtual address to avoid using 64 bits offset */
 	addd $r15 = $sp, VA_TO_PA_OFFSET
