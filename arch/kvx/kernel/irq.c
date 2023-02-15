@@ -17,7 +17,7 @@
 #define IT_LEVEL(__it, __level) \
 	(__level##ULL << KVX_SFR_ILL_ ## __it ## _SHIFT)
 
-void do_IRQ(unsigned long hwirq_mask, struct pt_regs *regs)
+void do_IRQ(struct pt_regs *regs, unsigned long hwirq_mask)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 	int irq;
