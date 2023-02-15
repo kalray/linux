@@ -114,21 +114,18 @@ asn_error_panic_str_label:
 .endm
 
 /**
- * save_quad_regs: Save quad registers in temporary thread area
- * After call, the quad is saved in task_struct.thread.save_area.
- * sr_swap_reg is only used as a temporary value and will be
- * restored after returning from this macro
- *
- * quad: 	Quad to saved
- * sr_swap_reg:	Register used for sr swap and quad saving.
+ * save_r0r1r2r3: Save registers $r0 - $r3 in the temporary thread area without
+ * modifiying any other register. $r4 is only used temporarily and will be
+ * restored to its original value. After the call, $r0 - $r3 are saved in
+ * task_struct.thread.save_area.
  */
-.macro save_quad_regs quad sr_swap_reg
-	rswap \sr_swap_reg = $sr
+.macro save_r0r1r2r3
+	rswap $r4 = $sr
 	;;
 	/* Save registers in save_area */
-	so __PA(TASK_THREAD_SAVE_AREA_QUAD(0))[\sr_swap_reg] = \quad
+	so __PA(TASK_THREAD_SAVE_AREA_QUAD(0))[$r4] = $r0r1r2r3
 	/* Restore register */
-	rswap \sr_swap_reg = $sr
+	rswap $r4 = $sr
 	;;
 .endm
 
@@ -476,7 +473,7 @@ SYM_FUNC_END(return_from_exception)
 EXCEPTION_START(kvx_debug_handler):
 	exception_entry_disable_mmu
 	;;
-	save_quad_regs $r0r1r2r3 $r4
+	save_r0r1r2r3
 	;;
 	get $r2 = $sr
 	;;
@@ -1066,7 +1063,7 @@ trap_slow_path:
 	/* Restore $r3 from temporary scratch system register */
 	get $r3 = TMP_SCRATCH_SR
 	;;
-	save_quad_regs $r0r1r2r3 $r4
+	save_r0r1r2r3
 	;;
 	get $r2 = $sr
 	;;
@@ -1095,7 +1092,7 @@ SYM_FUNC_END(kvx_trap_handler)
 EXCEPTION_START(kvx_interrupt_handler):
 	exception_entry_disable_mmu
 	;;
-	save_quad_regs $r0r1r2r3 $r4
+	save_r0r1r2r3
 	;;
 	get $r0 = $sr
 	;;
