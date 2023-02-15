@@ -217,7 +217,7 @@ void __init trap_init(void)
  * @ea: Exception Address register
  * @regs: pointer to registers saved when trapping
  */
-void trap_handler(uint64_t es, uint64_t ea, struct pt_regs *regs)
+void trap_handler(struct pt_regs *regs, uint64_t es, uint64_t ea)
 {
 	enum ctx_state prev_state = exception_enter();
 	int htc = trap_cause(es);

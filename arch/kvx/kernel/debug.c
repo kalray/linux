@@ -56,7 +56,7 @@ void debug_hook_unregister(struct debug_hook *dbg_hook)
  * Main debug handler called by the _debug_handler routine in entry.S
  * This handler will perform the required action
  */
-void debug_handler(u64 ea, struct pt_regs *regs)
+void debug_handler(struct pt_regs *regs, u64 ea)
 {
 	trace_hardirqs_off();
 	call_debug_hook(ea, regs);
