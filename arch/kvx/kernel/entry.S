@@ -130,27 +130,30 @@ asn_error_panic_str_label:
 .endm
 
 /**
- * Switch task when entering kernel if needed.
- * sp_reg: register which will be used to store original stack pointer when
- * entering the kernel
- * task_reg: is a register containing the current task pointer
- * save_regs_label: label to jump to save register immediately. This label is
- * used when we are already in kernel execution context.
- * NOTE: when returning from this macro, we consider that the assembly following
- * it will be executed only when coming from user space
+ * This macro checks whether the entry was from user space ($sps.pl = 1) or
+ * from kernel space ($sps.pl = 0). If the entry was from user space it will
+ * switch the stack to the kernel stack and save the original $sp.
+ * After this macro the registers $r0 to $r2 have the following content:
+ * $r0  -> pt_regs
+ * $r1  -> original $sp (when entering into the kernel)
+ * $r2  -> task_struct ($sr)
+ * $r12 -> kernel stack ($sp)
  */
-.macro switch_stack sp_reg task_reg save_regs_label
-	get \sp_reg = $sps
+.macro switch_stack
+	get $r2 = $sr
+	;;
+	get $r1 = $sps
 	;;
 	/* Check if $sps.pl bit is 0 (ie in kernel mode)
 	 * if so, then we dont have to switch stack */
-	cb.even \sp_reg? \save_regs_label
+	cb.even $r1? 1f
 	/* Copy original $sp in a scratch reg */
-	copyd \sp_reg = $sp
+	copyd $r1 = $sp
 	;;
 	/* restore sp from kernel stack pointer */
-	ld $sp = __PA(TASK_THREAD_KERNEL_SP)[\task_reg]
+	ld $sp = __PA(TASK_THREAD_KERNEL_SP)[$r2]
 	;;
+1:
 .endm
 
 /**
@@ -475,11 +478,8 @@ EXCEPTION_START(kvx_debug_handler):
 	;;
 	save_r0r1r2r3
 	;;
-	get $r2 = $sr
+	switch_stack
 	;;
-	switch_stack $r1 $r2 debug_save_regs
-	;;
-debug_save_regs:
 	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r1
 	;;
 	get $r0 = $ea
@@ -1065,12 +1065,9 @@ trap_slow_path:
 	;;
 	save_r0r1r2r3
 	;;
-	get $r2 = $sr
-	;;
 trap_switch_stack:
-	switch_stack $r1 $r2 trap_save_regs
+	switch_stack
 	;;
-trap_save_regs:
 	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r2
 	;;
 	get $r1 = $ea
@@ -1094,14 +1091,11 @@ EXCEPTION_START(kvx_interrupt_handler):
 	;;
 	save_r0r1r2r3
 	;;
-	get $r0 = $sr
-	;;
-	switch_stack $r1 $r0 it_save_regs
+	switch_stack
 	;;
 	barrier
 	;;
-it_save_regs:
-	save_regs_for_exception $r1 $r0 $r0r1r2r3 $r1
+	save_regs_for_exception $r1 $r2 $r0r1r2r3 $r1
 	;;
 	get $r0 = $ilr
 	;;
