@@ -134,14 +134,14 @@
 
 /* To select the JTLB we clear SB from MMC */
 .macro select_jtlb scratch_reg
-	make \scratch_reg, KVX_SFR_MMC_SB_MASK
+	make \scratch_reg = KVX_SFR_MMC_SB_MASK
 	;;
 	wfxl $mmc, \scratch_reg
 .endm
 
 /* To select the LTLB we set SB from MMC */
 .macro select_ltlb scratch_reg
-	make \scratch_reg, KVX_SFR_MMC_SB_MASK << 32
+	make \scratch_reg = KVX_SFR_MMC_SB_MASK << 32
 	;;
 	wfxl $mmc, \scratch_reg
 .endm
@@ -155,7 +155,7 @@
 	;;
 	ord \scratch1 = \scratch1, \scratch2
 	;;
-	wfxl $mmc = \scratch1
+	wfxl $mmc, \scratch1
 .endm
 
 /* Set SW of the MMC with the immediate */
@@ -165,7 +165,7 @@
 	;;
 	ord \scratch1 = \scratch1, \scratch2
 	;;
-	wfxl $mmc = \scratch1
+	wfxl $mmc, \scratch1
 .endm
 
 /* write tlb after setting teh and tel registers */
@@ -205,7 +205,7 @@ SYM_FUNC_START(kvx_start)
 	/* Setup 64 bit really early to avoid bugs */
 	make $r21 = PS_VAL_WFXL(V64, 1)
 	;;
-	wfxl $ps = $r21
+	wfxl $ps, $r21
 	;;
 	call asm_init_pl
 	;;
@@ -244,9 +244,9 @@ init_core:
 	set $ev = $r27
 	make $r27 = gdb_mmu_enabled
 	;;
-	wfxm $pcr = $r26
+	wfxm $pcr, $r26
 	;;
-	wfxl $sps = $r25
+	wfxl $sps, $r25
 	;;
 	set $spc = $r27
 	;;
@@ -338,7 +338,7 @@ SYM_FUNC_START(asm_memzero)
 	make $r38 = 0
 	make $r39 = 0
 	/* Divide by 32 for hardware loop */
-	srld $r32, $r32, 5
+	srld $r32 = $r32, 5
 	;;
 	/* Clear memory with hardware loop */
 	loopdo $r32, clear_mem_done
@@ -359,7 +359,7 @@ SYM_FUNC_START(asm_rm_cfg_pwr_ctrl)
 	/* Enable hwloop for memzero */
 	make $r32 = PS_VAL_WFXL(HLE, 1)
 	;;
-	wfxl $ps = $r32
+	wfxl $ps, $r32
 	;;
 	make $r26 = PWR_CTRL_ADDR
 	/* Set PE enable in power controller */
@@ -433,36 +433,36 @@ SYM_FUNC_END(asm_rm_cfg_pwr_ctrl)
 #define request_ownership(__pl) ;\
 	make $r21 = SYO_WFXL_VALUE_##__pl ;\
 	;; ;\
-	wfxl $syow = $r21 ;\
+	wfxl $syow, $r21 ;\
 	;; ;\
 	make $r21 = HTO_WFXL_VALUE_##__pl ;\
 	;; ;\
-	wfxl $htow = $r21 ;\
+	wfxl $htow, $r21 ;\
 	;; ;\
 	make $r21 = MO_WFXL_VALUE_##__pl ;\
 	make $r22 = MO_WFXM_VALUE_##__pl ;\
 	;; ;\
-	wfxl $mow = $r21 ;\
+	wfxl $mow, $r21 ;\
 	;; ;\
-	wfxm $mow = $r22 ;\
+	wfxm $mow, $r22 ;\
 	;; ;\
 	make $r21 = ITO_WFXL_VALUE_##__pl ;\
 	make $r22 = ITO_WFXM_VALUE_##__pl ;\
 	;; ;\
-	wfxl $itow = $r21 ;\
+	wfxl $itow, $r21 ;\
 	;; ;\
-	wfxm $itow = $r22 ;\
+	wfxm $itow, $r22 ;\
 	;; ;\
 	make $r21 = PSO_WFXL_VALUE_##__pl ;\
 	make $r22 = PSO_WFXM_VALUE_##__pl ;\
 	;; ;\
-	wfxl $psow = $r21 ;\
+	wfxl $psow, $r21 ;\
 	;; ;\
-	wfxm $psow = $r22 ;\
+	wfxm $psow, $r22 ;\
 	;; ;\
 	make $r21 = DO_WFXL_VALUE_##__pl ;\
 	;; ;\
-	wfxl $dow = $r21 ;\
+	wfxl $dow, $r21 ;\
 	;;
 
 /**
@@ -518,7 +518,7 @@ SYM_FUNC_END(asm_init_pl)
 SYM_FUNC_START(asm_init_mmu)
 	make $r20 = MMC_CLEAR_ERROR
 	;;
-	wfxl $mmc = $r20
+	wfxl $mmc, $r20
 	;;
 	/* Reset the JTLB */
 	select_jtlb $r20
@@ -623,7 +623,7 @@ SYM_FUNC_START(smp_secondary_start)
 	/* Enable L2$ in $ps since it is mandatory for SMP */
 	make $r25 = PS_VAL_WFXL(L2E, 1)
 	;;
-	wfxl $ps = $r25
+	wfxl $ps, $r25
 	;;
 	make $r25 = __cpu_up_task_pointer
 	make $r26 = __cpu_up_stack_pointer
