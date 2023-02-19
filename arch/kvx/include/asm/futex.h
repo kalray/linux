@@ -28,7 +28,7 @@
 	"       ;;\n                                      "     \
 	"       " insn "                                \n"     \
 	"       ;;\n                                      "     \
-	"       acswapw 0[%[u]], $r62r63                \n"     \
+	"       acswapw 0[%[u]] = $r62r63               \n"     \
 	"       ;;\n                                      "     \
 	"       cb.deqz $r62? 1b                        \n"     \
 	"       ;;\n                                      "     \
@@ -64,7 +64,7 @@
 	"       ;;\n                                      "     \
 	"       " insn "                                \n"     \
 	"       ;;\n                                      "     \
-	"       acswapw $r62, [%[u]] = $r62r63                \n"     \
+	"       acswapw $r62, [%[u]] = $r62r63          \n"     \
 	"       ;;\n                                      "     \
 	"       cb.deqz $r62? 1b                        \n"     \
 	"       ;;\n                                      "     \
@@ -145,7 +145,7 @@ static inline int futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 	"      copyd $r63 = %[ov]              \n"/* init "expect" with ov   */
 	"      copyd $r62 = %[nv]              \n"/* init "update" with nv   */
 	"      ;;\n                              "
-	"1:    acswapw 0[%[u]], $r62r63        \n"
+	"1:    acswapw 0[%[u]] = $r62r63       \n"
 	"      ;;\n                              "
 	"      cb.dnez $r62? 3f                \n"/* if acswap ok -> return  */
 	"      ;;\n                              "
@@ -178,7 +178,7 @@ static inline int futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 	"      copyd $r63 = %[ov]              \n"/* init "expect" with ov   */
 	"      copyd $r62 = %[nv]              \n"/* init "update" with nv   */
 	"      ;;\n                              "
-	"1:    acswapw $r62, [%[u]] = $r62r63        \n"
+	"1:    acswapw $r62, [%[u]] = $r62r63  \n"
 	"      ;;\n                              "
 	"      cb.dnez $r62? 3f                \n"/* if acswap ok -> return  */
 	"      ;;\n                              "

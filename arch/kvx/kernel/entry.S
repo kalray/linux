@@ -165,12 +165,12 @@ asn_error_panic_str_label:
 	/* Disable MME in $sps */
 	make \scratch_reg = MME_WFXL(0)
 	;;
-	wfxl $sps = \scratch_reg
+	wfxl $sps, \scratch_reg
 	;;
 	/* Enable DAUS in $ps */
 	make \scratch_reg = SFR_SET_VAL_WFXL(PS, DAUS, 1) | \ps_val
 	;;
-	wfxl $ps = \scratch_reg
+	wfxl $ps, \scratch_reg
 	/* We are now accessing data with MMU disabled */
 	;;
 .endm
@@ -339,7 +339,7 @@ EXCEPTION_START(return_from_exception)
 	;;
 	sbfd $r1 = $r1, $sp
 	;;
-	cb.deqz $r1, _check_ok
+	cb.deqz $r1? _check_ok
 	;;
 	make $r2 = panic
 	make $r0 = stack_error_panic_str_label
@@ -461,7 +461,7 @@ _restore_regs:
 	lo $r12r13r14r15 = PT_Q12[$r14]
 	rswap $r0 = TMP_SCRATCH_SR
 	;;
-	wfxl $sps = $r0
+	wfxl $sps, $r0
 	;;
 	/* Finally, restore $r0 value */
 	rswap $r0 = TMP_SCRATCH_SR
@@ -621,7 +621,7 @@ kvx_perf_tlb_refill:
 	insf $r5 = $r4, KVX_SFR_END(MMC_SW) + 32, KVX_SFR_START(MMC_SW) + 32
 	set $tel = $r6
 	;;
-	wfxl $mmc = $r5
+	wfxl $mmc, $r5
 	;;
 	goto do_tlb_write
 	;;
@@ -913,7 +913,7 @@ asn_check_ok:
 	make $r4 = MME_WFXL(1)
 	;;
 	/* Reenable $mme in $sps */
-	wfxl $sps = $r4
+	wfxl $sps, $r4
 	;;
 	get $r4 = TMP_SCRATCH_SR
 	;;
@@ -1041,7 +1041,7 @@ asm_panic:
 	/* Clear hw loop exit to disable current loop */
 	set $le = $r33
 	;;
-	wfxl $ps = $r32
+	wfxl $ps, $r32
 	;;
 	/* Restore kernel stack */
 	ld $r12 = TASK_THREAD_KERNEL_SP[$r34]
@@ -1130,7 +1130,7 @@ it_save_regs:
 	andd $r0 = $r0, $r2
 	;;
 	/* Clear $ilr with bits we are going to handle */
-	wfxl $ilr = $r0
+	wfxl $ilr, $r0
 	slld $r4 = $r4, $r3
 	;;
 	/* Or the irq mask with the current pending irq */
@@ -1145,7 +1145,7 @@ it_save_regs:
 	 */
 	make $r0 = PS_IL_CLEAR
 	;;
-	wfxl $ps = $r0
+	wfxl $ps, $r0
 	;;
 	goto return_from_exception
 	;;
@@ -1218,7 +1218,7 @@ EXCEPTION_START(kvx_syscall_handler):
 	/* Save $ilr value */
 	sd PT_ILR[$r36] = $r44
 	/* Clear $ilr.dame */
-	wfxl $ilr = $r45
+	wfxl $ilr, $r45
 	;;
 	so PT_CS_SPC_SPS_ES[$r36] = $r40r41r42r43
 	get $r61 = $le
@@ -1342,9 +1342,9 @@ ret_to_user:
 	 * Note that we do that after disabling interrupt since we explicitly
 	 * want to serve DAME itnerrupt to the user (ie not in kernel mode).
 	 */
-	wfxl $ilr = $r44
+	wfxl $ilr, $r44
 	;;
-	wfxl $sps = $r35
+	wfxl $sps, $r35
 	;;
 	set $spc = $r41
 	;;
