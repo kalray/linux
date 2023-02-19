@@ -281,7 +281,7 @@ do {									\
 #define __put_user_asm(op, x, addr, err)				\
 ({									\
 	__asm__ __volatile__(						\
-			"1:     "op" 0[%2], %1\n"			\
+			"1:     "op" 0[%2] = %1\n"			\
 			"       ;;\n"					\
 			"2:\n"						\
 			".section .fixup,\"ax\"\n"			\
