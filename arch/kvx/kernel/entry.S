@@ -22,37 +22,36 @@
 #include <asm/traps.h>
 #include <asm/unistd.h>
 
-#define MMU_SET_MASK		((1 << KVX_SFR_MMC_SS_WIDTH) - 1)
+#define MMU_SET_MASK			((1 << KVX_SFR_MMC_SS_WIDTH) - 1)
 
 /* Mask to replicate data from 32bits LSB to MSBs */
-#define REPLICATE_32_MASK 0x0804020108040201
+#define REPLICATE_32_MASK		0x0804020108040201
 
-#define PS_HWLOOP_ENABLE	(KVX_SFR_PS_HLE_MASK << 32)
-#define PS_HWLOOP_DISABLE	(KVX_SFR_PS_HLE_MASK)
-#define PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS	\
-	(PS_HWLOOP_ENABLE | KVX_SFR_PS_ET_MASK | SFR_SET_VAL_WFXL(PS, DAUS, 0))
-#define PS_ET_CLEAR KVX_SFR_PS_ET_MASK
-#define PS_HLE_EN_ET_CLEAR_DAUS_DIS	\
-		(SFR_SET_VAL_WFXL(PS, HLE, 1) | \
-		SFR_SET_VAL_WFXL(PS, ET, 0) | \
-		SFR_SET_VAL_WFXL(PS, DAUS, 0))
+#define PS_HWLOOP_ENABLE		(KVX_SFR_PS_HLE_MASK << 32)
+#define PS_HWLOOP_DISABLE		(KVX_SFR_PS_HLE_MASK)
+#define PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS	(PS_HWLOOP_ENABLE | \
+					 KVX_SFR_PS_ET_MASK | \
+					 SFR_SET_VAL_WFXL(PS, DAUS, 0))
+#define PS_HLE_EN_ET_CLEAR_DAUS_DIS	(SFR_SET_VAL_WFXL(PS, HLE, 1) | \
+					 SFR_SET_VAL_WFXL(PS, ET, 0) | \
+					 SFR_SET_VAL_WFXL(PS, DAUS, 0))
 
-#define MMC_CLEAR_TLB_CLEAR_WAY \
-	(SFR_CLEAR_WFXL(MMC, SB) | SFR_CLEAR_WFXL(MMC, SW))
+#define MMC_CLEAR_TLB_CLEAR_WAY		(SFR_CLEAR_WFXL(MMC, SB) | \
+					 SFR_CLEAR_WFXL(MMC, SW))
 
-#define MMC_SEL_TLB_CLEAR_WAY(__tlb) \
-	(SFR_SET_WFXL(MMC, SB, __tlb) | MMC_CLEAR_TLB_CLEAR_WAY)
-#define MMC_SEL_JTLB_CLEAR_WAY	MMC_SEL_TLB_CLEAR_WAY(MMC_SB_JTLB)
-#define MMC_SEL_LTLB_CLEAR_WAY	MMC_SEL_TLB_CLEAR_WAY(MMC_SB_LTLB)
+#define MMC_SEL_TLB_CLEAR_WAY(__tlb)	(SFR_SET_WFXL(MMC, SB, __tlb) | \
+					 MMC_CLEAR_TLB_CLEAR_WAY)
+#define MMC_SEL_JTLB_CLEAR_WAY		MMC_SEL_TLB_CLEAR_WAY(MMC_SB_JTLB)
+#define MMC_SEL_LTLB_CLEAR_WAY		MMC_SEL_TLB_CLEAR_WAY(MMC_SB_LTLB)
 
-#define MME_WFXL(_enable)	SFR_SET_VAL_WFXL(PS, MME, _enable)
+#define MME_WFXL(_enable)		SFR_SET_VAL_WFXL(PS, MME, _enable)
 
 /* Temporary scract system register for trap handling */
 #define TMP_SCRATCH_SR	$sr_pl3
 
 .altmacro
 
-#define TEL_DEFAULT_VALUE  (TLB_ES_A_MODIFIED << KVX_SFR_TEL_ES_SHIFT)
+#define TEL_DEFAULT_VALUE (TLB_ES_A_MODIFIED << KVX_SFR_TEL_ES_SHIFT)
 
 #define TASK_THREAD_SAVE_AREA_QUAD(__q) \
 				(TASK_THREAD_SAVE_AREA + (__q) * QUAD_REG_SIZE)
@@ -89,6 +88,27 @@ asn_error_panic_str_label:
 .macro call_do_work_pending
 	copyd $r0 = $sp
 	call do_work_pending
+	;;
+.endm
+
+/**
+ * prepare_kernel_entry: Simply clear the framepointer, reset the $le to 0 and
+ * place the pointer to pt_regs struct in $r0, to have it in the right place
+ * for the calls to 'do_<handler>'.
+ */
+.macro prepare_kernel_entry
+	make $r1 = 0x0
+	/* Clear frame pointer for the kernel */
+	make $fp = 0
+	;;
+	/* Clear $le on entry */
+	set $le = $r1
+	/* pt_regs argument for 'do_<handler>(struct pt_regs *)' */
+	copyd $r0 = $sp
+	/* Reenable hwloop, MMU and clear exception taken */
+	make $r2 = PS_HLE_EN_ET_CLEAR_DAUS_DIS
+	;;
+	wfxl $ps, $r2
 	;;
 .endm
 
@@ -162,13 +182,13 @@ asn_error_panic_str_label:
 
 /* Save callee registers on stack */
 .macro save_callee
-	sq PT_R18R19[$sp] = $r18r19
+	sq PT_R18R19[$r63] = $r18r19
 	;;
-	so PT_Q20[$sp] = $r20r21r22r23
+	so PT_Q20[$r63] = $r20r21r22r23
 	;;
-	so PT_Q24[$sp] = $r24r25r26r27
+	so PT_Q24[$r63] = $r24r25r26r27
 	;;
-	so PT_Q28[$sp] = $r28r29r30r31
+	so PT_Q28[$r63] = $r28r29r30r31
 	;;
 .endm
 
@@ -253,172 +273,10 @@ asn_error_panic_str_label:
 	/* Clear frame pointer */
 	make $fp = 0
 	;;
-	/* Copy regs stack pointer for macro caller */
-	copyd $r0 = $sp
-	/* Reenable hwloop, MMU and clear exception taken */
-	make $r8 = PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS
-	;;
-	wfxl $ps, $r8
-	;;
 .endm
 
-/***********************************************************************
-*                Exception vectors trampolines
-***********************************************************************/
-#define exception_trampoline(__type) \
-.section .exception.## __type, "ax", @progbits ;\
-SYM_FUNC_START(kvx_##__type ##_handler_trampoline): ;\
-	goto kvx_## __type ##_handler ;\
-	;; ;\
-SYM_FUNC_END(kvx_ ## __type ## _handler_trampoline) ;\
-.section .early_exception.## __type, "ax", @progbits ;\
-SYM_FUNC_START(kvx_## __type ##_early_handler): ;\
-1:	nop ;\
-	;; ;\
-	goto 1b ;\
-	;; ;\
-SYM_FUNC_END(kvx_ ## __type ## _early_handler)
-
-exception_trampoline(debug)
-exception_trampoline(trap)
-exception_trampoline(interrupt)
-exception_trampoline(syscall)
-
-#define EXCEPTION_START(__name) \
 .section .exception.text, "ax", @progbits ;\
-SYM_FUNC_START(__name)
-
-
-/***********************************************************************
-*                  Common exception return path
-***********************************************************************/
-/**
- * Restore registers after exception
- * When entering this macro, $sp must be located right before regs
- * storage.
- */
-EXCEPTION_START(return_from_exception)
-	get $r11 = $sr
-	/* Load sps value from saved registers */
-	ld $r6 = PT_SPS[$sp]
-	;;
-	/* Disable interrupts to check task flags atomically */
-	disable_interrupts $r60
-	;;
-	/* Check PL bit of sps, if set, then it means we are returning
-	 * to a lower privilege level (ie to user), if so, we need to
-	 * check work pending. If coming from kernel, directly go to
-	 * register restoration */
-	cb.even $r6? _restore_regs
-	ld $r1 = TASK_TI_FLAGS[$r11]
-	;;
-	/* Do we have work pending ? */
-	andd $r5 = $r1, _TIF_WORK_MASK
-	;;
-	/**
-	 * If we do not have work pending (ie $r5 == 0) then we can
-	 * directly jump to _restore_regs without calling do_work_pending
-	 */
-	cb.deqz $r5? _restore_regs
-	;;
-	/*
-	 * Work pending can potentially call a signal handler and then return
-	 * via rt_sigreturn. Return path will be different (restore all regs)
-	 * and hence all registers are needed to be saved.
-	 */
-	save_callee
-	;;
-	call_do_work_pending
-	;;
-#ifdef CONFIG_TRACE_IRQFLAGS
-	/* reload sps value from saved registers */
-	ld $r6 = PT_SPS[$sp]
-	;;
-#endif
-_restore_regs:
-#ifdef CONFIG_TRACE_IRQFLAGS
-	/* Check if IRQs are going to be reenable in next context */
-	andd $r6 = $r6, KVX_SFR_SPS_IE_MASK
-	;;
-	cb.deqz $r6? 1f
-	;;
-	call trace_hardirqs_on
-	;;
-1:
-#endif
-	disable_mmu PS_HWLOOP_DISABLE
-	;;
-	lo $r0r1r2r3 = __PA(PT_CS_SPC_SPS_ES)[$sp]
-	/* Compute physical address of stack to avoid using 64bits immediate */
-	addd $r11 = $sp, VA_TO_PA_OFFSET
-	;;
-	lo $r4r5r6r7 = PT_LC_LE_LS_RA[$r11]
-	;;
-	lo $r60r61r62r63 = PT_Q60[$r11]
-	;;
-	lo $r56r57r58r59 = PT_Q56[$r11]
-	;;
-	lo $r52r53r54r55 = PT_Q52[$r11]
-	get $r14 = $sps
-	;;
-	lo $r48r49r50r51 = PT_Q48[$r11]
-	/* Generate a mask of ones at each bit where the current $sps
-	 * differs from the $sps to be restored
-	 */
-	xord $r14 = $r2, $r14
-	/* prepare wfxl clear mask on LSBs */
-	notd $r15 = $r2
-	/* prepare wfxl set mask on MSBs */
-	slld $r13 = $r2, 32
-	;;
-	lo $r44r45r46r47 = PT_Q44[$r11]
-	/* Replicate mask of ones on the 32 MSBs */
-	sbmm8 $r14 = $r14, REPLICATE_32_MASK
-	/* Combine the set and clear mask for wfxl */
-	insf  $r13 = $r15, 31, 0
-	;;
-	lo $r40r41r42r43 = PT_Q40[$r11]
-	set $lc = $r4
-	/* Mask to drop identical bits in order to avoid useless
-	 * privilege traps
-	 */
-	andd $r13 = $r13, $r14
-	;;
-	lq $r16r17 = PT_R16R17[$r11]
-	set $le = $r5
-	;;
-	lo $r32r33r34r35 = PT_Q32[$r11]
-	set $ls = $r6
-	;;
-	lo $r36r37r38r39 = PT_Q36[$r11]
-	copyd $r14 = $r11
-	set $ra = $r7
-	;;
-	lo $r8r9r10r11 = PT_Q8[$r14]
-	set $cs = $r0
-	/* MME was disabled by disable_mmu, reenable it before leaving */
-	ord $r13 = $r13, SFR_SET_VAL_WFXL(SPS, MME, 1)
-	;;
-	lo $r4r5r6r7 = PT_Q4[$r14]
-	set $spc = $r1
-	;;
-	lo $r0r1r2r3 = PT_Q0[$r14]
-	/* Store $sps wfxl value in scratch system register */
-	set TMP_SCRATCH_SR = $r13
-	;;
-	lo $r12r13r14r15 = PT_Q12[$r14]
-	rswap $r0 = TMP_SCRATCH_SR
-	;;
-	wfxl $sps, $r0
-	;;
-	/* Finally, restore $r0 value */
-	rswap $r0 = TMP_SCRATCH_SR
-	;;
-	rfe
-	;;
-SYM_FUNC_END(return_from_exception)
-
-EXCEPTION_START(return_from_syscall)
+SYM_FUNC_START(return_from_exception)
 	get $r11 = $sr
 	/* Load sps value from saved registers */
 	ld $r6 = PT_SPS[$sp]
@@ -436,15 +294,26 @@ EXCEPTION_START(return_from_syscall)
 	/* Do we have work pending ? */
 	andd $r5 = $r1, _TIF_WORK_MASK
 	;;
-	/**
-	 * If we do not have work pending (ie $r5 == 0) then we can
-	 * directly jump to _restore_regs without calling do_work_pending
-	 */
 	cb.deqz $r5? 1f
 	;;
 	call_do_work_pending
 	;;
+#ifdef CONFIG_TRACE_IRQFLAGS
+	/* reload sps value from saved registers */
+	ld $r6 = PT_SPS[$sp]
+	;;
+#endif
 1:
+#ifdef CONFIG_TRACE_IRQFLAGS
+	/* Check if IRQs are going to be enabled in next context */
+	andd $r6 = $r6, KVX_SFR_SPS_IE_MASK
+	;;
+	cb.deqz $r6? 1f
+	;;
+	call trace_hardirqs_on
+	;;
+1:
+#endif
 	disable_mmu PS_HWLOOP_DISABLE
 	;;
 	lo $r0r1r2r3 = __PA(PT_CS_SPC_SPS_ES)[$sp]
@@ -516,44 +385,29 @@ EXCEPTION_START(return_from_syscall)
 	lo $r12r13r14r15 = PT_Q12[$r14]
 	rswap $r0 = TMP_SCRATCH_SR
 	;;
-	wfxl $sps = $r0
+	wfxl $sps, $r0
 	;;
 	/* Finally, restore $r0 value */
 	rswap $r0 = TMP_SCRATCH_SR
 	;;
 	rfe
 	;;
-SYM_FUNC_END(return_from_syscall)
+SYM_FUNC_END(return_from_exception)
 
-/***********************************************************************
-*                      Debug handling
-***********************************************************************/
-EXCEPTION_START(kvx_debug_handler):
-	disable_mmu
-	;;
-	save_r0r1r2r3
-	;;
-	switch_stack
-	;;
-	save_regs_for_exception
-	;;
+.macro debug_prologue
+.endm
+
+.macro debug_function
 	get $r1 = $ea
-	/* tail-call for return_from_exception */
-	make $r3 = return_from_exception
-	;;
-	set $ra = $r3
 	;;
 	/* debug_handler($r0: pt_regs, $r1: ea) */
-	goto debug_handler
+	call debug_handler
 	;;
-SYM_FUNC_END(kvx_debug_handler)
+.endm
 
-/***********************************************************************
-*                      Traps handling
-***********************************************************************/
 /* These labels will be used for instruction patching */
 .global kvx_perf_tlb_refill, kvx_std_tlb_refill
-EXCEPTION_START(kvx_trap_handler):
+.macro trap_prologue
 	disable_mmu
 	;;
 	/* Save r3 in a temporary system register to check if the trap is a
@@ -1118,40 +972,22 @@ trap_slow_path:
 	/* Restore $r3 from temporary scratch system register */
 	get $r3 = TMP_SCRATCH_SR
 	;;
-	save_r0r1r2r3
-	;;
-trap_switch_stack:
-	switch_stack
-	;;
-	save_regs_for_exception
-	;;
+.endm
+
+.macro trap_function
 	get $r2 = $ea
-	/* tail-call for return_from_exception */
-	make $r3 = return_from_exception
-	;;
-	set $ra = $r3
 	;;
 	get $r1 = $es
 	;;
 	/* trap_handler($r0: pt_regs, $r1: es, $r2: ea) */
-	goto trap_handler
+	call trap_handler
 	;;
-SYM_FUNC_END(kvx_trap_handler)
+.endm
 
-/***********************************************************************
-*                      Interrupts handling
-***********************************************************************/
-EXCEPTION_START(kvx_interrupt_handler):
-	disable_mmu
-	;;
-	save_r0r1r2r3
-	;;
-	switch_stack
-	;;
-	barrier
-	;;
-	save_regs_for_exception
-	;;
+.macro interrupt_prologue
+.endm
+
+.macro interrupt_function
 	get $r1 = $ilr
 	;;
 	get $r2 = $ile
@@ -1195,46 +1031,61 @@ EXCEPTION_START(kvx_interrupt_handler):
 	;;
 	wfxl $ps, $r0
 	;;
-	goto return_from_exception
-	;;
-SYM_FUNC_END(kvx_interrupt_handler)
+.endm
 
-/***********************************************************************
-*                      Syscall handling
-***********************************************************************/
-EXCEPTION_START(kvx_syscall_handler):
-	disable_mmu
-	;;
-	save_r0r1r2r3
-	;;
-	switch_stack
-	;;
-	save_regs_for_exception
-	;;
-	save_callee
-	;;
-	/* Reenable hardware loops, exceptions and disable DAUS */
-	make $r1 = PS_HLE_EN_ET_CLEAR_DAUS_DIS
-	;;
-	make $r2 = 0
-	;;
-	/* Clear $le on entry */
-	set $le = $r2
-	/* Clear frame pointer for kernel */
-	make $fp = 0
-	;;
-	/* Re-enable hwloop and MMU */
-	wfxl $ps, $r1
-	;;
+.macro syscall_prologue
+.endm
+
+.macro syscall_function
 	call do_syscall
 	;;
-	goto return_from_syscall
-	;;
-SYM_FUNC_END(kvx_syscall_handler)
+.endm
 
-/***********************************************************************
-*                      Context switch
-***********************************************************************/
+
+.macro entry_handler type
+.section .exception.text, "ax", @progbits
+SYM_FUNC_START(kvx_\()\type\()_handler)
+	\type\()_prologue
+	disable_mmu
+	save_r0r1r2r3
+\type\()_switch_stack:
+	switch_stack
+	save_regs_for_exception
+	save_callee
+	prepare_kernel_entry
+	\type\()_function
+	goto return_from_exception
+	;;
+SYM_FUNC_END(kvx_\()\type\()_handler)
+
+/*
+ * Exception vectors stored in $ev
+ */
+.section .exception.\()\type, "ax", @progbits
+SYM_FUNC_START(kvx_\()\type\()_handler_trampoline):
+	goto kvx_\()\type\()_handler
+	;;
+SYM_FUNC_END(kvx_\()\type\()_handler_trampoline)
+
+/*
+ * Early Exception vectors stored in $ev
+ */
+.section .early_exception.\()\type, "ax", @progbits
+SYM_FUNC_START(kvx_\()\type\()_early_handler):
+1:	nop
+	;;
+	goto 1b
+	;;
+SYM_FUNC_END(kvx_\()\type\()_early_handler)
+.endm
+
+/*
+ * Exception handlers
+ */
+entry_handler debug
+entry_handler trap
+entry_handler interrupt
+entry_handler syscall
 
 #define SAVE_TCA_REG(__reg_num, __task_reg, __zero_reg1, __zero_reg2) \
 	xso (CTX_SWITCH_TCA_REGS + (__reg_num * TCA_REG_SIZE))[__task_reg] = \
@@ -1386,7 +1237,7 @@ SYM_FUNC_START(ret_from_fork)
 	call do_syscall_trace_exit
 	;;
 ret_from_kernel:
-	goto return_from_syscall
+	goto return_from_exception
 	;;
 SYM_FUNC_END(ret_from_fork)
 
