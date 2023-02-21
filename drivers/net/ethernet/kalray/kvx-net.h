@@ -35,6 +35,7 @@ enum rx_ring_type {
 	NB_RX_RING,
 };
 
+
 struct kvx_eth_type {
 	int (*phy_init)(struct kvx_eth_hw *hw, unsigned int speed);
 	int (*phy_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
@@ -53,7 +54,8 @@ struct kvx_eth_dev {
 	struct platform_device *pdev;
 	struct list_head list;
 	struct kvx_eth_hw hw;
-	struct kvx_eth_type *type;
+	const struct kvx_eth_type *type;
+	const struct kvx_eth_chip_rev_data *chip_rev_data;
 };
 
 /*
@@ -127,7 +129,8 @@ struct kbx_dcb_cfg {
 };
 
 extern const union mac_filter_desc mac_filter_default;
-extern const union ipv4_filter_desc ipv4_filter_default;
+extern const union ipv4_cv1_filter_desc ipv4_cv1_filter_default;
+extern const union ipv4_cv2_filter_desc ipv4_cv2_filter_default;
 extern const struct ipv6_filter_desc ipv6_filter_default;
 extern const union tcp_filter_desc tcp_filter_default;
 extern const union udp_filter_desc udp_filter_default;
@@ -172,6 +175,37 @@ struct kvx_eth_netdev {
 	struct platform_device *rproc_pd[NB_CLUSTER-1];
 };
 
+struct kvx_eth_chip_rev_data {
+	enum coolidge_rev revision;
+	bool irq;
+	bool limited_parser_cap;
+	const char **kvx_eth_res_names;
+	int num_res;
+	void (* const fill_ipv4_filter)(struct kvx_eth_netdev *ndev, struct ethtool_rx_flow_spec *fs,
+		union filter_desc *flt,	int ptype_ovrd);
+	void (*const mac_pfc_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+	void (*const write_parser_ram_word)(struct kvx_eth_hw *hw, u32 word, unsigned int parser_id,
+		unsigned int word_idx);
+	int (*const parser_disable)(struct kvx_eth_hw *hw, int parser_id);
+	void (*const eth_init_netdev_hdw)(struct kvx_eth_netdev *ndev);
+	void (*const eth_fill_tx_hdr)(struct kvx_eth_netdev *ndev, struct kvx_eth_netdev_tx *tx);
+	void (*const eth_hw_change_mtu)(struct kvx_eth_hw *hw, int lane, int mtu);
+	void (*const netdev_probe_hw)(struct kvx_eth_hw *hw, struct kvx_eth_netdev *ndev);
+	int (*const eth_netdev_sysfs_init)(struct kvx_eth_netdev *ndev);
+	void (*const eth_netdev_sysfs_uninit)(struct kvx_eth_netdev *ndev);
+	void (*const eth_tx_init)(struct kvx_eth_hw *hw);
+	int (*const eth_hw_sysfs_init)(struct kvx_eth_hw *hw);
+	int (*const parser_commit_filter)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
+		unsigned int parser_id, unsigned int word_index, enum parser_dispatch_policy policy, int prio);
+	void (*const eth_add_dispatch_table_entry)(struct kvx_eth_hw *hw,
+				 struct kvx_eth_lane_cfg *cfg,
+				 struct kvx_eth_dt_f *dt, int idx);
+	void (*const eth_init_dispatch_table)(struct kvx_eth_hw *hw);
+	void (*const eth_mac_f_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
+	int (*const ethtx_credit_en_register)(struct platform_device *pdev);
+	int (*const ethtx_credit_en_unregister)(struct platform_device *pdev);
+};
+
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
 int kvx_eth_alloc_tx_ring(struct kvx_eth_netdev *nd, struct kvx_eth_ring *r);
 int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *nd, struct kvx_eth_ring *r);
@@ -185,8 +219,17 @@ void kvx_set_ethtool_ops(struct net_device *netdev);
 void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes);
 
 int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw);
+int kvx_eth_hw_sysfs_init_cv1(struct kvx_eth_hw *hw);
+int kvx_eth_hw_sysfs_init_cv2(struct kvx_eth_hw *hw);
+
 int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev);
+int kvx_eth_netdev_sysfs_init_cv1(struct kvx_eth_netdev *ndev);
+int kvx_eth_netdev_sysfs_init_cv2(struct kvx_eth_netdev *ndev);
+
 void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev);
+void kvx_eth_netdev_sysfs_uninit_cv1(struct kvx_eth_netdev *ndev);
+void kvx_eth_netdev_sysfs_uninit_cv2(struct kvx_eth_netdev *ndev);
+
 void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev);
 void kvx_eth_get_formated_speed(int speed, int *speed_fmt, char **unit);
 
@@ -201,6 +244,24 @@ void kvx_set_dcb_ops(struct net_device *netdev);
 #else
 static inline void kvx_set_dcb_ops(struct net_device *netdev) {};
 #endif
+
+const struct kvx_eth_chip_rev_data *kvx_eth_get_rev_data(struct kvx_eth_hw *hw);
+void fill_ipv4_filter_cv1(struct kvx_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
+		int ptype_ovrd);
+void fill_ipv4_filter_cv2(struct kvx_eth_netdev *ndev,
+		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
+		int ptype_ovrd);
+void write_parser_ram_word_cv1(struct kvx_eth_hw *hw, u32 data, unsigned int parser_id,
+			  unsigned int word_idx);
+void write_parser_ram_word_cv2(struct kvx_eth_hw *hw, u32 data, unsigned int parser_id,
+			  unsigned int word_idx);
+int parser_disable_cv1(struct kvx_eth_hw *hw, int parser_id);
+int parser_disable_cv2(struct kvx_eth_hw *hw, int parser_id);
+int parser_commit_filter_cv1(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
+		unsigned int parser_id, unsigned int word_index, enum parser_dispatch_policy policy, int prio);
+int parser_commit_filter_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
+		unsigned int parser_id, unsigned int word_index, enum parser_dispatch_policy policy, int prio);
 
 /**
  * @brief macro to sysfs creation
@@ -306,5 +367,51 @@ static ssize_t s##_##f##_store(struct kvx_eth_##s *p, const char *buf, \
 } \
 static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0644, \
 		NULL, s##_##f##_store) \
+
+
+#define kvx_declare_kset(s, name) \
+int kvx_kset_##s##_create(struct kvx_eth_netdev *ndev, struct kobject *pkobj, \
+			  struct kset *k, struct kvx_eth_##s *p, size_t size) \
+{ \
+	struct kvx_eth_##s *f; \
+	int i, j, ret = 0; \
+	k = kset_create_and_add(name, NULL, pkobj); \
+	if (!k) { \
+		pr_err(#name" sysfs kobject registration failed\n"); \
+		return -EINVAL; \
+	} \
+	for (i = 0; i < size; ++i) { \
+		f = &p[i]; \
+		f->kobj.kset = k; \
+		ret = kobject_add(&f->kobj, NULL, "%d", i); \
+		if (ret) { \
+			netdev_warn(ndev->netdev, "Sysfs init error (%d)\n", \
+				ret); \
+			kobject_put(&f->kobj); \
+			goto err; \
+		} \
+	} \
+	return ret; \
+err: \
+	for (j = i - 1; j >= 0; --j) { \
+		f = &p[j]; \
+		kobject_del(&f->kobj); \
+		kobject_put(&f->kobj); \
+	} \
+	kset_unregister(k); \
+	return ret; \
+} \
+void kvx_kset_##s##_remove(struct kvx_eth_netdev *ndev, struct kset *k, \
+			   struct kvx_eth_##s *p, size_t size) \
+{ \
+	struct kvx_eth_##s *f; \
+	int i; \
+	for (i = 0; i < size; ++i) { \
+		f = &p[i]; \
+		kobject_del(&f->kobj); \
+		kobject_put(&f->kobj); \
+	} \
+	kset_unregister(k); \
+}
 
 #endif /* KVX_NET_H */
