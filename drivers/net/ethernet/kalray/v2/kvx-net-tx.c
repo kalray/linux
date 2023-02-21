@@ -4,15 +4,15 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2019 Kalray Inc.
+ * Copyright (C) 2023 Kalray Inc.
  */
 #include <linux/device.h>
 #include <linux/io.h>
 
 #include "../kvx-net.h"
-#include "../kvx-net-regs.h"
-
-#include "../kvx-ethtx-regs-cv2.h"
+#include "kvx-ethtx-regs-cv2.h"
+#include <linux/remoteproc/kvx_rproc.h>
+#include <linux/of_platform.h>
 
 const struct eth_tx_speed_cfg_t eth_tx_speed_cfg[] = {
 	{SPEED_100000, KVX_ETH_TX_STAGE_ONE_CFG_1_FIFO_8K, KVX_ETH_TX_TDM_CONFIG_BY4_AGG},
@@ -23,7 +23,7 @@ const struct eth_tx_speed_cfg_t eth_tx_speed_cfg[] = {
 	{SPEED_1000, KVX_ETH_TX_STAGE_ONE_CFG_4_FIFO_2K, KVX_ETH_TX_TDM_CONFIG_NO_AGG},
 };
 
-void kvx_eth_tx_init(struct kvx_eth_hw *hw)
+void kvx_eth_tx_init_cv2(struct kvx_eth_hw *hw)
 {
 	int i, j;
 	u32 base;
@@ -392,4 +392,97 @@ void kvx_eth_tx_f_init(struct kvx_eth_hw *hw)
 		}
 
 	}
+}
+
+static int kvx_eth_hw_ethtx_credit_set_en(struct kvx_eth_hw *hw, int cluster_id, bool enable)
+{
+	if (cluster_id > NB_CLUSTER)
+		return -EINVAL;
+
+	updatel_bits(hw, ETH_TX,
+		KVX_ETH_TX_CREDIT_GRP_OFFSET + KVX_ETH_TX_CREDIT_ENABLE_OFFSET,
+		(1<<cluster_id), enable ? (1<<cluster_id) : 0);
+	return 0;
+}
+
+/**
+ * kvx_netdev_ethtx_credit_set_en() - Set EthTx credit bus enable
+ * state for a given cluster.
+ * warning: will impact all eth hw block (not only current netdev)
+ *
+ * @netdev: Current netdev
+ * @cluster_id: corresponding cluster
+ * @enable: enable/disable request
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+static int kvx_netdev_ethtx_credit_set_en(struct net_device *netdev, int cluster_id, bool enable)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+
+	return kvx_eth_hw_ethtx_credit_set_en(ndev->hw, cluster_id, enable);
+}
+
+/**
+ * kvx_ethtx_credit_en_register_cv2() - register
+ * callback for tx credit enabling/disabling.
+ *
+ * @pdev: netdev platform_device
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+int kvx_ethtx_credit_en_register_cv2(struct platform_device *pdev)
+{
+	struct kvx_eth_netdev *ndev = platform_get_drvdata(pdev);
+	struct platform_device **rproc_pdev = ndev->rproc_pd;
+	unsigned int i, rproc_nb;
+	int ret;
+	struct device_node *rproc_dn;
+
+	rproc_nb = min(of_property_count_u32_elems(pdev->dev.of_node, "rproc"), (int)ARRAY_SIZE(ndev->rproc_pd));
+	for (i = 0 ; i < rproc_nb ; i++) {
+		rproc_dn = of_parse_phandle(pdev->dev.of_node, "rproc", i);
+		if (!rproc_dn) {
+			dev_err(&pdev->dev, "Unable to find rproc in DT\n");
+			goto error;
+		}
+		rproc_pdev[i] = of_find_device_by_node(rproc_dn);
+		if (!(rproc_pdev[i])) {
+			dev_err(&pdev->dev, "Unable to find rproc plateform device\n");
+			goto error;
+		}
+		ret = kvx_rproc_reg_ethtx_crd_set(rproc_pdev[i], &kvx_netdev_ethtx_credit_set_en, ndev->netdev);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "Unable to register tx credit\n");
+			goto error;
+		}
+		of_node_put(rproc_dn);
+	}
+	return 0;
+
+error:
+	if (rproc_dn)
+		of_node_put(rproc_dn);
+	return -EINVAL;
+}
+
+/**
+ * kvx_ethtx_credit_en_unregister_cv2() - unregister
+ *  callback for tx credit enabling/disabling.
+ *
+ * @pdev: netdev platform_device
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+int kvx_ethtx_credit_en_unregister_cv2(struct platform_device *pdev)
+{
+	int i;
+	struct kvx_eth_netdev *ndev = platform_get_drvdata(pdev);
+	struct platform_device **rproc_pdev = ndev->rproc_pd;
+
+	for (i = 0; i < ARRAY_SIZE(ndev->rproc_pd); i++) {
+		if (rproc_pdev[i])
+			kvx_rproc_unreg_ethtx_crd_set(rproc_pdev[i], ndev->netdev);
+	}
+	return 0;
 }
