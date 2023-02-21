@@ -10,8 +10,9 @@
 #ifndef KVX_NET_HDR_H
 #define KVX_NET_HDR_H
 
-#include "kvx-net-regs.h"
-
+#include "v1/kvx-net-regs.h"
+#include "v1/kvx-net-hdr-cv1.h"
+#include "v2/kvx-net-hdr-cv2.h"
 /**
  * Parser rules description
  * All unions must be multiple of 32 bits words
@@ -21,22 +22,22 @@ union mac_filter_desc {
 	struct {
 		u32 ptype             : 5;
 		u32 add_metadata_index : 1;
-		u32 min_max_swap     : 1;
+		u32 min_max_swap : 1;
 		u32 vlan_ctrl        : 2;   /* 0: No Vlan, 1: 1 Vlan,
 					     * 2: Dual Vlan,
 					     * 3: (skip any vlan tags)
 					     */
-		u32 pfc_en           : 1;
+		u32 pfc_en_etype_fk_en  : 1;
 		u32 da_cmp_polarity  : 1;
 		u64 da               : 48;
 		u64 da_mask          : 48;
-		u64 da_hash_mask     : 48;
+		u64 da_fk_hash_mask  : 48;
 		u32 sa_cmp_polarity  : 1;    /* 0: src == expected,
 					      * 1: src != expected
 					      */
 		u64 sa               : 48;
 		u64 sa_mask          : 48;
-		u64 sa_hash_mask     : 48;
+		u64 sa_fk_hash_mask  : 48;
 		u32 etype_cmp_polarity : 2;  /* 0: disabled,
 					      * 1: Match etype = expected,
 					      * 2: Match if etype != expected
@@ -47,49 +48,13 @@ union mac_filter_desc {
 					    */
 		u32 tci0              : 16;
 		u32 tci0_mask         : 16;
-		u32 tci0_hash_mask    : 16;
+		u32 tci0_fk_hash_mask : 16;
 		u32 tci1_cmp_polarity : 1; /* 0: tci[i] == expected_tci[i],
 					    * 1: tci[i] != expected_tci[i]
 					    */
 		u32 tci1              : 16;
 		u32 tci1_mask         : 16;
-		u32 tci1_hash_mask    : 16;
-	} __packed;
-};
-
-union ipv4_filter_desc {
-	u32 word[10];
-	struct {
-		u32 ptype                 : 5;
-		u32 add_metadata_index    : 1;
-		u32 check_header_checksum : 1;
-		u32 min_max_swap_en       : 1;
-		u32 dscp_cmp_polarity     : 1; /* 0 => match DSCP == expected,
-						* 1 => match DSCP != expected
-						*/
-		u32 dscp                  : 6;
-		u32 dscp_mask             : 6;
-		u32 dscp_hash_mask        : 6;
-		u32 ecn_cmp_polarity      : 1; /* 0 => Match ECN == expected,
-						* 1 => Match ECN!= expected
-						*/
-		u32 ecn                   : 2;
-		u32 ecn_mask              : 2;
-		u32 ecn_hash_mask         : 2;
-		u32 protocol_cmp_polarity : 1;
-		u32 protocol              : 8;
-		u32 protocol_mask         : 8;
-		u32 protocol_hash_mask    : 8;
-		u32 sa_cmp_polarity       : 1;
-		u32 sa                    : 32;
-		u32 sa_mask               : 32;
-		u32 sa_hash_mask          : 32;
-		u32 da_cmp_polarity       : 1;
-		u32 da                    : 32;
-		u32 da_mask               : 32;
-		u32 da_hash_mask          : 32;
-		u32 skip_length           : 1; /* Skip the next RAM 104 bits */
-		u32 end_of_rule           : 1;
+		u32 tci1_fk_hash_mask : 16;
 	} __packed;
 };
 
@@ -103,15 +68,15 @@ union ipv6_filter_desc0 {
 		u32 tc_cmp_polarity    : 1;
 		u32 tc                 : 8;
 		u32 tc_mask            : 8;
-		u32 tc_hash_mask       : 8;
+		u32 tc_fk_hash_mask    : 8;
 		u32 fl_cmp_polarity    : 1;
 		u32 fl                 : 20;
 		u32 fl_mask            : 20;
-		u32 fl_hash_mask       : 20;
+		u32 fl_fk_hash_mask    : 20;
 		u32 nh_cmp_polarity    : 1;
 		u32 nh                 : 8;
 		u32 nh_mask            : 8;
-		u32 nh_hash_mask       : 8;
+		u32 nh_fk_hash_mask    : 8;
 		u32 skip_length        : 2;
 	} __packed;
 };
@@ -124,8 +89,8 @@ union ipv6_filter_desc1 {
 		u64 src_msb             : 64;
 		u64 src_lsb_mask        : 64;
 		u64 src_msb_mask        : 64;
-		u64 src_lsb_hash_mask   : 64;
-		u64 src_msb_hash_mask   : 64;
+		u64 src_lsb_fk_hash_mask: 64;
+		u64 src_msb_fk_hash_mask: 64;
 	} __packed;
 };
 
@@ -137,8 +102,8 @@ union ipv6_filter_desc2 {
 		u64 dst_msb           : 64;
 		u64 dst_lsb_mask      : 64;
 		u64 dst_msb_mask      : 64;
-		u64 dst_lsb_hash_mask : 64;
-		u64 dst_msb_hash_mask : 64;
+		u64 dst_lsb_fk_hash_mask: 64;
+		u64 dst_msb_fk_hash_mask: 64;
 	} __packed;
 };
 
@@ -157,7 +122,7 @@ union vxlan_filter_desc {
 		u32 vni_cmp_polarity      : 1;
 		u32 vni                   : 24;
 		u32 vni_mask              : 24;
-		u32 vni_hash_mask         : 24;
+		u32 vni_fk_hash_mask      : 24;
 		u32  skip_length          : 2;
 	} __packed;
 };
@@ -176,11 +141,11 @@ union udp_filter_desc {
 		 * 2: Don’t care
 		 */
 		u32 src_ctrl              : 2;
-		u32 src_hash_mask         : 16;
+		u32 src_fk_hash_mask      : 16;
 		u32 dst_min_port          : 16;
 		u32 dst_max_port          : 16;
 		u32 dst_ctrl              : 2;
-		u32 dst_hash_mask         : 16;
+		u32 dst_fk_hash_mask      : 16;
 		u32 skip_length           : 2;
 	} __packed;
 };
@@ -195,15 +160,15 @@ union tcp_filter_desc {
 		u32 src_min_port          : 16;
 		u32 src_max_port          : 16;
 		u32 src_ctrl              : 2;
-		u32 src_hash_mask         : 16;
+		u32 src_fk_hash_mask      : 16;
 		u32 dst_min_port          : 16;
 		u32 dst_max_port          : 16;
 		u32 dst_ctrl              : 2;
-		u32 dst_hash_mask         : 16;
+		u32 dst_fk_hash_mask      : 16;
 		u32 flags_cmp_polarity    : 1;
 		u32 expected_flags        : 9;
 		u32 flags_mask            : 9;
-		u32 flags_hash_mask       : 9;
+		u32 flags_fk_hash_mask    : 9;
 		u32 skip_length           : 2;
 	} __packed;
 };
@@ -218,7 +183,7 @@ union roce_filter_desc {
 		u32 qpair_cmp_polarity : 1;
 		u32 qpair              : 24;
 		u32 qpair_mask         : 24;
-		u32 qpair_hash_mask    : 24;
+		u32 qpair_fk_hash_mask : 24;
 		u32 skip_length        : 2;
 	} __packed;
 };
@@ -233,11 +198,11 @@ union mpls_filter_desc {
 					     */
 		u32 label              : 20;
 		u32 label_mask         : 20;
-		u32 label_hash_mask    : 20;
+		u32 label_fk_hash_mask : 20;
 		u32 tc_cmp_polarity    : 1;  /* Traffic Class */
 		u32 tc                 : 3;
 		u32 tc_mask            : 3;
-		u32 tc_hash_mask       : 3;
+		u32 tc_fk_hash_mask    : 3;
 		u32 skip_length        : 2;
 	} __packed;
 };
@@ -281,7 +246,8 @@ union custom_filter_desc {
 union filter_desc {
 	union mac_filter_desc    mac_vlan;
 	union vxlan_filter_desc    vxlan;
-	union ipv4_filter_desc   ipv4;
+	union ipv4_cv1_filter_desc cv1_ipv4;
+	union ipv4_cv2_filter_desc cv2_ipv4;
 	struct ipv6_filter_desc    ipv6;
 	union udp_filter_desc      udp;
 	union tcp_filter_desc      tcp;
