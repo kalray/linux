@@ -22,7 +22,6 @@
 
 #define KVX_PHY_RAM_SIZE 0x8000
 
-#define MAC_LOOPBACK_LATENCY  4
 #define MAC_SYNC_TIMEOUT_MS   500
 #define SIGDET_TIMEOUT_MS     200
 #define RESET_TIMEOUT_MS      50
@@ -43,9 +42,6 @@
 #define LT_COEF_0_SHIFT 0x2
 #define LT_COEF_P_1_MASK 0x30
 #define LT_COEF_P_1_SHIFT 0x4
-
-#define RX_FIFO_SECTION_FULL_THRES    1
-#define TX_FIFO_SECTION_FULL_THRES    16
 
 #define PCS_STATUS1_PCS_RECEIVE_LINK_MASK  0x4
 
@@ -80,7 +76,7 @@ static u32 kvx_phymac_readl(struct kvx_eth_hw *hw, u64 off)
 	return val;
 }
 
-static u32 kvx_mac_readl(struct kvx_eth_hw *hw, u64 off)
+u32 kvx_mac_readl(struct kvx_eth_hw *hw, u64 off)
 {
 	u32 val = readl(hw->res[KVX_ETH_RES_MAC].base + off);
 
@@ -331,126 +327,6 @@ static int kvx_eth_pmac_init(struct kvx_eth_hw *hw,
 	return ret;
 }
 
-
-/**
- * kvx_mac_pfc_cfg() - Configure pfc MAC and eth tx registers
- */
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
-{
-	struct kvx_eth_pfc_f *pfc_f = &hw->lb_f[cfg->id].pfc_f;
-	struct kvx_eth_cl_f *cl_f = hw->lb_f[cfg->id].cl_f;
-	u32 base = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
-	int tx_fifo_id = cfg->tx_fifo_id;
-	bool pfc_class_en = false;
-	u32 val, off;
-	int i = 0;
-
-	if (kvx_mac_under_reset(hw))
-		return;
-
-	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++) {
-		if (cl_f[i].pfc_ena)
-			pfc_class_en = true;
-
-		if ((i % 2) == 0) {
-			val = (u32)cl_f[i + 1].quanta << 16 |
-				(u32)cl_f[i].quanta;
-			off = EMAC_CL01_PAUSE_QUANTA_OFFSET + 2 * i;
-			kvx_mac_writel(hw, val, base + off);
-			val = (u32)cl_f[i + 1].quanta_thres << 16 |
-				(u32)cl_f[i].quanta_thres;
-			off = EMAC_CL01_QUANTA_THRESH_OFFSET + 2 * i;
-			kvx_mac_writel(hw, val, base + off);
-		}
-	}
-	if (pfc_f->global_pfc_en || pfc_class_en) {
-		cfg->mac_f.pfc_mode = MAC_PFC;
-		hw->tx_f[tx_fifo_id].pfc_en = 1;
-		hw->tx_f[tx_fifo_id].pause_en = 0;
-	} else if (pfc_f->global_pause_en) {
-		cfg->mac_f.pfc_mode = MAC_PAUSE;
-		hw->tx_f[tx_fifo_id].pfc_en = 0;
-		hw->tx_f[tx_fifo_id].pause_en = 1;
-	} else {
-		cfg->mac_f.pfc_mode = MAC_PFC_NONE;
-		hw->tx_f[tx_fifo_id].pfc_en = 0;
-		hw->tx_f[tx_fifo_id].pause_en = 0;
-	}
-	dev_dbg(hw->dev, "%s reg class[0] quanta: 0x%x thres: 0x%x\n", __func__,
-		 kvx_mac_readl(hw, base + EMAC_CL01_PAUSE_QUANTA_OFFSET),
-		 kvx_mac_readl(hw, base + EMAC_CL01_QUANTA_THRESH_OFFSET));
-	kvx_eth_tx_f_cfg(hw, &hw->tx_f[tx_fifo_id]);
-	for (i = cfg->id; i < lane_nb; i++) {
-		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
-
-		val = (cfg->mac_f.pfc_mode == MAC_PFC ?
-			EMAC_CMD_CFG_PFC_MODE_MASK : 0);
-		updatel_bits(hw, MAC, off + EMAC_CMD_CFG_OFFSET,
-			     EMAC_CMD_CFG_PFC_MODE_MASK, val);
-
-		val = (cfg->mac_f.pfc_mode == MAC_PFC ?
-		       PMAC_CMD_CFG_PFC_MODE_MASK : 0);
-		updatel_bits(hw, MAC, off + PMAC_CMD_CFG_OFFSET,
-		       PMAC_CMD_CFG_PFC_MODE_MASK, val);
-	}
-}
-#else
-void kvx_mac_pfc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
-{
-	struct kvx_eth_pfc_f *pfc_f = &hw->lb_f[cfg->id].pfc_f;
-	struct kvx_eth_cl_f *cl_f = hw->lb_f[cfg->id].cl_f;
-	u32 base = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * cfg->id;
-	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
-	bool pfc_class_en = false;
-	u32 val, off;
-	int i = 0;
-
-	if (kvx_mac_under_reset(hw))
-		return;
-
-	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++) {
-		if (cl_f[i].pfc_ena)
-			pfc_class_en = true;
-
-		if ((i % 2) == 0) {
-			val = (u32)cl_f[i + 1].quanta << 16 |
-				(u32)cl_f[i].quanta;
-			off = EMAC_CL01_PAUSE_QUANTA_OFFSET + 2 * i;
-			kvx_mac_writel(hw, val, base + off);
-			val = (u32)cl_f[i + 1].quanta_thres << 16 |
-				(u32)cl_f[i].quanta_thres;
-			off = EMAC_CL01_QUANTA_THRESH_OFFSET + 2 * i;
-			kvx_mac_writel(hw, val, base + off);
-		}
-	}
-	if (pfc_f->global_pfc_en || pfc_class_en)
-		cfg->mac_f.pfc_mode = MAC_PFC;
-	else if (pfc_f->global_pause_en)
-		cfg->mac_f.pfc_mode = MAC_PAUSE;
-	else
-		cfg->mac_f.pfc_mode = MAC_PFC_NONE;
-	dev_dbg(hw->dev, "%s reg class[0] quanta: 0x%x thres: 0x%x\n", __func__,
-		 kvx_mac_readl(hw, base + EMAC_CL01_PAUSE_QUANTA_OFFSET),
-		 kvx_mac_readl(hw, base + EMAC_CL01_QUANTA_THRESH_OFFSET));
-	for (i = cfg->id; i < lane_nb; i++) {
-		off = MAC_CTRL_OFFSET + MAC_CTRL_ELEM_SIZE * i;
-
-		val = (cfg->mac_f.pfc_mode == MAC_PFC ?
-			EMAC_CMD_CFG_PFC_MODE_MASK : 0);
-		updatel_bits(hw, MAC, off + EMAC_CMD_CFG_OFFSET,
-			     EMAC_CMD_CFG_PFC_MODE_MASK, val);
-
-		val = (cfg->mac_f.pfc_mode == MAC_PFC ?
-		       PMAC_CMD_CFG_PFC_MODE_MASK : 0);
-		updatel_bits(hw, MAC, off + PMAC_CMD_CFG_OFFSET,
-		       PMAC_CMD_CFG_PFC_MODE_MASK, val);
-	}
-}
-#endif
-
-
 static bool kvx_eth_lanes_aggregated(struct kvx_eth_hw *hw)
 {
 	u32 v = readl(hw->res[KVX_ETH_RES_MAC].base + MAC_MODE_OFFSET);
@@ -505,74 +381,6 @@ int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 	if (kvx_eth_speed_aggregated(speed))
 		memset(pll, 0, sizeof(*pll));
 
-	return 0;
-}
-
-int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
-{
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
-	u32 val;
-#endif
-
-	hw->phy_f.reg_avail = false;
-	kvx_phy_reset(hw);
-
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
-	kvx_mac_writel(hw, 0x100, MAC_RESET_CLEAR_OFFSET);
-	/* set the mac_mode_ctrl */
-	kvx_mac_writel(hw, 0, MAC_MODE_OFFSET);
-
-	/* set the mac fcs */
-	updatel_bits(hw, MAC, MAC_FCS_OFFSET,
-			     MAC_FCS_EN_MASK, MAC_FCS_EN_MASK);
-
-	/* set the mac sg ctrl */
-	kvx_mac_writel(hw, 1|(1<<4), MAC_SG_OFFSET);
-
-	/* set the mac_reset_set */
-	kvx_mac_writel(hw, 0x1FFFFF, MAC_RESET_SET_OFFSET);
-
-	/* set the mac_reset_clear */
-	kvx_mac_writel(hw, 0x1FFFFF, MAC_RESET_CLEAR_OFFSET);
-
-	/* set the mac_ctrl / lane_i pmac_reg_COMMAND_CONFIG */
-	val = PMAC_CMD_CFG_TX_EN_MASK       |
-		PMAC_CMD_CFG_RX_EN_MASK     |
-		PMAC_CMD_CFG_TX_PAD_EN_MASK |
-		PMAC_CMD_CFG_SW_RESET_MASK  |
-		PMAC_CMD_CFG_CNTL_FRAME_EN_MASK |
-		PMAC_CMD_CFG_PROMIS_EN_MASK;
-	kvx_mac_writel(hw, val, MAC_CTRL_OFFSET + PMAC_CMD_CFG_OFFSET);
-	/* set the mac_ctrl / lane_i emac_reg_COMMAND_CONFIG */
-	val =	(u32)EMAC_CMD_CFG_TX_EN_MASK    |
-			EMAC_CMD_CFG_RX_EN_MASK         |
-			EMAC_CMD_CFG_CNTL_FRAME_EN_MASK |
-			EMAC_CMD_CFG_SW_RESET_MASK      |
-			EMAC_CMD_CFG_TX_FIFO_RESET_MASK |
-			EMAC_CMD_CFG_TX_FLUSH_MASK      |
-			EMAC_CMD_CFG_PROMIS_EN_MASK;
-
-	kvx_mac_writel(hw, val, MAC_CTRL_OFFSET+EMAC_CMD_CFG_OFFSET);
-	/* PMAC - Rx fifo */
-	val = RX_FIFO_SECTION_FULL_THRES <<
-		PMAC_RX_FIFO_SECTION_FULL_SHIFT;
-	updatel_bits(hw, MAC, MAC_CTRL_OFFSET + PMAC_RX_FIFO_SECTIONS_OFFSET,
-				PMAC_RX_FIFO_SECTION_FULL_MASK, val);
-	/* PMAC - Tx fifo */
-	val = TX_FIFO_SECTION_FULL_THRES <<
-		PMAC_TX_FIFO_SECTION_FULL_SHIFT;
-	updatel_bits(hw, MAC, MAC_CTRL_OFFSET + PMAC_TX_FIFO_SECTIONS_OFFSET,
-				PMAC_TX_FIFO_SECTION_FULL_MASK, val);
-
-	/* EMAC - Rx fifo */
-	val = RX_FIFO_SECTION_FULL_THRES << EMAC_RX_FIFO_SECTION_FULL_SHIFT;
-	updatel_bits(hw, MAC, MAC_CTRL_OFFSET + EMAC_RX_FIFO_SECTIONS_OFFSET,
-				EMAC_RX_FIFO_SECTION_FULL_MASK, val);
-	/* EMAC - Tx fifo */
-	val = TX_FIFO_SECTION_FULL_THRES << EMAC_TX_FIFO_SECTION_FULL_SHIFT;
-	updatel_bits(hw, MAC, MAC_CTRL_OFFSET + EMAC_TX_FIFO_SECTIONS_OFFSET,
-				EMAC_TX_FIFO_SECTION_FULL_MASK, val);
-#endif
 	return 0;
 }
 
@@ -1193,7 +1001,7 @@ static int kvx_mac_phy_enable_serdes(struct kvx_eth_hw *hw, int lane,
  * @hw: hardware configuration
  * @cfg: lane configuration
  */
-static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
+int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 				  struct kvx_eth_lane_cfg *cfg, bool phy_reset)
 {
 	int i, ret, lane_nb;
@@ -2490,12 +2298,9 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 	ret = kvx_eth_mac_cfg(hw, cfg);
 	if (ret)
 		dev_dbg(hw->dev, "Failed to configure MAC\n");
-
-#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* workaround for cv1 */
-	/* Update parser cfg in case of aggregated lane config changed */
-	if (update_serdes)
+	/* Restore parser configuration (WA for CV1 only) */
+	if ((dev->chip_rev_data->revision == COOLIDGE_V1) && (update_serdes))
 		parser_config_update(hw, cfg);
-#endif
 
 	return ret;
 }
@@ -2907,6 +2712,8 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
 	u32 val = 0;
 	int i, ret;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+	enum coolidge_rev chip_rev = rev_d->revision;
 
 	kvx_mac_restore_default(hw, cfg, aggregated_lanes);
 	ret = kvx_eth_mac_reset(hw, cfg);
@@ -2938,14 +2745,15 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		val |= ((u32) 3 << MAC_SG_TX_LANE_CKMULT_SHIFT);
 	}
 	kvx_mac_writel(hw, val, MAC_SG_OFFSET);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
-	kvx_eth_tx_f_cfg(hw, &hw->tx_f[cfg->id]);
-#endif
+
+
+	kvx_eth_tx_cvx_f_cfg(hw, chip_rev, cfg->tx_fifo_id);
+
 	if (hw->aggregated_only) {
 		for (i = 0; i < KVX_ETH_LANE_NB; i++)
-			kvx_eth_lb_f_cfg(hw, &hw->lb_f[i]);
+			kvx_eth_lb_cvx_f_cfg(hw, chip_rev, i);
 	} else {
-		kvx_eth_lb_f_cfg(hw, &hw->lb_f[cfg->id]);
+		kvx_eth_lb_cvx_f_cfg(hw, chip_rev, cfg->id);
 	}
 
 	ret = kvx_eth_mac_init(hw, cfg);
@@ -2953,7 +2761,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		dev_warn(hw->dev, "MAC init failed\n");
 		return ret;
 	}
-	kvx_mac_pfc_cfg(hw, cfg);
+	rev_d->mac_pfc_cfg(hw, cfg);
 	/* For 100G links FEC can't be deduced from autoneg registers,
 	 * but is mandatory according to 802.3. Force it as needed for most
 	 * link partners.
@@ -3019,35 +2827,12 @@ void kvx_eth_mac_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	cfg->mac_f.promisc_mode = false;
 }
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
 void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 {
-	struct kvx_eth_lane_cfg *cfg = container_of(mac_f,
-					    struct kvx_eth_lane_cfg, mac_f);
-	struct kvx_eth_netdev *ndev = container_of(cfg, struct kvx_eth_netdev, cfg);
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 
-	if (mac_f->loopback_mode != hw->phy_f.loopback_mode) {
-		cancel_delayed_work_sync(&ndev->link_poll);
-		hw->phy_f.loopback_mode = mac_f->loopback_mode;
-		kvx_mac_phy_serdes_cfg(hw, cfg, 1);
-	}
-	kvx_eth_mac_cfg(hw, cfg);
+	rev_d->eth_mac_f_cfg(hw, mac_f);
 }
-#else
-void kvx_eth_mac_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
-{
-	u32 val = MAC_LOOPBACK_LATENCY << MAC_BYPASS_LOOPBACK_LATENCY_SHIFT;
-
-	if (mac_f->loopback_mode == MAC_SERDES_LOOPBACK) {
-		dev_info(hw->dev, "Mac out loopback\n");
-		val |= 0x0F << MAC_BYPASS_MAC_OUT_LOOPBACK_SHIFT;
-	} else if (mac_f->loopback_mode == MAC_ETH_LOOPBACK) {
-		dev_info(hw->dev, "Mac eth loopback\n");
-		val |= MAC_BYPASS_ETH_LOOPBACK_MASK;
-	}
-	kvx_mac_writel(hw, val, MAC_BYPASS_OFFSET);
-}
-#endif
 
 void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
 			    struct kvx_eth_hw_stats *s)

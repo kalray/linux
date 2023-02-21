@@ -33,11 +33,9 @@
 #define MAC_RESET_REG_CLK_SHIFT                    0x14
 #define MAC_RESET_REG_CLK_MASK                     0x100000UL
 #define MAC_1MS_DIV_OFFSET                         0x60E0
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
-#define MAC_LINK_DOWN_IT_EN                        0x60E4
-#define MAC_LINK_DOWN_IT                           0x60E8
-#define MAC_LINK_DOWN_IT_LAC                       0x60EC
-#endif
+#define MAC_LINK_DOWN_IT_EN                        0x60E4 /* cv2 only */
+#define MAC_LINK_DOWN_IT                           0x60E8 /* cv2 only */
+#define MAC_LINK_DOWN_IT_LAC                       0x60EC /* cv2 only */
 #define MAC_BYPASS_OFFSET                          0x6000
 #define MAC_BYPASS_ETH_LOOPBACK_SHIFT              0x0
 #define MAC_BYPASS_ETH_LOOPBACK_MASK               0x1UL
@@ -438,10 +436,7 @@
 #define MAC_CTRL_AN_AN_XNP_2_NEXTPAGE_MASK         0xFFFFUL
 #define MAC_CTRL_AN_LP_AN_XNP_0_OFFSET             0x30
 #define MAC_CTRL_AN_LP_AN_XNP_0_REMNEXTPAGE_SHIFT  0x0
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
 #define MAC_CTRL_AN_LP_AN_XNP_0_REMNEXTPAGE_MASK   0xFFFFUL
-#else
-#define MAC_CTRL_AN_LP_AN_XNP_0_REMNEXTPAGE_MASK   0x7ffUL
 #define MAC_CTRL_AN_LP_AN_XNP_0_ACK2_SHIFT         0xc
 #define MAC_CTRL_AN_LP_AN_XNP_0_ACK2_MASK          0x1000UL
 #define MAC_CTRL_AN_LP_AN_XNP_0_MP_SHIFT           0xd
@@ -450,7 +445,6 @@
 #define MAC_CTRL_AN_LP_AN_XNP_0_ACKNOWLEDGE_MASK   0x4000UL
 #define MAC_CTRL_AN_LP_AN_XNP_0_NEXT_PAGE_SHIFT    0xf
 #define MAC_CTRL_AN_LP_AN_XNP_0_NEXT_PAGE_MASK     0x8000UL
-#endif
 #define MAC_CTRL_AN_LP_AN_XNP_1_OFFSET             0x34
 #define MAC_CTRL_AN_LP_AN_XNP_1_REMNEXTPAGE_SHIFT  0x0
 #define MAC_CTRL_AN_LP_AN_XNP_1_REMNEXTPAGE_MASK   0xFFFFUL
@@ -590,15 +584,13 @@
 /* AN XNP */
 #define AN_XNP_0_OFFSET                            0x24
 #define AN_XNP_0_ACK2_SHIFT                        0xc
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
-#define AN_XNP_0_ACK2_MASK                         0x1000UL
-#define AN_XNP_0_MP_SHIFT                          0xd
-#define AN_XNP_0_MP_MASK                           0x2000UL
-#define AN_XNP_0_ACKNOWLEDGE_SHIFT                 0xe
-#define AN_XNP_0_ACKNOWLEDGE_MASK                  0x4000UL
-#define AN_XNP_0_NEXT_PAGE_SHIFT                   0xf
-#define AN_XNP_0_NEXT_PAGE_MASK                    0x8000UL
-#endif
+#define AN_XNP_0_ACK2_MASK                         0x1000UL /* cv2 only */
+#define AN_XNP_0_MP_SHIFT                          0xd /* cv2 only */
+#define AN_XNP_0_MP_MASK                           0x2000UL /* cv2 only */
+#define AN_XNP_0_ACKNOWLEDGE_SHIFT                 0xe /* cv2 only */
+#define AN_XNP_0_ACKNOWLEDGE_MASK                  0x4000UL /* cv2 only */
+#define AN_XNP_0_NEXT_PAGE_SHIFT                   0xf /* cv2 only */
+#define AN_XNP_0_NEXT_PAGE_MASK                    0x8000UL /* cv2 only */
 
 /* AN_BP */
 #define AN_BP_STATUS_OFFSET                        0x3C

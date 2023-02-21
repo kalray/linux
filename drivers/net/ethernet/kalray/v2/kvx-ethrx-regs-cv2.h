@@ -4,13 +4,11 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2019 Kalray Inc.
+ * Copyright (C) 2023 Kalray Inc.
  */
 
-#ifndef KVX_ETH_RX_REGS_H
-#define KVX_ETH_RX_REGS_H
-
-
+#ifndef KVX_ETH_RX_REGS_CV2_H
+#define KVX_ETH_RX_REGS_CV2_H
 
 /* misc. */
 #define KVX_ETH_RX_VERSION_OFFSET                  0x0
@@ -1086,4 +1084,4 @@
 #define KVX_ETH_LBR_CORRUPTION_TABLES_STATUS_HASH_SHIFT 0x15
 #define KVX_ETH_LBR_CORRUPTION_TABLES_STATUS_HASH_MASK 0xFFE00000UL
 
-#endif /* KVX_ETH_RX_REGS_H */
+#endif /* KVX_ETH_RX_REGS_CV2_H */
