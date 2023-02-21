@@ -31,16 +31,12 @@
 #include <linux/rtnetlink.h>
 #include <linux/hash.h>
 #include <linux/firmware.h>
-#include <linux/remoteproc/kvx_rproc.h>
 
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
-#include "kvx-net-regs.h"
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
+#include "v1/kvx-net-regs.h"
+#include "v2/kvx-ethrx-regs-cv2.h"
 #include "kvx-net-hdr.h"
-#else
-#include "kvx-net-hdr-cv2.h"
-#endif
 #include "kvx-mac-regs.h"
 #include "kvx-qsfp.h"
 
@@ -248,6 +244,8 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_ser
 {
 	int ret = 0;
 	bool link;
+	struct kvx_eth_hw *hw = ndev->hw;
+	enum coolidge_rev chip_rev =  kvx_eth_get_rev_data(hw)->revision;
 
 	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
 		   ndev->cfg.speed, ndev->cfg.autoneg_en);
@@ -265,10 +263,8 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_ser
 		/* FIXME: remove once link training is fixed */
 		kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, false);
 	}
-
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
-	kvx_eth_tx_cfg_speed_settings(ndev->hw, &ndev->cfg);
-#endif /* #ifdef CONFIG_KVX_SUBARCH_KV3_2 */
+	if (chip_rev == COOLIDGE_V2)
+		kvx_eth_tx_cfg_speed_settings(hw, &ndev->cfg);
 	if (!ndev->cfg.autoneg_en) {
 		ret = kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, restart_serdes);
 		if (ret) {
@@ -280,7 +276,7 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_ser
 
 	/* avoid false detection: check mac link other a period of 10ms */
 	read_poll_timeout(kvx_eth_mac_getlink, link, link == true, 1000, 10000, false,
-			  ndev->hw, &ndev->cfg);
+			  hw, &ndev->cfg);
 	if (link) {
 		kvx_eth_update_carrier(ndev, link);
 
@@ -404,9 +400,8 @@ void kvx_eth_up(struct net_device *netdev)
 		napi_enable(&r->napi);
 	}
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	kvx_eth_setup_link(ndev, true);
-#endif
+	if (ndev->qsfp)
+		kvx_eth_setup_link(ndev, true);
 }
 
 /* kvx_eth_netdev_open() - Open ops
@@ -447,6 +442,21 @@ static int kvx_eth_netdev_stop(struct net_device *netdev)
 	return 0;
 }
 
+static void kvx_eth_init_netdev_hdw_cv1(struct kvx_eth_netdev *ndev)
+{
+	kvx_eth_dt_f_init(ndev->hw, &ndev->cfg);
+	kvx_eth_lb_f_init(ndev->hw, &ndev->cfg);
+	kvx_eth_pfc_f_init(ndev->hw, &ndev->cfg);
+	kvx_eth_parser_f_init(ndev->hw, &ndev->cfg);
+	kvx_net_init_dcb(ndev->netdev);
+}
+static void kvx_eth_init_netdev_hdw_cv2(struct kvx_eth_netdev *ndev)
+{
+	kvx_eth_lb_cv2_f_init(ndev->hw, &ndev->cfg);
+	kvx_eth_parser_cv2_f_init(ndev->hw, &ndev->cfg);
+	kvx_eth_tx_f_init(ndev->hw);
+	ndev->hw->rx_dlv_pfc_f.hw = ndev->hw;
+}
 /* kvx_eth_init_netdev() - Init netdev generic settings
  * @ndev: Current kvx_eth_netdev
  *
@@ -454,30 +464,21 @@ static int kvx_eth_netdev_stop(struct net_device *netdev)
  */
 static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 {
+	struct kvx_eth_hw *hw = ndev->hw;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+
 	ndev->hw->max_frame_size = ndev->netdev->mtu +
 		(2 * KVX_ETH_HEADER_SIZE);
 	/* Takes into account alignement offsets (footers) */
-	ndev->rx_buffer_len = ALIGN(ndev->hw->max_frame_size,
+	ndev->rx_buffer_len = ALIGN(hw->max_frame_size,
 				    KVX_ETH_PKT_ALIGN);
 
 	ndev->cfg.autoneg_en = true;
 	ndev->cfg.speed = SPEED_UNKNOWN;
 	ndev->cfg.duplex = DUPLEX_FULL;
 	ndev->cfg.fec = 0;
-	kvx_eth_mac_f_init(ndev->hw, &ndev->cfg);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
-	kvx_eth_dt_f_init(ndev->hw, &ndev->cfg);
-	kvx_eth_lb_f_init(ndev->hw, &ndev->cfg);
-	kvx_eth_pfc_f_init(ndev->hw, &ndev->cfg);
-	kvx_eth_parser_f_init(ndev->hw, &ndev->cfg);
-	kvx_net_init_dcb(ndev->netdev);
-#else
-	kvx_eth_lb_f_init(ndev->hw, &ndev->cfg);
-	kvx_eth_parser_f_init(ndev->hw, &ndev->cfg);
-	kvx_eth_tx_f_init(ndev->hw);
-	ndev->hw->rx_dlv_pfc_f.hw = ndev->hw;
-#endif
-
+	kvx_eth_mac_f_init(hw, &ndev->cfg);
+	rev_d->eth_init_netdev_hdw(ndev);
 	return 0;
 }
 
@@ -682,7 +683,7 @@ static u16 kvx_eth_pseudo_hdr_cks(struct sk_buff *skb)
  * @ndev: Current kvx_eth_netdev
  * @tx: Corresponding tx descriptor
  */
-static void kvx_eth_fill_tx_hdr(struct kvx_eth_netdev *ndev,
+static void kvx_eth_fill_tx_hdr_cv1(struct kvx_eth_netdev *ndev,
 			       struct kvx_eth_netdev_tx *tx)
 {
 	struct sk_buff *skb = tx->skb;
@@ -698,17 +699,13 @@ static void kvx_eth_fill_tx_hdr(struct kvx_eth_netdev *ndev,
 
 	h->dword[0] = 0;
 	h->dword[1] = 0;
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	if (unlikely(!ndev->hw->tx_f[cfg->tx_fifo_id].header_en))
 		goto bail;
-#endif
 
 	/* Packet size without tx metadata */
 	h->pkt_size = tx->len;
 	h->lane = cfg->id;
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	h->nocx_en = ndev->hw->tx_f[cfg->tx_fifo_id].nocx_en;
-#endif
 
 	if (skb->ip_summed != CHECKSUM_PARTIAL)
 		goto bail;
@@ -718,11 +715,64 @@ static void kvx_eth_fill_tx_hdr(struct kvx_eth_netdev *ndev,
 	else if (eth_h->h_proto == ETH_P_IPV6)
 		ip_mode = IP_V6_MODE;
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	if (iph && ndev->hw->tx_f[cfg->tx_fifo_id].crc_en) {
-#else
+		if (iph->protocol == IPPROTO_TCP)
+			crc_mode = TCP_MODE;
+		else if ((iph->protocol == IPPROTO_UDP) ||
+			 (iph->protocol == IPPROTO_UDPLITE))
+			crc_mode = UDP_MODE;
+	}
+
+	if (ip_mode && crc_mode) {
+		h->ip_mode  = ip_mode;
+		h->crc_mode = crc_mode;
+		h->index    = (u16)skb->transport_header;
+		h->udp_tcp_cksum = kvx_eth_pseudo_hdr_cks(skb);
+	} else {
+		skb_checksum_help(skb);
+	}
+
+bail:
+	/* Expect tx hdr has been written */
+	wmb();
+}
+
+/* kvx_eth_fill_tx_hdr_cv2() - need to be revisited
+ * @ndev: Current kvx_eth_netdev
+ * @tx: Corresponding tx descriptor
+ * * Todo : to be revisited
+ */
+static void kvx_eth_fill_tx_hdr_cv2(struct kvx_eth_netdev *ndev,
+			       struct kvx_eth_netdev_tx *tx)
+{
+	struct sk_buff *skb = tx->skb;
+	int qidx = skb_get_queue_mapping(skb);
+	struct kvx_eth_ring *txr = &ndev->tx_ring[qidx];
+	struct ethhdr *eth_h = eth_hdr(skb);
+	struct iphdr *iph = ip_hdr(skb);
+	enum tx_ip_mode ip_mode = NO_IP_MODE;
+	enum tx_crc_mode crc_mode = NO_CRC_MODE;
+	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	/* declared as volatile to insure write access order */
+	volatile union eth_tx_metadata *h =
+		kvx_dma_get_eth_tx_hdr(txr->dma_chan, tx->job_idx);
+
+	h->dword[0] = 0;
+	h->dword[1] = 0;
+
+	/* Packet size without tx metadata */
+	h->pkt_size = tx->len;
+	h->lane = cfg->id;
+
+	if (skb->ip_summed != CHECKSUM_PARTIAL)
+		goto bail;
+
+	if (eth_h->h_proto == ETH_P_IP)
+		ip_mode = IP_V4_MODE;
+	else if (eth_h->h_proto == ETH_P_IPV6)
+		ip_mode = IP_V6_MODE;
+
 	if (iph) {
-#endif
 		if (iph->protocol == IPPROTO_TCP)
 			crc_mode = TCP_MODE;
 		else if ((iph->protocol == IPPROTO_UDP) ||
@@ -761,6 +811,8 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 	struct kvx_eth_netdev_tx *tx = &txr->tx_buf[tx_w];
 	int unused_tx;
 	int ret = 0;
+	struct kvx_eth_hw *hw = ndev->hw;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 
 	if (skb_padto(skb, ETH_ZLEN))
 		return NETDEV_TX_OK;
@@ -791,7 +843,7 @@ static netdev_tx_t kvx_eth_netdev_start_xmit(struct sk_buff *skb,
 		goto busy;
 	}
 
-	kvx_eth_fill_tx_hdr(ndev, tx);
+	rev_d->eth_fill_tx_hdr(ndev, tx);
 
 	netdev_dbg(netdev, "Sending skb[%d]: 0x%llx len: %d/%d qidx: %d job_idx: %lld\n",
 		    tx_w, (u64)tx->skb, (int)tx->len, skb->len,
@@ -1066,6 +1118,8 @@ static int kvx_eth_change_mtu(struct net_device *netdev, int new_mtu)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	int max_frame_len = new_mtu + (2 * KVX_ETH_HEADER_SIZE);
+	struct kvx_eth_hw *hw = ndev->hw;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 
 	ndev->rx_buffer_len = ALIGN(max_frame_len, KVX_ETH_PKT_ALIGN);
 	ndev->hw->max_frame_size = max_frame_len;
@@ -1073,7 +1127,7 @@ static int kvx_eth_change_mtu(struct net_device *netdev, int new_mtu)
 
 	if (netif_running(netdev))
 		kvx_eth_down(netdev);
-	kvx_eth_hw_change_mtu(ndev->hw, ndev->cfg.id, max_frame_len);
+	rev_d->eth_hw_change_mtu(ndev->hw, ndev->cfg.id, max_frame_len);
 	if (netif_running(netdev))
 		kvx_eth_up(netdev);
 
@@ -1242,6 +1296,9 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 	struct kvx_eth_dt_f dt;
 	int rx_chan, ret = 0;
+	struct kvx_eth_hw *hw =  ndev->hw;
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
+	const struct kvx_eth_chip_rev_data *rev_d = dev->chip_rev_data;
 
 	r->count = kvx_dma_get_max_nb_desc(dma_cfg->pdev);
 	kvx_eth_reset_ring(r);
@@ -1276,11 +1333,10 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 		dt.cluster_id = kvx_cluster_id();
 		dt.rx_channel = rx_chan;
 		dt.split_trigger = 0;
-		dt.vchan = ndev->hw->vchan;
-#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
-		kvx_eth_add_dispatch_table_entry(ndev->hw, &ndev->cfg, &dt,
-			 ndev->cfg.default_dispatch_entry + dt.rx_channel);
-#endif
+		dt.vchan = hw->vchan;
+		rev_d->eth_add_dispatch_table_entry(hw, &ndev->cfg, &dt,
+			ndev->cfg.default_dispatch_entry + dt.rx_channel);
+
 		r->init_done = true;
 	}
 	return 0;
@@ -1396,16 +1452,17 @@ chan_failed:
 void kvx_eth_release_tx_ring(struct kvx_eth_ring *r, int keep_dma_chan)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(r->netdev);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	struct kvx_eth_tx_f *tx_f;
-#endif
 
 	if (!keep_dma_chan)
 		kvx_dma_release_chan(ndev->dma_cfg.pdev, r->dma_chan, &r->param);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	tx_f = &ndev->hw->tx_f[ndev->dma_cfg.tx_chan_id.start + r->qidx];
-	list_del_init(&tx_f->node);
-#endif
+
+    /* currently unused on cv2 */
+	if (!list_empty(&ndev->cfg.tx_fifo_list)) {
+		tx_f = &ndev->hw->tx_f[ndev->dma_cfg.tx_chan_id.start + r->qidx];
+		list_del_init(&tx_f->node);
+	}
+
 	kfree(r->tx_buf);
 	r->tx_buf = NULL;
 	r->init_done = false;
@@ -1419,17 +1476,21 @@ void kvx_eth_release_tx_ring(struct kvx_eth_ring *r, int keep_dma_chan)
 static int kvx_eth_alloc_tx_res(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	struct kvx_eth_tx_f *tx_f;
-#endif
 	struct kvx_eth_ring *r;
 	int i, qidx, ret = 0;
+	struct kvx_eth_hw *hw = ndev->hw;
+	enum coolidge_rev chip_rev =  kvx_eth_get_rev_data(hw)->revision;
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	tx_f = &ndev->hw->tx_f[ndev->cfg.tx_fifo_id];
-	tx_f->lane_id = ndev->cfg.id;
-	list_add_tail(&tx_f->node, &ndev->cfg.tx_fifo_list);
-#endif
+	if (chip_rev == COOLIDGE_V1)
+		tx_f = &hw->tx_f[ndev->cfg.tx_fifo_id];
+	else
+		tx_f = NULL;
+
+	if (tx_f) {
+		tx_f->lane_id = ndev->cfg.id;
+		list_add_tail(&tx_f->node, &ndev->cfg.tx_fifo_list);
+	}
 	for (qidx = 0; qidx < ndev->dma_cfg.tx_chan_id.nb; qidx++) {
 		r = &ndev->tx_ring[qidx];
 		r->qidx = qidx;
@@ -1442,9 +1503,8 @@ static int kvx_eth_alloc_tx_res(struct net_device *netdev)
 	return 0;
 
 alloc_failed:
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	list_del_init(&tx_f->node);
-#endif
+	if (tx_f)
+		list_del_init(&tx_f->node);
 	for (i = qidx - 1; i >= 0; i--)
 		kvx_eth_release_tx_ring(&ndev->tx_ring[i], 0);
 
@@ -2084,73 +2144,28 @@ static int kvx_eth_free_netdev(struct kvx_eth_netdev *ndev)
 
 	return 0;
 }
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
-/**
- * kvx_netdev_ethtx_credit_set_en() - Set EthTx credit bus enable
- * state for a given cluster.
- * warning: will impact all eth hw block (not only current netdev)
- *
- * @netdev: Current netdev
- * @cluster_id: corresponding cluster
- * @enable: enable/disable request
- *
- * Return: 0 on success, < 0 on failure
- */
-static int kvx_netdev_ethtx_credit_set_en(struct net_device *netdev, int cluster_id, bool enable)
-{
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	return kvx_eth_hw_ethtx_credit_set_en(ndev->hw, cluster_id, enable);
-}
-#endif
-/**
- * kvx_netdev_ethtx_credit_en_register() - register
- * state for a given cluster.
- *
- * @pdev: netdev platform_device
- *
- * Return: 0 on success, < 0 on failure
- */
-static int kvx_netdev_ethtx_credit_en_register(struct platform_device *pdev)
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
+static void kvx_netdev_probe_hw_cv1(struct kvx_eth_hw *hw, struct kvx_eth_netdev *ndev)
 {
-	struct kvx_eth_netdev *ndev = platform_get_drvdata(pdev);
-	struct platform_device **rproc_pdev = ndev->rproc_pd;
-	unsigned int i, rproc_nb;
-	int ret;
-	struct device_node *rproc_dn;
+	int i;
 
-	rproc_nb = min(of_property_count_u32_elems(pdev->dev.of_node, "rproc"), ARRAY_SIZE(ndev->rproc_pd));
-	for (i = 0 ; i < rproc_nb ; i++) {
-		rproc_dn = of_parse_phandle(pdev->dev.of_node, "rproc", i);
-		if (!rproc_dn) {
-			dev_err(&pdev->dev, "Unable to find rproc in DT\n");
-			goto error;
-		}
-		rproc_pdev[i] = of_find_device_by_node(rproc_dn);
-		if (!(rproc_pdev[i])) {
-			dev_err(&pdev->dev, "Unable to find rproc plateform device\n");
-			goto error;
-		}
-		ret = kvx_rproc_reg_ethtx_crd_set(rproc_pdev[i], &kvx_netdev_ethtx_credit_set_en, ndev->netdev);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "Unable to register tx credit\n");
-			goto error;
-		}
-		of_node_put(rproc_dn);
-	}
-	return 0;
+	for (i = 0; i < KVX_ETH_LANE_NB; i++)
+		kvx_eth_lb_cv1_set_default(hw, i);
+	kvx_eth_pfc_f_set_default(hw, &ndev->cfg);
 
-error:
-	if (rproc_dn)
-		of_node_put(rproc_dn);
-	return -EINVAL;
+	kvx_eth_fill_dispatch_table(hw, &ndev->cfg,
+		    ndev->dma_cfg.rx_chan_id.start);
+	kvx_eth_tx_fifo_cfg(hw, &ndev->cfg);
+
+	for (i = 0; i < KVX_ETH_LANE_NB; i++)
+		kvx_eth_lb_f_cfg(hw, &ndev->hw->lb_f[i]);
 }
-#else
+
+static void kvx_netdev_probe_hw_cv2(struct kvx_eth_hw *hw, struct kvx_eth_netdev *ndev)
 {
-	return 0;
+	kvx_eth_lb_cv2_set_default(hw, ndev->dma_cfg.rx_chan_id.start);
 }
-#endif
+
 /* kvx_netdev_probe() - Probe netdev
  * @pdev: Platform device
  *
@@ -2163,7 +2178,8 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	struct kvx_eth_dev *dev = platform_get_drvdata(ppdev);
 	struct kvx_eth_netdev *ndev = NULL;
 	struct platform_device *dma_pdev;
-	int i, ret = 0;
+	const struct kvx_eth_chip_rev_data *rev_d = dev->chip_rev_data;
+	int ret = 0;
 
 	/* Check dma noc probed and available */
 	dma_pdev = kvx_eth_check_dma(pdev, &np_dma);
@@ -2183,7 +2199,8 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
-	ret = kvx_netdev_ethtx_credit_en_register(pdev);
+	ret = rev_d->ethtx_credit_en_register(pdev);
+	
 	if (ret)
 		goto err;
 
@@ -2192,22 +2209,9 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	 * Rx LB ctrl registers for lanes 0/2 must be set the same way
 	 * Program all lane LB accordingly
 	 */
-#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
-	for (i = 0; i < KVX_ETH_LANE_NB; i++)
-		kvx_eth_lb_set_default(&dev->hw, i);
-	kvx_eth_pfc_f_set_default(&dev->hw, &ndev->cfg);
+	rev_d->netdev_probe_hw(&dev->hw, ndev);
 
-	kvx_eth_fill_dispatch_table(&dev->hw, &ndev->cfg,
-				    ndev->dma_cfg.rx_chan_id.start);
-	kvx_eth_tx_fifo_cfg(&dev->hw, &ndev->cfg);
-
-	for (i = 0; i < KVX_ETH_LANE_NB; i++)
-		kvx_eth_lb_f_cfg(&dev->hw, &ndev->hw->lb_f[i]);
-#else
-	kvx_eth_lbana_set_default(&dev->hw, ndev->dma_cfg.rx_chan_id.start);
-#endif
-
-	ret = kvx_eth_netdev_sysfs_init(ndev);
+	ret = rev_d->eth_netdev_sysfs_init(ndev);
 	if (ret)
 		netdev_warn(ndev->netdev, "Failed to initialize sysfs\n");
 	dev_info(&pdev->dev, "KVX netdev[%d] probed\n", ndev->cfg.id);
@@ -2228,17 +2232,14 @@ err:
 static int kvx_netdev_remove(struct platform_device *pdev)
 {
 	struct kvx_eth_netdev *ndev = platform_get_drvdata(pdev);
-	int rtm, i;
-	struct platform_device **rproc_pdev = ndev->rproc_pd;
+	struct device_node *np_dev = of_get_parent(pdev->dev.of_node);
+	struct platform_device *ppdev = of_find_device_by_node(np_dev);
+	struct kvx_eth_dev *dev = platform_get_drvdata(ppdev);
+	const struct kvx_eth_chip_rev_data *rev_d = dev->chip_rev_data;
+	int rtm;
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
-	for (i = 0; i < ARRAY_SIZE(ndev->rproc_pd); i++) {
-		if (rproc_pdev[i])
-			kvx_rproc_unreg_ethtx_crd_set(rproc_pdev[i], ndev->netdev);
-	}
-#endif
-
-	kvx_eth_netdev_sysfs_uninit(ndev);
+	rev_d->ethtx_credit_en_unregister(pdev);
+	rev_d->eth_netdev_sysfs_uninit(ndev);
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
 		if (ndev->hw->rtm_params[rtm].rtm)
 			put_device(&ndev->hw->rtm_params[rtm].rtm->dev);
@@ -2251,7 +2252,8 @@ static int kvx_netdev_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id kvx_netdev_match[] = {
-	{ .compatible = "kalray,kvx-net" },
+	{ .compatible = "kalray,coolidge-net" },
+	{ .compatible = "kalray,coolidge-v2-net" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, kvx_netdev_match);
@@ -2289,16 +2291,21 @@ static int kvx_eth_phy_fw_update(struct platform_device *pdev)
 	return ret;
 }
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-static const char *kvx_eth_res_names[KVX_ETH_NUM_RES] = {
-	"phy", "phymac", "mac", "eth" };
-#else
-static const char *kvx_eth_res_names[KVX_ETH_NUM_RES] = {
-	"phy", "phyctl", "mac", "ethrx", "ethrx_lb_analyzer", "ethrx_lb_deliver", "ethrx_lb_rfs", "ethtx" };
-#endif
+static const char *kvx_eth_res_names_cv1[KVX_ETH_NUM_RES_CV1] = {
+	"phy", "phymac", "mac", "eth"};
 
-static struct kvx_eth_type kvx_haps_data = {
-	.phy_init = kvx_eth_haps_phy_init,
+static const char *kvx_eth_res_names_cv2[KVX_ETH_NUM_RES_CV2] = {
+	"phy", "phyctl", "mac", "ethrx", "ethrx_lb_analyzer", "ethrx_lb_deliver", "ethrx_lb_rfs", "ethtx"};
+
+static const struct kvx_eth_type kvx_haps_data_cv1 = {
+	.phy_init = kvx_eth_haps_phy_init_cv1,
+};
+static const struct kvx_eth_type kvx_haps_data_cv2 = {
+	.phy_init = kvx_eth_haps_phy_mac_init_cv2,
+};
+static const struct kvx_eth_type *kvx_haps_data[2] = {
+	&kvx_haps_data_cv1,
+	&kvx_haps_data_cv2
 };
 
 static struct kvx_eth_type kvx_eth_data = {
@@ -2309,8 +2316,13 @@ static struct kvx_eth_type kvx_eth_data = {
 	.phy_rx_adaptation = kvx_eth_phy_rx_adaptation,
 };
 
+const struct kvx_eth_chip_rev_data *kvx_eth_get_rev_data(struct kvx_eth_hw *hw)
+{
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
+	return dev->chip_rev_data;
+}
+
 static irqreturn_t rx_error_irq_handler(int irq, void *data)
 {
 	struct kvx_eth_dev *dev = data;
@@ -2324,7 +2336,6 @@ static irqreturn_t rx_error_irq_handler(int irq, void *data)
 	}
 	return IRQ_HANDLED;
 }
-#endif
 
 /* kvx_eth_probe() - Probe generic device
  * @pdev: Platform device
@@ -2337,6 +2348,8 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	struct resource *res = NULL;
 	struct kvx_eth_res *hw_res;
 	int i, ret, irq = 0;
+	const char *res_name;
+	const struct kvx_eth_chip_rev_data *rev_d;
 
 	dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
 	if (!dev)
@@ -2344,22 +2357,25 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, dev);
 	dev->pdev = pdev;
 	dev->type = &kvx_eth_data;
+	dev->chip_rev_data = of_device_get_match_data(&pdev->dev);
+	rev_d = dev->chip_rev_data;
 	INIT_LIST_HEAD(&dev->list);
 	mutex_init(&dev->hw.mac_reset_lock);
 
 	if (of_machine_is_compatible("kalray,haps"))
-		dev->type = &kvx_haps_data;
+		dev->type = kvx_haps_data[rev_d->revision];
 
-	for (i = 0; i < KVX_ETH_NUM_RES; ++i) {
+	for (i = 0; i < rev_d->num_res; ++i) {
+		res_name = rev_d->kvx_eth_res_names[i];
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-						   kvx_eth_res_names[i]);
+						   res_name);
 		if (!res) {
 			dev_err(&pdev->dev, "Failed to get resources\n");
 			ret = -ENODEV;
 			goto err;
 		}
 		hw_res = &dev->hw.res[i];
-		hw_res->name = kvx_eth_res_names[i];
+		hw_res->name = res_name;
 		hw_res->base = devm_ioremap_resource(&pdev->dev, res);
 		if (!hw_res->base) {
 			dev_err(&pdev->dev, "Failed to map %s reg\n",
@@ -2392,31 +2408,27 @@ static int kvx_eth_probe(struct platform_device *pdev)
 		if (ret)
 			kvx_phy_reset(&dev->hw);
 	}
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	kvx_eth_init_dispatch_table(&dev->hw);
-#endif
-	kvx_eth_tx_init(&dev->hw);
+	rev_d->eth_init_dispatch_table(&dev->hw);
+	rev_d->eth_tx_init(&dev->hw);
 	kvx_eth_parsers_init(&dev->hw);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_eth_phy_f_init(&dev->hw);
-#endif
-	kvx_eth_hw_sysfs_init(&dev->hw);
+	rev_d->eth_hw_sysfs_init(&dev->hw);
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
-	irq = platform_get_irq_byname(pdev, "rx_error");
-	if (irq < 0) {
-		dev_err(&pdev->dev, "Rx error Irq not found (ret: %d)\n",
-			irq);
-		goto err;
+	if (dev->chip_rev_data->irq) {
+		irq = platform_get_irq_byname(pdev, "rx_error");
+		if (irq < 0) {
+			dev_err(&pdev->dev, "Rx error Irq not found (ret: %d)\n",
+				irq);
+			goto err;
+		}
+		ret = devm_request_irq(&pdev->dev, irq,	rx_error_irq_handler,
+			IRQF_TRIGGER_HIGH, dev_name(&pdev->dev), dev);
+		if (ret) {
+			dev_err(&pdev->dev, "Rx error Irq request failed (ret: %d)\n",
+				ret);
+			goto err;
+		}
 	}
-	ret = devm_request_irq(&pdev->dev, irq,	rx_error_irq_handler,
-		IRQF_TRIGGER_HIGH, dev_name(&pdev->dev), dev);
-	if (ret) {
-		dev_err(&pdev->dev, "Rx error Irq request failed (ret: %d)\n",
-			ret);
-		goto err;
-	}
-#endif
 
 	dev_info(&pdev->dev, "KVX network driver\n");
 	return devm_of_platform_populate(&pdev->dev);
@@ -2443,8 +2455,60 @@ static int kvx_eth_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct kvx_eth_chip_rev_data  eth_chip_rev_data_cv1 = {
+	.revision = COOLIDGE_V1,
+	.irq = false,
+	.limited_parser_cap = true,
+	.kvx_eth_res_names = kvx_eth_res_names_cv1,
+	.num_res = KVX_ETH_NUM_RES_CV1,
+	.fill_ipv4_filter = fill_ipv4_filter_cv1,
+	.mac_pfc_cfg = kvx_mac_pfc_cfg_cv1,
+	.write_parser_ram_word = write_parser_ram_word_cv1,
+	.parser_disable = parser_disable_cv1,
+	.eth_init_netdev_hdw = kvx_eth_init_netdev_hdw_cv1,
+	.eth_fill_tx_hdr = kvx_eth_fill_tx_hdr_cv1,
+	.eth_hw_change_mtu = kvx_eth_hw_change_mtu_cv1,
+	.netdev_probe_hw = kvx_netdev_probe_hw_cv1,
+	.eth_netdev_sysfs_init = kvx_eth_netdev_sysfs_init_cv1,
+	.eth_netdev_sysfs_uninit = kvx_eth_netdev_sysfs_uninit_cv1,
+	.eth_tx_init = kvx_eth_tx_init_cv1,
+	.eth_hw_sysfs_init = kvx_eth_hw_sysfs_init_cv1,
+	.parser_commit_filter = parser_commit_filter_cv1,
+	.eth_add_dispatch_table_entry = kvx_eth_add_dispatch_table_entry_cv1,
+	.eth_init_dispatch_table = kvx_eth_init_dispatch_table_cv1,
+	.eth_mac_f_cfg = kvx_eth_mac_f_cfg_cv1,
+	.ethtx_credit_en_register = kvx_ethtx_credit_en_register_cv1,
+	.ethtx_credit_en_unregister = kvx_ethtx_credit_en_unregister_cv1,
+};
+
+static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
+	.revision = COOLIDGE_V2,
+	.irq = true,
+	.limited_parser_cap = false,
+	.kvx_eth_res_names = kvx_eth_res_names_cv2,
+	.num_res = KVX_ETH_NUM_RES_CV2,
+	.fill_ipv4_filter = fill_ipv4_filter_cv2,
+	.mac_pfc_cfg = kvx_mac_pfc_cfg_cv2,
+	.write_parser_ram_word = write_parser_ram_word_cv2,
+	.parser_disable = parser_disable_cv2,
+	.eth_init_netdev_hdw = kvx_eth_init_netdev_hdw_cv2,
+	.eth_fill_tx_hdr = kvx_eth_fill_tx_hdr_cv2,
+	.eth_hw_change_mtu = kvx_eth_hw_change_mtu_cv2,
+	.netdev_probe_hw = kvx_netdev_probe_hw_cv2,
+	.eth_netdev_sysfs_init = kvx_eth_netdev_sysfs_init_cv2,
+	.eth_netdev_sysfs_uninit = kvx_eth_netdev_sysfs_uninit_cv2,
+	.eth_tx_init = kvx_eth_tx_init_cv2,
+	.eth_hw_sysfs_init = kvx_eth_hw_sysfs_init_cv2,
+	.parser_commit_filter = parser_commit_filter_cv2,
+	.eth_add_dispatch_table_entry = kvx_eth_add_dispatch_table_entry_cv2,
+	.eth_init_dispatch_table = kvx_eth_init_dispatch_table_cv2,
+	.eth_mac_f_cfg = kvx_eth_mac_f_cfg_cv2,
+	.ethtx_credit_en_register = kvx_ethtx_credit_en_register_cv2,
+	.ethtx_credit_en_unregister = kvx_ethtx_credit_en_unregister_cv2,	
+};
 static const struct of_device_id kvx_eth_match[] = {
-	{ .compatible = "kalray,kvx-eth" },
+	{ .compatible = "kalray,coolidge-eth", .data = &eth_chip_rev_data_cv1 },
+	{ .compatible = "kalray,coolidge-v2-eth", .data = &eth_chip_rev_data_cv2 },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, kvx_eth_match);

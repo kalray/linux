@@ -145,9 +145,8 @@ static int kvx_net_dcbnl_set_pfc(struct net_device *netdev,
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
 	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	struct kvx_eth_tx_f *tx_f;
-#endif
+
 	u32 pfc_cl_ena = 0, modified = false;
 	unsigned int i, val;
 
@@ -180,13 +179,11 @@ static int kvx_net_dcbnl_set_pfc(struct net_device *netdev,
 		}
 		kvx_eth_pfc_f_cfg(ndev->hw, &lb_f->pfc_f);
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 		list_for_each_entry(tx_f, &cfg->tx_fifo_list, node) {
 			tx_f->pfc_en = !!pfc_cl_ena;
 			tx_f->pause_en = lb_f->pfc_f.global_pause_en;
 			kvx_eth_tx_f_cfg(ndev->hw, tx_f);
 		}
-#endif
 	}
 
 	return 0;

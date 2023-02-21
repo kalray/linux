@@ -13,14 +13,6 @@
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
 
-#define HASH_SEED               (0xFFFU)
-#define PARSER_DEFAULT_PRIORITY (0)  /* 0: lowest, 7: max */
-#define PARSER_RR_PKT_NB        (10)
-
-/* READ_DELAY < ~10us */
-#define READ_DELAY         (10)
-#define READ_TIMEOUT       (5000)
-
 static void update_parser_desc(struct kvx_eth_hw *hw,
 		unsigned int parser)
 {
@@ -44,7 +36,7 @@ static void update_parser_desc(struct kvx_eth_hw *hw,
  * @hw: this ethernet hw device
  * @parser_id: the parser physical id
  */
-static void clear_parser_f(struct kvx_eth_hw *hw, int parser_id)
+void clear_parser_f(struct kvx_eth_hw *hw, int parser_id)
 {
 	struct kvx_eth_parser_f *parser_f = &hw->parser_f[parser_id];
 	int i;
@@ -74,6 +66,7 @@ static int update_parser_f(struct kvx_eth_hw *hw,
 	int rule, rules_len;
 	int add_metadata_index, check_header_checksum;
 	struct kvx_eth_rule_f *rule_f;
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 
 	rules = hw->parsing.parsers[filter_id].filters;
 	rules_len =  hw->parsing.parsers[filter_id].nb_layers;
@@ -92,8 +85,13 @@ static int update_parser_f(struct kvx_eth_hw *hw,
 			check_header_checksum = 0;
 			break;
 		case PTYPE_IP_V4:
-			add_metadata_index = desc->ipv4.add_metadata_index;
-			check_header_checksum = desc->ipv4.check_header_checksum;
+			if (dev->chip_rev_data->revision == COOLIDGE_V1) {
+				add_metadata_index = desc->cv1_ipv4.add_metadata_index;
+				check_header_checksum = desc->cv1_ipv4.check_header_checksum;
+			} else {
+				add_metadata_index = desc->cv2_ipv4.add_metadata_index;
+				check_header_checksum = desc->cv2_ipv4.check_header_checksum;
+			}
 			break;
 		case PTYPE_IP_V6:
 			add_metadata_index = desc->ipv6.d0.add_metadata_index;
@@ -138,10 +136,11 @@ static int update_parser_f(struct kvx_eth_hw *hw,
 	return 0;
 }
 
-
-static int parser_check(unsigned int parser_id, unsigned int word_index)
+int parser_check(unsigned int parser_id, unsigned int word_index, enum coolidge_rev chip_rev)
 {
-	if (parser_id > KVX_ETH_PHYS_PARSER_NB)
+	int parser_nb = (chip_rev == COOLIDGE_V1) ? KVX_ETH_PHYS_PARSER_NB_CV1 : KVX_ETH_PHYS_PARSER_NB_CV2;
+
+	if (parser_id > parser_nb)
 		return -EINVAL;
 
 	if ((word_index & 0xf) >= PARSER_RAM_WORD_NB - 1) {
@@ -152,105 +151,8 @@ static int parser_check(unsigned int parser_id, unsigned int word_index)
 	return 0;
 }
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-#define RAM(p)      (PARSER_RAM_OFFSET + PARSER_RAM_ELEM_SIZE * (p))
-#define RAM_LINE(l) (PARSER_RAM_LINE + (l) * PARSER_RAM_LINE_ELEM_SIZE)
-#else
-#define RAM(p)      (KVX_ETH_LBA_PARSER_RAM_GRP_OFFSET + KVX_ETH_LBA_PARSER_RAM_GRP_ELEM_SIZE * (p))
-#define RAM_LINE(l) (KVX_ETH_LBA_PARSER_RAM_LB_PARSER_RAM_LINE_GRP_OFFSET + (l) * KVX_ETH_LBA_PARSER_RAM_LB_PARSER_RAM_LINE_GRP_ELEM_SIZE)
-#endif
-
-
-/**
- * parser_commit_filter() - Enables filtering for parser_id
- *  Checks parser alignement and RAM address.
- *  Writes End of rule filter into a parser RAM.
- *  Enables filter on success.
- *
- * Return: next RAM write index on success, negative on failure
- */
-static int parser_commit_filter(struct kvx_eth_hw *hw,
-				struct kvx_eth_lane_cfg *cfg,
-				unsigned int parser_id, unsigned int word_index,
-				enum parser_dispatch_policy policy, int prio)
-{
-	int i = word_index;
-	u32 off = RAM(parser_id) + RAM_LINE(0);
-	u32 val = 0;
-	int ret = 0;
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
-	struct kvx_eth_parser_f *parser = &hw->parser_f[parser_id];
-#endif
-
-	ret = parser_check(parser_id, word_index);
-	if (ret < 0) {
-		dev_err(hw->dev, "Lane[%d] parser check failed\n", cfg->id);
-		return ret;
-	}
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	kvx_eth_writel(hw, PTYPE_END_OF_RULE, off + i * PARSER_RAM_WORD_SIZE);
-#else
-	kvx_lbana_writel(hw, PTYPE_END_OF_RULE, off + i * PARSER_RAM_WORD_SIZE);
-#endif
-	i++;
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * parser_id;
-	val = ((u32)policy << PARSER_CTRL_DISPATCH_POLICY_SHIFT) |
-		((u32)cfg->id << PARSER_CTRL_LANE_SRC_SHIFT) |
-		((u32)prio << PARSER_CTRL_PRIO_SHIFT) |
-		((u32)PARSER_RR_PKT_NB << PARSER_CTRL_RR_PKT_NB_SHIFT) |
-		((u32)HASH_SEED << PARSER_CTRL_HASH_SEED_SHIFT);
-	kvx_eth_writel(hw, val, off + PARSER_CTRL_CTL);
-#else
-	off = KVX_ETH_LBA_PARSER_GRP_OFFSET + KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE * parser_id;
-	if (policy == PARSER_DROP) {
-		parser->disp_info = DISPATCH_INFO_DROP;
-		val = ((u32) parser->disp_info) << KVX_ETH_LBA_PARSER_DISPATCH_INFO_DROP_SHIFT;
-		kvx_lbana_writel(hw, val, off + KVX_ETH_LBA_PARSER_DISPATCH_INFO_OFFSET);
-		parser->disp_policy = (u32) POLICY_PARSER;
-	} else {
-		parser->disp_policy = (u32) POLICY_USE_RSS;
-	}
-	kvx_lbana_writel(hw, parser->disp_policy, off + KVX_ETH_LBA_PARSER_DISPATCH_POLICY_OFFSET);
-	parser->ctrl = (KVX_ETH_RX_LBA_PARSER_CTRL_ENABLE |
-			(1 << (KVX_ETH_LBA_PARSER_CTRL_LANE_SRC_SHIFT + (u32)cfg->id)) |
-			((u32)prio << KVX_ETH_LBA_PARSER_CTRL_PRIORITY_SHIFT));
-	kvx_lbana_writel(hw, parser->ctrl, off + KVX_ETH_LBA_PARSER_CTRL_OFFSET);
-#endif
-
-	return i;
-}
-
-/**
- * parser_add_skip_filter() - add skip rule
- * Always starts at the beginning of RAM line
- *
- * Return: next RAM write index on success, negative on failure
- */
-int parser_add_skip_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
-			   unsigned int idx, union skip_filter_desc *desc)
-{
-	int j, i = idx;
-	u32 off = RAM(parser_id) + RAM_LINE(0);
-
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	kvx_eth_writel(hw, *(u32 *)&desc->word[0],
-		       off + PARSER_RAM_WORD_SIZE * i);
-#else
-	kvx_lbana_writel(hw, *(u32 *)&desc->word[0],
-		       off + PARSER_RAM_WORD_SIZE * i);
-#endif
-	++i;
-	for (j = 0; j < PARSER_RAM_WORD_NB - 1; ++j)
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-		kvx_eth_writel(hw, 0, off + PARSER_RAM_WORD_SIZE * (i + j));
-#else
-		kvx_lbana_writel(hw, 0, off + PARSER_RAM_WORD_SIZE * (i + j));
-#endif
-	/* Considers desc->skip_length == 3 to start next rule on next line) */
-	i += PARSER_RAM_WORD_NB - 1;
-	return i;
-}
+#define RAM_CV2(p)      (KVX_ETH_LBA_PARSER_RAM_GRP_OFFSET + KVX_ETH_LBA_PARSER_RAM_GRP_ELEM_SIZE * (p))
+#define RAM_LINE_CV2(l) (KVX_ETH_LBA_PARSER_RAM_LB_PARSER_RAM_LINE_GRP_OFFSET + (l) * KVX_ETH_LBA_PARSER_RAM_LB_PARSER_RAM_LINE_GRP_ELEM_SIZE)
 
 /**
  * write_ramline - writes array of u32 to RAM
@@ -263,25 +165,17 @@ static int write_ramline(struct kvx_eth_hw *hw, unsigned int parser_id,
 {
 	int j, i = idx;
 	int size;
-	u32 off = RAM(parser_id) + RAM_LINE(0);
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 
 	size = s / PARSER_RAM_WORD_SIZE;
 	dev_dbg(hw->dev, "idx: %d array size: %d s: %d\n", idx, size, (int)s);
 	for (j = 0; j < size; ++j) {
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-		kvx_eth_writel(hw, data[j], off + PARSER_RAM_WORD_SIZE * i);
-#else
-		kvx_lbana_writel(hw, data[j], off + PARSER_RAM_WORD_SIZE * i);
-#endif
+		rev_d->write_parser_ram_word(hw, data[j], parser_id, i);
 		++i;
 	}
 	/* Fill in the rest of the line */
 	for (; j < PARSER_RAM_WORD_NB; ++j) {
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-		kvx_eth_writel(hw, 0, off + PARSER_RAM_WORD_SIZE * i);
-#else
-		kvx_lbana_writel(hw, 0, off + PARSER_RAM_WORD_SIZE * i);
-#endif
+		rev_d->write_parser_ram_word(hw, 0, parser_id, i);
 		++i;
 	}
 
@@ -333,8 +227,9 @@ static int parser_add_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
 	int ret = -EINVAL;
 	u32 ptype;
 	int add_metadata_index, check_header_checksum;
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 
-	ret = parser_check(parser_id, idx);
+	ret = parser_check(parser_id, idx, dev->chip_rev_data->revision);
 	if (ret < 0) {
 		dev_err(hw->dev, "Parser[%d] check failed\n", parser_id);
 		return ret;
@@ -370,16 +265,29 @@ static int parser_add_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
 	case PTYPE_IP_V4:
 		dev_dbg(hw->dev, "Parser[%d] rule[%d] filter ipv4\n",
 				parser_id, rule_id);
-		print_hex_dump_debug("filter ipv4: ", DUMP_PREFIX_NONE,
-				16, 4, desc->ipv4.word, sizeof(desc->ipv4.word),
-				false);
-		add_metadata_index = desc->ipv4.add_metadata_index;
-		check_header_checksum = desc->ipv4.check_header_checksum;
-		*total_add_index += desc->ipv4.add_metadata_index;
-		*total_check_checksum += desc->ipv4.check_header_checksum;
-		ret = write_ramline(hw, parser_id, idx,
-				     &desc->ipv4.word[0],
-				     sizeof(desc->ipv4));
+		if (dev->chip_rev_data->revision == COOLIDGE_V1) {
+			print_hex_dump_debug("filter ipv4: ", DUMP_PREFIX_NONE,
+					16, 4, desc->cv1_ipv4.word, sizeof(desc->cv1_ipv4.word),
+					false);
+			add_metadata_index = desc->cv1_ipv4.add_metadata_index;
+			check_header_checksum = desc->cv1_ipv4.check_header_checksum;
+			*total_add_index += desc->cv1_ipv4.add_metadata_index;
+			*total_check_checksum += desc->cv1_ipv4.check_header_checksum;
+			ret = write_ramline(hw, parser_id, idx,
+						&desc->cv1_ipv4.word[0],
+						sizeof(desc->cv1_ipv4));
+		} else {
+			print_hex_dump_debug("filter ipv4: ", DUMP_PREFIX_NONE,
+					16, 4, desc->cv2_ipv4.word, sizeof(desc->cv2_ipv4.word),
+					false);
+			add_metadata_index = desc->cv2_ipv4.add_metadata_index;
+			check_header_checksum = desc->cv2_ipv4.check_header_checksum;
+			*total_add_index += desc->cv2_ipv4.add_metadata_index;
+			*total_check_checksum += desc->cv2_ipv4.check_header_checksum;
+			ret = write_ramline(hw, parser_id, idx,
+						&desc->cv2_ipv4.word[0],
+						sizeof(desc->cv2_ipv4));
+		}
 		break;
 	case PTYPE_IP_V6:
 		dev_dbg(hw->dev, "Parser[%d] rule[%d] filter ipv6\n",
@@ -486,54 +394,6 @@ static int parser_add_filter(struct kvx_eth_hw *hw, unsigned int parser_id,
 	return ret;
 }
 
-/** parser_disable() - Disable parser parser_id
- * Context: can not be called in interrupt context (readq_poll_timeout)
- *
- * Return: 0 on success, negative on failure
- */
-static int parser_disable(struct kvx_eth_hw *hw, int parser_id)
-{
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	u32 off = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * parser_id;
-	u32 val = (u32)PARSER_DISABLED << PARSER_CTRL_DISPATCH_POLICY_SHIFT;
-#else
-	u32 val = 0;
-	u32 off = KVX_ETH_LBA_PARSER_GRP_OFFSET + KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE * parser_id;
-	struct kvx_eth_parser_f *parser = &hw->parser_f[parser_id];
-#endif
-	int ret = 0;
-
-	dev_dbg(hw->dev, "Disable parser[%d]\n", parser_id);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	kvx_eth_writel(hw, val, off + PARSER_CTRL_CTL);
-#else
-	parser->ctrl = KVX_ETH_RX_LBA_PARSER_CTRL_DISABLE;
-	kvx_lbana_writel(hw, parser->ctrl, off + KVX_ETH_LBA_PARSER_CTRL_OFFSET);
-#endif
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	ret = readl_poll_timeout(hw->res[KVX_ETH_RES_ETH].base + off +
-				 PARSER_CTRL_STATUS, val, !val,
-				 READ_DELAY, READ_TIMEOUT);
-#else
-	ret = readl_poll_timeout(hw->res[KVX_ETH_RES_ETH_RX_LB_ANA].base + off +
-				 KVX_ETH_LBA_PARSER_STATUS_OFFSET, val,
-				 (val == KVX_ETH_RX_LBA_PARSER_STATUS_STOPPED), READ_DELAY, READ_TIMEOUT);
-#endif
-	if (unlikely(ret)) {
-		dev_err(hw->dev, "Disable parser[%d] timeout\n", parser_id);
-		return ret;
-	}
-
-	/* Reset hit_cnt */
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	kvx_eth_readl(hw, off + PARSER_CTRL_HIT_CNT + 4);
-#else
-	kvx_lbana_readl(hw, off + KVX_ETH_LBA_PARSER_HIT_CNT_LAC_OFFSET);
-#endif
-	clear_parser_f(hw, parser_id);
-	return 0;
-}
-
 /**
  * parser_disable_wrapper() - Disable a parser and its mirror
  * @hw: this hardware
@@ -543,17 +403,18 @@ static int parser_disable(struct kvx_eth_hw *hw, int parser_id)
 int parser_disable_wrapper(struct kvx_eth_hw *hw, int parser_id)
 {
 	int ret;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 
-	ret = parser_disable(hw, parser_id);
+	ret = rev_d->parser_disable(hw, parser_id);
 	if (ret != 0)
 		return ret;
 	if (hw->parsers_tictoc)
-		ret = parser_disable(hw, parser_id + KVX_ETH_PARSER_NB);
+		ret = rev_d->parser_disable(hw, parser_id + KVX_ETH_PARSER_NB);
 	return ret;
 }
 
 /**
- * eth_config_parser() - Configure n rules for parser parser_id
+ * parser_config() - Configure n rules for parser parser_id
  * Context: can not be called in interrupt context (readq_poll_timeout)
  *
  * Return: 0 on success, negative on failure
@@ -569,8 +430,9 @@ static int parser_config(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 	union filter_desc *filter_desc;
 	u32 total_add_index = 0;
 	u32 total_check_checksum = 0;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 
-	ret = parser_disable(hw, parser_id);
+	ret = rev_d->parser_disable(hw, parser_id);
 	if (ret)
 		return ret;
 
@@ -593,7 +455,7 @@ static int parser_config(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 		return -EINVAL;
 	}
 
-	word_index = parser_commit_filter(hw, cfg, parser_id, word_index,
+	word_index = rev_d->parser_commit_filter(hw, cfg, parser_id, word_index,
 					  policy, prio);
 	if (word_index < 0) {
 		dev_err(hw->dev, "Failed to commit filters to parser[%d]\n",
@@ -603,7 +465,7 @@ static int parser_config(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 
 	/* Update sysfs structure */
 	if (update_parser_f(hw, filter_id, parser_id) < 0) {
-		parser_disable(hw, parser_id);
+		rev_d->parser_disable(hw, parser_id);
 		return -EINVAL;
 	}
 
@@ -622,6 +484,8 @@ static int parser_config(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 int parser_config_wrapper(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 		  int parser_id, enum parser_dispatch_policy policy, int prio)
 {
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+
 	if (parser_config(hw, cfg, parser_id, policy, prio) != 0)
 		return -EBUSY;
 
@@ -630,7 +494,7 @@ int parser_config_wrapper(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 		if (parser_config(hw, cfg, parser_id + KVX_ETH_PARSER_NB,
 				policy, prio) != 0) {
 			/* Attempt to disable first parser */
-			parser_disable(hw, parser_id);
+			rev_d->parser_disable(hw, parser_id);
 			return -EBUSY;
 		}
 	}
@@ -654,6 +518,7 @@ int parser_config_update(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	if (!hw->parsers_tictoc)
 		return 0;
 
+	/* no parser tictoc on cv2 */
 	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
 		if (hw->parsing.parsers[i].enabled) {
 			reg = PARSER_CTRL_OFFSET + PARSER_CTRL_ELEM_SIZE * i;
@@ -665,11 +530,11 @@ int parser_config_update(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 				/* Mirror parser configuration to the top half */
 				if (parser_config(hw, cfg, parser_id,
 						  policy, prio) != 0) {
-					parser_disable(hw, parser_id);
+					parser_disable_cv1(hw, parser_id);
 					return -EBUSY;
 				}
 			} else {
-				parser_disable(hw, parser_id);
+				parser_disable_cv1(hw, parser_id);
 			}
 		}
 	}
