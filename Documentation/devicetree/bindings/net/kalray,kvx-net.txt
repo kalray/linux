@@ -1,7 +1,7 @@
 * Kalray net controller
 
 Required properties:
-- compatible: Should be "kalray,kvx-eth"
+- compatible: Should be "kalray,coolidge-eth" or "kalray,coolidge-v2-eth"
 - reg: {phy, phymac, mac, eth} registers and length
 - reg-names: {phy, phymac, mac, eth} names
 - kalray,lane: index of first lane
@@ -18,7 +18,7 @@ Optional properties:
 * Kalray netdev
 
 Required properties:
-- compatible: Should be "kalray,kvx-net";
+- compatible: Should be "kalray,coolidge-net" or "kalray,coolidge-v2-net";
 - dmas: tx dma-noc channels
 - dma-names: as defined in bindings/dma/dma.txt
 - kalray,lane: Each device (eth0/eth1) has four lanes.
@@ -57,7 +57,7 @@ Example:
 		kalray,tx-phy-polarities = <0 0 0 0>;
 		kalray,fom_thres = <150>;
 		eth0: ethernet@10050000 {
-			compatible = "kalray,kvx-eth";
+			compatible = "kalray,coolidge-eth";
 			reg = <0x0 0x10000000 0x0 0x3FFFF>,
 			    <0x0 0x10040000 0x0 0xB4>,
 			    <0x0 0x10050000 0x0 0x8ED0>,
@@ -66,7 +66,7 @@ Example:
 			cell-index = <0>;
 
 			port0: ethernet-port@0 {
-				compatible = "kalray,kvx-net";
+				compatible = "kalray,coolidge-net";
 				dmas = <&dma_noc 1>;
 				dma-names = "tx";
 				kalray,lane = <0>;

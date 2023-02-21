@@ -4,13 +4,11 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2019 Kalray Inc.
+ * Copyright (C) 2023 Kalray Inc.
  */
 
-#ifndef KVX_ETH_TX_REGS_H
-#define KVX_ETH_TX_REGS_H
-
-
+#ifndef KVX_ETH_TX_REGS_CV2_H
+#define KVX_ETH_TX_REGS_CV2_H
 
 /* group MPPA_ETHERNET_TX_CBS */
 #define KVX_ETH_TX_CBS_GRP_OFFSET                  0x2D8
@@ -231,4 +229,4 @@
 #define KVX_ETH_TX_TDM_ERR_EXPRESS_SHIFT           0x4
 #define KVX_ETH_TX_TDM_ERR_EXPRESS_MASK            0xF0UL
 
-#endif /* KVX_ETH_TX_REGS_H */
+#endif /* KVX_ETH_TX_REGS_CV2_H */

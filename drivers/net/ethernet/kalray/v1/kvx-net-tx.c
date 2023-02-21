@@ -10,7 +10,7 @@
 #include <linux/io.h>
 
 #include "../kvx-net.h"
-#include "../kvx-net-regs.h"
+#include "kvx-net-regs.h"
 
 #define TX_FIFO(f) (TX_OFFSET + TX_FIFO_OFFSET + (f) * TX_FIFO_ELEM_SIZE)
 
@@ -42,8 +42,7 @@ static void kvx_eth_tx_noc_f_update(void *data)
 	f->pkt_drop = kvx_eth_readl(f->hw, off + TX_NOC_IF_NOC_PKT_DROP_CNT);
 }
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-void kvx_eth_tx_init(struct kvx_eth_hw *hw)
+void kvx_eth_tx_init_cv1(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_tx_f *f;
 	struct kvx_eth_tx_noc_f *nf;
@@ -66,7 +65,6 @@ void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 		nf->cid = i;
 	}
 }
-#endif
 
 void kvx_eth_tx_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_f *f)
 {
@@ -112,4 +110,30 @@ u32 kvx_eth_tx_has_header(struct kvx_eth_hw *hw, int tx_fifo_id)
 	u32 v = kvx_eth_readl(hw, TX_FIFO(tx_fifo_id) + TX_FIFO_CTRL_OFFSET);
 
 	return GETF(v, TX_FIFO_CTRL_HEADER_EN);
+}
+
+/**
+ * kvx_ethtx_credit_en_register_cv1() - register
+  * callback for tx credit enabling/disabling.
+ *
+ * @pdev: netdev platform_device
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+int kvx_ethtx_credit_en_register_cv1(struct platform_device *pdev)
+{
+	return 0;
+}
+
+/**
+ * kvx_ethtx_credit_en_unregister_cv1() - unregister
+ * callback for tx credit enabling/disabling.
+ *
+ * @pdev: netdev platform_device
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+int kvx_ethtx_credit_en_unregister_cv1(struct platform_device *pdev)
+{
+	return 0;
 }
