@@ -1287,7 +1287,7 @@ static void kvx_qsfp_cleanup(void *data)
 
 static void kvx_qsfp_sm_event(struct work_struct *work)
 {
-	struct kvx_qsfp *qsfp = container_of(work, struct kvx_qsfp, irq_event_task);
+	struct kvx_qsfp *qsfp = container_of(work, struct kvx_qsfp, irq_event_task.work);
 	struct gpio_desc *modprs = get_gpio_desc(qsfp, QSFP_GPIO_MODPRS);
 	unsigned int i;
 	u8 cdr_lol[2];
@@ -1324,12 +1324,36 @@ static void kvx_qsfp_sm_event(struct work_struct *work)
 				qsfp->opt_features.set_int_flags_mask(qsfp);
 			}
 
+			/* copy for comparison after int flags update */
 			cdr_lol[0] = !!qsfp->eeprom.int_flags.lol;
+
 			update_interrupt_flags(qsfp);
+
+			/*
+			 * IRQ line is configured as IRQF_TRIGGER_FALLING, thus an interrupt will be triggered
+			 * if an int flag is asserted, but won't be retrigged if the int flag remains
+			 * asserted. This avoids hundreds of interrupts per second, thus spending too much
+			 * time in interrupt context.
+			 * Additionally, int flags need to be cleared in order to have new interrupts.
+			 * Therefore, we keep polling int flags until they are all cleared.
+			 * Int flags may take some time to reset (e.g. cdr_lol), thus rescheduling delayed
+			 * work ensures that all int flags are cleared and irq is in expected state.
+			 */
+			if (!bitmap_empty((unsigned long *)&qsfp->eeprom.int_flags,
+					  8 * sizeof(qsfp->eeprom.int_flags))) {
+				set_bit(QSFP_E_INTL, &qsfp->irq_event);
+
+				if (!delayed_work_pending(&qsfp->irq_event_task))
+					queue_delayed_work(kvx_qsfp_wq, &qsfp->irq_event_task,
+							   msecs_to_jiffies(QSFP_INT_FLAGS_CLEAR_DELAY_IN_MS));
+			}
+
 			cdr_lol[1] = !!qsfp->eeprom.int_flags.lol;
 
-			if (qsfp->ops && qsfp->ops->cdr_lol && cdr_lol[0] != cdr_lol[1])
-				qsfp->ops->cdr_lol(qsfp, cdr_lol[1]);
+			/* call cdr_lol callback only if LoL flags asserted */
+			if (qsfp->ops && qsfp->ops->cdr_lol &&
+			    cdr_lol[1] != 0 && cdr_lol[0] != cdr_lol[1])
+				qsfp->ops->cdr_lol(qsfp);
 		}
 	}
 }
@@ -1408,8 +1432,8 @@ static irqreturn_t kvx_qsfp_modprs_irq_handler(int irq, void *data)
 	struct kvx_qsfp *qsfp = data;
 
 	set_bit(QSFP_E_MODPRS, &qsfp->irq_event);
-	if (!work_pending(&qsfp->irq_event_task))
-		queue_work(kvx_qsfp_wq, &qsfp->irq_event_task);
+	if (!delayed_work_pending(&qsfp->irq_event_task))
+		queue_delayed_work(kvx_qsfp_wq, &qsfp->irq_event_task, 0);
 
 	return IRQ_HANDLED;
 }
@@ -1420,8 +1444,8 @@ static irqreturn_t kvx_qsfp_intl_irq_handler(int irq, void *data)
 
 	set_bit(QSFP_E_INTL, &qsfp->irq_event);
 
-	if (!work_pending(&qsfp->irq_event_task))
-		queue_work(kvx_qsfp_wq, &qsfp->irq_event_task);
+	if (!delayed_work_pending(&qsfp->irq_event_task))
+		queue_delayed_work(kvx_qsfp_wq, &qsfp->irq_event_task, 0);
 
 	return IRQ_HANDLED;
 }
@@ -1554,7 +1578,7 @@ static const struct kvx_qsfp_gpio_def kvx_qsfp_gpios[QSFP_GPIO_NB] = {
 	{ .of_name = "intl",
 	  .flags = GPIOD_IN,
 	  .irq_handler = kvx_qsfp_intl_irq_handler,
-	  .irq_flags = IRQF_ONESHOT | IRQF_TRIGGER_LOW },
+	  .irq_flags = IRQF_ONESHOT | IRQF_TRIGGER_FALLING },
 	{ .of_name = "modsel", .flags = GPIOD_OUT_LOW },
 };
 
@@ -1667,7 +1691,7 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 
 	/* init of state machines tasks (must be before any irq request) */
 	INIT_WORK(&qsfp->sm_task, kvx_qsfp_sm_main_task);
-	INIT_WORK(&qsfp->irq_event_task, kvx_qsfp_sm_event);
+	INIT_DELAYED_WORK(&qsfp->irq_event_task, kvx_qsfp_sm_event);
 
 	if (!pdev->dev.of_node)
 		return -EINVAL;

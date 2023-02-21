@@ -128,6 +128,7 @@
 
 #define QSFP_DELAY_DATA_READY_IN_MS         2000
 #define QSFP_DELAY_MODSEL_SETUP_IN_MS       2
+#define QSFP_INT_FLAGS_CLEAR_DELAY_IN_MS    10
 
 #define kvx_qsfp_to_ops_data(qsfp, data_t) ((data_t *)qsfp->ops_data)
 #define kvx_set_mode(bm, mode) __set_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, bm)
@@ -237,7 +238,7 @@ struct kvx_qsfp_param_capability {
 struct kvx_qsfp_ops {
 	void (*connect)(struct kvx_qsfp *qsfp);
 	void (*disconnect)(struct kvx_qsfp *qsfp);
-	void (*cdr_lol)(struct kvx_qsfp *qsfp, bool lol);
+	void (*cdr_lol)(struct kvx_qsfp *qsfp);
 };
 
 /* callback is NULL if not supported */
@@ -377,7 +378,8 @@ struct kvx_qsfp {
 	u32 max_power_mW;
 	bool module_flat_mem;
 	struct kvx_qsfp_eeprom_cache eeprom;
-	struct work_struct sm_task, irq_event_task;
+	struct work_struct sm_task;
+	struct delayed_work irq_event_task;
 	u8 sm_state;
 	struct completion sm_s_ready;
 	unsigned long irq_event;
