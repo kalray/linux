@@ -180,29 +180,13 @@ asn_error_panic_str_label:
 	;;
 .endm
 
-/* Save callee registers on stack */
-.macro save_callee
-	sq PT_R18R19[$r63] = $r18r19
-	;;
-	so PT_Q20[$r63] = $r20r21r22r23
-	;;
-	so PT_Q24[$r63] = $r24r25r26r27
-	;;
-	so PT_Q28[$r63] = $r28r29r30r31
-	;;
-.endm
-
 /**
- * Save all caller saved registers and some special purpose registers for entry
- * into kernel space. This macro expects to be called immediately after the
- * switch_stack macro, because it expects the following register assignments
- * $r1  -> original $sp (when entering into the kernel)
- * $r2  -> task_struct ($sr)
- * When leaving this macro $r0 will contain the address of the pt_regs struct.
- * So, each exception handler (e.g., do_IRQ, do_syscall, etc.) can directly be
- * called with pt_regs in the right register for the function arguments. Also,
- * hardware loops are enabled and PS.ET is cleared allowing to call kernel
- * functions without any risk.
+ * Save all general purpose registers and some special purpose registers for
+ * entry into kernel space. This macro expects to be called immediately after
+ * the switch_stack macro, because it expects the following register
+ * assignments:
+ *   $r1  -> original $sp (when entering into the kernel)
+ *   $r2  -> task_struct ($sr)
  */
 .macro save_regs_for_exception
 	/* make some room on stack to save registers */
@@ -232,44 +216,46 @@ asn_error_panic_str_label:
 	;;
 	so PT_Q0[$r6] = $r0r1r2r3
 	copyd $r61 = $r13
-	get $r5 = $le
 	;;
-	sq PT_R16R17[$r6] = $r16r17
-	make $r10 = 0x0
+	so PT_Q16[$r6] = $r16r17r18r19
 	copyd $r62 = $r14
 	;;
-	so PT_Q32[$r6] = $r32r33r34r35
-	/* Since we are going to enable hardware loop, we must be careful
-	 * and reset le (loop exit) to avoid any exploit and return to
-	 * user with kernel mode */
-	set $le = $r10
+	so PT_Q20[$r6] = $r20r21r22r23
 	copyd $r63 = $r15
 	;;
+	so PT_Q24[$r6] = $r24r25r26r27
+	get $r8 = $cs
+	;;
+	so PT_Q28[$r6] = $r28r29r30r31
+	get $r9 = $spc
+	;;
+	so PT_Q32[$r6] = $r32r33r34r35
+	get $r10 = $sps
+	;;
 	so PT_Q36[$r6] = $r36r37r38r39
-	get $r0 = $cs
+	get $r11 = $es
 	;;
 	so PT_Q40[$r6] = $r40r41r42r43
-	get $r1 = $spc
+	get $r16 = $lc
 	;;
 	so PT_Q44[$r6] = $r44r45r46r47
-	get $r2 = $sps
+	get $r17 = $le
 	;;
 	so PT_Q48[$r6] = $r48r49r50r51
-	get $r3 = $es
+	get $r18 = $ls
 	;;
 	so PT_Q52[$r6] = $r52r53r54r55
-	get $r7 = $ra
+	get $r19 = $ra
 	;;
 	so PT_Q56[$r6] = $r56r57r58r59
-	get $r4 = $lc
 	;;
+	/* Store the original $sp in the pt_regs */
 	so PT_Q12[$r6] = $r60r61r62r63
-	copyd $r63 = $r6
-	get $r6 = $ls
 	;;
-	so PT_CS_SPC_SPS_ES[$r63] = $r0r1r2r3
+	/* Store special registers */
+	so PT_CS_SPC_SPS_ES[$r6] = $r8r9r10r11
 	;;
-	so PT_LC_LE_LS_RA[$r63] = $r4r5r6r7
+	so PT_LC_LE_LS_RA[$r6] = $r16r17r18r19
 	/* Clear frame pointer */
 	make $fp = 0
 	;;
@@ -318,56 +304,53 @@ SYM_FUNC_START(return_from_exception)
 	;;
 	lo $r0r1r2r3 = __PA(PT_CS_SPC_SPS_ES)[$sp]
 	/* Compute physical address of stack to avoid using 64bits immediate */
-	addd $r11 = $sp, VA_TO_PA_OFFSET
+	addd $r14 = $sp, VA_TO_PA_OFFSET
 	;;
-	lo $r4r5r6r7 = PT_LC_LE_LS_RA[$r11]
+	lo $r4r5r6r7 = PT_LC_LE_LS_RA[$r14]
 	;;
-	lo $r60r61r62r63 = PT_Q60[$r11]
+	lo $r60r61r62r63 = PT_Q60[$r14]
 	;;
-	lo $r56r57r58r59 = PT_Q56[$r11]
+	lo $r56r57r58r59 = PT_Q56[$r14]
 	;;
-	lq $r18r19 = PT_R18R19[$r11]
+	lo $r52r53r54r55 = PT_Q52[$r14]
+	get $r11 = $sps
 	;;
-	lo $r20r21r22r23 = PT_Q20[$r11]
-	;;
-	lo $r24r25r26r27 = PT_Q24[$r11]
-	;;
-	lo $r28r29r30r31 = PT_Q28[$r11]
-	;;
-	lo $r52r53r54r55 = PT_Q52[$r11]
-	get $r14 = $sps
-	;;
-	lo $r48r49r50r51 = PT_Q48[$r11]
+	lo $r48r49r50r51 = PT_Q48[$r14]
 	/* Generate a mask of ones at each bit where the current $sps
 	 * differs from the $sps to be restored
 	 */
-	xord $r14 = $r2, $r14
+	xord $r11 = $r2, $r11
 	/* prepare wfxl clear mask on LSBs */
 	notd $r15 = $r2
 	/* prepare wfxl set mask on MSBs */
 	slld $r13 = $r2, 32
 	;;
-	lo $r44r45r46r47 = PT_Q44[$r11]
+	lo $r44r45r46r47 = PT_Q44[$r14]
 	/* Replicate mask of ones on the 32 MSBs */
-	sbmm8 $r14 = $r14, REPLICATE_32_MASK
+	sbmm8 $r11 = $r11, REPLICATE_32_MASK
 	/* Combine the set and clear mask for wfxl */
 	insf  $r13 = $r15, 31, 0
 	;;
-	lo $r40r41r42r43 = PT_Q40[$r11]
+	lo $r40r41r42r43 = PT_Q40[$r14]
 	set $lc = $r4
 	/* Mask to drop identical bits in order to avoid useless
 	 * privilege traps
 	 */
-	andd $r13 = $r13, $r14
+	andd $r13 = $r13, $r11
 	;;
-	lq $r16r17 = PT_R16R17[$r11]
+	lo $r16r17r18r19 = PT_Q16[$r14]
+	;;
+	lo $r20r21r22r23 = PT_Q20[$r14]
+	;;
+	lo $r24r25r26r27 = PT_Q24[$r14]
+	;;
+	lo $r28r29r30r31 = PT_Q28[$r14]
 	set $le = $r5
 	;;
-	lo $r32r33r34r35 = PT_Q32[$r11]
+	lo $r32r33r34r35 = PT_Q32[$r14]
 	set $ls = $r6
 	;;
-	lo $r36r37r38r39 = PT_Q36[$r11]
-	copyd $r14 = $r11
+	lo $r36r37r38r39 = PT_Q36[$r14]
 	set $ra = $r7
 	;;
 	lo $r8r9r10r11 = PT_Q8[$r14]
@@ -1051,7 +1034,6 @@ SYM_FUNC_START(kvx_\()\type\()_handler)
 \type\()_switch_stack:
 	switch_stack
 	save_regs_for_exception
-	save_callee
 	prepare_kernel_entry
 	\type\()_function
 	goto return_from_exception
