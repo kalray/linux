@@ -27,11 +27,6 @@
 /* Mask to replicate data from 32bits LSB to MSBs */
 #define REPLICATE_32_MASK		0x0804020108040201
 
-#define PS_HWLOOP_ENABLE		(KVX_SFR_PS_HLE_MASK << 32)
-#define PS_HWLOOP_DISABLE		(KVX_SFR_PS_HLE_MASK)
-#define PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS	(PS_HWLOOP_ENABLE | \
-					 KVX_SFR_PS_ET_MASK | \
-					 SFR_SET_VAL_WFXL(PS, DAUS, 0))
 #define PS_HLE_EN_ET_CLEAR_DAUS_DIS	(SFR_SET_VAL_WFXL(PS, HLE, 1) | \
 					 SFR_SET_VAL_WFXL(PS, ET, 0) | \
 					 SFR_SET_VAL_WFXL(PS, DAUS, 0))
@@ -67,29 +62,6 @@ mmc_error_panic_str_label:
 asn_error_panic_str_label:
 	.string "ASN mismatch !"
 #endif
-
-/**
- * disable_interrupts: Disable interrupts
- * tmp_reg: Temporary register to use for interrupt disabling
- */
-.macro disable_interrupts tmp_reg
-	make \tmp_reg = KVX_SFR_PS_IE_MASK
-	;;
-	wfxl $ps, \tmp_reg
-	;;
-.endm
-
-/**
- * call_do_work_pending: Call do_work_pending and set stack argument ($r0)
- * NOTE: Since do_work_pending requires thread_flags in $r1, they must
- * be provided in $r1 before calling this macro.
- * Moreover, do_work_pending expects interrupts to be disabled.
- */
-.macro call_do_work_pending
-	copyd $r0 = $sp
-	call do_work_pending
-	;;
-.endm
 
 /**
  * prepare_kernel_entry: Simply clear the framepointer, reset the $le to 0 and
@@ -267,9 +239,6 @@ SYM_FUNC_START(return_from_exception)
 	/* Load sps value from saved registers */
 	ld $r6 = PT_SPS[$sp]
 	;;
-	/* Disable interrupts to check task flags atomically */
-	disable_interrupts $r60
-	;;
 	/* Check PL bit of sps, if set, then it means we are returning
 	 * to a lower privilege level (ie to user), if so, we need to
 	 * check work pending. If coming from kernel, directly go to
@@ -282,7 +251,9 @@ SYM_FUNC_START(return_from_exception)
 	;;
 	cb.deqz $r5? 1f
 	;;
-	call_do_work_pending
+	copyd $r0 = $sp
+	/* do_work_pending($r0: pt_regs, $r1: thread_flags) */
+	call do_work_pending
 	;;
 #ifdef CONFIG_TRACE_IRQFLAGS
 	/* reload sps value from saved registers */
@@ -300,7 +271,7 @@ SYM_FUNC_START(return_from_exception)
 	;;
 1:
 #endif
-	disable_mmu PS_HWLOOP_DISABLE
+	disable_mmu KVX_SFR_PS_HLE_MASK
 	;;
 	lo $r0r1r2r3 = __PA(PT_CS_SPC_SPS_ES)[$sp]
 	/* Compute physical address of stack to avoid using 64bits immediate */
@@ -923,7 +894,7 @@ asm_panic:
 	 * Reenable hardware loop and traps (for nomapping) since some functions
 	 * might need it. Moreover, disable DAUS to reenable MMU accesses.
 	 */
-	make $r32 = PS_HWLOOP_EN_ET_CLEAR_DAUS_DIS
+	make $r32 = PS_HLE_EN_ET_CLEAR_DAUS_DIS
 	make $r33 = 0
 	get $r34 = $sr
 	;;
@@ -1203,6 +1174,10 @@ SYM_FUNC_START(ret_from_fork)
 	icall $r20
 	;;
 1:
+	make $r0 = KVX_SFR_PS_IE_MASK
+	;;
+	wfxl $ps, $r0
+	;;
 	copyd $r0 = $sp
 	call do_syscall_trace_exit
 	;;
