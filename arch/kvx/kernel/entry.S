@@ -1184,24 +1184,6 @@ entry_handler syscall
 .endm
 
 .text
-/*
- * When entering in ret_from_kernel_thread, r20 and r21 where set by
- * copy_thread and have been restored in switch_to.
- * These registers contains the values needed to call a function
- * specified by the switch_to caller (or where set by copy_thread).
- */
-SYM_FUNC_START(ret_from_kernel_thread)
-	call schedule_tail
-	;;
-	/* Call fn(arg) */
-	copyd $r0 = $r21
-	;;
-	icall $r20
-	;;
-	goto ret_from_kernel
-	;;
-SYM_FUNC_END(ret_from_kernel_thread)
-
 /**
  * Return from fork.
  * start_thread will set return stack and pc. Then copy_thread will
@@ -1213,12 +1195,17 @@ SYM_FUNC_START(ret_from_fork)
 	call schedule_tail
 	;;
 	/* $r20 contains 0 if tracing disable */
-	cb.deqz $r20? ret_from_kernel
+	cb.deqz $r20? 1f
 	;;
+	/* Call fn(arg) */
+	copyd $r0 = $r21
+	;;
+	icall $r20
+	;;
+1:
 	copyd $r0 = $sp
 	call do_syscall_trace_exit
 	;;
-ret_from_kernel:
 	goto return_from_exception
 	;;
 SYM_FUNC_END(ret_from_fork)
