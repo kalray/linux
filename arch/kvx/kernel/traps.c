@@ -239,6 +239,8 @@ void trap_handler(struct pt_regs *regs, uint64_t es, uint64_t ea)
 
 	trap_func(es, ea, regs);
 
+	local_irq_disable();
+
 done:
 	dame_irq_check(regs);
 	exception_exit(prev_state);
@@ -248,12 +250,12 @@ void do_syscall(struct pt_regs *regs)
 {
 	long syscall = (regs->es & KVX_SFR_ES_SN_MASK) >> KVX_SFR_ES_SN_SHIFT;
 
-	if (do_syscall_trace_enter(regs, syscall))
+	if (do_syscall_trace_enter(regs, syscall)) {
 		/* If the trace system requests to abort the syscall just call
 		 * the invalid handler
 		 */
 		regs->r0 = sys_ni_syscall();
-	else {
+	} else {
 		local_irq_enable();
 
 		syscall_handler(regs, (ulong)syscall);
