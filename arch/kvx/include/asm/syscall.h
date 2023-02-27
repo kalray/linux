@@ -105,4 +105,9 @@ static inline void syscall_handler(struct pt_regs *regs, ulong syscall)
 
 int __init setup_syscall_sigreturn_page(void *sigpage_addr);
 
+static inline bool arch_syscall_is_vdso_sigreturn(struct pt_regs *regs)
+{
+	return false;
+}
+
 #endif

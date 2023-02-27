@@ -28,7 +28,6 @@
 #include <asm/cacheflush.h>
 #include <asm/hw_breakpoint.h>
 
-#define CREATE_TRACE_POINTS
 #include <trace/events/syscalls.h>
 
 #define HW_PT_CMD_GET_CAPS	0
@@ -333,47 +332,6 @@ long arch_ptrace(struct task_struct *child, long request,
 	}
 
 	return ret;
-}
-
-/*
- * Allows PTRACE_SYSCALL to work.  These are called from entry.S in
- * {handle,ret_from}_syscall.
- */
-int do_syscall_trace_enter(struct pt_regs *regs, unsigned long syscall)
-{
-	int ret = 0;
-
-#ifdef CONFIG_CONTEXT_TRACKING
-	context_tracking_user_exit();
-#endif
-	if (test_thread_flag(TIF_SYSCALL_TRACE))
-		ret = tracehook_report_syscall_entry(regs);
-
-#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
-	if (test_thread_flag(TIF_SYSCALL_TRACEPOINT))
-		trace_sys_enter(regs, syscall_get_nr(current, regs));
-#endif
-
-	audit_syscall_entry(syscall, regs->r0, regs->r1, regs->r2, regs->r3);
-
-	return ret;
-}
-
-void do_syscall_trace_exit(struct pt_regs *regs)
-{
-	if (test_thread_flag(TIF_SYSCALL_TRACE))
-		tracehook_report_syscall_exit(regs, 0);
-
-	audit_syscall_exit(regs);
-
-#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
-	if (test_thread_flag(TIF_SYSCALL_TRACEPOINT))
-		trace_sys_exit(regs, regs_return_value(regs));
-#endif
-
-#ifdef CONFIG_CONTEXT_TRACKING
-	context_tracking_user_enter();
-#endif
 }
 
 static int kvx_bkpt_handler(struct break_hook *brk_hook, struct pt_regs *regs)
