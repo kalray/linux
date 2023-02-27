@@ -7,6 +7,7 @@
  */
 
 #include <linux/context_tracking.h>
+#include <linux/entry-common.h>
 #include <linux/sched/task_stack.h>
 #include <linux/sched/debug.h>
 #include <linux/irqflags.h>
@@ -108,6 +109,17 @@ void user_do_sig(struct pt_regs *regs, int signo, int code, unsigned long addr)
 	force_sig_fault(signo, code, (void __user *) addr);
 }
 
+static void do_trap_error(struct pt_regs *regs, int signo, int code,
+			  unsigned long addr, const char *str)
+{
+	if (user_mode(regs)) {
+		user_do_sig(regs, signo, code, addr);
+	} else {
+		if (!fixup_exception(regs))
+			die(regs, addr, str);
+	}
+}
+
 static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
 			  int signo, int sigcode)
 {
@@ -117,7 +129,7 @@ static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
 	}
 
 	pr_alert(CUT_HERE "ERROR: TRAP %s received at 0x%.16llx\n",
-	      trap_name[trap_cause(es)], regs->spc);
+		 trap_name[trap_cause(es)], regs->spc);
 	die(regs, ea, "Oops");
 	do_exit(SIGKILL);
 }
@@ -221,7 +233,8 @@ void __init trap_init(void)
  */
 void trap_handler(struct pt_regs *regs, uint64_t es, uint64_t ea)
 {
-	enum ctx_state prev_state = exception_enter();
+	irqentry_state_t state = irqentry_enter(regs);
+
 	int htc = trap_cause(es);
 	trap_handler_func trap_func = trap_handler_table[htc];
 
@@ -242,26 +255,25 @@ void trap_handler(struct pt_regs *regs, uint64_t es, uint64_t ea)
 	local_irq_disable();
 
 done:
-	dame_irq_check(regs);
-	exception_exit(prev_state);
+	irqentry_exit(regs, state);
 }
 
 void do_syscall(struct pt_regs *regs)
 {
-	long syscall = (regs->es & KVX_SFR_ES_SN_MASK) >> KVX_SFR_ES_SN_SHIFT;
+	if (user_mode(regs)) {
+		long syscall = (regs->es & KVX_SFR_ES_SN_MASK) >> KVX_SFR_ES_SN_SHIFT;
 
-	if (do_syscall_trace_enter(regs, syscall)) {
-		/* If the trace system requests to abort the syscall just call
-		 * the invalid handler
-		 */
-		regs->r0 = sys_ni_syscall();
-	} else {
-		local_irq_enable();
+		syscall = syscall_enter_from_user_mode(regs, syscall);
 
 		syscall_handler(regs, (ulong)syscall);
 
-		local_irq_disable();
-	}
+		syscall_exit_to_user_mode(regs);
+	} else {
+		irqentry_state_t state = irqentry_nmi_enter(regs);
 
-	do_syscall_trace_exit(regs);
+		do_trap_error(regs, SIGILL, ILL_ILLTRP, regs->spc,
+			      "Oops - scall from PL2");
+
+		irqentry_nmi_exit(regs, state);
+	}
 }

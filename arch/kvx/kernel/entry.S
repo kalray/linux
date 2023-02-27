@@ -235,42 +235,6 @@ asn_error_panic_str_label:
 
 .section .exception.text, "ax", @progbits ;\
 SYM_FUNC_START(return_from_exception)
-	get $r11 = $sr
-	/* Load sps value from saved registers */
-	ld $r6 = PT_SPS[$sp]
-	;;
-	/* Check PL bit of sps, if set, then it means we are returning
-	 * to a lower privilege level (ie to user), if so, we need to
-	 * check work pending. If coming from kernel, directly go to
-	 * register restoration */
-	cb.even $r6? 1f
-	ld $r1 = TASK_TI_FLAGS[$r11]
-	;;
-	/* Do we have work pending ? */
-	andd $r5 = $r1, _TIF_WORK_MASK
-	;;
-	cb.deqz $r5? 1f
-	;;
-	copyd $r0 = $sp
-	/* do_work_pending($r0: pt_regs, $r1: thread_flags) */
-	call do_work_pending
-	;;
-#ifdef CONFIG_TRACE_IRQFLAGS
-	/* reload sps value from saved registers */
-	ld $r6 = PT_SPS[$sp]
-	;;
-#endif
-1:
-#ifdef CONFIG_TRACE_IRQFLAGS
-	/* Check if IRQs are going to be enabled in next context */
-	andd $r6 = $r6, KVX_SFR_SPS_IE_MASK
-	;;
-	cb.deqz $r6? 1f
-	;;
-	call trace_hardirqs_on
-	;;
-1:
-#endif
 	disable_mmu KVX_SFR_PS_HLE_MASK
 	;;
 	lo $r0r1r2r3 = __PA(PT_CS_SPC_SPS_ES)[$sp]
@@ -975,16 +939,6 @@ trap_slow_path:
 	/* do_IRQ($r0: pt_regs, $r1: hwirq_mask) */
 	call do_IRQ
 	;;
-	/* From now on, lower the interrupt level (IL) to allow IT nesting.
-	 * If returning to user, we will call schedule which will reenable
-	 * interrupts by itself when ready.
-	 * If returning to kernel and with CONFIG_PREEMPT, we will call
-	 * preempt_schedule_irq which will do the same.
-	 */
-	make $r0 = KVX_SFR_PS_IL_WFXL_CLEAR
-	;;
-	wfxl $ps, $r0
-	;;
 .endm
 
 .macro syscall_prologue
@@ -1165,7 +1119,6 @@ entry_handler syscall
 SYM_FUNC_START(ret_from_fork)
 	call schedule_tail
 	;;
-	/* $r20 contains 0 if tracing disable */
 	cb.deqz $r20? 1f
 	;;
 	/* Call fn(arg) */
@@ -1174,12 +1127,9 @@ SYM_FUNC_START(ret_from_fork)
 	icall $r20
 	;;
 1:
-	make $r0 = KVX_SFR_PS_IE_MASK
+	copyd $r0 = $sp /* pt_regs */
 	;;
-	wfxl $ps, $r0
-	;;
-	copyd $r0 = $sp
-	call do_syscall_trace_exit
+	call syscall_exit_to_user_mode
 	;;
 	goto return_from_exception
 	;;
