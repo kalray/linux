@@ -13,9 +13,6 @@
 static inline void dame_irq_check(struct pt_regs *regs)
 {
 	unsigned long ilr;
-	/* If we are returning to the kernel, no need to check for DAME */
-	if (!user_mode(regs))
-		return;
 
 	/* Else, make sure we do a barrier to trig any pending DAME IRQ */
 	__builtin_kvx_barrier();
