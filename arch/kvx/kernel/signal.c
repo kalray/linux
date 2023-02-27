@@ -197,7 +197,7 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 	signal_setup_done(ret, ksig, 0);
 }
 
-asmlinkage void do_signal(struct pt_regs *regs)
+asmlinkage void arch_do_signal_or_restart(struct pt_regs *regs, bool has_signal)
 {
 	struct ksignal ksig;
 
@@ -237,30 +237,3 @@ asmlinkage void do_signal(struct pt_regs *regs)
 	 */
 	restore_saved_sigmask();
 }
-
-
-asmlinkage void do_work_pending(struct pt_regs *regs,
-				unsigned long thread_flags)
-{
-	/* We are called with IRQs disabled */
-	trace_hardirqs_off();
-
-	do {
-		if (thread_flags & _TIF_NEED_RESCHED) {
-			schedule();
-		} else {
-			local_irq_enable();
-			if (thread_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
-				do_signal(regs);
-
-			if (thread_flags & _TIF_NOTIFY_RESUME) {
-				clear_thread_flag(TIF_NOTIFY_RESUME);
-				tracehook_notify_resume(regs);
-			}
-		}
-		/* Guarantee task flag atomic read */
-		local_irq_disable();
-		thread_flags = READ_ONCE(current_thread_info()->flags);
-	} while (thread_flags & _TIF_WORK_MASK);
-}
-

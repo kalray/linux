@@ -169,14 +169,16 @@ struct pt_regs {
 #endif
 
 /* ptrace */
-#define PTRACE_GET_HW_PT_REGS	20
-#define PTRACE_SET_HW_PT_REGS	21
-#define arch_has_single_step()	1
+#define PTRACE_GET_HW_PT_REGS		20
+#define PTRACE_SET_HW_PT_REGS		21
+#define PTRACE_SYSEMU			22
+#define PTRACE_SYSEMU_SINGLESTEP	23
+#define arch_has_single_step()		1
 
-#define DEBUG_CAUSE_BREAKPOINT	0
-#define DEBUG_CAUSE_WATCHPOINT	1
-#define DEBUG_CAUSE_STEPI	2
-#define DEBUG_CAUSE_DSU_BREAK	3
+#define DEBUG_CAUSE_BREAKPOINT		0
+#define DEBUG_CAUSE_WATCHPOINT		1
+#define DEBUG_CAUSE_STEPI		2
+#define DEBUG_CAUSE_DSU_BREAK		3
 
 static inline void enable_single_step(struct pt_regs *regs)
 {
@@ -192,10 +194,6 @@ static inline bool in_syscall(struct pt_regs const *regs)
 {
 	return es_ec(regs) == ES_SYSCALL;
 }
-
-int do_syscall_trace_enter(struct pt_regs *regs, unsigned long syscall);
-void do_syscall_trace_exit(struct pt_regs *regs);
-
 
 static inline unsigned long get_current_sp(void)
 {
@@ -220,6 +218,11 @@ static inline long regs_return_value(struct pt_regs *regs)
 static inline unsigned long user_stack_pointer(struct pt_regs *regs)
 {
 	return regs->sp;
+}
+
+static inline int regs_irqs_disabled(struct pt_regs *regs)
+{
+	return !(regs->sps & KVX_SFR_PS_IE_MASK);
 }
 
 #endif	/* _ASM_KVX_PTRACE_H */

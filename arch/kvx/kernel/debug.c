@@ -3,6 +3,8 @@
  * Copyright (C) 2017-2022 Kalray Inc.
  * Author(s): Clement Leger
  */
+
+#include <linux/entry-common.h>
 #include <linux/list.h>
 #include <linux/rculist.h>
 #include <linux/spinlock.h>
@@ -58,7 +60,7 @@ void debug_hook_unregister(struct debug_hook *dbg_hook)
  */
 void debug_handler(struct pt_regs *regs, u64 ea)
 {
-	trace_hardirqs_off();
+	irqentry_state_t state = irqentry_enter(regs);
 	call_debug_hook(ea, regs);
-	dame_irq_check(regs);
+	irqentry_exit(regs, state);
 }

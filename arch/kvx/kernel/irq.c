@@ -4,6 +4,7 @@
  * Author(s): Clement Leger
  */
 
+#include <linux/entry-common.h>
 #include <linux/irqdomain.h>
 #include <linux/irqflags.h>
 #include <linux/hardirq.h>
@@ -19,13 +20,12 @@
 
 void do_IRQ(struct pt_regs *regs, unsigned long hwirq_mask)
 {
+	irqentry_state_t state = irqentry_enter(regs);
 	struct pt_regs *old_regs = set_irq_regs(regs);
 	int irq;
 	unsigned int hwirq;
 
-	trace_hardirqs_off();
-
-	irq_enter();
+	irq_enter_rcu();
 
 	while (hwirq_mask) {
 		hwirq = __ffs(hwirq_mask);
@@ -34,10 +34,12 @@ void do_IRQ(struct pt_regs *regs, unsigned long hwirq_mask)
 		hwirq_mask &= ~BIT_ULL(hwirq);
 	}
 
-	irq_exit();
+	kvx_sfr_set_field(PS, IL, 0);
+
+	irq_exit_rcu();
 	set_irq_regs(old_regs);
 
-	dame_irq_check(regs);
+	irqentry_exit(regs, state);
 }
 
 /*
