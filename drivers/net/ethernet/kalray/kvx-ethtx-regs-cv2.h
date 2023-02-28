@@ -37,10 +37,23 @@
 #define KVX_ETH_TX_CREDIT_ENABLE_OFFSET            0x0
 
 /* group MPPA_ETHERNET_TX_EXP_NPRE */
-#define KVX_ETH_TX_EXP_NPRE_GRP_OFFSET             0x1028
+#define KVX_ETH_TX_EXP_NPRE_GRP_OFFSET             0x10D8
 #define KVX_ETH_TX_EXP_NPRE_GRP_ELEM_SIZE          0x4
 #define KVX_ETH_TX_EXP_NPRE_GRP_ELEM_NB            0x4
 #define KVX_ETH_TX_EXP_NPRE_CONFIG_OFFSET          0x0
+
+/* group MPPA_ETHERNET_TX_EXP_RR */
+#define KVX_ETH_TX_EXP_RR_GRP_OFFSET               0xF98
+#define KVX_ETH_TX_EXP_RR_GRP_ELEM_SIZE            0x50
+#define KVX_ETH_TX_EXP_RR_GRP_ELEM_NB              0x4
+#define KVX_ETH_TX_EXP_RR_CONFIG_OFFSET            0x0
+#define KVX_ETH_TX_EXP_RR_INIT_QUANTUM_OFFSET      0x4
+#define KVX_ETH_TX_EXP_RR_QUANTUM_OFFSET           0x8
+#define KVX_ETH_TX_EXP_RR_QUANTUM_ELEM_SIZE        0x4
+#define KVX_ETH_TX_EXP_RR_QUANTUM_ELEM_NB          0x9
+#define KVX_ETH_TX_EXP_RR_PRIORITY_OFFSET          0x2C
+#define KVX_ETH_TX_EXP_RR_PRIORITY_ELEM_SIZE       0x4
+#define KVX_ETH_TX_EXP_RR_PRIORITY_ELEM_NB         0x9
 
 /* group MPPA_ETHERNET_TX_ICRC_MASK */
 #define KVX_ETH_TX_ICRC_MASK_GRP_OFFSET            0x2A8
@@ -54,27 +67,6 @@
 #define KVX_ETH_TX_ICRC_MASK_ROCEV1_ELEM_SIZE      0x4
 #define KVX_ETH_TX_ICRC_MASK_ROCEV1_ELEM_NB        0x4
 
-/* group MPPA_ETHERNET_TX_PBDWRR */
-#define KVX_ETH_TX_PBDWRR_GRP_OFFSET               0xE58
-#define KVX_ETH_TX_PBDWRR_GRP_ELEM_SIZE            0x50
-#define KVX_ETH_TX_PBDWRR_GRP_ELEM_NB              0x4
-#define KVX_ETH_TX_PBDWRR_CONFIG_OFFSET            0x0
-#define KVX_ETH_TX_PBDWRR_INIT_QUANTUM_OFFSET      0x4
-#define KVX_ETH_TX_PBDWRR_QUANTUM_OFFSET           0x8
-#define KVX_ETH_TX_PBDWRR_QUANTUM_ELEM_SIZE        0x4
-#define KVX_ETH_TX_PBDWRR_QUANTUM_ELEM_NB          0x9
-#define KVX_ETH_TX_PBDWRR_PRIORITY_OFFSET          0x2C
-#define KVX_ETH_TX_PBDWRR_PRIORITY_ELEM_SIZE       0x4
-#define KVX_ETH_TX_PBDWRR_PRIORITY_ELEM_NB         0x9
-
-/* group MPPA_ETHERNET_TX_PBRR */
-#define KVX_ETH_TX_PBRR_GRP_OFFSET                 0xF98
-#define KVX_ETH_TX_PBRR_GRP_ELEM_SIZE              0x24
-#define KVX_ETH_TX_PBRR_GRP_ELEM_NB                0x4
-#define KVX_ETH_TX_PBRR_PRIORITY_OFFSET            0x0
-#define KVX_ETH_TX_PBRR_PRIORITY_ELEM_SIZE         0x4
-#define KVX_ETH_TX_PBRR_PRIORITY_ELEM_NB           0x9
-
 /* group MPPA_ETHERNET_TX_PFC */
 #define KVX_ETH_TX_PFC_GRP_OFFSET                  0xDC8
 #define KVX_ETH_TX_PFC_GRP_ELEM_SIZE               0x24
@@ -87,8 +79,21 @@
 #define KVX_ETH_TX_PFC_XOFF_SUBSCR_GLBL_PAUSE_SUBSCR_SHIFT 0x8
 #define KVX_ETH_TX_PFC_XOFF_SUBSCR_GLBL_PAUSE_SUBSCR_MASK 0x100UL
 
+/* group MPPA_ETHERNET_TX_PRE_RR */
+#define KVX_ETH_TX_PRE_RR_GRP_OFFSET               0xE58
+#define KVX_ETH_TX_PRE_RR_GRP_ELEM_SIZE            0x50
+#define KVX_ETH_TX_PRE_RR_GRP_ELEM_NB              0x4
+#define KVX_ETH_TX_PRE_RR_CONFIG_OFFSET            0x0
+#define KVX_ETH_TX_PRE_RR_INIT_QUANTUM_OFFSET      0x4
+#define KVX_ETH_TX_PRE_RR_QUANTUM_OFFSET           0x8
+#define KVX_ETH_TX_PRE_RR_QUANTUM_ELEM_SIZE        0x4
+#define KVX_ETH_TX_PRE_RR_QUANTUM_ELEM_NB          0x9
+#define KVX_ETH_TX_PRE_RR_PRIORITY_OFFSET          0x2C
+#define KVX_ETH_TX_PRE_RR_PRIORITY_ELEM_SIZE       0x4
+#define KVX_ETH_TX_PRE_RR_PRIORITY_ELEM_NB         0x9
+
 /* group MPPA_ETHERNET_TX_PTP */
-#define KVX_ETH_TX_PTP_GRP_OFFSET                  0x1044
+#define KVX_ETH_TX_PTP_GRP_OFFSET                  0x10F4
 #define KVX_ETH_TX_PTP_GRP_ELEM_SIZE               0x8C
 #define KVX_ETH_TX_PTP_GRP_ELEM_NB                 0x4
 #define KVX_ETH_TX_PTP_TSTAMP_HI_OFFSET            0x0
@@ -213,7 +218,7 @@
 #define KVX_ETH_TX_TAS_FORCE_SCHEDULING_ELEM_NB    0xA
 
 /* group MPPA_ETHERNET_TX_TDM */
-#define KVX_ETH_TX_TDM_GRP_OFFSET                  0x1038
+#define KVX_ETH_TX_TDM_GRP_OFFSET                  0x10E8
 #define KVX_ETH_TX_TDM_CONFIG_OFFSET               0x0
 #define KVX_ETH_TX_TDM_FCS_OFFSET                  0x4
 #define KVX_ETH_TX_TDM_FCS_PREEMTABLE_SHIFT        0x0
