@@ -71,12 +71,18 @@ void kvx_eth_tx_init(struct kvx_eth_hw *hw)
 		}
 		/* All target fifos to prio 0 */
 		kvx_tx_writel(hw, 0x0,
-				KVX_ETH_TX_PBDWRR_GRP_OFFSET + KVX_ETH_TX_PBDWRR_GRP_ELEM_SIZE * i
-				+ KVX_ETH_TX_PBDWRR_PRIORITY_OFFSET);
-		/* Map traffic to preemptable lane */
+				KVX_ETH_TX_PRE_RR_GRP_OFFSET + KVX_ETH_TX_PRE_RR_GRP_ELEM_SIZE * i
+				+ KVX_ETH_TX_PRE_RR_PRIORITY_OFFSET);
 		kvx_tx_writel(hw, KVX_ETH_TX_PBDWRR_CONFIG_DWRR_DISABLE,
-				KVX_ETH_TX_PBDWRR_GRP_OFFSET + KVX_ETH_TX_PBDWRR_GRP_ELEM_SIZE * i +
-				KVX_ETH_TX_PBDWRR_CONFIG_OFFSET);
+				KVX_ETH_TX_PRE_RR_GRP_OFFSET + KVX_ETH_TX_PRE_RR_GRP_ELEM_SIZE * i +
+				KVX_ETH_TX_PRE_RR_CONFIG_OFFSET);
+		/* All target fifos to prio 0 */
+		kvx_tx_writel(hw, 0x0,
+				KVX_ETH_TX_EXP_RR_GRP_OFFSET + KVX_ETH_TX_EXP_RR_GRP_ELEM_SIZE * i
+				+ KVX_ETH_TX_EXP_RR_PRIORITY_OFFSET);
+		kvx_tx_writel(hw, KVX_ETH_TX_PBDWRR_CONFIG_DWRR_DISABLE,
+				KVX_ETH_TX_EXP_RR_GRP_OFFSET + KVX_ETH_TX_EXP_RR_GRP_ELEM_SIZE * i +
+				KVX_ETH_TX_EXP_RR_CONFIG_OFFSET);
 
 		/* Map traffic to preemptable lane */
 		kvx_tx_writel(hw, 0x0,
@@ -219,72 +225,109 @@ void kvx_eth_tx_exp_npre_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_npre
 	kvx_tx_writel(hw, tx_exp_npre->config,
 			off + KVX_ETH_TX_EXP_NPRE_CONFIG_OFFSET);
 }
-static void kvx_eth_tx_pbrr_priority_f_update(void *data)
+static void kvx_eth_tx_pre_pbdwrr_priority_f_update(void *data)
 {
-	struct kvx_eth_tx_pbrr_priority_f *tx_pbrr_prio = (struct kvx_eth_tx_pbrr_priority_f *)data;
-	u32 off = KVX_ETH_TX_PBRR_GRP_OFFSET + KVX_ETH_TX_PBRR_GRP_ELEM_SIZE * tx_pbrr_prio->lane_id +
-			KVX_ETH_TX_PBRR_PRIORITY_ELEM_SIZE * tx_pbrr_prio->tgt_id;
-
-	tx_pbrr_prio->priority = kvx_tx_readl(tx_pbrr_prio->hw, off);
-}
-void kvx_eth_tx_pbrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbrr_priority_f *tx_pbrr_prio)
-{
-	u32 off = KVX_ETH_TX_PBRR_GRP_OFFSET + KVX_ETH_TX_PBRR_GRP_ELEM_SIZE * tx_pbrr_prio->lane_id +
-			KVX_ETH_TX_PBRR_PRIORITY_ELEM_SIZE * tx_pbrr_prio->tgt_id;
-
-	kvx_tx_writel(hw, tx_pbrr_prio->priority, off);
-}
-static void kvx_eth_tx_pbdwrr_priority_f_update(void *data)
-{
-	struct kvx_eth_tx_pbdwrr_priority_f *tx_pbdwrr_prio = (struct kvx_eth_tx_pbdwrr_priority_f *)data;
-	u32 off = KVX_ETH_TX_PBDWRR_GRP_OFFSET + KVX_ETH_TX_PBDWRR_GRP_ELEM_SIZE * tx_pbdwrr_prio->lane_id +
-			KVX_ETH_TX_PBDWRR_PRIORITY_OFFSET +
-			KVX_ETH_TX_PBDWRR_PRIORITY_ELEM_SIZE * tx_pbdwrr_prio->tgt_id;
+	struct kvx_eth_tx_pre_pbdwrr_priority_f *tx_pbdwrr_prio = (struct kvx_eth_tx_pre_pbdwrr_priority_f *)data;
+	u32 off = KVX_ETH_TX_PRE_RR_GRP_OFFSET + KVX_ETH_TX_PRE_RR_GRP_ELEM_SIZE * tx_pbdwrr_prio->lane_id +
+			KVX_ETH_TX_PRE_RR_PRIORITY_OFFSET +
+			KVX_ETH_TX_PRE_RR_PRIORITY_ELEM_SIZE * tx_pbdwrr_prio->tgt_id;
 
 	tx_pbdwrr_prio->priority = kvx_tx_readl(tx_pbdwrr_prio->hw, off);
 }
-void kvx_eth_tx_pbdwrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbdwrr_priority_f *tx_pbdwrr_prio)
+void kvx_eth_tx_pre_pbdwrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pre_pbdwrr_priority_f *tx_pbdwrr_prio)
 {
-	u32 off = KVX_ETH_TX_PBDWRR_GRP_OFFSET + KVX_ETH_TX_PBDWRR_GRP_ELEM_SIZE * tx_pbdwrr_prio->lane_id +
-			KVX_ETH_TX_PBDWRR_PRIORITY_OFFSET +
-			KVX_ETH_TX_PBDWRR_PRIORITY_ELEM_SIZE * tx_pbdwrr_prio->tgt_id;
+	u32 off = KVX_ETH_TX_PRE_RR_GRP_OFFSET + KVX_ETH_TX_PRE_RR_GRP_ELEM_SIZE * tx_pbdwrr_prio->lane_id +
+			KVX_ETH_TX_PRE_RR_PRIORITY_OFFSET +
+			KVX_ETH_TX_PRE_RR_PRIORITY_ELEM_SIZE * tx_pbdwrr_prio->tgt_id;
 
 	kvx_tx_writel(hw, tx_pbdwrr_prio->priority, off);
 }
-static void kvx_eth_tx_pbdwrr_quantum_f_update(void *data)
+static void kvx_eth_tx_exp_pbdwrr_priority_f_update(void *data)
 {
-	struct kvx_eth_tx_pbdwrr_quantum_f *tx_pbdwrr_quantum = (struct kvx_eth_tx_pbdwrr_quantum_f *)data;
-	u32 off = KVX_ETH_TX_PBDWRR_GRP_OFFSET + KVX_ETH_TX_PBDWRR_GRP_ELEM_SIZE * tx_pbdwrr_quantum->lane_id +
-			KVX_ETH_TX_PBDWRR_QUANTUM_OFFSET +
-			KVX_ETH_TX_PBDWRR_QUANTUM_ELEM_SIZE * tx_pbdwrr_quantum->tgt_id;
+	struct kvx_eth_tx_exp_pbdwrr_priority_f *tx_pbdwrr_prio = (struct kvx_eth_tx_exp_pbdwrr_priority_f *)data;
+	u32 off = KVX_ETH_TX_EXP_RR_GRP_OFFSET + KVX_ETH_TX_EXP_RR_GRP_ELEM_SIZE * tx_pbdwrr_prio->lane_id +
+			KVX_ETH_TX_EXP_RR_PRIORITY_OFFSET +
+			KVX_ETH_TX_EXP_RR_PRIORITY_ELEM_SIZE * tx_pbdwrr_prio->tgt_id;
+
+	tx_pbdwrr_prio->priority = kvx_tx_readl(tx_pbdwrr_prio->hw, off);
+}
+void kvx_eth_tx_exp_pbdwrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_pbdwrr_priority_f *tx_pbdwrr_prio)
+{
+	u32 off = KVX_ETH_TX_EXP_RR_GRP_OFFSET + KVX_ETH_TX_EXP_RR_GRP_ELEM_SIZE * tx_pbdwrr_prio->lane_id +
+			KVX_ETH_TX_EXP_RR_PRIORITY_OFFSET +
+			KVX_ETH_TX_EXP_RR_PRIORITY_ELEM_SIZE * tx_pbdwrr_prio->tgt_id;
+
+	kvx_tx_writel(hw, tx_pbdwrr_prio->priority, off);
+}
+static void kvx_eth_tx_pre_pbdwrr_quantum_f_update(void *data)
+{
+	struct kvx_eth_tx_pre_pbdwrr_quantum_f *tx_pbdwrr_quantum = (struct kvx_eth_tx_pre_pbdwrr_quantum_f *)data;
+	u32 off = KVX_ETH_TX_PRE_RR_GRP_OFFSET + KVX_ETH_TX_PRE_RR_GRP_ELEM_SIZE * tx_pbdwrr_quantum->lane_id +
+			KVX_ETH_TX_PRE_RR_QUANTUM_OFFSET +
+			KVX_ETH_TX_PRE_RR_QUANTUM_ELEM_SIZE * tx_pbdwrr_quantum->tgt_id;
 
 	tx_pbdwrr_quantum->quantum = kvx_tx_readl(tx_pbdwrr_quantum->hw, off);
 }
-void kvx_eth_tx_pbdwrr_quantum_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbdwrr_quantum_f *tx_pbdwrr_quantum)
+void kvx_eth_tx_pre_pbdwrr_quantum_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pre_pbdwrr_quantum_f *tx_pbdwrr_quantum)
 {
-	u32 grp_off = KVX_ETH_TX_PBDWRR_GRP_OFFSET + KVX_ETH_TX_PBDWRR_GRP_ELEM_SIZE * tx_pbdwrr_quantum->lane_id;
+	u32 grp_off = KVX_ETH_TX_PRE_RR_GRP_OFFSET + KVX_ETH_TX_PRE_RR_GRP_ELEM_SIZE * tx_pbdwrr_quantum->lane_id;
 
 	kvx_tx_writel(hw, KVX_ETH_TX_PBDWRR_INIT_QUANTUM_PROGRAM,
-		grp_off + KVX_ETH_TX_PBDWRR_INIT_QUANTUM_OFFSET);
+		grp_off + KVX_ETH_TX_PRE_RR_INIT_QUANTUM_OFFSET);
 	kvx_tx_writel(hw, tx_pbdwrr_quantum->quantum,
-		grp_off + KVX_ETH_TX_PBDWRR_QUANTUM_OFFSET +
-		KVX_ETH_TX_PBDWRR_QUANTUM_ELEM_SIZE * tx_pbdwrr_quantum->tgt_id);
+		grp_off + KVX_ETH_TX_PRE_RR_QUANTUM_OFFSET +
+		KVX_ETH_TX_PRE_RR_QUANTUM_ELEM_SIZE * tx_pbdwrr_quantum->tgt_id);
 	kvx_tx_writel(hw, KVX_ETH_TX_PBDWRR_INIT_QUANTUM_DONE,
-		grp_off + KVX_ETH_TX_PBDWRR_INIT_QUANTUM_OFFSET);
+		grp_off + KVX_ETH_TX_PRE_RR_INIT_QUANTUM_OFFSET);
 }
-static void kvx_eth_tx_pbdwrr_f_update(void *data)
+static void kvx_eth_tx_exp_pbdwrr_quantum_f_update(void *data)
 {
-	struct kvx_eth_tx_pbdwrr_f *tx_pbdwrr = (struct kvx_eth_tx_pbdwrr_f *)data;
-	u32 grp_off = KVX_ETH_TX_PBDWRR_GRP_OFFSET + KVX_ETH_TX_PBDWRR_GRP_ELEM_SIZE * tx_pbdwrr->lane_id;
+	struct kvx_eth_tx_exp_pbdwrr_quantum_f *tx_pbdwrr_quantum = (struct kvx_eth_tx_exp_pbdwrr_quantum_f *)data;
+	u32 off = KVX_ETH_TX_EXP_RR_GRP_OFFSET + KVX_ETH_TX_EXP_RR_GRP_ELEM_SIZE * tx_pbdwrr_quantum->lane_id +
+			KVX_ETH_TX_EXP_RR_QUANTUM_OFFSET +
+			KVX_ETH_TX_EXP_RR_QUANTUM_ELEM_SIZE * tx_pbdwrr_quantum->tgt_id;
 
-	tx_pbdwrr->config = kvx_tx_readl(tx_pbdwrr->hw, grp_off + KVX_ETH_TX_PBDWRR_CONFIG_OFFSET);
+	tx_pbdwrr_quantum->quantum = kvx_tx_readl(tx_pbdwrr_quantum->hw, off);
 }
-void kvx_eth_tx_pbdwrr_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbdwrr_f *tx_pbdwrr)
+void kvx_eth_tx_exp_pbdwrr_quantum_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_pbdwrr_quantum_f *tx_pbdwrr_quantum)
 {
-	u32 grp_off = KVX_ETH_TX_PBDWRR_GRP_OFFSET + KVX_ETH_TX_PBDWRR_GRP_ELEM_SIZE * tx_pbdwrr->lane_id;
+	u32 grp_off = KVX_ETH_TX_EXP_RR_GRP_OFFSET + KVX_ETH_TX_EXP_RR_GRP_ELEM_SIZE * tx_pbdwrr_quantum->lane_id;
+
+	kvx_tx_writel(hw, KVX_ETH_TX_PBDWRR_INIT_QUANTUM_PROGRAM,
+		grp_off + KVX_ETH_TX_EXP_RR_INIT_QUANTUM_OFFSET);
+	kvx_tx_writel(hw, tx_pbdwrr_quantum->quantum,
+		grp_off + KVX_ETH_TX_EXP_RR_QUANTUM_OFFSET +
+		KVX_ETH_TX_EXP_RR_QUANTUM_ELEM_SIZE * tx_pbdwrr_quantum->tgt_id);
+	kvx_tx_writel(hw, KVX_ETH_TX_PBDWRR_INIT_QUANTUM_DONE,
+		grp_off + KVX_ETH_TX_EXP_RR_INIT_QUANTUM_OFFSET);
+}
+static void kvx_eth_tx_pre_pbdwrr_f_update(void *data)
+{
+	struct kvx_eth_tx_pre_pbdwrr_f *tx_pbdwrr = (struct kvx_eth_tx_pre_pbdwrr_f *)data;
+	u32 grp_off = KVX_ETH_TX_PRE_RR_GRP_OFFSET + KVX_ETH_TX_PRE_RR_GRP_ELEM_SIZE * tx_pbdwrr->lane_id;
+
+	tx_pbdwrr->config = kvx_tx_readl(tx_pbdwrr->hw, grp_off + KVX_ETH_TX_PRE_RR_CONFIG_OFFSET);
+}
+void kvx_eth_tx_pre_pbdwrr_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pre_pbdwrr_f *tx_pbdwrr)
+{
+	u32 grp_off = KVX_ETH_TX_PRE_RR_GRP_OFFSET + KVX_ETH_TX_PRE_RR_GRP_ELEM_SIZE * tx_pbdwrr->lane_id;
 
 	kvx_tx_writel(hw, tx_pbdwrr->config,
-		grp_off + KVX_ETH_TX_PBDWRR_CONFIG_OFFSET);
+		grp_off + KVX_ETH_TX_PRE_RR_CONFIG_OFFSET);
+}
+static void kvx_eth_tx_exp_pbdwrr_f_update(void *data)
+{
+	struct kvx_eth_tx_exp_pbdwrr_f *tx_pbdwrr = (struct kvx_eth_tx_exp_pbdwrr_f *)data;
+	u32 grp_off = KVX_ETH_TX_EXP_RR_GRP_OFFSET + KVX_ETH_TX_EXP_RR_GRP_ELEM_SIZE * tx_pbdwrr->lane_id;
+
+	tx_pbdwrr->config = kvx_tx_readl(tx_pbdwrr->hw, grp_off + KVX_ETH_TX_EXP_RR_CONFIG_OFFSET);
+}
+void kvx_eth_tx_exp_pbdwrr_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_pbdwrr_f *tx_pbdwrr)
+{
+	u32 grp_off = KVX_ETH_TX_EXP_RR_GRP_OFFSET + KVX_ETH_TX_EXP_RR_GRP_ELEM_SIZE * tx_pbdwrr->lane_id;
+
+	kvx_tx_writel(hw, tx_pbdwrr->config,
+		grp_off + KVX_ETH_TX_EXP_RR_CONFIG_OFFSET);
 }
 void kvx_eth_tx_f_init(struct kvx_eth_hw *hw)
 {
@@ -319,26 +362,34 @@ void kvx_eth_tx_f_init(struct kvx_eth_hw *hw)
 		hw->tx_exp_npre_f[i].hw = hw;
 		hw->tx_exp_npre_f[i].lane_id = i;
 		hw->tx_exp_npre_f[i].update = kvx_eth_tx_exp_npre_f_update;
-		hw->tx_pbrr_f[i].hw = hw;
-		hw->tx_pbrr_f[i].lane_id = i;
+
+		hw->tx_pre_pbdwrr_f[i].hw = hw;
+		hw->tx_pre_pbdwrr_f[i].lane_id = i;
+		hw->tx_pre_pbdwrr_f[i].update = kvx_eth_tx_pre_pbdwrr_f_update;
 		for (j = 0; j < KVX_ETH_TX_TGT_NB; ++j) {
-			hw->tx_pbrr_f[i].priority[j].hw = hw;
-			hw->tx_pbrr_f[i].priority[j].update = kvx_eth_tx_pbrr_priority_f_update;
-			hw->tx_pbrr_f[i].priority[j].lane_id = i;
-			hw->tx_pbrr_f[i].priority[j].tgt_id = j;
+			hw->tx_pre_pbdwrr_f[i].priority[j].hw = hw;
+			hw->tx_pre_pbdwrr_f[i].priority[j].update = kvx_eth_tx_pre_pbdwrr_priority_f_update;
+			hw->tx_pre_pbdwrr_f[i].priority[j].lane_id = i;
+			hw->tx_pre_pbdwrr_f[i].priority[j].tgt_id = j;
+			hw->tx_pre_pbdwrr_f[i].quantum[j].hw = hw;
+			hw->tx_pre_pbdwrr_f[i].quantum[j].update = kvx_eth_tx_pre_pbdwrr_quantum_f_update;
+			hw->tx_pre_pbdwrr_f[i].quantum[j].lane_id = i;
+			hw->tx_pre_pbdwrr_f[i].quantum[j].tgt_id = j;
 		}
-		hw->tx_pbdwrr_f[i].hw = hw;
-		hw->tx_pbdwrr_f[i].lane_id = i;
-		hw->tx_pbdwrr_f[i].update = kvx_eth_tx_pbdwrr_f_update;
+
+		hw->tx_exp_pbdwrr_f[i].hw = hw;
+		hw->tx_exp_pbdwrr_f[i].lane_id = i;
+		hw->tx_exp_pbdwrr_f[i].update = kvx_eth_tx_exp_pbdwrr_f_update;
 		for (j = 0; j < KVX_ETH_TX_TGT_NB; ++j) {
-			hw->tx_pbdwrr_f[i].priority[j].hw = hw;
-			hw->tx_pbdwrr_f[i].priority[j].update = kvx_eth_tx_pbdwrr_priority_f_update;
-			hw->tx_pbdwrr_f[i].priority[j].lane_id = i;
-			hw->tx_pbdwrr_f[i].priority[j].tgt_id = j;
-			hw->tx_pbdwrr_f[i].quantum[j].hw = hw;
-			hw->tx_pbdwrr_f[i].quantum[j].update = kvx_eth_tx_pbdwrr_quantum_f_update;
-			hw->tx_pbdwrr_f[i].quantum[j].lane_id = i;
-			hw->tx_pbdwrr_f[i].quantum[j].tgt_id = j;
+			hw->tx_exp_pbdwrr_f[i].priority[j].hw = hw;
+			hw->tx_exp_pbdwrr_f[i].priority[j].update = kvx_eth_tx_exp_pbdwrr_priority_f_update;
+			hw->tx_exp_pbdwrr_f[i].priority[j].lane_id = i;
+			hw->tx_exp_pbdwrr_f[i].priority[j].tgt_id = j;
+			hw->tx_exp_pbdwrr_f[i].quantum[j].hw = hw;
+			hw->tx_exp_pbdwrr_f[i].quantum[j].update = kvx_eth_tx_exp_pbdwrr_quantum_f_update;
+			hw->tx_exp_pbdwrr_f[i].quantum[j].lane_id = i;
+			hw->tx_exp_pbdwrr_f[i].quantum[j].tgt_id = j;
 		}
+
 	}
 }

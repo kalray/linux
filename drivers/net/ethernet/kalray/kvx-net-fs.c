@@ -254,44 +254,53 @@ static struct attribute *tx_exp_npre_f_attrs[] = {
 };
 SYSFS_TYPES(tx_exp_npre_f);
 
-DECLARE_SYSFS_ENTRY(tx_pbrr_f);
-static struct attribute *tx_pbrr_f_attrs[] = {
+DECLARE_SYSFS_ENTRY(tx_pre_pbdwrr_f);
+FIELD_RW_ENTRY(tx_pre_pbdwrr_f, config, 0, 0x1);
+static struct attribute *tx_pre_pbdwrr_f_attrs[] = {
+	&tx_pre_pbdwrr_f_config_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(tx_pbrr_f);
+SYSFS_TYPES(tx_pre_pbdwrr_f);
 
-DECLARE_SYSFS_ENTRY(tx_pbrr_priority_f);
-FIELD_RW_ENTRY(tx_pbrr_priority_f, priority, 0, 0xF);
-static struct attribute *tx_pbrr_priority_f_attrs[] = {
-	&tx_pbrr_priority_f_priority_attr.attr,
+DECLARE_SYSFS_ENTRY(tx_pre_pbdwrr_priority_f);
+FIELD_RW_ENTRY(tx_pre_pbdwrr_priority_f, priority, 0, 0xF);
+static struct attribute *tx_pre_pbdwrr_priority_f_attrs[] = {
+	&tx_pre_pbdwrr_priority_f_priority_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(tx_pbrr_priority_f);
+SYSFS_TYPES(tx_pre_pbdwrr_priority_f);
 
-DECLARE_SYSFS_ENTRY(tx_pbdwrr_f);
-FIELD_RW_ENTRY(tx_pbdwrr_f, config, 0, 0x1);
-static struct attribute *tx_pbdwrr_f_attrs[] = {
-	&tx_pbdwrr_f_config_attr.attr,
+DECLARE_SYSFS_ENTRY(tx_pre_pbdwrr_quantum_f);
+FIELD_RW_ENTRY(tx_pre_pbdwrr_quantum_f, quantum, 0, 0x7FFF);
+static struct attribute *tx_pre_pbdwrr_quantum_f_attrs[] = {
+	&tx_pre_pbdwrr_quantum_f_quantum_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(tx_pbdwrr_f);
+SYSFS_TYPES(tx_pre_pbdwrr_quantum_f);
 
-DECLARE_SYSFS_ENTRY(tx_pbdwrr_priority_f);
-FIELD_RW_ENTRY(tx_pbdwrr_priority_f, priority, 0, 0xF);
-static struct attribute *tx_pbdwrr_priority_f_attrs[] = {
-	&tx_pbdwrr_priority_f_priority_attr.attr,
+DECLARE_SYSFS_ENTRY(tx_exp_pbdwrr_f);
+FIELD_RW_ENTRY(tx_exp_pbdwrr_f, config, 0, 0x1);
+static struct attribute *tx_exp_pbdwrr_f_attrs[] = {
+	&tx_exp_pbdwrr_f_config_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(tx_pbdwrr_priority_f);
+SYSFS_TYPES(tx_exp_pbdwrr_f);
 
-DECLARE_SYSFS_ENTRY(tx_pbdwrr_quantum_f);
-FIELD_RW_ENTRY(tx_pbdwrr_quantum_f, quantum, 0, 0x7FFF);
-static struct attribute *tx_pbdwrr_quantum_f_attrs[] = {
-	&tx_pbdwrr_quantum_f_quantum_attr.attr,
+DECLARE_SYSFS_ENTRY(tx_exp_pbdwrr_priority_f);
+FIELD_RW_ENTRY(tx_exp_pbdwrr_priority_f, priority, 0, 0xF);
+static struct attribute *tx_exp_pbdwrr_priority_f_attrs[] = {
+	&tx_exp_pbdwrr_priority_f_priority_attr.attr,
 	NULL,
 };
-SYSFS_TYPES(tx_pbdwrr_quantum_f);
+SYSFS_TYPES(tx_exp_pbdwrr_priority_f);
 
+DECLARE_SYSFS_ENTRY(tx_exp_pbdwrr_quantum_f);
+FIELD_RW_ENTRY(tx_exp_pbdwrr_quantum_f, quantum, 0, 0x7FFF);
+static struct attribute *tx_exp_pbdwrr_quantum_f_attrs[] = {
+	&tx_exp_pbdwrr_quantum_f_quantum_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(tx_exp_pbdwrr_quantum_f);
 DECLARE_SYSFS_ENTRY(tx_tdm_f);
 FIELD_RW_ENTRY(tx_tdm_f, fcs, 0, 0xFF);
 FIELD_RW_ENTRY(tx_tdm_f, err, 0, 0xFF);
@@ -692,11 +701,12 @@ static struct kset *tx_stage_two_kset;
 static struct kset *tx_stage_two_drop_status_kset;
 static struct kset *tx_stage_two_wmark_kset;
 static struct kset *tx_exp_npre_kset;
-static struct kset *tx_pbrr_kset;
-static struct kset *tx_pbrr_priority_kset;
-static struct kset *tx_pbdwrr_kset;
-static struct kset *tx_pbdwrr_priority_kset;
-static struct kset *tx_pbdwrr_quantum_kset;
+static struct kset *tx_exp_pbdwrr_kset;
+static struct kset *tx_exp_pbdwrr_priority_kset;
+static struct kset *tx_exp_pbdwrr_quantum_kset;
+static struct kset *tx_pre_pbdwrr_kset;
+static struct kset *tx_pre_pbdwrr_priority_kset;
+static struct kset *tx_pre_pbdwrr_quantum_kset;
 #endif
 static struct kset *dt_kset;
 static struct kset *lut_entry_kset;
@@ -764,11 +774,12 @@ kvx_declare_kset(tx_stage_two_f, "tx_stage_two")
 kvx_declare_kset(tx_stage_two_drop_status_f, "drop_status")
 kvx_declare_kset(tx_stage_two_wmark_f, "wmark")
 kvx_declare_kset(tx_exp_npre_f, "tx_exp_npre")
-kvx_declare_kset(tx_pbrr_f, "tx_pbrr")
-kvx_declare_kset(tx_pbrr_priority_f, "priority")
-kvx_declare_kset(tx_pbdwrr_f, "tx_pbdwrr")
-kvx_declare_kset(tx_pbdwrr_priority_f, "priority")
-kvx_declare_kset(tx_pbdwrr_quantum_f, "quantum")
+kvx_declare_kset(tx_pre_pbdwrr_f, "tx_pre_pbdwrr")
+kvx_declare_kset(tx_pre_pbdwrr_priority_f, "priority")
+kvx_declare_kset(tx_pre_pbdwrr_quantum_f, "quantum")
+kvx_declare_kset(tx_exp_pbdwrr_f, "tx_exp_pbdwrr")
+kvx_declare_kset(tx_exp_pbdwrr_priority_f, "priority")
+kvx_declare_kset(tx_exp_pbdwrr_quantum_f, "quantum")
 #endif
 kvx_declare_kset(cl_f, "pfc_cl")
 kvx_declare_kset(dt_f, "dispatch_table")
@@ -824,19 +835,22 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 	}
 	for (i = 0; i < ARRAY_SIZE(hw->tx_exp_npre_f); i++)
 		kobject_init(&hw->tx_exp_npre_f[i].kobj, &tx_exp_npre_f_ktype);
-	for (i = 0; i < ARRAY_SIZE(hw->tx_pbrr_f); i++) {
-		kobject_init(&hw->tx_pbrr_f[i].kobj, &tx_pbrr_f_ktype);
-		for (j = 0; j < KVX_ETH_TX_TGT_NB; j++)
-			kobject_init(&hw->tx_pbrr_f[i].priority[j].kobj,
-					&tx_pbrr_priority_f_ktype);
-	}
-	for (i = 0; i < ARRAY_SIZE(hw->tx_pbdwrr_f); i++) {
-		kobject_init(&hw->tx_pbdwrr_f[i].kobj, &tx_pbdwrr_f_ktype);
+	for (i = 0; i < ARRAY_SIZE(hw->tx_pre_pbdwrr_f); i++) {
+		kobject_init(&hw->tx_pre_pbdwrr_f[i].kobj, &tx_pre_pbdwrr_f_ktype);
 		for (j = 0; j < KVX_ETH_TX_TGT_NB; j++) {
-			kobject_init(&hw->tx_pbdwrr_f[i].quantum[j].kobj,
-					&tx_pbdwrr_quantum_f_ktype);
-			kobject_init(&hw->tx_pbdwrr_f[i].priority[j].kobj,
-					&tx_pbdwrr_priority_f_ktype);
+			kobject_init(&hw->tx_pre_pbdwrr_f[i].quantum[j].kobj,
+					&tx_pre_pbdwrr_quantum_f_ktype);
+			kobject_init(&hw->tx_pre_pbdwrr_f[i].priority[j].kobj,
+					&tx_pre_pbdwrr_priority_f_ktype);
+		}
+	}
+	for (i = 0; i < ARRAY_SIZE(hw->tx_exp_pbdwrr_f); i++) {
+		kobject_init(&hw->tx_exp_pbdwrr_f[i].kobj, &tx_exp_pbdwrr_f_ktype);
+		for (j = 0; j < KVX_ETH_TX_TGT_NB; j++) {
+			kobject_init(&hw->tx_exp_pbdwrr_f[i].quantum[j].kobj,
+					&tx_exp_pbdwrr_quantum_f_ktype);
+			kobject_init(&hw->tx_exp_pbdwrr_f[i].priority[j].kobj,
+					&tx_exp_pbdwrr_priority_f_ktype);
 		}
 	}
 	kobject_init(&hw->lb_rfs_f.kobj, &lb_rfs_f_ktype);
@@ -979,30 +993,35 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 			tx_exp_npre_kset, &hw->tx_exp_npre_f[0], ARRAY_SIZE(hw->tx_exp_npre_f));
 	if (ret)
 		goto err;
-	ret = kvx_kset_tx_pbrr_f_create(ndev, &ndev->netdev->dev.kobj,
-			tx_pbrr_kset, &hw->tx_pbrr_f[0], ARRAY_SIZE(hw->tx_pbrr_f));
+	ret = kvx_kset_tx_pre_pbdwrr_f_create(ndev, &ndev->netdev->dev.kobj,
+			tx_pre_pbdwrr_kset, &hw->tx_pre_pbdwrr_f[0], ARRAY_SIZE(hw->tx_pre_pbdwrr_f));
 	if (ret)
 		goto err;
-	for (i = 0 ; i < ARRAY_SIZE(hw->tx_pbrr_f) ; ++i) {
-		ret = kvx_kset_tx_pbrr_priority_f_create(ndev, &ndev->hw->tx_pbrr_f[i].kobj,
-				tx_pbrr_priority_kset, &hw->tx_pbrr_f[i].priority[0], KVX_ETH_TX_TGT_NB);
+	for (i = 0 ; i < ARRAY_SIZE(hw->tx_pre_pbdwrr_f) ; ++i) {
+		ret = kvx_kset_tx_pre_pbdwrr_priority_f_create(ndev, &ndev->hw->tx_pre_pbdwrr_f[i].kobj,
+				tx_pre_pbdwrr_priority_kset, &hw->tx_pre_pbdwrr_f[i].priority[0], KVX_ETH_TX_TGT_NB);
+		if (ret)
+			goto err;
+		ret = kvx_kset_tx_pre_pbdwrr_quantum_f_create(ndev, &ndev->hw->tx_pre_pbdwrr_f[i].kobj,
+				tx_pre_pbdwrr_quantum_kset, &hw->tx_pre_pbdwrr_f[i].quantum[0], KVX_ETH_TX_TGT_NB);
 		if (ret)
 			goto err;
 	}
-	ret = kvx_kset_tx_pbdwrr_f_create(ndev, &ndev->netdev->dev.kobj,
-			tx_pbdwrr_kset, &hw->tx_pbdwrr_f[0], ARRAY_SIZE(hw->tx_pbdwrr_f));
+	ret = kvx_kset_tx_exp_pbdwrr_f_create(ndev, &ndev->netdev->dev.kobj,
+			tx_exp_pbdwrr_kset, &hw->tx_exp_pbdwrr_f[0], ARRAY_SIZE(hw->tx_exp_pbdwrr_f));
 	if (ret)
 		goto err;
-	for (i = 0 ; i < ARRAY_SIZE(hw->tx_pbdwrr_f) ; ++i) {
-		ret = kvx_kset_tx_pbdwrr_priority_f_create(ndev, &ndev->hw->tx_pbdwrr_f[i].kobj,
-				tx_pbdwrr_priority_kset, &hw->tx_pbdwrr_f[i].priority[0], KVX_ETH_TX_TGT_NB);
+	for (i = 0 ; i < ARRAY_SIZE(hw->tx_exp_pbdwrr_f) ; ++i) {
+		ret = kvx_kset_tx_exp_pbdwrr_priority_f_create(ndev, &ndev->hw->tx_exp_pbdwrr_f[i].kobj,
+				tx_exp_pbdwrr_priority_kset, &hw->tx_exp_pbdwrr_f[i].priority[0], KVX_ETH_TX_TGT_NB);
 		if (ret)
 			goto err;
-		ret = kvx_kset_tx_pbdwrr_quantum_f_create(ndev, &ndev->hw->tx_pbdwrr_f[i].kobj,
-				tx_pbdwrr_quantum_kset, &hw->tx_pbdwrr_f[i].quantum[0], KVX_ETH_TX_TGT_NB);
+		ret = kvx_kset_tx_exp_pbdwrr_quantum_f_create(ndev, &ndev->hw->tx_exp_pbdwrr_f[i].kobj,
+				tx_exp_pbdwrr_quantum_kset, &hw->tx_exp_pbdwrr_f[i].quantum[0], KVX_ETH_TX_TGT_NB);
 		if (ret)
 			goto err;
 	}
+
 #endif
 
 	ret = kvx_kset_dt_f_create(ndev, &ndev->netdev->dev.kobj, dt_kset,
@@ -1063,22 +1082,22 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 #else
 	kvx_kset_tx_exp_npre_f_remove(ndev, tx_exp_npre_kset, &ndev->hw->tx_exp_npre_f[0],
 				 KVX_ETH_LANE_NB);
-	for (i = 0; i < ARRAY_SIZE(ndev->hw->tx_pbdwrr_f); i++) {
-		kvx_kset_tx_pbdwrr_quantum_f_remove(ndev, tx_pbdwrr_quantum_kset,
-				&ndev->hw->tx_pbdwrr_f[i].quantum[0],
+	for (i = 0; i < ARRAY_SIZE(ndev->hw->tx_pre_pbdwrr_f); i++) {
+		kvx_kset_tx_pre_pbdwrr_quantum_f_remove(ndev, tx_pre_pbdwrr_quantum_kset,
+				&ndev->hw->tx_pre_pbdwrr_f[i].quantum[0],
 				KVX_ETH_TX_TGT_NB);
-		kvx_kset_tx_pbdwrr_priority_f_remove(ndev, tx_pbdwrr_priority_kset,
-				&ndev->hw->tx_pbdwrr_f[i].priority[0],
+		kvx_kset_tx_pre_pbdwrr_priority_f_remove(ndev, tx_pre_pbdwrr_priority_kset,
+				&ndev->hw->tx_pre_pbdwrr_f[i].priority[0],
 				KVX_ETH_TX_TGT_NB);
 	}
-	kvx_kset_tx_pbdwrr_f_remove(ndev, tx_pbdwrr_kset, &ndev->hw->tx_pbdwrr_f[0],
-				 KVX_ETH_LANE_NB);
-	for (i = 0; i < ARRAY_SIZE(ndev->hw->tx_pbrr_f); i++)
-		kvx_kset_tx_pbrr_priority_f_remove(ndev, tx_pbrr_priority_kset,
-				&ndev->hw->tx_pbrr_f[i].priority[0],
+	for (i = 0; i < ARRAY_SIZE(ndev->hw->tx_exp_pbdwrr_f); i++) {
+		kvx_kset_tx_exp_pbdwrr_quantum_f_remove(ndev, tx_exp_pbdwrr_quantum_kset,
+				&ndev->hw->tx_exp_pbdwrr_f[i].quantum[0],
 				KVX_ETH_TX_TGT_NB);
-	kvx_kset_tx_pbrr_f_remove(ndev, tx_pbrr_kset, &ndev->hw->tx_pbrr_f[0],
-				 KVX_ETH_LANE_NB);
+		kvx_kset_tx_exp_pbdwrr_priority_f_remove(ndev, tx_exp_pbdwrr_priority_kset,
+				&ndev->hw->tx_exp_pbdwrr_f[i].priority[0],
+				KVX_ETH_TX_TGT_NB);
+	}
 	for (i = 0; i < ARRAY_SIZE(ndev->hw->tx_pfc_f); i++)
 		kvx_kset_tx_pfc_xoff_subsc_f_remove(ndev, tx_pfc_xoff_subsc_kset,
 				&ndev->hw->tx_pfc_f[i].xoff_subsc[0],
