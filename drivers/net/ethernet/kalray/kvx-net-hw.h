@@ -417,22 +417,7 @@ struct kvx_eth_tx_exp_npre_f {
 	int lane_id;
 	u16 config;
 };
-struct kvx_eth_tx_pbrr_priority_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
-	int lane_id;
-	int tgt_id;
-	u16 priority;
-};
-struct kvx_eth_tx_pbrr_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
-	int lane_id;
-	struct kvx_eth_tx_pbrr_priority_f priority[KVX_ETH_TX_TGT_NB];
-};
-struct kvx_eth_tx_pbdwrr_quantum_f {
+struct kvx_eth_tx_pre_pbdwrr_quantum_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
 	void (*update)(void *p);
@@ -440,7 +425,7 @@ struct kvx_eth_tx_pbdwrr_quantum_f {
 	int tgt_id;
 	u16 quantum;
 };
-struct kvx_eth_tx_pbdwrr_priority_f {
+struct kvx_eth_tx_pre_pbdwrr_priority_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
 	void (*update)(void *p);
@@ -448,14 +433,39 @@ struct kvx_eth_tx_pbdwrr_priority_f {
 	int tgt_id;
 	u16 priority;
 };
-struct kvx_eth_tx_pbdwrr_f {
+struct kvx_eth_tx_pre_pbdwrr_f {
 	struct kobject kobj;
 	struct kvx_eth_hw *hw;
 	void (*update)(void *p);
 	int lane_id;
-	struct kvx_eth_tx_pbdwrr_priority_f priority[KVX_ETH_TX_TGT_NB];
+	struct kvx_eth_tx_pre_pbdwrr_priority_f priority[KVX_ETH_TX_TGT_NB];
 	u8 config;
-	struct kvx_eth_tx_pbdwrr_quantum_f quantum[KVX_ETH_TX_TGT_NB];
+	struct kvx_eth_tx_pre_pbdwrr_quantum_f quantum[KVX_ETH_TX_TGT_NB];
+};
+struct kvx_eth_tx_exp_pbdwrr_quantum_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	int tgt_id;
+	u16 quantum;
+};
+struct kvx_eth_tx_exp_pbdwrr_priority_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	int tgt_id;
+	u16 priority;
+};
+struct kvx_eth_tx_exp_pbdwrr_f {
+	struct kobject kobj;
+	struct kvx_eth_hw *hw;
+	void (*update)(void *p);
+	int lane_id;
+	struct kvx_eth_tx_exp_pbdwrr_priority_f priority[KVX_ETH_TX_TGT_NB];
+	u8 config;
+	struct kvx_eth_tx_exp_pbdwrr_quantum_f quantum[KVX_ETH_TX_TGT_NB];
 };
 struct kvx_eth_tx_tdm_f {
 	struct kobject kobj;
@@ -1189,8 +1199,8 @@ struct kvx_eth_hw {
 	struct kvx_eth_tx_pfc_f tx_pfc_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_tx_stage_two_f tx_stage_two_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_tx_exp_npre_f tx_exp_npre_f[KVX_ETH_LANE_NB];
-	struct kvx_eth_tx_pbrr_f tx_pbrr_f[KVX_ETH_LANE_NB];
-	struct kvx_eth_tx_pbdwrr_f tx_pbdwrr_f[KVX_ETH_LANE_NB];
+	struct kvx_eth_tx_pre_pbdwrr_f tx_pre_pbdwrr_f[KVX_ETH_LANE_NB];
+	struct kvx_eth_tx_exp_pbdwrr_f tx_exp_pbdwrr_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_rx_dlv_pfc_f rx_dlv_pfc_f;
 	struct kvx_eth_lb_rfs_f lb_rfs_f;
 #endif
@@ -1597,10 +1607,12 @@ void kvx_eth_tx_tdm_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_tdm_f *tdm);
 void kvx_eth_tx_pfc_xoff_subsc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pfc_xoff_subsc_f *subsc);
 void kvx_eth_tx_stage_two_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_stage_two_f *tx_stage_two);
 void kvx_eth_tx_exp_npre_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_npre_f *tx_exp_npre);
-void kvx_eth_tx_pbrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbrr_priority_f *tx_pbrr_prio);
-void kvx_eth_tx_pbdwrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbdwrr_priority_f *tx_pbdwrr_prio);
-void kvx_eth_tx_pbdwrr_quantum_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbdwrr_quantum_f *tx_pbdwrr_quantum);
-void kvx_eth_tx_pbdwrr_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pbdwrr_f *tx_pbdwrr);
+void kvx_eth_tx_pre_pbdwrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pre_pbdwrr_priority_f *tx_pbdwrr_prio);
+void kvx_eth_tx_pre_pbdwrr_quantum_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pre_pbdwrr_quantum_f *tx_pbdwrr_quantum);
+void kvx_eth_tx_pre_pbdwrr_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pre_pbdwrr_f *tx_pbdwrr);
+void kvx_eth_tx_exp_pbdwrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_pbdwrr_priority_f *tx_pbdwrr_prio);
+void kvx_eth_tx_exp_pbdwrr_quantum_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_pbdwrr_quantum_f *tx_pbdwrr_quantum);
+void kvx_eth_tx_exp_pbdwrr_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_pbdwrr_f *tx_pbdwrr);
 #endif
 
 /* PARSING */
