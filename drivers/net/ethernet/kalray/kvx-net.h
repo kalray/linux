@@ -201,4 +201,109 @@ static inline void kvx_set_dcb_ops(struct net_device *netdev) {};
 
 bool kvx_eth_is_haps(struct kvx_eth_netdev *ndev);
 
+/**
+ * @brief macro to sysfs creation
+ *
+ */
+
+#define STR_LEN PAGE_SIZE
+
+#define DECLARE_SYSFS_ENTRY(s) \
+struct sysfs_##s##_entry { \
+	struct attribute attr; \
+	ssize_t (*show)(struct kvx_eth_##s *p, char *buf); \
+	ssize_t (*store)(struct kvx_eth_##s *p, const char *buf, size_t s); \
+}; \
+static ssize_t s##_attr_show(struct kobject *kobj, \
+			     struct attribute *attr, char *buf) \
+{ \
+	struct sysfs_##s##_entry *entry = container_of(attr, \
+					 struct sysfs_##s##_entry, attr); \
+	struct kvx_eth_##s *p = container_of(kobj, struct kvx_eth_##s, kobj); \
+	if (!entry->show) \
+		return -EIO; \
+	return entry->show(p, buf); \
+} \
+static ssize_t s##_attr_store(struct kobject *kobj, \
+			struct attribute *attr, const char *buf, size_t count) \
+{ \
+	struct sysfs_##s##_entry *entry = container_of(attr, \
+					 struct sysfs_##s##_entry, attr); \
+	struct kvx_eth_##s *p = container_of(kobj, struct kvx_eth_##s, kobj); \
+	if (!entry->store) \
+		return -EIO; \
+	return entry->store(p, buf, count); \
+}
+
+#define SYSFS_TYPES(s) \
+const struct sysfs_ops s##_sysfs_ops = { \
+	.show  = s##_attr_show, \
+	.store = s##_attr_store, \
+}; \
+struct kobj_type s##_ktype = { \
+	.sysfs_ops = &s##_sysfs_ops, \
+	.default_attrs = s##_attrs, \
+}
+
+#define FIELD_RW_ENTRY(s, f, min, max) \
+static ssize_t s##_##f##_show(struct kvx_eth_##s *p, char *buf) \
+{ \
+	if (p->update) \
+		p->update(p); \
+	return scnprintf(buf, STR_LEN, "%i\n", p->f); \
+} \
+static ssize_t s##_##f##_store(struct kvx_eth_##s *p, const char *buf, \
+		size_t count) \
+{ \
+	ssize_t ret; \
+	unsigned int val; \
+	ret = kstrtouint(buf, 0, &val); \
+	if (ret) \
+		return ret; \
+	if (val < min || val > max) \
+		return -EINVAL; \
+	p->f = val; \
+	kvx_eth_##s##_cfg(p->hw, p); \
+	return count; \
+} \
+static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0644, \
+		s##_##f##_show, s##_##f##_store) \
+
+#define FIELD_R_ENTRY(s, f, min, max) \
+static ssize_t s##_##f##_show(struct kvx_eth_##s *p, char *buf) \
+{ \
+	if (p->update) \
+		p->update(p); \
+	return scnprintf(buf, STR_LEN, "%i\n", p->f); \
+} \
+static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0444, \
+		s##_##f##_show, NULL)
+
+#define FIELD_R_STRING_ENTRY(s, f, min, max) \
+static ssize_t s##_##f##_show(struct kvx_eth_##s *p, char *buf) \
+{ \
+	if (p->update) \
+		p->update(p); \
+	return scnprintf(buf, STR_LEN, "%s\n", p->f); \
+} \
+static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0444, \
+		s##_##f##_show, NULL)
+#define FIELD_W_ENTRY(s, f, min, max) \
+static ssize_t s##_##f##_store(struct kvx_eth_##s *p, const char *buf, \
+		size_t count) \
+{ \
+	ssize_t ret; \
+	unsigned int val; \
+	ret = kstrtouint(buf, 0, &val); \
+	if (ret) \
+		return ret; \
+	if (val < min || val > max) \
+		return -EINVAL; \
+	p->f = val; \
+	kvx_eth_##s##_cfg(p->hw, p); \
+	return count; \
+} \
+static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0644, \
+		NULL, s##_##f##_store) \
+
 #endif /* KVX_NET_H */
