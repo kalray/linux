@@ -9,107 +9,7 @@
 
 #include <linux/module.h>
 
-#include "kvx-net.h"
-
-#define STR_LEN PAGE_SIZE
-
-#define DECLARE_SYSFS_ENTRY(s) \
-struct sysfs_##s##_entry { \
-	struct attribute attr; \
-	ssize_t (*show)(struct kvx_eth_##s *p, char *buf); \
-	ssize_t (*store)(struct kvx_eth_##s *p, const char *buf, size_t s); \
-}; \
-static ssize_t s##_attr_show(struct kobject *kobj, \
-			     struct attribute *attr, char *buf) \
-{ \
-	struct sysfs_##s##_entry *entry = container_of(attr, \
-					 struct sysfs_##s##_entry, attr); \
-	struct kvx_eth_##s *p = container_of(kobj, struct kvx_eth_##s, kobj); \
-	if (!entry->show) \
-		return -EIO; \
-	return entry->show(p, buf); \
-} \
-static ssize_t s##_attr_store(struct kobject *kobj, \
-			struct attribute *attr, const char *buf, size_t count) \
-{ \
-	struct sysfs_##s##_entry *entry = container_of(attr, \
-					 struct sysfs_##s##_entry, attr); \
-	struct kvx_eth_##s *p = container_of(kobj, struct kvx_eth_##s, kobj); \
-	if (!entry->store) \
-		return -EIO; \
-	return entry->store(p, buf, count); \
-}
-
-#define SYSFS_TYPES(s) \
-const struct sysfs_ops s##_sysfs_ops = { \
-	.show  = s##_attr_show, \
-	.store = s##_attr_store, \
-}; \
-struct kobj_type s##_ktype = { \
-	.sysfs_ops = &s##_sysfs_ops, \
-	.default_attrs = s##_attrs, \
-}
-
-#define FIELD_RW_ENTRY(s, f, min, max) \
-static ssize_t s##_##f##_show(struct kvx_eth_##s *p, char *buf) \
-{ \
-	if (p->update) \
-		p->update(p); \
-	return scnprintf(buf, STR_LEN, "%i\n", p->f); \
-} \
-static ssize_t s##_##f##_store(struct kvx_eth_##s *p, const char *buf, \
-		size_t count) \
-{ \
-	ssize_t ret; \
-	unsigned int val; \
-	ret = kstrtouint(buf, 0, &val); \
-	if (ret) \
-		return ret; \
-	if (val < min || val > max) \
-		return -EINVAL; \
-	p->f = val; \
-	kvx_eth_##s##_cfg(p->hw, p); \
-	return count; \
-} \
-static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0644, \
-		s##_##f##_show, s##_##f##_store) \
-
-#define FIELD_R_ENTRY(s, f, min, max) \
-static ssize_t s##_##f##_show(struct kvx_eth_##s *p, char *buf) \
-{ \
-	if (p->update) \
-		p->update(p); \
-	return scnprintf(buf, STR_LEN, "%i\n", p->f); \
-} \
-static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0444, \
-		s##_##f##_show, NULL)
-
-#define FIELD_R_STRING_ENTRY(s, f, min, max) \
-static ssize_t s##_##f##_show(struct kvx_eth_##s *p, char *buf) \
-{ \
-	if (p->update) \
-		p->update(p); \
-	return scnprintf(buf, STR_LEN, "%s\n", p->f); \
-} \
-static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0444, \
-		s##_##f##_show, NULL)
-#define FIELD_W_ENTRY(s, f, min, max) \
-static ssize_t s##_##f##_store(struct kvx_eth_##s *p, const char *buf, \
-		size_t count) \
-{ \
-	ssize_t ret; \
-	unsigned int val; \
-	ret = kstrtouint(buf, 0, &val); \
-	if (ret) \
-		return ret; \
-	if (val < min || val > max) \
-		return -EINVAL; \
-	p->f = val; \
-	kvx_eth_##s##_cfg(p->hw, p); \
-	return count; \
-} \
-static struct sysfs_##s##_entry s##_##f##_attr = __ATTR(f, 0644, \
-		NULL, s##_##f##_store) \
+#include "../kvx-net.h"
 
 DECLARE_SYSFS_ENTRY(mac_f);
 FIELD_RW_ENTRY(mac_f, loopback_mode, 0, MAC_ETH_LOOPBACK);
@@ -124,7 +24,6 @@ static struct attribute *mac_f_attrs[] = {
 };
 SYSFS_TYPES(mac_f);
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
 DECLARE_SYSFS_ENTRY(lb_rfs_f);
 FIELD_R_ENTRY(lb_rfs_f, version, 0, 0xFFFFFFFF);
 FIELD_W_ENTRY(lb_rfs_f, ctrl_rfs_ena, 0, RFS_CTRL_RFS_ENABLE);
@@ -312,7 +211,7 @@ static struct attribute *tx_tdm_f_attrs[] = {
 	NULL,
 };
 SYSFS_TYPES(tx_tdm_f);
-#endif
+
 DECLARE_SYSFS_ENTRY(phy_f);
 static struct attribute *phy_f_attrs[] = {
 	NULL,
@@ -363,41 +262,7 @@ static struct attribute *tx_bert_param_attrs[] = {
 SYSFS_TYPES(tx_bert_param);
 
 DECLARE_SYSFS_ENTRY(lb_f);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-FIELD_RW_ENTRY(lb_f, default_dispatch_policy,
-	       0, DEFAULT_DISPATCH_POLICY_NB);
-FIELD_RW_ENTRY(lb_f, keep_all_crc_error_pkt, 0, 1);
-FIELD_RW_ENTRY(lb_f, store_and_forward, 0, 1);
-FIELD_RW_ENTRY(lb_f, add_header, 0, 1);
-FIELD_RW_ENTRY(lb_f, add_footer, 0, 1);
-FIELD_R_ENTRY(lb_f, drop_mtu_cnt, 0, U32_MAX);
-FIELD_R_ENTRY(lb_f, drop_fcs_cnt, 0, U32_MAX);
-FIELD_R_ENTRY(lb_f, drop_crc_cnt, 0, U32_MAX);
-FIELD_R_ENTRY(lb_f, drop_rule_cnt, 0, U32_MAX);
-FIELD_R_ENTRY(lb_f, drop_fifo_overflow_cnt, 0, U32_MAX);
-FIELD_R_ENTRY(lb_f, drop_total_cnt, 0, U32_MAX);
-FIELD_R_ENTRY(lb_f, default_hit_cnt, 0, U32_MAX);
-FIELD_R_ENTRY(lb_f, global_drop_cnt, 0, U32_MAX);
-FIELD_R_ENTRY(lb_f, global_no_pfc_drop_cnt, 0, U32_MAX);
 
-static struct attribute *lb_f_attrs[] = {
-	&lb_f_default_dispatch_policy_attr.attr,
-	&lb_f_keep_all_crc_error_pkt_attr.attr,
-	&lb_f_store_and_forward_attr.attr,
-	&lb_f_add_header_attr.attr,
-	&lb_f_add_footer_attr.attr,
-	&lb_f_drop_mtu_cnt_attr.attr,
-	&lb_f_drop_fcs_cnt_attr.attr,
-	&lb_f_drop_crc_cnt_attr.attr,
-	&lb_f_drop_rule_cnt_attr.attr,
-	&lb_f_drop_fifo_overflow_cnt_attr.attr,
-	&lb_f_drop_total_cnt_attr.attr,
-	&lb_f_default_hit_cnt_attr.attr,
-	&lb_f_global_drop_cnt_attr.attr,
-	&lb_f_global_no_pfc_drop_cnt_attr.attr,
-	NULL,
-};
-#else
 FIELD_R_ENTRY(lb_f, drop_mtu_err_cnt, 0, U32_MAX);
 FIELD_R_ENTRY(lb_f, drop_fcs_err_cnt, 0, U32_MAX);
 FIELD_R_ENTRY(lb_f, drop_crc_err_cnt, 0, U32_MAX);
@@ -418,7 +283,6 @@ static struct attribute *lb_f_attrs[] = {
 	&lb_f_keep_all_crc_error_pkt_attr.attr,
 	NULL,
 };
-#endif
 SYSFS_TYPES(lb_f);
 
 DECLARE_SYSFS_ENTRY(rx_noc);
@@ -436,7 +300,6 @@ static struct attribute *rx_noc_attrs[] = {
 };
 SYSFS_TYPES(rx_noc);
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
 DECLARE_SYSFS_ENTRY(rx_dlv_pfc_f);
 FIELD_R_ENTRY(rx_dlv_pfc_f, total_drop_cnt, 0, U32_MAX);
 
@@ -445,19 +308,20 @@ static struct attribute *rx_dlv_pfc_f_attrs[] = {
 	NULL,
 };
 SYSFS_TYPES(rx_dlv_pfc_f);
-#endif
 
 DECLARE_SYSFS_ENTRY(lut_f);
 FIELD_RW_ENTRY(lut_f, qpn_enable, 0, RX_LB_LUT_QPN_CTRL_QPN_EN_MASK);
 FIELD_RW_ENTRY(lut_f, lane_enable, 0, 1);
 FIELD_RW_ENTRY(lut_f, rule_enable, 0, 1);
 FIELD_RW_ENTRY(lut_f, pfc_enable, 0, 1);
+FIELD_RW_ENTRY(lut_f, rss_enable, 0, 1);
 
 static struct attribute *lut_f_attrs[] = {
 	&lut_f_qpn_enable_attr.attr,
 	&lut_f_lane_enable_attr.attr,
 	&lut_f_rule_enable_attr.attr,
 	&lut_f_pfc_enable_attr.attr,
+	&lut_f_rss_enable_attr.attr,
 	NULL,
 };
 SYSFS_TYPES(lut_f);
@@ -495,58 +359,6 @@ static struct attribute *pfc_f_attrs[] = {
 	NULL,
 };
 SYSFS_TYPES(pfc_f);
-
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-DECLARE_SYSFS_ENTRY(tx_f);
-FIELD_R_ENTRY(tx_f, header_en, 0, 1);
-FIELD_R_ENTRY(tx_f, crc_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, drop_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, nocx_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, nocx_pack_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, pfc_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, pause_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, rr_trigger, 0, 0xF);
-FIELD_RW_ENTRY(tx_f, lane_id, 0, KVX_ETH_LANE_NB - 1);
-FIELD_R_ENTRY(tx_f, drop_cnt, 0, U32_MAX);
-FIELD_R_ENTRY(tx_f, fifo_level, 0, U32_MAX);
-FIELD_R_ENTRY(tx_f, xoff, 0, 1);
-
-static struct attribute *tx_f_attrs[] = {
-	&tx_f_header_en_attr.attr,
-	&tx_f_crc_en_attr.attr,
-	&tx_f_drop_en_attr.attr,
-	&tx_f_nocx_en_attr.attr,
-	&tx_f_nocx_pack_en_attr.attr,
-	&tx_f_pfc_en_attr.attr,
-	&tx_f_pause_en_attr.attr,
-	&tx_f_rr_trigger_attr.attr,
-	&tx_f_lane_id_attr.attr,
-	&tx_f_drop_cnt_attr.attr,
-	&tx_f_fifo_level_attr.attr,
-	&tx_f_xoff_attr.attr,
-	NULL,
-};
-SYSFS_TYPES(tx_f);
-
-DECLARE_SYSFS_ENTRY(tx_noc_f);
-FIELD_R_ENTRY(tx_noc_f, fifo_level, 0, U32_MAX);
-FIELD_R_ENTRY(tx_noc_f, parity_err, 0, U32_MAX);
-FIELD_R_ENTRY(tx_noc_f, crc_err, 0, U32_MAX);
-FIELD_R_ENTRY(tx_noc_f, perm_err, 0, U32_MAX);
-FIELD_R_ENTRY(tx_noc_f, fifo_err, 0, U32_MAX);
-FIELD_R_ENTRY(tx_noc_f, pkt_drop, 0, U32_MAX);
-
-static struct attribute *tx_noc_f_attrs[] = {
-	&tx_noc_f_fifo_level_attr.attr,
-	&tx_noc_f_parity_err_attr.attr,
-	&tx_noc_f_crc_err_attr.attr,
-	&tx_noc_f_perm_err_attr.attr,
-	&tx_noc_f_fifo_err_attr.attr,
-	&tx_noc_f_pkt_drop_attr.attr,
-	NULL,
-};
-SYSFS_TYPES(tx_noc_f);
-#endif
 
 DECLARE_SYSFS_ENTRY(cl_f);
 FIELD_RW_ENTRY(cl_f, quanta, 0, U16_MAX);
@@ -598,21 +410,6 @@ static struct attribute *dt_acc_f_attrs[] = {
 SYSFS_TYPES(dt_acc_f);
 
 DECLARE_SYSFS_ENTRY(parser_f);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-FIELD_R_ENTRY(parser_f, enable, 0, 1);
-FIELD_R_ENTRY(parser_f, hit_cnt, 0, U32_MAX);
-FIELD_R_ENTRY(parser_f, running, 0, 1);
-FIELD_R_ENTRY(parser_f, fifo_overflow, 0, 1);
-FIELD_R_STRING_ENTRY(parser_f, desc, 0, 0);
-static struct attribute *parser_f_attrs[] = {
-	&parser_f_enable_attr.attr,
-	&parser_f_desc_attr.attr,
-	&parser_f_hit_cnt_attr.attr,
-	&parser_f_running_attr.attr,
-	&parser_f_fifo_overflow_attr.attr,
-	NULL,
-};
-#else
 FIELD_RW_ENTRY(parser_f, disp_policy, 0, 0x4);
 FIELD_RW_ENTRY(parser_f, disp_info, 0, 0x7FFF);
 FIELD_RW_ENTRY(parser_f, flow_type, 0, 0xF);
@@ -630,7 +427,6 @@ static struct attribute *parser_f_attrs[] = {
 	&parser_f_status_attr.attr,
 	NULL,
 };
-#endif
 SYSFS_TYPES(parser_f);
 
 DECLARE_SYSFS_ENTRY(rule_f);
@@ -691,10 +487,6 @@ static void kvx_eth_kobject_del(struct kvx_eth_lane_cfg *cfg,
 
 static struct kset *lb_kset;
 static struct kset *rx_noc_kset;
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-static struct kset *tx_kset;
-static struct kset *tx_noc_kset;
-#else
 static struct kset *tx_pfc_kset;
 static struct kset *tx_pfc_xoff_subsc_kset;
 static struct kset *tx_stage_two_kset;
@@ -707,7 +499,6 @@ static struct kset *tx_exp_pbdwrr_quantum_kset;
 static struct kset *tx_pre_pbdwrr_kset;
 static struct kset *tx_pre_pbdwrr_priority_kset;
 static struct kset *tx_pre_pbdwrr_quantum_kset;
-#endif
 static struct kset *dt_kset;
 static struct kset *lut_entry_kset;
 static struct kset *parser_kset;
@@ -764,10 +555,6 @@ void kvx_kset_##s##_remove(struct kvx_eth_netdev *ndev, struct kset *k, \
 
 kvx_declare_kset(lb_f, "lb")
 kvx_declare_kset(rx_noc, "rx_noc")
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-kvx_declare_kset(tx_f, "tx")
-kvx_declare_kset(tx_noc_f, "tx_noc")
-#else
 kvx_declare_kset(tx_pfc_f, "tx_pfc")
 kvx_declare_kset(tx_pfc_xoff_subsc_f, "xoff_subsc")
 kvx_declare_kset(tx_stage_two_f, "tx_stage_two")
@@ -780,7 +567,6 @@ kvx_declare_kset(tx_pre_pbdwrr_quantum_f, "quantum")
 kvx_declare_kset(tx_exp_pbdwrr_f, "tx_exp_pbdwrr")
 kvx_declare_kset(tx_exp_pbdwrr_priority_f, "priority")
 kvx_declare_kset(tx_exp_pbdwrr_quantum_f, "quantum")
-#endif
 kvx_declare_kset(cl_f, "pfc_cl")
 kvx_declare_kset(dt_f, "dispatch_table")
 kvx_declare_kset(lut_entry_f, "lut_entries")
@@ -810,12 +596,6 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 			kobject_init(&hw->lb_f[i].rx_noc[j].kobj,
 					&rx_noc_ktype);
 	}
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	for (i = 0; i < TX_FIFO_NB; i++)
-		kobject_init(&hw->tx_f[i].kobj, &tx_f_ktype);
-	for (j = 0; j < NB_CLUSTER; j++)
-		kobject_init(&hw->tx_noc_f[j].kobj, &tx_noc_f_ktype);
-#else
 	kobject_init(&hw->tx_stage_one_f.kobj, &tx_stage_one_f_ktype);
 	kobject_init(&hw->tx_tdm_f.kobj, &tx_tdm_f_ktype);
 	for (i = 0; i < ARRAY_SIZE(hw->tx_pfc_f); i++) {
@@ -854,14 +634,11 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 		}
 	}
 	kobject_init(&hw->lb_rfs_f.kobj, &lb_rfs_f_ktype);
-#endif
 	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; i++)
 		kobject_init(&hw->dt_f[i].kobj, &dt_f_ktype);
 	kobject_init(&hw->dt_acc_f.kobj, &dt_acc_f_ktype);
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
 	kobject_init(&hw->rx_dlv_pfc_f.kobj, &rx_dlv_pfc_f_ktype);
-#endif
 
 	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; i++)
 		kobject_init(&hw->lut_entry_f[i].kobj, &lut_entry_f_ktype);
@@ -901,11 +678,9 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
 	ret = kobject_add(&hw->rx_dlv_pfc_f.kobj, &ndev->netdev->dev.kobj, "rx_deliver");
 	if (ret)
 		goto err;
-#endif
 
 	ret = kvx_kset_phy_param_create(ndev, &hw->phy_f.kobj,
 		phy_param_kset, &hw->phy_f.param[0], KVX_ETH_LANE_NB);
@@ -945,17 +720,6 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	ret = kvx_kset_tx_f_create(ndev, &ndev->netdev->dev.kobj, tx_kset,
-				   &hw->tx_f[0], TX_FIFO_NB);
-	if (ret)
-		goto err;
-
-	ret = kvx_kset_tx_noc_f_create(ndev, &ndev->netdev->dev.kobj, tx_noc_kset,
-				   &hw->tx_noc_f[0], NB_CLUSTER);
-	if (ret)
-		goto err;
-#else
 	ret = kobject_add(&hw->tx_stage_one_f.kobj, &ndev->netdev->dev.kobj, "tx_stage_one");
 	if (ret)
 		goto err;
@@ -1022,8 +786,6 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 			goto err;
 	}
 
-#endif
-
 	ret = kvx_kset_dt_f_create(ndev, &ndev->netdev->dev.kobj, dt_kset,
 			&hw->dt_f[0], RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 	if (ret)
@@ -1058,10 +820,8 @@ err:
 	kobject_put(&ndev->hw->lut_f.kobj);
 	kobject_del(&ndev->hw->dt_acc_f.kobj);
 	kobject_put(&ndev->hw->dt_acc_f.kobj);
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
 	kobject_del(&ndev->hw->rx_dlv_pfc_f.kobj);
 	kobject_put(&ndev->hw->rx_dlv_pfc_f.kobj);
-#endif
 	kobject_del(&ndev->hw->phy_f.kobj);
 	kobject_put(&ndev->hw->phy_f.kobj);
 	return ret;
@@ -1075,11 +835,6 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 			RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 	kvx_kset_lut_entry_f_remove(ndev, lut_entry_kset, &ndev->hw->lut_entry_f[0],
 			RX_LB_LUT_ARRAY_SIZE);
-#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	kvx_kset_tx_noc_f_remove(ndev, tx_noc_kset, &ndev->hw->tx_noc_f[0],
-				 NB_CLUSTER);
-	kvx_kset_tx_f_remove(ndev, tx_kset, &ndev->hw->tx_f[0], TX_FIFO_NB);
-#else
 	kvx_kset_tx_exp_npre_f_remove(ndev, tx_exp_npre_kset, &ndev->hw->tx_exp_npre_f[0],
 				 KVX_ETH_LANE_NB);
 	for (i = 0; i < ARRAY_SIZE(ndev->hw->tx_pre_pbdwrr_f); i++) {
@@ -1121,7 +876,6 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 
 	kobject_del(&ndev->hw->tx_tdm_f.kobj);
 	kobject_put(&ndev->hw->tx_tdm_f.kobj);
-#endif
 	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
 		kvx_kset_rx_noc_remove(ndev, rx_noc_kset,
 				&ndev->hw->lb_f[i].rx_noc[0], NB_CLUSTER);
@@ -1152,10 +906,8 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 	kobject_put(&ndev->hw->lut_f.kobj);
 	kobject_del(&ndev->hw->dt_acc_f.kobj);
 	kobject_put(&ndev->hw->dt_acc_f.kobj);
-#ifdef CONFIG_KVX_SUBARCH_KV3_2
 	kobject_del(&ndev->hw->rx_dlv_pfc_f.kobj);
 	kobject_put(&ndev->hw->rx_dlv_pfc_f.kobj);
-#endif
 	kobject_del(&ndev->hw->phy_f.kobj);
 	kobject_put(&ndev->hw->phy_f.kobj);
 }
