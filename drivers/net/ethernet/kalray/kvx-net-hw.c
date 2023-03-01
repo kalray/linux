@@ -68,6 +68,12 @@
 	(KVX_ETH_LBA_PARSER_GRP_OFFSET + ((PARSER) * KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE) + \
 	KVX_ETH_LBA_PARSER_HIT_CNT_OFFSET)
 
+#define RX_LUT_ENTRY_DT_ID_MASK \
+			(KVX_ETH_LBA_RSS_LUT_RX_TAG_MASK | KVX_ETH_LBA_RSS_LUT_DIRECTION_MASK | \
+			KVX_ETH_LBA_RSS_LUT_DROP_MASK | KVX_ETH_LBA_RSS_LUT_SPLIT_EN_MASK | \
+			KVX_ETH_LBA_RSS_LUT_SPLIT_TRIG_MASK | KVX_ETH_LBA_RSS_LUT_RX_CACHE_ID_MASK | \
+			KVX_ETH_LBA_RSS_LUT_RX_CACHE_ID_SPLIT_MASK)
+
 #endif
 
 #define RX_DISPATCH_TABLE_ENTRY(ENTRY) \
@@ -322,6 +328,7 @@ void kvx_eth_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_pfc_f *pfc)
 	kvx_mac_pfc_cfg(hw, cfg);
 }
 
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 static void lut_entry_f_update(void *data)
 {
 	struct kvx_eth_lut_entry_f *l = (struct kvx_eth_lut_entry_f *)data;
@@ -338,9 +345,28 @@ void kvx_eth_lut_entry_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_f *
 
 	kvx_eth_writel(hw, v, off + l->id * 4);
 }
+#else
+static void lut_entry_f_update(void *data)
+{
+	struct kvx_eth_lut_entry_f *l = (struct kvx_eth_lut_entry_f *)data;
+	u32 off = KVX_ETH_LBA_RSS_GRP_OFFSET + KVX_ETH_LBA_RSS_LUT_OFFSET;
+	u32 v = kvx_lbana_readl(l->hw, off + l->id * KVX_ETH_LBA_RSS_LUT_ELEM_SIZE);
+
+	l->dt_id = v & RX_LUT_ENTRY_DT_ID_MASK;
+}
+
+void kvx_eth_lut_entry_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_f *l)
+{
+	u32 off = KVX_ETH_LBA_RSS_GRP_OFFSET + KVX_ETH_LBA_RSS_LUT_OFFSET;
+	u32 v = l->dt_id & RX_LUT_ENTRY_DT_ID_MASK;
+
+	kvx_lbana_writel(hw, v, off + l->id * KVX_ETH_LBA_RSS_LUT_ELEM_SIZE);
+}
+#endif
 
 void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut)
 {
+#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	u32 reg = RX_LB_LUT_OFFSET;
 	u32 val = ((u32)lut->lane_enable << RX_LB_LUT_CTRL_LANE_EN_SHIFT) |
 		((u32)lut->rule_enable << RX_LB_LUT_CTRL_RULE_EN_SHIFT) |
@@ -349,6 +375,10 @@ void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut)
 	kvx_eth_writel(hw, val, reg + RX_LB_LUT_CTRL_OFFSET);
 	val = (lut->qpn_enable << RX_LB_LUT_QPN_CTRL_QPN_EN_SHIFT);
 	kvx_eth_writel(hw, val, reg + RX_LB_LUT_QPN_CTRL_OFFSET);
+#else
+	kvx_lbana_writel(hw, (u32)lut->rss_enable, KVX_ETH_LBA_RSS_GRP_OFFSET +
+			KVX_ETH_LBA_RSS_RSS_ENABLE_OFFSET);
+#endif
 }
 #ifdef CONFIG_KVX_SUBARCH_KV3_1
 static void lb_f_update(void *data)
@@ -425,14 +455,14 @@ void kvx_eth_lb_rfs_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_rfs_f *lb_rfs
 	if (lb_rfs->ctrl_hash_rss_ena != RFS_HASH_RSS_NO_CMD) {
 		updatel_bits(hw, ETH_RX_LB_RFS, KVX_ETH_LBR_CONTROL_OFFSET,
 			KVX_ETH_LBR_CONTROL_ENABLE_RSS_HASH_MASK,
-				((lb_rfs->ctrl_hash_rss_ena<<KVX_ETH_LBR_CONTROL_ENABLE_RSS_HASH_SHIFT)
+			((lb_rfs->ctrl_hash_rss_ena<<KVX_ETH_LBR_CONTROL_ENABLE_RSS_HASH_SHIFT)
 				& KVX_ETH_LBR_CONTROL_ENABLE_RSS_HASH_MASK));
 		lb_rfs->ctrl_hash_rss_ena = RFS_HASH_RSS_NO_CMD;
 	}
 	if (lb_rfs->ctrl_rfs_ena != RFS_CTRL_RFS_NO_CMD) {
 		updatel_bits(hw, ETH_RX_LB_RFS, KVX_ETH_LBR_CONTROL_OFFSET,
 			KVX_ETH_LBR_CONTROL_ENABLE_MASK,
-				((lb_rfs->ctrl_rfs_ena<<KVX_ETH_LBR_CONTROL_ENABLE_SHIFT)
+			((lb_rfs->ctrl_rfs_ena<<KVX_ETH_LBR_CONTROL_ENABLE_SHIFT)
 				& KVX_ETH_LBR_CONTROL_ENABLE_MASK));
 		/* enable irq */
 		val = lb_rfs->ctrl_rfs_ena;
