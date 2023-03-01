@@ -321,6 +321,7 @@ struct kvx_eth_lut_f {
 	u8  lane_enable;
 	u8  rule_enable;
 	u8  pfc_enable;
+	u8  rss_enable;
 };
 
 #ifdef CONFIG_KVX_SUBARCH_KV3_2
