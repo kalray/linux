@@ -16,25 +16,6 @@ DEFINE_STATIC_KEY_FALSE(l2_enabled);
 static uint64_t __iomem kvx_secure_regs;
 uint64_t __iomem kvx_debug_regs;
 
-static int l2_size_valid(phys_addr_t size)
-{
-	/*
-	 * Currently 3 configs are supported:
-	 * - 1 MBytes L2 cache / 7 MBytes SMEM
-	 * - 2 Mbytes L2 Cache / 6 MBytes SMEM
-	 * - 4 MBytes L2 Cache / 4 MBytes SMEM
-	 */
-	switch (size) {
-	case 0x100000: /* 1 MBytes */
-	case 0x200000: /* 2 MBytes */
-	case 0x400000: /* 4 MBytes */
-		return 1;
-	default:
-		return 0;
-	}
-	return 0;
-}
-
 static int l2_map_device(char *name, uint64_t *regs)
 {
 	struct device_node *np = of_find_compatible_node(NULL, NULL, name);
@@ -53,95 +34,56 @@ static int l2_map_device(char *name, uint64_t *regs)
 	return 0;
 }
 
-static bool l2_enable = true;
-static int __init parse_kvx_l2_enable(char *arg)
+static bool l2_disable = false;
+static int __init parse_kvx_l2_disable(char *arg)
 {
 	int ret = 0;
 
-	strtobool(arg, &l2_enable);
-	if (!l2_enable) {
+	strtobool(arg, &l2_disable);
+	if (l2_disable) {
 		if (num_possible_cpus() == 1) {
 			pr_info("L2 cache disabled\n");
 		} else {
 			pr_err("L2 cache is required for SMP and can't be "
-			       "disabled (forced 'kvx.l2_enable=1')\n");
-			l2_enable = true;
+			       "disabled (forced 'kvx.l2_disable=0')\n");
+			l2_disable = false;
 			ret = 1;
 		}
 	}
 	return ret;
 }
-early_param("kvx.l2_enable", parse_kvx_l2_enable);
-
-static u32 l2_size;
-static int __init parse_kvx_l2_size(char *arg)
-{
-	if (!arg)
-		return 1;
-
-	/* Convert to MBytes */
-	l2_size = (u32)memparse(arg, &arg);
-
-	if (!l2_size_valid(l2_size)) {
-		pr_err("Invalid L2 cache size specified via 'kvx.l2_size' "
-		       "(%dM) (should be 1M, 2M or 4M)\n", MBYTES(l2_size));
-		/*
-		 * Reset the size back to zero: if found,
-		 * the value from the DTB will be used.
-		 */
-		l2_size  = 0;
-		return 1;
-	}
-	return 0;
-}
-early_param("kvx.l2_size", parse_kvx_l2_size);
+early_param("kvx.l2_disable", parse_kvx_l2_disable);
 
 static int __init l2_cache_init(void)
 {
 	int ret = -ENODEV;
 	struct device_node *np = NULL;
 	unsigned long flags;
-
-	/* First check whether we run on QEMU */
-	if (of_get_property(np, "kalray,is-qemu", NULL)) {
-		/*
-		 * L2 cache controller is not necessary
-		 * with QEMU, memory is always coherent.
-		 */
-		pr_info("controller disabled (QEMU detected)\n");
-		return 0;
-	}
+	u32 l2_size;
 
 	np = of_find_compatible_node(NULL, NULL, "kalray,kvx-l2-cache");
-	if (!np || !of_device_is_available(np)) {
+	if (!np) {
 		pr_err("failed to find \"kvx-l2-cache\" in dtb\n");
 		ret = -ENODEV;
 		goto err;
 	}
 
-	if (!l2_enable) {
-		pr_err("forcefully disabled L2 cache (kvx.l2_enable=0)\n");
+	if (!of_device_is_available(np)) {
+		pr_err("controller disabled in dtb (status = \"disabled\")");
+		ret = -ENODEV;
+		goto err;
+	}
+
+	if (l2_disable) {
+		pr_err("forcefully disabled L2 cache (kvx.l2_disable=1)\n");
 		ret = 0;
 		goto err;
 	}
 
-	/*
-	 * Size was not set on cmd line (via 'kvx.l2_size=')
-	 * so read it from the DTB file
-	 */
-	if (l2_size == 0) {
-		if (!of_property_read_u32(np, "kalray,l2-size", &l2_size)) {
-			if (!l2_size_valid(l2_size)) {
-				pr_err("invalid L2 cache size of %dM (should "
-				       "be 2M or 4M)\n", MBYTES(l2_size));
-				ret = -EINVAL;
-				goto err;
-			}
-		} else {
-			pr_err("size for L2 cache not specified\n");
-			ret = -EINVAL;
-			goto err;
-		}
+	if (of_property_read_u32(np, "kalray,l2-size", &l2_size)) {
+		pr_err("size for L2 cache not specified\n");
+		ret = -EINVAL;
+		goto err;
 	}
 
 	/* We need access to the secure registers to configure the size */
@@ -186,8 +128,7 @@ static int __init l2_cache_init(void)
 		       SEC_CLUSTER_REGS_GLOBAL_CONFIG_SET_OFFSET));
 		break;
 	default:
-		/* Should never happen */
-		pr_err("Size for L2 cache not specified\n");
+		pr_err("Size for L2 cache (%d) is not supported\n", l2_size);
 		ret = -EINVAL;
 		goto err;
 	}
