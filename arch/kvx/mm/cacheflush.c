@@ -125,6 +125,7 @@ int dcache_wb_inval_virt_range(unsigned long vaddr, unsigned long len, bool wb,
 			       bool inval)
 {
 	unsigned long end = vaddr + len;
+	unsigned long vma_end;
 	struct vm_area_struct *vma;
 	unsigned long rlen;
 	struct mm_struct *mm = current->mm;
@@ -136,16 +137,18 @@ int dcache_wb_inval_virt_range(unsigned long vaddr, unsigned long len, bool wb,
 	 * Verify that the specified address region actually belongs to this
 	 * process.
 	 */
-	vma = find_vma(current->mm, vaddr);
-	if (vma == NULL || vaddr < vma->vm_start || vaddr + len > vma->vm_end) {
-		mmap_read_unlock(mm);
-		return -EFAULT;
-	}
-
 	while (vaddr < end) {
-		rlen = dcache_wb_inval_virt_to_phys(vma, vaddr, len, wb, inval);
-		len -= rlen;
-		vaddr += rlen;
+		vma = find_vma(current->mm, vaddr);
+		if (vma == NULL || vaddr < vma->vm_start) {
+			mmap_read_unlock(mm);
+			return -EFAULT;
+		}
+		vma_end = min(end, vma->vm_end);
+		while (vaddr < vma_end) {
+			rlen = dcache_wb_inval_virt_to_phys(vma, vaddr, len, wb, inval);
+			len -= rlen;
+			vaddr += rlen;
+		}
 	}
 
 	mmap_read_unlock(mm);
