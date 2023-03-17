@@ -169,6 +169,7 @@ struct kvx_eth_netdev {
 	struct kbx_dcb_cfg dcb_cfg;
 	struct work_struct link_cfg;
 	atomic_t link_cfg_running;
+	struct platform_device *rproc_pd[NB_CLUSTER-1];
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
