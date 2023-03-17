@@ -31,6 +31,7 @@
 #include <linux/rtnetlink.h>
 #include <linux/hash.h>
 #include <linux/firmware.h>
+#include <linux/remoteproc/kvx_rproc.h>
 
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
@@ -2078,7 +2079,73 @@ static int kvx_eth_free_netdev(struct kvx_eth_netdev *ndev)
 
 	return 0;
 }
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+/**
+ * kvx_netdev_ethtx_credit_set_en() - Set EthTx credit bus enable
+ * state for a given cluster.
+ * warning: will impact all eth hw block (not only current netdev)
+ *
+ * @netdev: Current netdev
+ * @cluster_id: corresponding cluster
+ * @enable: enable/disable request
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+static int kvx_netdev_ethtx_credit_set_en(struct net_device *netdev, int cluster_id, bool enable)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
+	return kvx_eth_hw_ethtx_credit_set_en(ndev->hw, cluster_id, enable);
+}
+#endif
+/**
+ * kvx_netdev_ethtx_credit_en_register() - register
+ * state for a given cluster.
+ *
+ * @pdev: netdev platform_device
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+static int kvx_netdev_ethtx_credit_en_register(struct platform_device *pdev)
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+{
+	struct kvx_eth_netdev *ndev = platform_get_drvdata(pdev);
+	struct platform_device **rproc_pdev = ndev->rproc_pd;
+	unsigned int i, rproc_nb;
+	int ret;
+	struct device_node *rproc_dn;
+
+	rproc_nb = min(of_property_count_u32_elems(pdev->dev.of_node, "rproc"), ARRAY_SIZE(ndev->rproc_pd));
+	for (i = 0 ; i < rproc_nb ; i++) {
+		rproc_dn = of_parse_phandle(pdev->dev.of_node, "rproc", i);
+		if (!rproc_dn) {
+			dev_err(&pdev->dev, "Unable to find rproc in DT\n");
+			goto error;
+		}
+		rproc_pdev[i] = of_find_device_by_node(rproc_dn);
+		if (!(rproc_pdev[i])) {
+			dev_err(&pdev->dev, "Unable to find rproc plateform device\n");
+			goto error;
+		}
+		ret = kvx_rproc_reg_ethtx_crd_set(rproc_pdev[i], &kvx_netdev_ethtx_credit_set_en, ndev->netdev);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "Unable to register tx credit\n");
+			goto error;
+		}
+		of_node_put(rproc_dn);
+	}
+	return 0;
+
+error:
+	if (rproc_dn)
+		of_node_put(rproc_dn);
+	return -EINVAL;
+}
+#else
+{
+	return 0;
+}
+#endif
 /* kvx_netdev_probe() - Probe netdev
  * @pdev: Platform device
  *
@@ -2111,12 +2178,15 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
+	ret = kvx_netdev_ethtx_credit_en_register(pdev);
+	if (ret)
+		goto err;
+
 	/**
 	 * MF 1.3 -> do *NOT* change the following settings
 	 * Rx LB ctrl registers for lanes 0/2 must be set the same way
 	 * Program all lane LB accordingly
 	 */
-
 #ifdef CONFIG_KVX_SUBARCH_KV3_1 /* temporary - FIXME */
 	for (i = 0; i < KVX_ETH_LANE_NB; i++)
 		kvx_eth_lb_set_default(&dev->hw, i);
@@ -2153,7 +2223,15 @@ err:
 static int kvx_netdev_remove(struct platform_device *pdev)
 {
 	struct kvx_eth_netdev *ndev = platform_get_drvdata(pdev);
-	int rtm;
+	int rtm, i;
+	struct platform_device **rproc_pdev = ndev->rproc_pd;
+
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+	for (i = 0; i < ARRAY_SIZE(ndev->rproc_pd); i++) {
+		if (rproc_pdev[i])
+			kvx_rproc_unreg_ethtx_crd_set(rproc_pdev[i], ndev->netdev);
+	}
+#endif
 
 	kvx_eth_netdev_sysfs_uninit(ndev);
 	for (rtm = 0; rtm < RTM_NB; rtm++) {
