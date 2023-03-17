@@ -1100,3 +1100,16 @@ int kvx_eth_hw_get_lut_indir(struct kvx_eth_hw *hw, u32 lut_id,
 	*rx_channel = hw->dt_f[dt_id].rx_channel;
 	return dt_id;
 }
+
+int kvx_eth_hw_ethtx_credit_set_en(struct kvx_eth_hw *hw, int cluster_id, bool enable)
+{
+#ifdef CONFIG_KVX_SUBARCH_KV3_2
+	if (cluster_id > NB_CLUSTER)
+		return -EINVAL;
+
+	updatel_bits(hw, ETH_TX,
+		KVX_ETH_TX_CREDIT_GRP_OFFSET + KVX_ETH_TX_CREDIT_ENABLE_OFFSET,
+		(1<<cluster_id), enable ? (1<<cluster_id) : 0);
+#endif
+	return 0;
+}

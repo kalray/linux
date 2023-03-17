@@ -20,8 +20,9 @@
 #include <linux/platform_device.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/iopoll.h>
-
 #include <asm/pwr_ctrl.h>
+#include <linux/netdevice.h>
+#include <linux/remoteproc/kvx_rproc.h>
 
 #include "remoteproc_internal.h"
 
@@ -203,6 +204,8 @@ struct fw_rsc_kalray_boot_params {
 
 #define KVX_MAX_VRING_PER_MBOX	128
 
+#define ETH_NB (2)
+
 /**
  * struct kvx_rproc_mem - internal memory structure
  * @size: Size of the memory region
@@ -240,6 +243,15 @@ struct kvx_vring_mbox_data {
 	DECLARE_BITMAP(vrings, KVX_MAX_VRING_PER_MBOX);
 };
 
+/**
+ * struct kvx_remoteproc_ethtx_credit - credit enable registration data
+ * @nd: registered net device
+ * @set_enabled: registered function
+ */
+struct kvx_remoteproc_ethtx_credit {
+	struct net_device *nd;
+	kvx_rproc_reg_ethtx_crd_set_t set_enabled;
+};
 
 /**
  * struct kvx_rproc - kvx remote processor driver structure
@@ -269,6 +281,12 @@ struct kvx_rproc {
 	bool has_dev_state;
 	char *params_args;
 	char *params_env;
+	struct kvx_remoteproc_ethtx_credit ethtx_credit[ETH_NB];
+};
+
+static const struct kvx_remoteproc_ethtx_credit kvx_remoteproc_ethtx_credit_rst = {
+	.set_enabled = NULL,
+	.nd = NULL,
 };
 
 static int kvx_rproc_request_mboxes(struct kvx_rproc *kvx_rproc);
@@ -336,9 +354,52 @@ static int kvx_rproc_start(struct rproc *rproc)
 	return wait_cluster_ready(kvx_rproc);
 }
 
+int kvx_rproc_reg_ethtx_crd_set(struct platform_device *pdev,
+		kvx_rproc_reg_ethtx_crd_set_t credit_set_enabled,
+		struct net_device *net_d)
+{
+	struct kvx_rproc *kvx_rproc;
+	struct kvx_remoteproc_ethtx_credit *p_crd;
+	unsigned int i;
+	int ret = -EBUSY;
+
+	kvx_rproc = platform_get_drvdata(pdev);
+	p_crd = kvx_rproc->ethtx_credit;
+	for (i = 0; i < ARRAY_SIZE(kvx_rproc->ethtx_credit) ; i++) {
+		if (!(p_crd[i].nd)) {
+			p_crd[i].set_enabled = credit_set_enabled;
+			p_crd[i].nd = net_d;
+			ret = 0;
+			break;
+		}
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(kvx_rproc_reg_ethtx_crd_set);
+
+int kvx_rproc_unreg_ethtx_crd_set(struct platform_device *pdev, struct net_device *net_d)
+{
+	struct kvx_rproc *kvx_rproc;
+	unsigned int i;
+	int ret = -EINVAL;
+
+	kvx_rproc = platform_get_drvdata(pdev);
+	for (i = 0; i < ARRAY_SIZE(kvx_rproc->ethtx_credit) ; i++) {
+		if (kvx_rproc->ethtx_credit[i].nd == net_d) {
+			kvx_rproc->ethtx_credit[i] = kvx_remoteproc_ethtx_credit_rst;
+			ret = 0;
+			break;
+		}
+	}
+	return ret;
+}
+EXPORT_SYMBOL(kvx_rproc_unreg_ethtx_crd_set);
+
+
 static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
 {
-	int ret;
+	int ret, i;
 	unsigned int ctrl_offset = KVX_FTU_CLUSTER_CTRL +
 				kvx_rproc->cluster_id * KVX_FTU_CLUSTER_STRIDE;
 	struct reg_sequence reset_cluster[] = {
@@ -348,11 +409,23 @@ static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
 		/* Release reset */
 		{ctrl_offset, BIT(KVX_FTU_CLUSTER_CTRL_CLKEN_BIT), 1},
 	};
+	struct kvx_remoteproc_ethtx_credit *p_crd = kvx_rproc->ethtx_credit;
 
 	/* Cluster0 can't be reset via the FTU device! */
 	if (kvx_rproc->cluster_id == 0) {
 		dev_err(kvx_rproc->dev, "cluster0 can't be reset!\n");
 		return -EINVAL;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(kvx_rproc->ethtx_credit); i++) {
+		if (p_crd[i].set_enabled) {
+			ret = p_crd[i].set_enabled(p_crd[i].nd, kvx_rproc->cluster_id, false);
+			if (ret) {
+				dev_err(kvx_rproc->dev, "ethtx_credit set_enabled failed, status = %d\n",
+					ret);
+				return ret;
+			}
+		}
 	}
 
 	ret = regmap_multi_reg_write(kvx_rproc->ftu_regmap, reset_cluster,
@@ -364,7 +437,21 @@ static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
 	}
 
 	/* Wait for reset to be over */
-	return wait_cluster_ready(kvx_rproc);
+	ret = wait_cluster_ready(kvx_rproc);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < ARRAY_SIZE(kvx_rproc->ethtx_credit) ; i++) {
+		if (p_crd[i].set_enabled) {
+			ret = p_crd[i].set_enabled(p_crd[i].nd, kvx_rproc->cluster_id, true);
+			if (ret) {
+				dev_err(kvx_rproc->dev, "ethtx_credit set_enabled failed, status = %d\n",
+					ret);
+				return ret;
+			}
+		}
+	}
+	return ret;
 }
 
 static void kvx_rproc_free_args_env(struct kvx_rproc *kvx_rproc, char **str)
@@ -1125,7 +1212,7 @@ static const struct attribute_group *kvx_remoteproc_groups[] = {
 static int kvx_rproc_probe(struct platform_device *pdev)
 {
 	struct rproc *rproc;
-	int ret = 0;
+	int i, ret = 0;
 	struct kvx_rproc *kvx_rproc;
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
@@ -1143,6 +1230,8 @@ static int kvx_rproc_probe(struct platform_device *pdev)
 	kvx_rproc->rproc = rproc;
 	kvx_rproc->dev = dev;
 	kvx_rproc->has_dev_state = false;
+	for (i = 0; i < ARRAY_SIZE(kvx_rproc->ethtx_credit); i++)
+		kvx_rproc->ethtx_credit[i] = kvx_remoteproc_ethtx_credit_rst;
 	init_completion(&kvx_rproc->shutdown_comp);
 	rproc->ops->parse_fw = kvx_rproc_parse_fw;
 	rproc->ops->sanity_check = rproc_elf_sanity_check;

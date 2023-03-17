@@ -1630,6 +1630,10 @@ void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,
 int kvx_eth_hw_get_lut_indir(struct kvx_eth_hw *hw, u32 lut_id,
 		u32 *cluster_id, u32 *rx_channel);
 
+/* SETTERS */
+int kvx_eth_hw_ethtx_credit_set_en(struct kvx_eth_hw *hw, int cluster_id,
+		bool enable);
+
 /* HELPERS */
 int kvx_eth_speed_to_nb_lanes(unsigned int speed, unsigned int *lane_speed);
 
