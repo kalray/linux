@@ -128,7 +128,7 @@ struct virtio_rpmsg_channel {
  * processor.
  */
 #define MAX_RPMSG_NUM_BUFS	(512)
-#define MAX_RPMSG_BUF_SIZE	(1024)
+#define MAX_RPMSG_BUF_SIZE	(2048)
 
 /*
  * Local addresses are dynamically allocated on-demand.
