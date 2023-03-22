@@ -1625,7 +1625,7 @@ static int kvx_eth_get_eeprom_len(struct net_device *netdev)
 	struct ethtool_modinfo mod_info;
 	int ret;
 
-	if (kvx_eth_is_haps(ndev))
+	if (!ndev->qsfp)
 		return -ENODEV;
 
 	if (!is_cable_connected(ndev->qsfp))
@@ -1650,13 +1650,8 @@ static int kvx_eth_get_eeprom(struct net_device *netdev,
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	if (kvx_eth_is_haps(ndev))
+	if (!ndev->qsfp)
 		return 0;
-
-	if (!ndev->qsfp) {
-		netdev_err(netdev, "Unable to get QSFP module\n");
-		return -EINVAL;
-	}
 
 	netdev_dbg(netdev, "mppa_id: 0x%llx dev_id: 0x%llx magic: 0x%llx\n",
 		ndev->hw->mppa_id, ndev->hw->dev_id, kvx_eth_get_id(ndev->hw));
@@ -1670,12 +1665,8 @@ static int kvx_eth_set_eeprom(struct net_device *netdev,
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	if (kvx_eth_is_haps(ndev))
+	if (!ndev->qsfp)
 		return 0;
-	if (!ndev->qsfp) {
-		netdev_err(netdev, "Unable to get QSFP driver\n");
-		return -EINVAL;
-	}
 
 	return kvx_qsfp_set_eeprom(ndev->qsfp, ee, data);
 }
@@ -1685,8 +1676,9 @@ static int kvx_eth_get_module_eeprom(struct net_device *netdev,
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	if (kvx_eth_is_haps(ndev))
+	if (!ndev->qsfp)
 		return 0;
+
 	return kvx_qsfp_get_module_eeprom(ndev->qsfp, ee, data);
 }
 
@@ -1695,8 +1687,9 @@ static int kvx_eth_get_module_info(struct net_device *netdev,
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	if (kvx_eth_is_haps(ndev))
+	if (!ndev->qsfp)
 		return 0;
+
 	return kvx_qsfp_module_info(ndev->qsfp, modinfo);
 }
 
