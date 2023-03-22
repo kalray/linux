@@ -326,7 +326,7 @@ static void kvx_eth_link_cfg(struct work_struct *w)
 	 */
 	while (atomic_read(&ndev->link_cfg_running)) {
 		/* if no cable, qsfp connect callback will restart link cfg */
-		if (!is_cable_connected(ndev->qsfp))
+		if (ndev->qsfp && !is_cable_connected(ndev->qsfp))
 			break;
 
 		if (kvx_eth_link_configure(ndev, ndev->cfg.restart_serdes))
@@ -1916,7 +1916,7 @@ void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev)
 	if (!bitmap_empty(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS))
 		return;
 
-	if (kvx_eth_is_haps(ndev))
+	if (!ndev->qsfp)
 		return;
 
 	if (!is_cable_connected(ndev->qsfp))
@@ -2025,11 +2025,12 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	if (ret)
 		return NULL;
 
-	if (!kvx_eth_is_haps(ndev))
+	if (ndev->qsfp) {
 		ret = kvx_qsfp_ops_register(ndev->qsfp, &qsfp_ops, ndev);
 
-	if (ret)
-		goto exit;
+		if (ret)
+			goto exit;
+	}
 
 	kvx_eth_netdev_set_hw_addr(ndev);
 
