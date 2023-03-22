@@ -1800,14 +1800,10 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 			ndev->hw->phy_f.param[i].ovrd_en = true;
 	}
 
-	if (!kvx_eth_is_haps(ndev)) {
-		/* get qsfp platform device */
-		sfp_node = of_parse_phandle(np, "sfp", 0);
-		if (!sfp_node) {
-			dev_err(&pdev->dev, "Unable to find sfp in DT\n");
-			return -EINVAL;
-		}
+	/* get qsfp platform device */
+	sfp_node = of_parse_phandle(np, "sfp", 0);
 
+	if (sfp_node) {
 		sfp_pdev = of_find_device_by_node(sfp_node);
 		if (!sfp_pdev) {
 			dev_err(&pdev->dev, "Failed to find sfp platform device\n");
