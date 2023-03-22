@@ -2227,16 +2227,6 @@ static struct kvx_eth_type kvx_eth_data = {
 };
 
 
-bool kvx_eth_is_haps(struct kvx_eth_netdev *ndev)
-{
-	struct kvx_eth_hw *hw = ndev->hw;
-	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
-
-	if (dev->type == &kvx_haps_data)
-		return true;
-	return false;
-}
-
 #ifdef CONFIG_KVX_SUBARCH_KV3_2
 static irqreturn_t rx_error_irq_handler(int irq, void *data)
 {
