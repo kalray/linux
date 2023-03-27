@@ -51,7 +51,7 @@ static irqreturn_t kvx_mbox_isr(int irq, void *p)
 static int kvx_mbox_send_data(struct mbox_chan *chan, void *data)
 {
 	struct kvx_mbox_priv *mbox = to_kvx_mbox_priv(chan->mbox);
-	uint64_t mbox_val = *(uint32_t *) data;
+	uint64_t mbox_val = *(uint64_t *) data;
 
 	if (mbox->dir != MBOX_DIR_TX)
 		return -EINVAL;
