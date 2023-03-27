@@ -176,7 +176,9 @@ static struct platform_driver kvx_mbox_driver = {
 	.probe		= kvx_mbox_probe,
 	.driver = {
 		.name	= "kvx-mbox",
+		.owner	= THIS_MODULE,
 		.of_match_table = kvx_mbox_dt_ids,
 	},
 };
 module_platform_driver(kvx_mbox_driver);
+MODULE_LICENSE("GPL v2");
