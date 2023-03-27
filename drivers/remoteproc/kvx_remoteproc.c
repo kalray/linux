@@ -1306,3 +1306,4 @@ static struct platform_driver kvx_rproc_driver = {
 };
 
 module_platform_driver(kvx_rproc_driver);
+MODULE_LICENSE("GPL v2");
