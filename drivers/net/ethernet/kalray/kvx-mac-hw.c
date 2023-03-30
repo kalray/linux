@@ -992,6 +992,7 @@ int kvx_mac_phy_disable_serdes(struct kvx_eth_hw *hw, int lane, int lane_nb)
 		kvx_phymac_writel(hw, 0, PHY_REF_CLK_SEL_OFFSET);
 	else
 		kvx_phymac_writel(hw, 1, PHY_REF_CLK_SEL_OFFSET);
+
 	/* Configure serdes PLL master + power down pll */
 	mask = (serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_EN_SHIFT |
 		serdes_mask << PHY_SERDES_PLL_CFG_TX_PLL_SEL_SHIFT);
@@ -1124,27 +1125,35 @@ static int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	if (cfg->mac_f.loopback_mode && cfg->speed == SPEED_UNKNOWN)
 		cfg->speed = SPEED_100000;
 	lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+
 	/* Disable serdes for *previous* config */
 	mutex_lock(&hw->mac_reset_lock);
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
+
 	ret = kvx_eth_phy_serdes_init(hw, cfg->id, cfg->speed);
 	if (ret) {
 		mutex_unlock(&hw->mac_reset_lock);
 		return ret;
 	}
+
 	dev_dbg(hw->dev, "%s nb_lanes: %d speed: %d serdes_mask: 0x%lx serdes_pll_master: 0x%lx\n",
 		__func__, lane_nb, cfg->speed, hw->pll_cfg.serdes_mask,
 		hw->pll_cfg.serdes_pll_master);
+
 	/* Relaunch full serdes cycle with *new* config:
 	 * Full cycle (disable/enable) is needed to get serdes in appropriate
 	 * state (typically for MDIO operations in SGMII mode)
 	 */
 	kvx_mac_phy_disable_serdes(hw, cfg->id, lane_nb);
+
 	if (phy_reset)
 		kvx_phy_reset(hw);
+
 	kvx_mac_phy_enable_serdes(hw, cfg->id, lane_nb, PSTATE_P0);
+
 	if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK)
 		kvx_serdes_loopback(hw, cfg->id, lane_nb);
+
 	mutex_unlock(&hw->mac_reset_lock);
 
 	/* Update parameters with reset values */
@@ -2238,53 +2247,6 @@ static inline bool kvx_eth_lt_fsm_all_done(struct kvx_eth_hw *hw,
 }
 
 /**
- * kvx_eth_link_training() - Reset LT to default state and launch it
- * @hw: pointer to hw config
- * @cfg: lane configuration
- * @en: true to enable, false to disable
- */
-static int kvx_eth_link_training(struct kvx_eth_hw *hw,
-				 struct kvx_eth_lane_cfg *cfg, bool en)
-{
-	u32 lt_off, val;
-	int nb_lane, lane;
-
-	/* Indicate default state at the beginning */
-	for_each_cfg_lane(nb_lane, lane, cfg) {
-		lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
-		kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_STAT_OFFSET);
-		kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_COEF_OFFSET);
-	}
-
-	/* en/disable link training on all lanes */
-	for_each_cfg_lane(nb_lane, lane, cfg) {
-		lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
-		/* clear local device coefficient */
-		updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
-			     LT_KR_LD_COEF_UPDATE_MASK, 0);
-		/* Clear local device status register */
-		updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET,
-			     LT_KR_LD_STAT_STATUSREPORT_MASK, 0);
-		/* Enable and restart link training startup protocol */
-		if (en) {
-			val = LT_KR_CTRL_RESTARTTRAINING_MASK |
-				LT_KR_CTRL_TRAININGEN_MASK;
-			updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET,
-				     LT_KR_STATUS_RECEIVERSTATUS_MASK,
-				     0);
-		} else {
-			val = 0;
-			updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET,
-				     LT_KR_STATUS_RECEIVERSTATUS_MASK,
-				     LT_KR_STATUS_RECEIVERSTATUS_MASK);
-		}
-		kvx_mac_writel(hw, val, lt_off + LT_KR_CTRL_OFFSET);
-	}
-
-	return 0;
-}
-
-/**
  * kvx_eth_perform_link_training() - Wait link training ready and start FSM
  * @hw: pointer to hw config
  * @cfg: lane config
@@ -2414,171 +2376,6 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 }
 
 /**
- * kvx_eth_autoneg_page_exchange() - Perform AN page exchange
- * @hw: hardware description
- * @cfg: lane configuration
- *
- * This function will
- * - configure the abilities of the local device
- * - enable and start autonegociation
- * - perform the exchange of the base page and next page if any.
- *
- * On output the highest common denominator can be determined
- *
- * Return 0 on success
- */
-static int kvx_eth_autoneg_page_exchange(struct kvx_eth_hw *hw,
-		struct kvx_eth_lane_cfg *cfg)
-{
-	struct kvx_eth_netdev *ndev = container_of(cfg, struct kvx_eth_netdev, cfg);
-	u32 an_off = MAC_CTRL_AN_OFFSET + cfg->id * MAC_CTRL_AN_ELEM_SIZE;
-	u32 an_ctrl_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_CTRL_OFFSET;
-	int an_status_off;
-	int val, ret;
-	int lane_id = cfg->id;
-	u32 nonce, mask;
-	u32 reg_clk = 100; /* MHz*/
-	int speed_fmt;
-	char *unit;
-
-	kvx_eth_update_cable_modes(ndev);
-
-	/* Force abilities */
-	cfg->lc.rate = (RATE_40GBASE_KR4 | RATE_40GBASE_CR4 |
-			RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S |
-			RATE_10GBASE_KR);
-
-	if (kvx_test_mode(cfg->cable_rate, 100000baseSR4_Full) ||
-	    kvx_test_mode(cfg->cable_rate, 100000baseKR4_Full) ||
-	    kvx_test_mode(cfg->cable_rate, 100000baseCR4_Full) ||
-	    kvx_test_mode(cfg->cable_rate, 100000baseLR4_ER4_Full))
-		cfg->lc.rate |= (RATE_100GBASE_KR4 | RATE_100GBASE_CR4);
-
-	cfg->lc.fec = FEC_10G_FEC_REQUESTED | FEC_25G_BASE_R_REQUESTED |
-		FEC_25G_RS_REQUESTED;
-	cfg->lc.pause = 1;
-
-	/* disable AN */
-	mask = BIT(lane_id) << MAC_CTRL_AN_CTRL_EN_SHIFT;
-	updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
-
-	/* reset AN module */
-	kvx_mac_writel(hw, AN_KXAN_CTRL_RESET_MASK,
-			an_off + AN_KXAN_CTRL_OFFSET);
-	ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_CTRL_OFFSET,
-			AN_KXAN_CTRL_RESET_MASK, 0, AN_TIMEOUT_MS);
-
-	/* Enable clause 72 MAX TIMER instead of clause 92 (25G rate) */
-	val = LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK;
-	updatel_bits(hw, MAC, LT_OFFSET + lane_id * LT_ELEM_SIZE +
-		LT_KR_MODE_OFFSET, LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK, val);
-
-	/* Write abilities */
-	val = (1 << AN_KXAN_ABILITY_0_SEL_SHIFT);
-	if (cfg->lc.pause)
-		val |= (1 << AN_KXAN_ABILITY_0_PAUSEABILITY_SHIFT);
-	kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_0_OFFSET);
-
-	/* Write speed abilities */
-	nonce = NONCE + lane_id;
-	val = (cfg->lc.rate << AN_KXAN_ABILITY_1_TECHNOLOGY_SHIFT) |
-		(nonce << AN_KXAN_ABILITY_1_TXNONCE_SHIFT);
-	kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_1_OFFSET);
-
-	/* Write FEC ability */
-	val = (AN_KXAN_ABILITY_2_25G_RS_FEC_REQ_MASK |
-	       AN_KXAN_ABILITY_2_25G_BASER_FEC_REQ_MASK |
-	       AN_KXAN_ABILITY_2_10G_FEC_ABILITY_MASK |
-	       AN_KXAN_ABILITY_2_10G_FEC_REQ_MASK);
-	kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_2_OFFSET);
-
-	/* Find number of cycles to wait 1 ms */
-	val = ((reg_clk * 1000) >> MS_COUNT_SHIFT);
-	kvx_mac_writel(hw, val, an_off + AN_KXAN_MS_COUNT_OFFSET);
-
-	/* force link status down */
-	mask = MAC_CTRL_AN_CTRL_PCS_LINK_STATUS_MASK;
-	updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
-
-	/* Read to reset all latches */
-	kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
-
-	/* disable restart timer in AN_GOOD_CHECK */
-	mask = BIT(lane_id) << MAC_CTRL_AN_CTRL_DIS_TIMER_SHIFT;
-	updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
-
-	/* Start AN */
-	mask = BIT(lane_id) << MAC_CTRL_AN_CTRL_EN_SHIFT;
-	updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
-	val = AN_KXAN_CTRL_ANEN_MASK | AN_KXAN_CTRL_ANRESTART_MASK;
-	kvx_mac_writel(hw, val, an_off + AN_KXAN_CTRL_OFFSET);
-
-	/* reset AN module */
-	kvx_mac_writel(hw, AN_KXAN_CTRL_RESET_MASK,
-			an_off + AN_KXAN_CTRL_OFFSET);
-	ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_CTRL_OFFSET,
-			AN_KXAN_CTRL_RESET_MASK, 0, AN_TIMEOUT_MS);
-	an_status_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_STATUS_OFFSET +
-		4 * lane_id;
-	mask = MAC_CTRL_AN_STATUS_AN_STATUS_MASK;
-	ret = kvx_poll(kvx_mac_readl, an_status_off, mask, mask, AN_TIMEOUT_MS);
-	if (ret) {
-		/* Autoneg timeout, check what happened */
-		val = kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
-		AN_DBG(hw->dev, "%s LPANCAPABLE: %ld LINKSTATUS: %ld\n",
-		       __func__, GETF(val, AN_KXAN_STATUS_LPANCAPABLE),
-		       GETF(val, AN_KXAN_STATUS_LINKSTATUS));
-		AN_DBG(hw->dev, "%s AN_ABILITY: %ld REMOTEFAULT: %ld\n",
-		       __func__, GETF(val, AN_KXAN_STATUS_AN_ABILITY),
-		       GETF(val, AN_KXAN_STATUS_REMOTEFAULT));
-		AN_DBG(hw->dev, "%s AN_COMPLETE: %ld PAGERECEIVED: %ld\n",
-		       __func__, GETF(val, AN_KXAN_STATUS_AN_COMPLETE),
-		       GETF(val, AN_KXAN_STATUS_PAGERECEIVED));
-		AN_DBG(hw->dev, "%s EXTDNEXTPAGE: %ld PARALLELDETECTFAULT: %ld\n",
-		       __func__, GETF(val, AN_KXAN_STATUS_EXTDNEXTPAGE),
-		       GETF(val, AN_KXAN_STATUS_PARALLELDETECTFAULT));
-
-		goto exit;
-	}
-
-	/* Clear AN and LT ITs */
-	mask = MAC_CTRL_AN_CTRL_INT_CLEAR_MASK |
-		MAC_CTRL_AN_STATUS_LT_INT_MASK;
-	updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
-
-	kvx_eth_an_get_common_speed(hw, lane_id, &cfg->ln);
-	if (cfg->ln.speed == SPEED_UNKNOWN) {
-		dev_err(hw->dev, "No autonegotiation common speed could be identified\n");
-		ret = -EINVAL;
-		goto exit;
-	}
-
-	/* Don't display FEC as it could be altered by mac config */
-	kvx_eth_get_formated_speed(cfg->ln.speed, &speed_fmt, &unit);
-	dev_info(hw->dev, "Negociated speed: %d%s\n", speed_fmt, unit);
-
-	ret = 0;
-
-exit:
-	if (ret)
-		kvx_eth_dump_an_regs(hw, cfg, 0);
-
-	updatel_bits(hw, MAC, LT_OFFSET + lane_id * LT_ELEM_SIZE +
-		  LT_KR_MODE_OFFSET, LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK, 0);
-	/* To end autonegotiation procedure we have to explicitely disable it
-	 * even if everything succeeded
-	 */
-	mask = MAC_CTRL_AN_CTRL_EN_MASK;
-	updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
-
-	if (ret != 0) {
-		val = AN_KXAN_CTRL_ANEN_MASK | AN_KXAN_CTRL_ANRESTART_MASK;
-		updatel_bits(hw, MAC, an_off + AN_KXAN_CTRL_OFFSET, val, 0);
-	}
-	return ret;
-}
-
-/**
  * kvx_eth_mac_pcs_pma_hcd_setup - Configure mac/pcs/serdes to work at the
  * defined speed
  * @ndev: this network device
@@ -2593,6 +2390,7 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 
 	dev_dbg(hw->dev, "%s update_serdes: %d speed: %d\n", __func__,
 		update_serdes, cfg->speed);
+
 	if (update_serdes) {
 		for (i = 0; i < RTM_NB; i++) {
 			ret = configure_rtm(hw, cfg->id, i, cfg->speed);
@@ -2626,31 +2424,6 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 }
 
 /**
- * kvx_eth_lt_execute() - Enable link training and starts its FSM
- * @hw: hardware description
- * @cfg: lane configuration
- *
- * Once the mac/pcs/serdes have been configured exchange link
- * training frame at the link nominal width.
- * Note that contrary to autoneg, link training must be done
- * on all lanes (and not only on the first one)
- * On return the local device and the link partner have defined
- * equalization parameters, but the link is still not up.
- *
- * Return 0 on success
- */
-static int kvx_eth_lt_execute(struct kvx_eth_hw *hw,
-		struct kvx_eth_lane_cfg *cfg)
-{
-	int ret;
-
-	kvx_eth_link_training(hw, cfg, true);
-	ret = kvx_eth_perform_link_training(hw, cfg);
-
-	return ret;
-}
-
-/**
  * kvx_eth_an_good_status_wait() - Wait for auto negotiation end
  * @hw: hardware description
  * @cfg: lane configuration
@@ -2672,9 +2445,6 @@ static int kvx_eth_an_good_status_wait(struct kvx_eth_hw *hw,
 	u32 an_ctrl_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_CTRL_OFFSET;
 	u32 an_off = MAC_CTRL_AN_OFFSET + cfg->id * MAC_CTRL_AN_ELEM_SIZE;
 
-	/* Disable link training */
-	kvx_eth_link_training(hw, cfg, false);
-
 	/* Force link status up (and stop autoneg) */
 	mask = BIT(MAC_CTRL_AN_CTRL_PCS_LINK_STATUS_SHIFT + cfg->id);
 	updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
@@ -2690,6 +2460,224 @@ static int kvx_eth_an_good_status_wait(struct kvx_eth_hw *hw,
 	return 0;
 }
 
+static bool kvx_eth_autoneg_fsm_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	int ret, lane, nb_lane, lane_id = cfg->id, speed_fmt;
+	int state = AN_STATE_RESET;
+	u32 reg_clk = 100; /* MHz*/
+	u32 lt_off, an_off = MAC_CTRL_AN_OFFSET + cfg->id * MAC_CTRL_AN_ELEM_SIZE;
+	u32 an_ctrl_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_CTRL_OFFSET;
+	u32 nonce, mask, val;
+	char *unit;
+	u32 an_status_off;
+
+next_state:
+	switch (state) {
+	case AN_STATE_RESET:
+		/* reset AN module */
+		kvx_mac_writel(hw, AN_KXAN_CTRL_RESET_MASK,
+			       an_off + AN_KXAN_CTRL_OFFSET);
+		ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_CTRL_OFFSET,
+			       AN_KXAN_CTRL_RESET_MASK, 0, AN_TIMEOUT_MS);
+		fallthrough;
+	case AN_STATE_LT_CFG:
+		/* Enable clause 72 MAX TIMER instead of clause 92 (25G rate) */
+		val = LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK;
+		updatel_bits(hw, MAC, LT_OFFSET + lane_id * LT_ELEM_SIZE +
+			     LT_KR_MODE_OFFSET, LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK, val);
+
+		/* set link training default state */
+		for_each_cfg_lane(nb_lane, lane, cfg) {
+			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
+			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_STAT_OFFSET);
+			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_COEF_OFFSET);
+		}
+
+		for_each_cfg_lane(nb_lane, lane, cfg) {
+			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
+			/* clear local device coefficient */
+			updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
+				     LT_KR_LD_COEF_UPDATE_MASK, 0);
+			/* Clear local device status register */
+			updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET,
+				     LT_KR_LD_STAT_STATUSREPORT_MASK, 0);
+		}
+		fallthrough;
+	case AN_STATE_INIT:
+		/* config lane in 10G for autoneg */
+		ret = kvx_eth_mac_pcs_pma_autoneg_setup(hw, cfg, SPEED_10000);
+		if (ret) {
+			dev_err(hw->dev, "autoneg setup failure\n");
+			state = AN_STATE_ERROR;
+			goto next_state;
+		}
+
+		/* Write abilities */
+		val = (1 << AN_KXAN_ABILITY_0_SEL_SHIFT);
+		if (cfg->lc.pause)
+			val |= (1 << AN_KXAN_ABILITY_0_PAUSEABILITY_SHIFT);
+		kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_0_OFFSET);
+
+		/* Write speed abilities */
+		nonce = NONCE + lane_id;
+		val = (cfg->lc.rate << AN_KXAN_ABILITY_1_TECHNOLOGY_SHIFT) |
+			(nonce << AN_KXAN_ABILITY_1_TXNONCE_SHIFT);
+		kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_1_OFFSET);
+
+		/* Write FEC ability */
+		val = (AN_KXAN_ABILITY_2_25G_RS_FEC_REQ_MASK |
+		       AN_KXAN_ABILITY_2_25G_BASER_FEC_REQ_MASK |
+		       AN_KXAN_ABILITY_2_10G_FEC_ABILITY_MASK |
+		       AN_KXAN_ABILITY_2_10G_FEC_REQ_MASK);
+		kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_2_OFFSET);
+
+		/* Find number of cycles to wait 1 ms */
+		val = ((reg_clk * 1000) >> MS_COUNT_SHIFT);
+		kvx_mac_writel(hw, val, an_off + AN_KXAN_MS_COUNT_OFFSET);
+
+		/* force link status down */
+		mask = MAC_CTRL_AN_CTRL_PCS_LINK_STATUS_MASK;
+		updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
+
+		/* Read to reset all latches */
+		kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
+
+		/* disable restart timer in AN_GOOD_CHECK */
+		mask = BIT(lane_id) << MAC_CTRL_AN_CTRL_DIS_TIMER_SHIFT;
+		updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
+		fallthrough;
+	case AN_STATE_ENABLE:
+		/* start autoneg */
+		mask = BIT(lane_id) << MAC_CTRL_AN_CTRL_EN_SHIFT;
+		updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
+
+		val = AN_KXAN_CTRL_ANEN_MASK | AN_KXAN_CTRL_ANRESTART_MASK;
+		kvx_mac_writel(hw, val, an_off + AN_KXAN_CTRL_OFFSET);
+		fallthrough;
+	case AN_STATE_WAIT_BP_EXCHANGE:
+		/*
+		 * Cannot check for autoneg status - assuming it went ok
+		 * According to MAC spec Table 3, Page Received (bit6) is supposed to be set
+		 * once base page exchange has completed. In practice, it is not set.
+		 */
+		fallthrough;
+	case AN_STATE_GOOD_CHECK:
+		/* reset AN module */
+		kvx_mac_writel(hw, AN_KXAN_CTRL_RESET_MASK,
+			       an_off + AN_KXAN_CTRL_OFFSET);
+		ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_CTRL_OFFSET,
+			       AN_KXAN_CTRL_RESET_MASK, 0, AN_TIMEOUT_MS);
+
+		/* wait for AN_GOOD_CHECK state */
+		an_status_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_STATUS_OFFSET + 4 * lane_id;
+		mask = MAC_CTRL_AN_STATUS_AN_STATUS_MASK;
+		ret = kvx_poll(kvx_mac_readl, an_status_off, mask, mask, AN_TIMEOUT_MS);
+		if (ret) {
+			/* Autoneg timeout, check what happened */
+			dev_err(hw->dev, "autoneg timeout (not fatal)\n");
+
+			val = kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
+			AN_DBG(hw->dev, "%s LPANCAPABLE: %ld LINKSTATUS: %ld\n",
+			       __func__, GETF(val, AN_KXAN_STATUS_LPANCAPABLE),
+			       GETF(val, AN_KXAN_STATUS_LINKSTATUS));
+			AN_DBG(hw->dev, "%s AN_ABILITY: %ld REMOTEFAULT: %ld\n",
+			       __func__, GETF(val, AN_KXAN_STATUS_AN_ABILITY),
+			       GETF(val, AN_KXAN_STATUS_REMOTEFAULT));
+			AN_DBG(hw->dev, "%s AN_COMPLETE: %ld PAGERECEIVED: %ld\n",
+			       __func__, GETF(val, AN_KXAN_STATUS_AN_COMPLETE),
+			       GETF(val, AN_KXAN_STATUS_PAGERECEIVED));
+			AN_DBG(hw->dev, "%s EXTDNEXTPAGE: %ld PARALLELDETECTFAULT: %ld\n",
+			       __func__, GETF(val, AN_KXAN_STATUS_EXTDNEXTPAGE),
+			       GETF(val, AN_KXAN_STATUS_PARALLELDETECTFAULT));
+
+			/* autoneg failure not fatal - skip common tech state */
+			state = AN_STATE_PCS_CFG;
+			goto next_state;
+		}
+		fallthrough;
+	case AN_STATE_COMMON_TECH:
+		/* find common speed */
+		kvx_eth_an_get_common_speed(hw, lane_id, &cfg->ln);
+		if (cfg->ln.speed == SPEED_UNKNOWN) {
+			dev_err(hw->dev, "No autonegotiation common speed could be identified\n");
+			state = AN_STATE_ERROR;
+			goto next_state;
+		}
+
+		/**
+		 * To end autonegotiation procedure we have to explicitely disable it
+		 * even if everything succeeded
+		 */
+		mask = MAC_CTRL_AN_CTRL_EN_MASK;
+		updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
+
+		/* Apply negociated speed */
+		cfg->speed = cfg->ln.speed;
+		cfg->fec = cfg->ln.fec;
+
+		/* Don't display FEC as it could be altered by mac config */
+		kvx_eth_get_formated_speed(cfg->ln.speed, &speed_fmt, &unit);
+		dev_info(hw->dev, "Negociated speed: %d%s\n", speed_fmt, unit);
+		fallthrough;
+	case AN_STATE_PCS_CFG:
+		kvx_eth_mac_pcs_pma_hcd_setup(hw, cfg, true);
+		fallthrough;
+	case AN_STATE_LT_ENABLE:
+		updatel_bits(hw, MAC, LT_OFFSET + lane_id * LT_ELEM_SIZE +
+			     LT_KR_MODE_OFFSET, LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK, 0);
+
+		/**
+		 * Once the mac/pcs/serdes have been configured exchange link training frame at
+		 * the link nominal width. Note that contrary to autoneg, link training must be done
+		 * on all lanes (and not only on the first one). On return the local device and the
+		 * link partner have defined equalization parameters, but the link is still not up.
+		 */
+		val = LT_KR_CTRL_RESTARTTRAINING_MASK | LT_KR_CTRL_TRAININGEN_MASK;
+		for_each_cfg_lane(nb_lane, lane, cfg) {
+			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
+			updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET,
+				     LT_KR_STATUS_RECEIVERSTATUS_MASK, 0);
+			kvx_mac_writel(hw, val, lt_off + LT_KR_CTRL_OFFSET);
+		}
+		fallthrough;
+	case AN_STATE_LT_PERFORM:
+		ret = kvx_eth_perform_link_training(hw, cfg);
+		if (ret) {
+			/* not fatal */
+			dev_err(hw->dev, "Link training failed (not fatal)\n");
+		}
+
+		/* Disable link training */
+		for_each_cfg_lane(nb_lane, lane, cfg) {
+			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
+			updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET, LT_KR_STATUS_RECEIVERSTATUS_MASK,
+				     LT_KR_STATUS_RECEIVERSTATUS_MASK);
+			kvx_mac_writel(hw, 0, lt_off + LT_KR_CTRL_OFFSET);
+		}
+		fallthrough;
+	case AN_STATE_DONE:
+		/* Link training went well, missing AN completion -> trust negociated speed */
+		kvx_eth_an_good_status_wait(hw, cfg);
+		state = AN_STATE_DONE;
+		break;
+	case AN_STATE_ERROR:
+		kvx_eth_dump_an_regs(hw, cfg, 0);
+		state = AN_STATE_ERROR;
+		break;
+	}
+
+	/* disable AN */
+	mask = BIT(lane_id) << MAC_CTRL_AN_CTRL_EN_SHIFT;
+	updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
+
+	/* Clear AN and LT ITs */
+	mask = MAC_CTRL_AN_CTRL_INT_CLEAR_MASK |
+		MAC_CTRL_AN_STATUS_LT_INT_MASK;
+	updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
+
+	return state == AN_STATE_DONE;
+}
+
 /**
  * kvx_eth_an_execute() - Top level auto negotiation
  * @hw: hardware description
@@ -2703,47 +2691,29 @@ static int kvx_eth_an_good_status_wait(struct kvx_eth_hw *hw,
  */
 int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	unsigned int s, an_speed[] = {SPEED_10000};
-	int i, ret = -EAGAIN, lt_ret;
+	struct kvx_eth_netdev *ndev = container_of(cfg, struct kvx_eth_netdev, cfg);
 
 	if (kvx_eth_phy_is_bert_en(hw))
 		return 0;
 
-	for (i = 0; i < ARRAY_SIZE(an_speed); i++) {
-		s = an_speed[i];
-		ret = kvx_eth_mac_pcs_pma_autoneg_setup(hw, cfg, s);
-		if (ret)
-			return ret;
-	}
+	kvx_eth_update_cable_modes(ndev);
 
-	ret = kvx_eth_autoneg_page_exchange(hw, cfg);
-	if (ret)
-		return ret;
+	/* Force abilities */
+	cfg->lc.rate = (RATE_40GBASE_KR4 | RATE_40GBASE_CR4 |
+			RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S |
+			RATE_10GBASE_KR);
 
-	/* Before changing speed, disable serdes with previous config */
-	kvx_mac_phy_disable_serdes(hw, cfg->id, 1);
-	/* Apply negociated speed */
-	cfg->speed = cfg->ln.speed;
-	cfg->fec = cfg->ln.fec;
+	if (kvx_test_mode(cfg->cable_rate, 100000baseSR4_Full) ||
+	    kvx_test_mode(cfg->cable_rate, 100000baseKR4_Full) ||
+	    kvx_test_mode(cfg->cable_rate, 100000baseCR4_Full) ||
+	    kvx_test_mode(cfg->cable_rate, 100000baseLR4_ER4_Full))
+		cfg->lc.rate |= (RATE_100GBASE_KR4 | RATE_100GBASE_CR4);
 
-	ret = kvx_eth_mac_pcs_pma_hcd_setup(hw, cfg, true);
-	if (ret)
-		return ret;
+	cfg->lc.fec = FEC_10G_FEC_REQUESTED | FEC_25G_BASE_R_REQUESTED |
+		FEC_25G_RS_REQUESTED;
+	cfg->lc.pause = 1;
 
-	lt_ret = kvx_eth_lt_execute(hw, cfg);
-	if (lt_ret)
-		dev_dbg(hw->dev, "Link training failed\n");
-
-	ret = kvx_eth_an_good_status_wait(hw, cfg);
-	if (ret && !lt_ret) {
-		/*
-		 * Link training went well, missing AN completion
-		 * -> trust negociated speed
-		 */
-		ret = 0;
-	}
-
-	return ret;
+	return kvx_eth_autoneg_fsm_execute(hw, cfg) ? 0 : -EAGAIN;
 }
 
 int kvx_eth_mac_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)

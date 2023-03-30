@@ -268,25 +268,29 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_ser
 	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
 		   ndev->cfg.speed, ndev->cfg.autoneg_en);
 
-	if (ndev->cfg.autoneg_en && !ndev->cfg.mac_f.loopback_mode) {
-		ret = kvx_eth_autoneg(ndev);
-		if (ret)
-			netdev_dbg(ndev->netdev, "Autonegotiation failed\n");
-		restart_serdes = false;
-	}
-
 	if (ndev->cfg.speed == SPEED_UNKNOWN)
 		ndev->cfg.speed = SPEED_100000;
 	if (ndev->cfg.duplex == DUPLEX_UNKNOWN)
 		ndev->cfg.duplex = DUPLEX_FULL;
 
+	if (ndev->cfg.autoneg_en && !ndev->cfg.mac_f.loopback_mode) {
+		ret = kvx_eth_autoneg(ndev);
+		if (ret)
+			netdev_dbg(ndev->netdev, "Autonegotiation failed\n");
+
+		/* FIXME: remove once link training is fixed */
+		kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, false);
+	}
+
 #ifdef CONFIG_KVX_SUBARCH_KV3_2
 	kvx_eth_tx_cfg_speed_settings(ndev->hw, &ndev->cfg);
 #endif /* #ifdef CONFIG_KVX_SUBARCH_KV3_2 */
-	ret = kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, restart_serdes);
-	if (ret) {
-		netdev_warn(ndev->netdev, "Failed to setup link\n");
-		return false;
+	if (!ndev->cfg.autoneg_en) {
+		ret = kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, restart_serdes);
+		if (ret) {
+			netdev_warn(ndev->netdev, "Failed to setup link\n");
+			return false;
+		}
 	}
 	netdev_dbg(ndev->netdev, "%s done\n", __func__);
 
