@@ -984,6 +984,21 @@ enum lt_ld_states {
 	LT_LD_STATE_DONE,
 };
 
+enum autoneg_states {
+	AN_STATE_RESET = 0,
+	AN_STATE_LT_CFG,
+	AN_STATE_INIT,
+	AN_STATE_ENABLE,
+	AN_STATE_WAIT_BP_EXCHANGE,
+	AN_STATE_GOOD_CHECK,
+	AN_STATE_COMMON_TECH,
+	AN_STATE_PCS_CFG,
+	AN_STATE_LT_ENABLE,
+	AN_STATE_LT_PERFORM,
+	AN_STATE_DONE,
+	AN_STATE_ERROR
+};
+
 /**
  * struct kvx_eth_lane_cfg - Lane configuration
  * @id: lane_id [0, 3]
