@@ -327,7 +327,7 @@ static struct attribute *lut_f_attrs[] = {
 SYSFS_TYPES(lut_f);
 
 DECLARE_SYSFS_ENTRY(lut_entry_f);
-FIELD_RW_ENTRY(lut_entry_f, dt_id, 0, RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
+FIELD_RW_ENTRY(lut_entry_f, dt_id, 0, 0x6FFF);
 
 static struct attribute *lut_entry_f_attrs[] = {
 	&lut_entry_f_dt_id_attr.attr,
@@ -382,32 +382,6 @@ static struct attribute *cl_f_attrs[] = {
 	NULL,
 };
 SYSFS_TYPES(cl_f);
-
-DECLARE_SYSFS_ENTRY(dt_f);
-FIELD_RW_ENTRY(dt_f, cluster_id, 0, 0xFF);
-FIELD_RW_ENTRY(dt_f, rx_channel, 0, KVX_ETH_RX_TAG_NB - 1);
-FIELD_RW_ENTRY(dt_f, split_trigger, 0, 0x7F);
-FIELD_RW_ENTRY(dt_f, vchan, 0, 1);
-
-static struct attribute *dt_f_attrs[] = {
-	&dt_f_cluster_id_attr.attr,
-	&dt_f_rx_channel_attr.attr,
-	&dt_f_split_trigger_attr.attr,
-	&dt_f_vchan_attr.attr,
-	NULL,
-};
-SYSFS_TYPES(dt_f);
-
-DECLARE_SYSFS_ENTRY(dt_acc_f);
-FIELD_R_STRING_ENTRY(dt_acc_f, weights, 0, 0);
-FIELD_W_ENTRY(dt_acc_f, reset, 1, 1);
-
-static struct attribute *dt_acc_f_attrs[] = {
-	&dt_acc_f_weights_attr.attr,
-	&dt_acc_f_reset_attr.attr,
-	NULL,
-};
-SYSFS_TYPES(dt_acc_f);
 
 DECLARE_SYSFS_ENTRY(parser_f);
 FIELD_RW_ENTRY(parser_f, disp_policy, 0, 0x4);
@@ -499,7 +473,6 @@ static struct kset *tx_exp_pbdwrr_quantum_kset;
 static struct kset *tx_pre_pbdwrr_kset;
 static struct kset *tx_pre_pbdwrr_priority_kset;
 static struct kset *tx_pre_pbdwrr_quantum_kset;
-static struct kset *dt_kset;
 static struct kset *lut_entry_kset;
 static struct kset *parser_kset;
 static struct kset *rule_kset;
@@ -568,7 +541,6 @@ kvx_declare_kset(tx_exp_pbdwrr_f, "tx_exp_pbdwrr")
 kvx_declare_kset(tx_exp_pbdwrr_priority_f, "priority")
 kvx_declare_kset(tx_exp_pbdwrr_quantum_f, "quantum")
 kvx_declare_kset(cl_f, "pfc_cl")
-kvx_declare_kset(dt_f, "dispatch_table")
 kvx_declare_kset(lut_entry_f, "lut_entries")
 kvx_declare_kset(parser_f, "parser")
 kvx_declare_kset(rule_f, "rule")
@@ -634,10 +606,6 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 		}
 	}
 	kobject_init(&hw->lb_rfs_f.kobj, &lb_rfs_f_ktype);
-	for (i = 0; i < RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE; i++)
-		kobject_init(&hw->dt_f[i].kobj, &dt_f_ktype);
-	kobject_init(&hw->dt_acc_f.kobj, &dt_acc_f_ktype);
-
 	kobject_init(&hw->rx_dlv_pfc_f.kobj, &rx_dlv_pfc_f_ktype);
 
 	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; i++)
@@ -671,10 +639,6 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 		goto err;
 
 	ret = kobject_add(&hw->lut_f.kobj, &ndev->netdev->dev.kobj, "lut");
-	if (ret)
-		goto err;
-
-	ret = kobject_add(&hw->dt_acc_f.kobj, &ndev->netdev->dev.kobj, "dispatch_table_acc");
 	if (ret)
 		goto err;
 
@@ -786,11 +750,6 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 			goto err;
 	}
 
-	ret = kvx_kset_dt_f_create(ndev, &ndev->netdev->dev.kobj, dt_kset,
-			&hw->dt_f[0], RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
-	if (ret)
-		goto err;
-
 	ret = kvx_kset_lut_entry_f_create(ndev, &ndev->netdev->dev.kobj, lut_entry_kset,
 			&hw->lut_entry_f[0], RX_LB_LUT_ARRAY_SIZE);
 	if (ret)
@@ -818,8 +777,6 @@ err:
 	kobject_put(&ndev->hw->lb_f[lane_id].pfc_f.kobj);
 	kobject_del(&ndev->hw->lut_f.kobj);
 	kobject_put(&ndev->hw->lut_f.kobj);
-	kobject_del(&ndev->hw->dt_acc_f.kobj);
-	kobject_put(&ndev->hw->dt_acc_f.kobj);
 	kobject_del(&ndev->hw->rx_dlv_pfc_f.kobj);
 	kobject_put(&ndev->hw->rx_dlv_pfc_f.kobj);
 	kobject_del(&ndev->hw->phy_f.kobj);
@@ -831,8 +788,6 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 {
 	int i;
 
-	kvx_kset_dt_f_remove(ndev, dt_kset, &ndev->hw->dt_f[0],
-			RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 	kvx_kset_lut_entry_f_remove(ndev, lut_entry_kset, &ndev->hw->lut_entry_f[0],
 			RX_LB_LUT_ARRAY_SIZE);
 	kvx_kset_tx_exp_npre_f_remove(ndev, tx_exp_npre_kset, &ndev->hw->tx_exp_npre_f[0],
@@ -904,8 +859,6 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 		kvx_eth_kobject_del(&ndev->cfg, &t[i]);
 	kobject_del(&ndev->hw->lut_f.kobj);
 	kobject_put(&ndev->hw->lut_f.kobj);
-	kobject_del(&ndev->hw->dt_acc_f.kobj);
-	kobject_put(&ndev->hw->dt_acc_f.kobj);
 	kobject_del(&ndev->hw->rx_dlv_pfc_f.kobj);
 	kobject_put(&ndev->hw->rx_dlv_pfc_f.kobj);
 	kobject_del(&ndev->hw->phy_f.kobj);
