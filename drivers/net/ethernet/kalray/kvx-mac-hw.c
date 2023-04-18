@@ -2462,7 +2462,7 @@ static int kvx_eth_an_good_status_wait(struct kvx_eth_hw *hw,
 
 static bool kvx_eth_autoneg_fsm_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	int ret, lane, nb_lane, lane_id = cfg->id, speed_fmt;
+	int ret, lane, nb_lane, lane_id = cfg->id, speed_fmt, fsm_loop = 5;
 	int state = AN_STATE_RESET;
 	u32 reg_clk = 100; /* MHz*/
 	u32 lt_off, an_off = MAC_CTRL_AN_OFFSET + cfg->id * MAC_CTRL_AN_ELEM_SIZE;
@@ -2472,6 +2472,12 @@ static bool kvx_eth_autoneg_fsm_execute(struct kvx_eth_hw *hw, struct kvx_eth_la
 	u32 an_status_off;
 
 next_state:
+	/* prevent infinite looping */
+	if (fsm_loop-- <= 0) {
+		dev_dbg(hw->dev, "autoneg fsm recursion limit reached\n");
+		state = AN_STATE_ERROR;
+	}
+
 	switch (state) {
 	case AN_STATE_RESET:
 		/* reset AN module */
@@ -2585,7 +2591,7 @@ next_state:
 		ret = kvx_poll(kvx_mac_readl, an_status_off, mask, mask, AN_TIMEOUT_MS);
 		if (ret) {
 			/* Autoneg timeout, check what happened */
-			dev_err(hw->dev, "autoneg timeout (not fatal)\n");
+			dev_dbg(hw->dev, "autoneg timeout\n");
 
 			val = kvx_mac_readl(hw, an_off + AN_KXAN_STATUS_OFFSET);
 			AN_DBG(hw->dev, "%s LPANCAPABLE: %ld LINKSTATUS: %ld\n",
@@ -2601,8 +2607,8 @@ next_state:
 			       __func__, GETF(val, AN_KXAN_STATUS_EXTDNEXTPAGE),
 			       GETF(val, AN_KXAN_STATUS_PARALLELDETECTFAULT));
 
-			/* autoneg failure not fatal - skip common tech state */
-			state = AN_STATE_PCS_CFG;
+			/* autoneg failure - restart fsm from scratch */
+			state = AN_STATE_RESET;
 			goto next_state;
 		}
 		fallthrough;
@@ -2668,12 +2674,11 @@ next_state:
 		fallthrough;
 	case AN_STATE_DONE:
 		/* Link training went well, missing AN completion -> trust negociated speed */
-		kvx_eth_an_good_status_wait(hw, cfg);
+		kvx_eth_an_good_status_wait(hw, cfg); /* FIXME: ret is ignored */
 		state = AN_STATE_DONE;
 		break;
 	case AN_STATE_ERROR:
 		kvx_eth_dump_an_regs(hw, cfg, 0);
-		state = AN_STATE_ERROR;
 		break;
 	}
 
