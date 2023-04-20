@@ -896,7 +896,8 @@ struct kvx_eth_polarities {
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
  * @loopback_mode: mac loopback mode
- * @param: phy param (TX equalization, RX/TX polarity)
+ * @param: phy param (TX equalization, RX/TX polarity) for each lane. Only @param[0] is valid
+ *         when lanes are aggregated (broadcast)
  * @ber: phy BER testing
  * @polarities: lane polarities
  * @reg_avail: false for HAPS platform
