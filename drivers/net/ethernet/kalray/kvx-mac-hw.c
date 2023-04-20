@@ -725,12 +725,12 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	}
 
 	off = RAWLANE0_DIG_PCS_XF_ADAPT_CONT_OVRD_IN + LANE_OFFSET * lane_id;
-	v = PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_MASK |
-		PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK;
+	v = RL0_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_MASK |
+	    RL0_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK;
 	updatew_bits(hw, PHY, off, v, v);
 
 	off = RAWLANE0_DIG_PCS_XF_RX_ADAPT_ACK + LANE_OFFSET * lane_id;
-	mask = PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK;
+	mask = RL0_PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK;
 	ret = kvx_poll(kvx_phy_readw, off, mask, mask, SERDES_ACK_TIMEOUT_MS);
 	if (ret) {
 		dev_err(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
@@ -750,12 +750,12 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_PPM_DRIFT_VLD);
 
 	off = RAWLANE0_DIG_PCS_XF_ADAPT_CONT_OVRD_IN + LANE_OFFSET * lane_id;
-	v = PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK;
+	v = RL0_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK;
 	updatew_bits(hw, PHY, off, v, 0);
 
 	/* Expect ACK == 0*/
 	off = RAWLANE0_DIG_PCS_XF_RX_ADAPT_ACK + LANE_OFFSET * lane_id;
-	mask = PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK;
+	mask = RL0_PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK;
 	ret = kvx_poll(kvx_phy_readw, off, mask, 0, SERDES_ACK_TIMEOUT_MS);
 	if (ret) {
 		dev_err(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
@@ -763,6 +763,83 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	}
 
 	dev_dbg(hw->dev, "lane[%d] FOM %d\n", lane_id, p->fom);
+
+	return ret;
+}
+
+/**
+ * kvx_phy_rx_adapt_broadcast() - Launch RX adaptation process, update FOM value
+ *
+ * RX adaptation is done in brodcast mode, for all lanes simultaneously.
+ *
+ * Return: FOM on success, < 0 on error
+ */
+int kvx_phy_rx_adapt_broadcast(struct kvx_eth_hw *hw)
+{
+	struct kvx_eth_phy_param *p = &hw->phy_f.param[0];
+	u32 off, val;
+	int ret = 0;
+	u16 v, mask;
+
+	if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK)
+		return 0;
+
+	val = kvx_phy_readw(hw, RAWLANEX_DIG_PCS_XF_RX_PCS_IN);
+	if (GETF(val, RLX_PCS_XF_RX_PCS_IN_PSTATE) != PSTATE_P0) {
+		dev_dbg(hw->dev, "RX_ADAPT can not be done (not in P0)\n");
+		return -EINVAL;
+	}
+
+	val = kvx_phy_readw(hw, RAWLANEX_DIG_PCS_XF_RX_OVRD_IN_6);
+	if (GETF(val, RLX_PCS_XF_RX_OVRD_IN_6_RX_ADAPT_IN_PROG_OVRD)) {
+		dev_dbg(hw->dev, "RX_ADAPT already in progress\n");
+		return -EINVAL;
+	}
+
+	off = RAWLANEX_DIG_PCS_XF_ADAPT_CONT_OVRD_IN;
+	v = RLX_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_MASK |
+	    RLX_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK;
+	updatew_bits(hw, PHY, off, v, v);
+
+	off = RAWLANEX_DIG_PCS_XF_RX_ADAPT_ACK;
+	mask = RLX_PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK;
+	ret = kvx_poll(kvx_phy_readw, off, mask, mask, SERDES_ACK_TIMEOUT_MS);
+	if (ret) {
+		dev_dbg(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
+		return -ETIMEDOUT;
+	}
+
+	val = kvx_phy_readw(hw, RAWLANEX_DIG_PCS_XF_RX_ADAPT_FOM);
+	p->fom = GETF(val, RLX_PCS_XF_RX_ADAPT_FOM);
+	ret = p->fom;
+
+#ifdef DEBUG
+	REG_DBG(hw->dev, val, RLX_PCS_XF_RX_ADAPT_FOM);
+
+	val = kvx_phymac_readl(hw, RAWLANEX_DIG_PCS_XF_RX_TXPRE_DIR);
+	REG_DBG(hw->dev, val, RLX_PCS_XF_RX_ADAPT_FOM_RX_TXPRE_DIR);
+
+	val = kvx_phymac_readl(hw, RAWLANEX_DIG_PCS_XF_RX_TXMAIN_DIR);
+	REG_DBG(hw->dev, val, RLX_PCS_XF_RX_ADAPT_FOM_RX_TXMAIN_DIR);
+
+	val = kvx_phymac_readl(hw, RAWLANEX_DIG_PCS_XF_RX_TXPOST_DIR);
+	REG_DBG(hw->dev, val, RLX_PCS_XF_RX_ADAPT_FOM_RX_TXPOST_DIR);
+#endif
+
+	off = RAWLANEX_DIG_PCS_XF_ADAPT_CONT_OVRD_IN;
+	v = RLX_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK;
+	updatew_bits(hw, PHY, off, v, 0);
+
+	/* Expect ACK == 0*/
+	off = RAWLANEX_DIG_PCS_XF_RX_ADAPT_ACK;
+	mask = RLX_PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK;
+	ret = kvx_poll(kvx_phy_readw, off, mask, 0, SERDES_ACK_TIMEOUT_MS);
+	if (ret) {
+		dev_dbg(hw->dev, "RX_ADAPT_ACK TIMEOUT l.%d\n", __LINE__);
+		return -ETIMEDOUT;
+	}
+
+	dev_dbg(hw->dev, "FOM %d\n", p->fom);
 
 	return ret;
 }
@@ -2793,18 +2870,28 @@ int kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_eth
 
 void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	int lane_fom_ok, fom_retry = 4;
+	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
+	int lane_fom_ok = 0, fom_retry = 4;
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
 	int i;
 
+
 	do {
-		lane_fom_ok = 0;
-		for (i = cfg->id; i < cfg->id + lane_nb; i++) {
-			if (lane_fom[i] < hw->fom_thres)
-				lane_fom[i] = kvx_phy_rx_adapt(hw, i);
-			else
-				lane_fom_ok++;
+		if (aggregated_lanes) {
+			if (kvx_phy_rx_adapt_broadcast(hw) >= hw->fom_thres)
+				lane_fom_ok = lane_nb;
+		} else {
+			lane_fom_ok = 0;
+			for (i = cfg->id; i < cfg->id + lane_nb; i++) {
+				if (!is_lane_in_use(hw, i))
+					continue;
+
+				if (lane_fom[i] < hw->fom_thres)
+					lane_fom[i] = kvx_phy_rx_adapt(hw, i);
+				else
+					lane_fom_ok++;
+			}
 		}
 	} while (fom_retry-- && lane_fom_ok < lane_nb);
 }
