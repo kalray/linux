@@ -99,11 +99,46 @@
 #define RX_OVRD_IN_0_DATA_EN_MASK                0x10
 #define RX_OVRD_IN_0_DATA_EN_OVRD_EN_MASK        0x20
 
-#define RAWLANE0_DIG_PCS_XF_ADAPT_CONT_OVRD_IN           0xC028
-#define RAWLANE0_DIG_PCS_XF_RX_ADAPT_ACK                 0xC068
-#define PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_MASK         0x1
-#define PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK 0x2
-#define PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK            0x1
+/* RAWLANE0 */
+#define RAWLANE0_DIG_PCS_XF_ADAPT_CONT_OVRD_IN                  0xC028
+#define RL0_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_MASK            0x1
+#define RL0_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK    0x2
+
+#define RAWLANE0_DIG_PCS_XF_RX_ADAPT_ACK                        0xC068
+#define RL0_PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK               0x1
+
+/* RAWLANEX: broadcast - configure all lanes simultaneously */
+#define RAWLANEX_DIG_PCS_XF_ADAPT_CONT_OVRD_IN                  0x18028
+#define RLX_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_MASK            BIT(0)
+#define RLX_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK    BIT(1)
+
+#define RAWLANEX_DIG_PCS_XF_RX_OVRD_IN_6                        0x1802C
+#define RLX_PCS_XF_RX_OVRD_IN_6_RX_ADAPT_IN_PROG_OVRD_MASK      BIT(11)
+#define RLX_PCS_XF_RX_OVRD_IN_6_RX_ADAPT_IN_PROG_OVRD_SHIFT     11
+
+#define RAWLANEX_DIG_PCS_XF_RX_PCS_IN                           0x1803C
+#define RLX_PCS_XF_RX_PCS_IN_PSTATE_MASK                        0x180 /* bits 7-8 */
+#define RLX_PCS_XF_RX_PCS_IN_PSTATE_SHIFT                       7
+
+#define RAWLANEX_DIG_PCS_XF_RX_ADAPT_FOM                        0x1806C
+#define RLX_PCS_XF_RX_ADAPT_FOM_MASK                            0xFF /* bits 0-7 */
+#define RLX_PCS_XF_RX_ADAPT_FOM_SHIFT                           0
+
+#define RAWLANEX_DIG_PCS_XF_RX_ADAPT_ACK                        0x18068
+#define RLX_PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK               BIT(0)
+
+#define RAWLANEX_DIG_PCS_XF_RX_TXPRE_DIR                        0x18070
+#define RLX_PCS_XF_RX_ADAPT_FOM_RX_TXPRE_DIR_MASK               0x3 /* bits 0-1 */
+#define RLX_PCS_XF_RX_ADAPT_FOM_RX_TXPRE_DIR_SHIFT              0
+
+#define RAWLANEX_DIG_PCS_XF_RX_TXMAIN_DIR                       0x18074
+#define RLX_PCS_XF_RX_ADAPT_FOM_RX_TXMAIN_DIR_MASK              0x3 /* bits 0-1 */
+#define RLX_PCS_XF_RX_ADAPT_FOM_RX_TXMAIN_DIR_SHIFT             0
+
+#define RAWLANEX_DIG_PCS_XF_RX_TXPOST_DIR                       0x18078
+#define RLX_PCS_XF_RX_ADAPT_FOM_RX_TXPOST_DIR_MASK              0x3 /* bits 0-1 */
+#define RLX_PCS_XF_RX_ADAPT_FOM_RX_TXPOST_DIR_SHIFT             0
+
 
 struct mac_ctrl_pll {
 	u32 ref_clk_mpll_div;
