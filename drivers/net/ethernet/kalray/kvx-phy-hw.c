@@ -140,43 +140,40 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 }
 
 /**
- * kvx_phy_param_tuning() - Set all lanes phy parameters
+ * kvx_phy_param_tuning() - Set all lanes phy parameters (broadcast)
  *
- * Phy/serdes must be set prior to setting parameters (pre/post/swing)
+ * Phy/serdes must be set prior to setting parameters (pre/post/swing).
+ * Note that, since config is done in broadcast: for non-aggregated mode, all lanes
+ * will have the same param tuning.
  *
  * @hw: hw description
  */
 static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 {
-	struct kvx_eth_phy_param *param;
-	u16 v, lane_id, mask;
-	u32 off;
+	struct kvx_eth_phy_param *param = &hw->phy_f.param[0];
+	u16 v,  mask;
 
-	for (lane_id = 0; lane_id < KVX_ETH_LANE_NB; lane_id++) {
-		param = &hw->phy_f.param[lane_id];
-		mask = MAIN_OVRD_CURSOR_MASK | MAIN_OVRD_EN_MASK;
-		v = (u16) param->swing << MAIN_OVRD_CURSOR_SHIFT;
-		if (param->ovrd_en)
-			v |= MAIN_OVRD_EN_MASK;
-		off = LANE0_DIG_ASIC_TX_OVRD_IN_2 + lane_id * LANE_OFFSET;
-		/* Write it twice */
-		updatew_bits(hw, PHY, off, mask, v);
-		updatew_bits(hw, PHY, off, mask, v);
+	mask = MAIN_OVRD_CURSOR_MASK | MAIN_OVRD_EN_MASK;
+	v = (u16) param->swing << MAIN_OVRD_CURSOR_SHIFT;
+	if (param->ovrd_en)
+		v |= MAIN_OVRD_EN_MASK;
+	/* Write it twice */
+	updatew_bits(hw, PHY, LANEX_DIG_ASIC_TX_OVRD_IN_2, mask, v);
+	updatew_bits(hw, PHY, LANEX_DIG_ASIC_TX_OVRD_IN_2, mask, v);
 
-		mask = PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK |
-			PRE_OVRD_CURSOR_MASK | POST_OVRD_CURSOR_MASK;
-		v = ((u16) param->pre << PRE_OVRD_CURSOR_SHIFT) |
-			((u16) param->post << POST_OVRD_CURSOR_SHIFT);
-		if (param->ovrd_en)
-			v |= PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK;
-		off = LANE0_DIG_ASIC_TX_OVRD_IN_3 + lane_id * LANE_OFFSET;
-		/* Write it twice */
-		updatew_bits(hw, PHY, off, mask, v);
-		updatew_bits(hw, PHY, off, mask, v);
+	mask = PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK | PRE_OVRD_CURSOR_MASK |
+	       POST_OVRD_CURSOR_MASK;
+	v = ((u16)param->pre << PRE_OVRD_CURSOR_SHIFT) |
+	    ((u16)param->post << POST_OVRD_CURSOR_SHIFT);
+	if (param->ovrd_en)
+		v |= PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK;
+	/* Write it twice */
+	updatew_bits(hw, PHY, LANEX_DIG_ASIC_TX_OVRD_IN_3, mask, v);
+	updatew_bits(hw, PHY, LANEX_DIG_ASIC_TX_OVRD_IN_3, mask, v);
 
-		dev_dbg(hw->dev, "Lane [%d] param tuning (pre:%d, post:%d, swing:%d) done\n",
-			lane_id, param->pre, param->post, param->swing);
-	}
+	dev_dbg(hw->dev,
+		"LaneX param tuning (pre:%d, post:%d, swing:%d) done\n",
+		param->pre, param->post, param->swing);
 }
 
 void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f)
@@ -723,4 +720,3 @@ void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 	updatel_bits(hw, PHYMAC, PHY_PLL_OFFSET,
 		    PHY_PLL_REF_CLK_DIV2_EN_MASK | PHY_PLL_REF_RANGE_MASK, val);
 }
-
