@@ -32,20 +32,6 @@
 #define POST_CURSOR_SHIFT            6
 #define POST_CURSOR_MASK             0xfc0
 
-#define OVRD_IN_EN_MASK              0x100
-#define MAIN_OVRD_EN_MASK            0x8000
-#define MAIN_OVRD_CURSOR_SHIFT       9
-#define MAIN_OVRD_CURSOR_MASK        0x7e00
-#define PRE_OVRD_CURSOR_SHIFT        0
-#define PRE_OVRD_CURSOR_MASK         0x3f
-#define PRE_OVRD_EN_MASK             0x40
-#define POST_OVRD_CURSOR_SHIFT       7
-#define POST_OVRD_CURSOR_MASK        0x1f80
-#define POST_OVRD_EN_MASK            0x2000
-#define MAX_TX_MAIN                  24
-#define MAX_TX_PRE                   24
-#define MAX_TX_POST                  24
-
 #define REFCLK_OVRD_IN_1_OFFSET                0xC
 #define REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_MASK  0x0003
 #define REFCLK_OVRD_IN_1_NOMINAL_VPH_SEL_OVRD_EN_MASK  0x0004
@@ -107,7 +93,24 @@
 #define RAWLANE0_DIG_PCS_XF_RX_ADAPT_ACK                        0xC068
 #define RL0_PCS_XF_RX_ADAPT_ACK_RX_ADAPT_ACK_MASK               0x1
 
-/* RAWLANEX: broadcast - configure all lanes simultaneously */
+/* (RAW)LANEX: broadcast - configure all lanes simultaneously */
+#define LANEX_DIG_ASIC_TX_OVRD_IN_2                             0x1400C
+#define PRE_OVRD_CURSOR_SHIFT                                   0
+#define PRE_OVRD_CURSOR_MASK                                    0x3f
+#define PRE_OVRD_EN_MASK                                        0x40
+#define POST_OVRD_CURSOR_SHIFT                                  7
+#define POST_OVRD_CURSOR_MASK                                   0x1f80
+#define POST_OVRD_EN_MASK                                       0x2000
+#define MAX_TX_MAIN                                             24
+#define MAX_TX_PRE                                              24
+#define MAX_TX_POST                                             24
+#define OVRD_IN_EN_MASK                                         0x100
+#define MAIN_OVRD_EN_MASK                                       0x8000
+#define MAIN_OVRD_CURSOR_SHIFT                                  9
+#define MAIN_OVRD_CURSOR_MASK                                   0x7e00
+
+#define LANEX_DIG_ASIC_TX_OVRD_IN_3                             0x14010
+
 #define RAWLANEX_DIG_PCS_XF_ADAPT_CONT_OVRD_IN                  0x18028
 #define RLX_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_MASK            BIT(0)
 #define RLX_PCS_XF_ADAPT_CONT_OVRD_IN_ADAPT_REQ_OVRD_EN_MASK    BIT(1)
