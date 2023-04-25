@@ -167,22 +167,6 @@ static struct netdev_queue *get_txq(const struct kvx_eth_ring *ring)
 	return netdev_get_tx_queue(ring->netdev, ring->qidx);
 }
 
-static bool kvx_eth_check_link(struct kvx_eth_hw *hw,
-			       struct kvx_eth_lane_cfg *cfg)
-{
-	bool link = false;
-	int retry = 10;
-
-	/* Prevent false detection */
-	while (retry--) {
-		link = (!kvx_eth_pmac_linklos(hw, cfg)) &&
-		       kvx_eth_mac_getlink(hw, cfg);
-		if (link)
-			break;
-	}
-	return link;
-}
-
 /**
  * kvx_eth_autoneg() - Autoneg config: set phy/serdes in 10G mode (mandatory)
  */
@@ -343,6 +327,22 @@ static void kvx_eth_link_cfg(struct work_struct *w)
 	atomic_set(&ndev->link_cfg_running, 0); /* in case of break */
 }
 
+static bool kvx_eth_rtm_cdr_lock(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_hw *hw = ndev->hw;
+	int i, nb_lanes = kvx_eth_speed_to_nb_lanes(ndev->cfg.speed, NULL);
+	u8 lane;
+
+	for (i = ndev->cfg.id; i < nb_lanes; i++) {
+		lane = (u8)hw->rtm_params->channels[i];
+
+		if (!ti_retimer_get_cdr_lock(hw->rtm_params[RTM_RX].rtm, lane))
+			return false;
+	}
+
+	return true;
+}
+
 static void kvx_eth_poll_link(struct work_struct *w)
 {
 	struct kvx_eth_netdev *ndev = container_of(w, struct kvx_eth_netdev, link_poll.work);
@@ -359,7 +359,8 @@ static void kvx_eth_poll_link(struct work_struct *w)
 		goto bail;
 	}
 
-	if (kvx_eth_check_link(ndev->hw, &ndev->cfg))
+	if (kvx_eth_mac_getlink(ndev->hw, &ndev->cfg)
+	    && kvx_eth_rtm_cdr_lock(ndev))
 		goto bail;
 
 link_cfg:
