@@ -453,6 +453,7 @@ u8 ti_retimer_get_cdr_lock(struct i2c_client *client, u8 lane)
 
 	return !!(buf & BIT(4));
 }
+EXPORT_SYMBOL(ti_retimer_get_cdr_lock);
 
 u8 ti_retimer_get_sig_det(struct i2c_client *client, u8 lane)
 {
