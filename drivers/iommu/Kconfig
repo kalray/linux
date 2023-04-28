@@ -517,5 +517,17 @@ config KVX_IOMMU
 	  and/or remap interrupts from other devices on the
 	  system.
 
+config KVX_IOMMU_DEBUGFS
+	bool "Export Kalray IOMMU internals in Debugfs"
+	depends on IOMMU_DEBUGFS && KVX_IOMMU
+	help
+	  !!!WARNING!!!
+
+	  DO NOT ENABLE THIS OPTION UNLESS YOU REALLY KNOW WHAT YOU ARE DOING!!!
+
+	  Expose Kalray IOMMU internals in Debugfs.
+
+	  This option is -NOT- intended for production environments, and should
+	  only be enabled for debugging Kalray IOMMU.
 
 endif # IOMMU_SUPPORT
