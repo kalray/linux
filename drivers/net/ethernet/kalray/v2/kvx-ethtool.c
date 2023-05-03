@@ -67,3 +67,32 @@ void fill_ipv4_filter_cv2(struct kvx_eth_netdev *ndev,
 	}
 
 }
+
+void kvx_eth_get_pauseparam_cv2(struct net_device *netdev,
+			    struct ethtool_pauseparam *pause)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_rx_dlv_pfc_f *rx_dlv_pfc_f = &ndev->hw->rx_dlv_pfc_f[ndev->cfg.id];
+	struct kvx_eth_tx_pfc_f *tx_pfc_f = &ndev->hw->tx_pfc_f[ndev->cfg.id];
+
+	pause->rx_pause = !!(rx_dlv_pfc_f->glb_pause_rx_en);
+	pause->tx_pause = !!(tx_pfc_f->glb_pause_tx_en);
+}
+
+int kvx_eth_set_pauseparam_cv2(struct net_device *netdev,
+			   struct ethtool_pauseparam *pause)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_rx_dlv_pfc_f *rx_dlv_pfc_f = &ndev->hw->rx_dlv_pfc_f[ndev->cfg.id];
+	struct kvx_eth_tx_pfc_f *tx_pfc_f = &ndev->hw->tx_pfc_f[ndev->cfg.id];
+
+	if (rx_dlv_pfc_f->glb_pause_rx_en != pause->rx_pause) {
+		rx_dlv_pfc_f->glb_pause_rx_en = pause->rx_pause;
+		kvx_eth_rx_dlv_pfc_f_cfg(ndev->hw, rx_dlv_pfc_f);
+	}
+	if (tx_pfc_f->glb_pause_tx_en != pause->tx_pause) {
+		tx_pfc_f->glb_pause_tx_en = pause->tx_pause;
+		kvx_eth_tx_pfc_f_cfg(ndev->hw, tx_pfc_f);
+	}
+	return 0;
+}

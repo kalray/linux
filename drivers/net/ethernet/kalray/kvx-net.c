@@ -472,7 +472,6 @@ static void kvx_eth_init_netdev_hdw_cv2(struct kvx_eth_netdev *ndev)
 	kvx_eth_lb_cv2_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_parser_cv2_f_init(ndev->hw, &ndev->cfg);
 	kvx_eth_tx_f_init(ndev->hw);
-	ndev->hw->rx_dlv_pfc_f.hw = ndev->hw;
 }
 /* kvx_eth_init_netdev() - Init netdev generic settings
  * @ndev: Current kvx_eth_netdev
@@ -1351,9 +1350,9 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 		dt.rx_channel = rx_chan;
 		dt.split_trigger = 0;
 		dt.vchan = hw->vchan;
-		rev_d->eth_add_dispatch_table_entry(hw, &ndev->cfg, &dt,
-			ndev->cfg.default_dispatch_entry + dt.rx_channel);
-
+		if (rev_d->eth_add_dispatch_table_entry)
+			rev_d->eth_add_dispatch_table_entry(hw, &ndev->cfg, &dt,
+				ndev->cfg.default_dispatch_entry + dt.rx_channel);
 		r->init_done = true;
 	}
 	return 0;
@@ -2127,7 +2126,13 @@ static void kvx_netdev_probe_hw_cv1(struct kvx_eth_hw *hw, struct kvx_eth_netdev
 
 static void kvx_netdev_probe_hw_cv2(struct kvx_eth_hw *hw, struct kvx_eth_netdev *ndev)
 {
+	int i;
+
 	kvx_eth_lb_cv2_set_default(hw, ndev->dma_cfg.rx_chan_id.start);
+	for (i = 0; i < KVX_ETH_PHYS_PARSER_NB_CV2; ++i)
+		kvx_eth_parser_cv2_f_cfg(hw, &hw->parser_cv2_f[i]);
+	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; ++i)
+		kvx_eth_lut_entry_cv2_f_cfg(hw, &hw->lut_entry_cv2_f[i]);
 }
 
 /* kvx_netdev_probe() - Probe netdev
@@ -2347,7 +2352,8 @@ static int kvx_eth_probe(struct platform_device *pdev)
 		if (ret)
 			kvx_phy_reset(&dev->hw);
 	}
-	rev_d->eth_init_dispatch_table(&dev->hw);
+	if (rev_d->eth_init_dispatch_table)
+		rev_d->eth_init_dispatch_table(&dev->hw);
 	rev_d->eth_tx_init(&dev->hw);
 	kvx_eth_parsers_init(&dev->hw);
 	kvx_eth_phy_f_init(&dev->hw);
@@ -2419,6 +2425,7 @@ static const struct kvx_eth_chip_rev_data  eth_chip_rev_data_cv1 = {
 	.eth_mac_f_cfg = kvx_eth_mac_f_cfg_cv1,
 	.ethtx_credit_en_register = kvx_ethtx_credit_en_register_cv1,
 	.ethtx_credit_en_unregister = kvx_ethtx_credit_en_unregister_cv1,
+	.kvx_ethtool_ops = &kvx_ethtool_cv1_ops,
 };
 
 static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
@@ -2441,11 +2448,10 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
 	.eth_tx_init = kvx_eth_tx_init_cv2,
 	.eth_hw_sysfs_init = kvx_eth_hw_sysfs_init_cv2,
 	.parser_commit_filter = parser_commit_filter_cv2,
-	.eth_add_dispatch_table_entry = kvx_eth_add_dispatch_table_entry_cv2,
-	.eth_init_dispatch_table = kvx_eth_init_dispatch_table_cv2,
 	.eth_mac_f_cfg = kvx_eth_mac_f_cfg_cv2,
 	.ethtx_credit_en_register = kvx_ethtx_credit_en_register_cv2,
 	.ethtx_credit_en_unregister = kvx_ethtx_credit_en_unregister_cv2,
+	.kvx_ethtool_ops = &kvx_ethtool_cv2_ops,
 };
 static const struct of_device_id kvx_eth_match[] = {
 	{ .compatible = "kalray,coolidge-eth", .data = &eth_chip_rev_data_cv1 },
