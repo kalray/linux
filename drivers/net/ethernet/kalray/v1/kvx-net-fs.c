@@ -108,6 +108,13 @@ static struct attribute *pfc_f_attrs[] = {
 ATTRIBUTE_GROUPS(pfc_f);
 SYSFS_TYPES(pfc_f);
 
+DECLARE_SYSFS_ENTRY(lut_entry_cv1_f);
+FIELD_RW_ENTRY(lut_entry_cv1_f, dt_id, 0, RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
+static struct attribute *lut_entry_cv1_f_attrs[] = {
+	&lut_entry_cv1_f_dt_id_attr.attr,
+	NULL,
+};
+SYSFS_TYPES(lut_entry_cv1_f);
 DECLARE_SYSFS_ENTRY(tx_f);
 FIELD_R_ENTRY(tx_f, header_en, 0, 1);
 FIELD_R_ENTRY(tx_f, crc_en, 0, 1);
@@ -246,7 +253,7 @@ static struct attribute *rule_f_attrs[] = {
 ATTRIBUTE_GROUPS(rule_f);
 SYSFS_TYPES(rule_f);
 
-
+static struct kset *lut_entry_cv1_kset;
 static struct kset *lb_kset;
 static struct kset *rx_noc_kset;
 static struct kset *tx_kset;
@@ -256,6 +263,7 @@ static struct kset *parser_kset;
 static struct kset *rule_kset;
 static struct kset *pfc_cl_kset;
 
+kvx_declare_kset(lut_entry_cv1_f, "lut_entries")
 kvx_declare_kset(lb_f, "lb")
 kvx_declare_kset(rx_noc, "rx_noc")
 kvx_declare_kset(tx_f, "tx")
@@ -270,6 +278,8 @@ int kvx_eth_hw_sysfs_init_cv1(struct kvx_eth_hw *hw)
 	int i, j, ret = 0;
 
 	ret = kvx_eth_hw_sysfs_init(hw);
+	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; i++)
+		kobject_init(&hw->lut_entry_cv1_f[i].kobj, &lut_entry_cv1_f_ktype);
 
 	kobject_init(&hw->lut_f.kobj, &lut_f_ktype);
 
@@ -317,6 +327,10 @@ int kvx_eth_netdev_sysfs_init_cv1(struct kvx_eth_netdev *ndev)
 	if (ret)
 		goto err;
 
+	ret = kvx_kset_lut_entry_cv1_f_create(ndev, &ndev->netdev->dev.kobj, lut_entry_cv1_kset,
+			&hw->lut_entry_cv1_f[0], RX_LB_LUT_ARRAY_SIZE);
+	if (ret)
+		goto err;
 	ret = kobject_add(&hw->dt_acc_f.kobj, &ndev->netdev->dev.kobj, "dispatch_table_acc");
 	if (ret)
 		goto err;
@@ -386,6 +400,8 @@ void kvx_eth_netdev_sysfs_uninit_cv1(struct kvx_eth_netdev *ndev)
 
 	kvx_eth_netdev_sysfs_uninit(ndev);
 
+	kvx_kset_lut_entry_cv1_f_remove(ndev, lut_entry_cv1_kset, &ndev->hw->lut_entry_cv1_f[0],
+			RX_LB_LUT_ARRAY_SIZE);
 	kvx_kset_dt_f_remove(ndev, dt_kset, &ndev->hw->dt_f[0],
 			RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE);
 	kvx_kset_tx_noc_f_remove(ndev, tx_noc_kset, &ndev->hw->tx_noc_f[0],
