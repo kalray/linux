@@ -864,21 +864,20 @@ static int find_elligible_parser(struct kvx_eth_netdev *ndev,
 }
 
 /**
- * find_available_parser() - Find the next free parser
+ * check_parser_availability() - check that targetted parser is free
  * @ndev: this netdev
  * @fs: rules to match
- * Return: a free parser id, or error if full
+ * Return: the parser id, or error if full
  */
-static int find_available_parser(struct kvx_eth_netdev *ndev,
+static int check_parser_availability(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs)
 {
 	int i;
 	struct kvx_eth_hw *hw = ndev->hw;
 
-	for (i = 0; i < KVX_ETH_PARSER_NB; i++) {
-		if (hw->parsing.parsers[i].loc == -1)
-			return i;
-	}
+	if (hw->parsing.parsers[fs->location].loc == -1)
+		return fs->location;
+
 	return -EINVAL;
 }
 
@@ -986,7 +985,7 @@ static int add_parser_cfg(struct kvx_eth_netdev *ndev,
 	if (limited_parser_cap)
 		parser_index = find_elligible_parser(ndev, fs);
 	else
-		parser_index = find_available_parser(ndev, fs);
+		parser_index = check_parser_availability(ndev, fs);
 	if (parser_index < 0) {
 		netdev_err(ndev->netdev, "No free parser matching criteria could be found\n");
 		return -EINVAL;
@@ -1195,7 +1194,7 @@ static void kvx_eth_set_lut(struct net_device *netdev, struct kvx_eth_hw *hw,
 		u32 indir_id = indir[lut2scrambled[i]] & RX_LB_LUT_NOC_TABLE_ID_MASK;
 
 		kvx_eth_writel(hw, indir_id, r);
-		hw->lut_entry_f[i].dt_id = indir_id;
+		hw->lut_entry_cv1_f[i].dt_id = indir_id;
 	}
 }
 
@@ -1412,34 +1411,6 @@ bail:
 	return 0;
 }
 
-void kvx_eth_get_pauseparam(struct net_device *netdev,
-			    struct ethtool_pauseparam *pause)
-{
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_pfc_f *pfc_f = &ndev->hw->lb_f[ndev->cfg.id].pfc_f;
-
-	pause->rx_pause = !!(pfc_f->global_pause_en & MLO_PAUSE_RX);
-	pause->tx_pause = !!(pfc_f->global_pause_en & MLO_PAUSE_TX);
-}
-
-int kvx_eth_set_pauseparam(struct net_device *netdev,
-			   struct ethtool_pauseparam *pause)
-{
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_pfc_f *pfc_f = &ndev->hw->lb_f[ndev->cfg.id].pfc_f;
-	u8 pause_mask = (pause->rx_pause ? MLO_PAUSE_RX : 0);
-
-	if (pause->tx_pause)
-		pause_mask |= MLO_PAUSE_TX;
-
-	pfc_f->global_pause_en = pause_mask;
-	kvx_eth_pfc_f_cfg(ndev->hw, pfc_f);
-
-	kvx_eth_setup_link(ndev, false);
-
-	return 0;
-}
-
 static int kvx_eth_get_fecparam(struct net_device *netdev,
 				struct ethtool_fecparam *param)
 {
@@ -1590,33 +1561,46 @@ static int kvx_eth_get_module_info(struct net_device *netdev,
 	return kvx_qsfp_module_info(ndev->qsfp, modinfo);
 }
 
-static const struct ethtool_ops kvx_ethtool_ops = {
-	.get_drvinfo         = kvx_eth_get_drvinfo,
-	.get_ringparam       = kvx_eth_get_ringparam,
-	.get_ethtool_stats   = kvx_eth_get_ethtool_stats,
-	.get_strings         = kvx_eth_get_strings,
-	.get_sset_count      = kvx_eth_get_sset_count,
-	.get_rxnfc           = kvx_eth_get_rxnfc,
-	.set_rxnfc           = kvx_eth_set_rxnfc,
-	.get_rxfh_indir_size = kvx_eth_rss_indir_size,
-	.get_rxfh_key_size   = kvx_eth_get_rxfh_key_size,
+#define ETHTOOL_OPS_COMMON   \
+	.get_drvinfo         = kvx_eth_get_drvinfo, \
+	.get_ringparam       = kvx_eth_get_ringparam, \
+	.get_ethtool_stats   = kvx_eth_get_ethtool_stats, \
+	.get_strings         = kvx_eth_get_strings, \
+	.get_sset_count      = kvx_eth_get_sset_count, \
+	.get_rxnfc           = kvx_eth_get_rxnfc, \
+	.set_rxnfc           = kvx_eth_set_rxnfc, \
+	.get_rxfh_indir_size = kvx_eth_rss_indir_size, \
+	.get_rxfh_key_size   = kvx_eth_get_rxfh_key_size, \
+	.get_link            = ethtool_op_get_link, \
+	.get_link_ksettings  = kvx_eth_get_link_ksettings, \
+	.set_link_ksettings  = kvx_eth_set_link_ksettings, \
+	.get_fecparam        = kvx_eth_get_fecparam, \
+	.set_fecparam        = kvx_eth_set_fecparam, \
+	.get_eeprom_len      = kvx_eth_get_eeprom_len, \
+	.get_eeprom          = kvx_eth_get_eeprom, \
+	.set_eeprom          = kvx_eth_set_eeprom, \
+	.get_module_eeprom   = kvx_eth_get_module_eeprom, \
+	.get_module_info     = kvx_eth_get_module_info
+
+const struct ethtool_ops kvx_ethtool_cv1_ops = {
+	ETHTOOL_OPS_COMMON,
 	.get_rxfh            = kvx_eth_get_rxfh,
 	.set_rxfh            = kvx_eth_set_rxfh,
-	.get_link            = ethtool_op_get_link,
-	.get_link_ksettings  = kvx_eth_get_link_ksettings,
-	.set_link_ksettings  = kvx_eth_set_link_ksettings,
-	.get_pauseparam      = kvx_eth_get_pauseparam,
-	.set_pauseparam      = kvx_eth_set_pauseparam,
-	.get_fecparam        = kvx_eth_get_fecparam,
-	.set_fecparam        = kvx_eth_set_fecparam,
-	.get_eeprom_len      = kvx_eth_get_eeprom_len,
-	.get_eeprom          = kvx_eth_get_eeprom,
-	.set_eeprom          = kvx_eth_set_eeprom,
-	.get_module_eeprom   = kvx_eth_get_module_eeprom,
-	.get_module_info     = kvx_eth_get_module_info,
+	.get_pauseparam      = kvx_eth_get_pauseparam_cv1,
+	.set_pauseparam      = kvx_eth_set_pauseparam_cv1
+};
+
+const struct ethtool_ops kvx_ethtool_cv2_ops = {
+	ETHTOOL_OPS_COMMON,
+	.get_pauseparam      = kvx_eth_get_pauseparam_cv2,
+	.set_pauseparam      = kvx_eth_set_pauseparam_cv2
 };
 
 void kvx_set_ethtool_ops(struct net_device *netdev)
 {
-	netdev->ethtool_ops = &kvx_ethtool_ops;
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_hw *hw = ndev->hw;
+	const struct kvx_eth_chip_rev_data *rev_d = KVX_HW2DEV(hw)->chip_rev_data;
+
+	netdev->ethtool_ops = rev_d->kvx_ethtool_ops;
 }

@@ -83,17 +83,6 @@ static struct attribute *tx_bert_param_attrs[] = {
 ATTRIBUTE_GROUPS(tx_bert_param);
 SYSFS_TYPES(tx_bert_param);
 
-DECLARE_SYSFS_ENTRY(lut_entry_f);
-FIELD_RW_ENTRY(lut_entry_f, dt_id, 0, 0x6FFF);
-
-static struct attribute *lut_entry_f_attrs[] = {
-	&lut_entry_f_dt_id_attr.attr,
-	NULL,
-};
-
-ATTRIBUTE_GROUPS(lut_entry_f);
-SYSFS_TYPES(lut_entry_f);
-
 /**
  * struct sysfs_type
  * @name: sysfs entry name
@@ -138,12 +127,10 @@ static void kvx_eth_kobject_del(struct kvx_eth_lane_cfg *cfg,
 static struct kset *phy_param_kset;
 static struct kset *rx_bert_param_kset;
 static struct kset *tx_bert_param_kset;
-static struct kset *lut_entry_kset;
 
 kvx_declare_kset(phy_param, "param")
 kvx_declare_kset(rx_bert_param, "rx_bert_param")
 kvx_declare_kset(tx_bert_param, "tx_bert_param")
-kvx_declare_kset(lut_entry_f, "lut_entries")
 
 int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 {
@@ -156,10 +143,6 @@ int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw)
 		kobject_init(&hw->phy_f.rx_ber[i].kobj, &rx_bert_param_ktype);
 		kobject_init(&hw->phy_f.tx_ber[i].kobj, &tx_bert_param_ktype);
 	}
-
-	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; i++)
-		kobject_init(&hw->lut_entry_f[i].kobj, &lut_entry_f_ktype);
-
 	return ret;
 }
 
@@ -192,11 +175,7 @@ int kvx_eth_netdev_sysfs_init(struct kvx_eth_netdev *ndev)
 	ret = kvx_kset_tx_bert_param_create(ndev, &hw->phy_f.kobj,
 			 tx_bert_param_kset, &hw->phy_f.tx_ber[0],
 			 KVX_ETH_LANE_NB);
-	if (ret)
-		goto err;
 
-	ret = kvx_kset_lut_entry_f_create(ndev, &ndev->netdev->dev.kobj, lut_entry_kset,
-			&hw->lut_entry_f[0], RX_LB_LUT_ARRAY_SIZE);
 	if (ret)
 		goto err;
 
@@ -215,8 +194,6 @@ void kvx_eth_netdev_sysfs_uninit(struct kvx_eth_netdev *ndev)
 {
 	int i;
 
-	kvx_kset_lut_entry_f_remove(ndev, lut_entry_kset, &ndev->hw->lut_entry_f[0],
-			RX_LB_LUT_ARRAY_SIZE);
 	kvx_kset_rx_bert_param_remove(ndev, rx_bert_param_kset,
 			&ndev->hw->phy_f.rx_ber[0], KVX_ETH_LANE_NB);
 	kvx_kset_tx_bert_param_remove(ndev, tx_bert_param_kset,

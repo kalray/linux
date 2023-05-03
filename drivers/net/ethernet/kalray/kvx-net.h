@@ -207,6 +207,7 @@ struct kvx_eth_chip_rev_data {
 	void (*const eth_mac_f_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f);
 	int (*const ethtx_credit_en_register)(struct platform_device *pdev);
 	int (*const ethtx_credit_en_unregister)(struct platform_device *pdev);
+	const struct ethtool_ops *kvx_ethtool_ops;
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
@@ -262,7 +263,10 @@ int parser_commit_filter_cv1(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg
 		unsigned int parser_id, unsigned int word_index, enum parser_dispatch_policy policy, int prio);
 int parser_commit_filter_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 		unsigned int parser_id, unsigned int word_index, enum parser_dispatch_policy policy, int prio);
-
+void kvx_eth_get_pauseparam_cv1(struct net_device *netdev, struct ethtool_pauseparam *pause);
+int kvx_eth_set_pauseparam_cv1(struct net_device *netdev, struct ethtool_pauseparam *pause);
+void kvx_eth_get_pauseparam_cv2(struct net_device *netdev, struct ethtool_pauseparam *pause);
+int kvx_eth_set_pauseparam_cv2(struct net_device *netdev, struct ethtool_pauseparam *pause);
 /**
  * @brief macro to sysfs creation
  *
