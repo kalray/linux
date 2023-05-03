@@ -35,11 +35,14 @@
 #define KVX_ETH_TX_PBDWRR_INIT_QUAUTUM_PROGRAM 0
 #define KVX_ETH_TX_PBDWRR_INIT_QUAUTUM_DONE 1
 
+#define KVX_ETH_XCOS_NB 9
+
 /* Use last 64 entries for current cluster */
 #define RX_DISPATCH_TABLE_ACCELERATION_NB 256
 #define KVX_ETH_DEFAULT_RULE_DTABLE_IDX RX_DISPATCH_TABLE_ACCELERATION_NB
 
 #define PFC_MAX_LEVEL 0x60000 /* 32 bits, must be 128 aligned */
+#define DLV_XCOS_BUFFER_LEVEL 0x7FFFF
 /* Pause timer is reset to quanta value */
 #define DEFAULT_PAUSE_QUANTA        0xFFFF
 /* Pause frame/req is re-sent is timer is below quanta_thres */
@@ -251,6 +254,11 @@ enum parser_dispatch_info_drop {
 	DISPATCH_INFO_DROP = 0x1,
 };
 
+enum kvx_rss_rss_enable {
+	RSS_RSS_DISABLE = 0x0,
+	RSS_RSS_ENABLE = 0x1,
+};
+
 enum kvx_rfs_param_fk_cmd {
 	RFS_PARAM_FK_CMD_WRITE = 0x1,
 	RFS_PARAM_FK_NO_CMD = 0xFF,
@@ -259,13 +267,11 @@ enum kvx_rfs_param_fk_cmd {
 enum kvx_rfs_hash_rss_enable {
 	RFS_HASH_RSS_DISABLE = 0x0,
 	RFS_HASH_RSS_ENABLE = 0x1,
-	RFS_HASH_RSS_NO_CMD = 0xFF,
 };
 
 enum kvx_rfs_ctrl_enable {
 	RFS_CTRL_RFS_DISABLE = 0x0,
 	RFS_CTRL_RFS_ENABLE = 0x1,
-	RFS_CTRL_RFS_NO_CMD = 0xFF,
 };
 
 enum kvx_rfs_seed_cmd {
@@ -299,15 +305,19 @@ enum kvx_rfs_fk_command {
 #define FEC_10G_FEC_ABILITY         BIT(2)
 #define FEC_10G_FEC_REQUESTED       BIT(3)
 
+#define KVX_ETH_SYSFS_ITEM_HDR  \
+	struct kobject kobj;        \
+	struct kvx_eth_hw *hw;      \
+	void (*update)(void *p)
+
 /**
  * struct kvx_eth_lut_f - HLUT features
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  */
 struct kvx_eth_lut_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	u32 qpn_enable;
 	u8  lane_enable;
 	u8  rule_enable;
@@ -315,22 +325,10 @@ struct kvx_eth_lut_f {
 };
 
 /**
- * struct kvx_eth_lut_cv2_f - RSS LUT config
- * @kobj: kobject for sysfs
- * @hw: back pointer to hw description
- * @rss_enable: Enable the RSS lookup block IP
- */
-struct kvx_eth_lut_cv2_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
-	u8  rss_enable;
-};
-
-/**
  * struct kvx_eth_lb_rfs_f - RFS block config
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @version: version of the RFS block IP
  * @ctrl_rfs_ena: Enable the RFS lookup block
  * @ctrl_hash_rss_ena: Enable Hash output for RSS
@@ -362,12 +360,8 @@ struct kvx_eth_lut_cv2_f {
  * @seed_part: part of the seed
  */
 struct kvx_eth_lb_rfs_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	u32 version;
-	enum kvx_rfs_ctrl_enable ctrl_rfs_ena;
-	enum kvx_rfs_hash_rss_enable ctrl_hash_rss_ena;
 	u8 param_fk_idx;
 	u32 param_fk_part;
 	enum kvx_rfs_param_fk_cmd param_fk_cmd;
@@ -400,13 +394,12 @@ struct kvx_eth_lb_rfs_f {
  * struct kvx_eth_tx_stage_one_f - Tx stage one config
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @credit: credit enabling/reset (1 bit per cluster)
  * @config: fifo number & size
  */
 struct kvx_eth_tx_stage_one_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	u8 credit;
 	u8 config;
 };
@@ -415,14 +408,13 @@ struct kvx_eth_tx_stage_one_f {
  * struct kvx_eth_tx_stage_two_drop_status_f - Tx stage two drop
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @tgt_id: target (aka xcos)
  * @drop_status: error occured (size, crc, parity)
  */
 struct kvx_eth_tx_stage_two_drop_status_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	int tgt_id;
 	u8 drop_status;
@@ -432,14 +424,13 @@ struct kvx_eth_tx_stage_two_drop_status_f {
  * struct kvx_eth_tx_stage_two_wmark_f - Tx stage two watermark
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @tgt_id: target (aka xcos)
  * @wmark: number of 128bit words present in fifo
  */
 struct kvx_eth_tx_stage_two_wmark_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	int tgt_id;
 	u16 wmark;
@@ -449,6 +440,7 @@ struct kvx_eth_tx_stage_two_wmark_f {
  * struct kvx_eth_tx_stage_two_f - Tx stage two
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @drop_disable: disabling drop action for each error category
  * @mtu: maximum transmission unit (error if packet size > mtu)
@@ -459,9 +451,7 @@ struct kvx_eth_tx_stage_two_wmark_f {
  * @wmark: watermark info per target
  */
 struct kvx_eth_tx_stage_two_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	u8 drop_disable;
 	u16 mtu;
@@ -473,35 +463,35 @@ struct kvx_eth_tx_stage_two_f {
 };
 
 /**
- * struct kvx_eth_tx_pfc_xoff_subsc_f - TX - sensitivity to XOFF for one target
+ * struct kvx_eth_tx_pfc_xoff_subsc_f - TX - sensitivity to XOFF for one target/xcos
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @tgt_id: target (aka xcos)
- * @xoff_subsc: sensitivity to Global Pause and PFC XOFF
+ * @xoff_subsc: sensitivity to PFC XOFF
  */
 struct kvx_eth_tx_pfc_xoff_subsc_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	int tgt_id;
 	u16 xoff_subsc;
 };
 
 /**
- * struct kvx_eth_tx_pfc_f - TX - sensitivity to XOFF
+ * struct kvx_eth_tx_pfc_f - TX - sensitivity to XOFF/global pause
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @tgt_id: target (aka xcos)
- * @xoff_subsc: sensitivity to XOFF for each target (aka xcos)
+ * @glb_pause_tx_en: sensitivity to global pause
+ * @xoff_subsc: sensitivity to XOFF per target/xcos
  */
 struct kvx_eth_tx_pfc_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
+	u8 glb_pause_tx_en;
 	struct kvx_eth_tx_pfc_xoff_subsc_f xoff_subsc[KVX_ETH_TX_TGT_NB];
 };
 
@@ -509,13 +499,12 @@ struct kvx_eth_tx_pfc_f {
  * struct kvx_eth_tx_exp_npre_f - TX - Mapping to MAC express or preemptable
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @config: mapping of each tgt to MAC express lane or preemptable lane
  */
 struct kvx_eth_tx_exp_npre_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	u16 config;
 };
@@ -525,15 +514,14 @@ struct kvx_eth_tx_exp_npre_f {
  *       target mapped to MAC preemptable lane
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @tgt_id: target (aka xcos)
  * @quantum: initial quantum for deficit weighted round robin arbitration
  *           assigned to the target
  */
 struct kvx_eth_tx_pre_pbdwrr_quantum_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	int tgt_id;
 	u16 quantum;
@@ -544,15 +532,14 @@ struct kvx_eth_tx_pre_pbdwrr_quantum_f {
  *       target mapped to MAC preemptable lane
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @tgt_id: target (aka xcos)
  * @priority: priority for weighted round robin assigned to the target (should be
  *            0 for DWRR to apply)
  */
 struct kvx_eth_tx_pre_pbdwrr_priority_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	int tgt_id;
 	u16 priority;
@@ -563,6 +550,7 @@ struct kvx_eth_tx_pre_pbdwrr_priority_f {
  *       target mapped to MAC preemptable lane
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @priority: priority for weighted round robin assigned to targets
  * @config: selection of arbitration (DWRR or RR)
@@ -570,9 +558,7 @@ struct kvx_eth_tx_pre_pbdwrr_priority_f {
  *           assigned to targets
  */
 struct kvx_eth_tx_pre_pbdwrr_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	struct kvx_eth_tx_pre_pbdwrr_priority_f priority[KVX_ETH_TX_TGT_NB];
 	u8 config;
@@ -584,15 +570,14 @@ struct kvx_eth_tx_pre_pbdwrr_f {
  *       target mapped to MAC express lane
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @tgt_id: target (aka xcos)
  * @quantum: initial quantum for deficit weighted round robin arbitration
  *           assigned to the target
  */
 struct kvx_eth_tx_exp_pbdwrr_quantum_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	int tgt_id;
 	u16 quantum;
@@ -603,15 +588,14 @@ struct kvx_eth_tx_exp_pbdwrr_quantum_f {
  *       target mapped to MAC express lane
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @tgt_id: target (aka xcos)
  * @priority: priority for weighted round robin assigned to the target (should be
  *            0 for DWRR to apply)
  */
 struct kvx_eth_tx_exp_pbdwrr_priority_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	int tgt_id;
 	u16 priority;
@@ -622,6 +606,7 @@ struct kvx_eth_tx_exp_pbdwrr_priority_f {
  *       target mapped to MAC express lane
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @lane_id: lane
  * @priority: priority for weighted round robin assigned to targets
  * @config: selection of arbitration (DWRR or RR)
@@ -629,9 +614,7 @@ struct kvx_eth_tx_exp_pbdwrr_priority_f {
  *           assigned to targets
  */
 struct kvx_eth_tx_exp_pbdwrr_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int lane_id;
 	struct kvx_eth_tx_exp_pbdwrr_priority_f priority[KVX_ETH_TX_TGT_NB];
 	u8 config;
@@ -642,31 +625,92 @@ struct kvx_eth_tx_exp_pbdwrr_f {
  * struct kvx_eth_tx_tdm_f - TX - TDM block configuration
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @config: selection of the aggregation
  * @fcs: enable addition of FCS (for each pre/exp lane)
  * @err: enable error transmission by MAC (for each pre/exp lane)
  */
 struct kvx_eth_tx_tdm_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	u8 config;
 	u8 fcs;
 	u8 err;
 };
 
 /**
- * struct kvx_eth_lut_entry_f - LUT entry config
+ * struct kvx_eth_lb_dlv_noc_congest_ctrl_f - Load balancer deliver - NOC congestion feature
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
+ * @noc_if_id: id of the route of this congestion ctrl
+ * @xcos_id: id of the xcos of this congestion ctrl
+ * @dma_thold: packet will only be send when the available memory in the corresponding dma
+ *             queue is superior to this threshold
+ */
+struct kvx_eth_lb_dlv_noc_congest_ctrl_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
+	int noc_if_id;
+	int xcos_id;
+	u32 dma_thold;
+};
+
+/**
+ * struct kvx_eth_lb_dlv_noc_f - Load balancer deliver - Completion level configuration
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update
+ * @id: id of the route of this congestion ctrl
+ * @prio_subscr: subscribe corresponding xcos to high-priority
+ * @noc_route_lo: noc route bits [31:0]
+ * @noc_route_hi: noc route bits [39:32]
+ * @ kvx_eth_lb_dlv_noc_congest_ctrl_f congest_ctrl[KVX_ETH_XCOS_NB];
+ */
+struct kvx_eth_lb_dlv_noc_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
+	u8 id;
+	u16 prio_subscr;
+	u32 noc_route_lo;
+	u32 noc_route_hi;
+	struct kvx_eth_lb_dlv_noc_congest_ctrl_f congest_ctrl[KVX_ETH_XCOS_NB];
+};
+
+/**
+ * struct kvx_eth_lut_entry_cv1_f - LUT entry config
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @dt_id: the dispatch table entry pointed by this LUT entry
  * @id: entry index
  */
-struct kvx_eth_lut_entry_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+struct kvx_eth_lut_entry_cv1_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
 	u32 dt_id;
+	int id;
+};
+
+/**
+ * struct kvx_eth_lut_entry_cv2_f - LUT entry config
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update
+ * @rx_tag: the dispatch table entry pointed by this LUT entry
+ * @direction: entry index
+ * @drop: enable drop of the Ethernet packet
+ * @split_en: Enable Ethernet packet split to two rx cache ids
+ * @split_trigg: Limit upon which the packet split triggers
+ * @rx_cache_id: Rx cache ID for the first part of the Ethernet packet split
+ * @rx_cache_id_split: Rx cache ID for the second part of the Ethernet packet split
+ * @id: id of the LUT entry
+ */
+struct kvx_eth_lut_entry_cv2_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
+	u8 rx_tag;
+	u8 direction;
+	u8 drop;
+	u8 split_en;
+	u8 split_trigg;
+	u8 rx_cache_id;
+	u8 rx_cache_id_split;
 	int id;
 };
 
@@ -683,9 +727,7 @@ struct kvx_eth_lut_entry_f {
  * @fdir: noc direction (cluster id)
  */
 struct kvx_eth_rx_noc {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	u16 vchan0_pps_timer;
 	u16 vchan0_payload_flit_nb;
 	u16 vchan1_pps_timer;
@@ -709,10 +751,8 @@ struct kvx_eth_rx_noc {
  * @lane_id: lane id (used for reg access)
  */
 struct kvx_eth_pfc_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
+	KVX_ETH_SYSFS_ITEM_HDR;
 	void *cfg;
-	void (*update)(void *p);
 	int global_release_level;
 	int global_drop_level;
 	int global_alert_level;
@@ -742,10 +782,8 @@ struct kvx_eth_pfc_f {
  * @id: PFC class identifier
  */
 struct kvx_eth_cl_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
+	KVX_ETH_SYSFS_ITEM_HDR;
 	void *cfg;
-	void (*update)(void *p);
 	unsigned int release_level;
 	unsigned int drop_level;
 	unsigned int alert_level;
@@ -783,9 +821,7 @@ struct kvx_eth_cl_f {
  * @id: lane id
  */
 struct kvx_eth_lb_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	enum default_dispatch_policy default_dispatch_policy;
 	u8 store_and_forward;
 	u8 keep_all_crc_error_pkt;
@@ -813,41 +849,30 @@ struct kvx_eth_lb_f {
  * @update: pointer function to read/update load balancer related registers in struct fields
  * @default_dispatch_policy: dispatch policy of the default rule
  * @keep_all_crc_error_pkt: keep received Ethernet packet with CRC errors
- * @drop_mtu_err_cnt: counter of packets drop due to packet size larger than MTU
- * @drop_fcs_err_cnt: counter of packets drop due to bad fcs
- * @drop_crc_err_cnt: ccounter of packets drop due to bad crc
- * @drop_rule_cnt: counter of packets drop by a dispatch policy
- * @drop_fifo_overflow_cnt: NA
- * @drop_total_cnt: counter of packets drop by the deliver
+ * @keep_all_mac_error_pkt: keep received Ethernet packet with MAC errors
+ * @keep_all_express_mac_error_pkt: keep received Ethernet packet with MAC errors on express port
+ * @keep_all_mtu_error_pkt: keep received Ethernet packet with MTU errors
+ * @keep_all_express_mtu_error_pkt: keep received Ethernet packet with MTU errors on express port
  * @default_hit_cnt: Counter incremented whenever a default parser hits
- * @global_drop_cnt: counter of packets drop by the deliver due to global drop lvl reach
- * @global_no_pfc_drop_cnt: NA id
- * @default_dispatch_info: dipatch info of the default rule
+ * @default_dispatch_info: dispatch info of the default rule
  * @default_flow_type: flow type of the default rule
+ * @id: lane id
  */
 struct kvx_eth_lb_cv2_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	enum default_dispatch_policy default_dispatch_policy;
 	u8 keep_all_crc_error_pkt;
-	u32 drop_mtu_err_cnt;
-	u32 drop_fcs_err_cnt;
-	u32 drop_crc_err_cnt;
-	u32 drop_rule_cnt;
-	u32 drop_fifo_overflow_cnt;
-	u32 drop_total_cnt;
+	u8 keep_all_mac_error_pkt;
+	u8 keep_all_express_mac_error_pkt;
+	u8 keep_all_mtu_error_pkt;
+	u8 keep_all_express_mtu_error_pkt;
 	u32 default_hit_cnt;
-	u32 global_drop_cnt;
-	u32 global_no_pfc_drop_cnt;
 	u16 default_dispatch_info;
 	u8  default_flow_type;
 	int id;
 };
 struct kvx_eth_rule_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	bool enable;
 	u8 type;
 	u8 add_metadata_index;
@@ -865,9 +890,7 @@ struct kvx_eth_rule_f {
 #define PARSER_RULE_LEN (9)
 #define PARSER_DESC_LEN (KVX_NET_LAYER_NB * PARSER_RULE_LEN + 1)
 struct kvx_eth_parser_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	struct kvx_eth_rule_f rules[KVX_NET_LAYER_NB];
 	bool enable;
 	char desc[PARSER_DESC_LEN];
@@ -876,6 +899,23 @@ struct kvx_eth_parser_f {
 	u32 fifo_overflow;
 	int id;
 };
+
+/**
+ * struct kvx_eth_pcp_to_xcos_map_f - conversion of pcp to xcos (element of parser table)
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update
+ * @parser_id: id of the parser associated with the table
+ * @pfc_id: pfc class
+ * @xcos: xcos to apply for this pfc class
+ */
+struct kvx_eth_pcp_to_xcos_map_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
+	int parser_id;
+	int pfc_id;
+	u32 xcos;
+};
+
 /**
  * struct kvx_eth_parser_cv2_f - cv2 parser configuration
  * @kobj: kobject for sysfs
@@ -891,13 +931,18 @@ struct kvx_eth_parser_f {
  * @hit_cnt:  Counter incremented whenever the parser hits
  * @ctrl: Control of the parser (Enables, lane_src, prio,...)
  * @status: status of the parser
- * @id: parser id
+ * @rss_parser_id: parser_id used for rss idx override
+ * @ov_rss_idx_parsid_msk: mask of the parser_id used for rss idx override
+ * @ov_rss_idx_qpn_msk: mask of qpn used for rss idx override
+ * @xcos_trust_pcp: Trust MAC's PCP field extraction for xCOS generation
+ * @xcos_trust_dscp: Trust IP's DSCP field extraction for xCOS generation
+ * @xcos_trust_tc: Trust MPLS's Traffic Class field extraction for xCOS generation
+ * @id: id of the parser
  */
 struct kvx_eth_parser_cv2_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	struct kvx_eth_rule_f rules[KVX_NET_LAYER_NB];
+	struct kvx_eth_pcp_to_xcos_map_f pcp_to_xcos_map[KVX_ETH_PFC_CLASS_NB];
 	bool enable;
 	char desc[PARSER_DESC_LEN];
 	u8 disp_policy;
@@ -907,7 +952,107 @@ struct kvx_eth_parser_cv2_f {
 	u32 hit_cnt;
 	u16 ctrl;
 	u8 status;
+	u8 rss_parser_id;
+	u8 ov_rss_idx_parsid_msk;
+	u8 ov_rss_idx_laneid_msk;
+	u32 ov_rss_idx_qpn_msk;
+	u8 xcos_trust_pcp;
+	u8 xcos_trust_dscp;
+	u8 xcos_trust_tc;
 	int id;
+};
+
+/**
+ * struct kvx_eth_rx_drop_cnt_lba_f - cv2 load balancer analyzer drop counter
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update load balancer related registers in struct fields
+ * @lane_id: Identifier of the current lane
+ * @mtu_error: Number of MTU erroneous packet because of a packet size larger than lb_ctrl.mtu_size error
+ * @mac_error: Number of erroneous Ethernet packet because of a bad FCS or because of other MAC error
+ * @mtu_error_drop: Number of Ethernet dropped packet because of a packet size larger than lb_ctrl.mtu_size error
+ * @mac_error_drop: Number of Ethernet dropped packet because of a bad FCS or because of other MAC error
+ * @express_mtu_error: Number of MTU erroneous express packet because of a packet size larger than mtu_size error
+ * @express_mac_error: Number of erroneous express Ethernet packet because of a bad FCS or because of other MAC error
+ * @express_mtu_error_drop: Number of express Ethernet dropped packet because of a packet size larger than mtu_size error
+ * @express_mac_error_drop: Number of express Ethernet dropped packet because of a bad FCS or because of other MAC error
+ * @crc_drop: Number of Ethernet dropped packet because of a CRC/checksum error detection
+ * @dispatch_parser_drop: Number of packet dropped by a parser dispatch policy
+ * @dispatch_default_drop: Number of packet dropped by a default dispatch policy.
+ * @dispatch_drop: Number of packet dropped by a dispatch policy
+ * @dispatch_RFS_drop: Number of packet dropped by a RFS dispatch policy
+ * @dispatch_RSS_drop: Number of packet dropped by a RSS dispatch policy
+ * @total_drop: Total number of Ethernet packets dropped by the load-balancer analyzer
+ */
+struct kvx_eth_rx_drop_cnt_lba_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
+	u8 lane_id;
+	u32 mtu_error;
+	u32 mac_error;
+	u32 mtu_error_drop;
+	u32 mac_error_drop;
+	u32 express_mtu_error;
+	u32 express_mac_error;
+	u32 express_mtu_error_drop;
+	u32 express_mac_error_drop;
+	u32 crc_drop;
+	u32 dispatch_parser_drop;
+	u32 dispatch_default_drop;
+	u32 dispatch_drop;
+	u32 dispatch_RFS_drop;
+	u32 dispatch_RSS_drop;
+	u32 total_drop;
+};
+
+/**
+ * struct kvx_eth_rx_drop_cnt_lbd_xcos_f - cv2 load balancer deliver drop counter per xcos
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update load balancer related registers in struct fields
+ * @lane_id: Identifier of the current lane
+ * @xcos_id: Identifier of the xcos
+ * @drop: Number of dropped packet for this xcos
+ */
+struct kvx_eth_rx_drop_cnt_lbd_xcos_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
+	u8 lane_id;
+	u8 xcos_id;
+	u32 drop;
+};
+
+
+/**
+ * struct kvx_eth_rx_drop_cnt_lbd_xcos_f - cv2 load balancer deliver drop counter
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update load balancer related registers in struct fields
+ * @lane_id: Identifier of the current lane
+ * @global_drop: Number of dropped packet for this lane
+ * @rx_drop_cnt_lbd_xcos:  deliver drop counters per xcos
+ */
+struct kvx_eth_rx_drop_cnt_lbd_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
+	u8 lane_id;
+	u32 global_drop;
+	struct kvx_eth_rx_drop_cnt_lbd_xcos_f rx_drop_cnt_lbd_xcos[KVX_ETH_XCOS_NB];
+};
+
+
+/**
+ * struct kvx_eth_rx_drop_cnt_lbd_xcos_f - cv2 load balancer drop counters
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update load balancer related registers in struct fields
+ * @lane_id: Identifier of the current lane
+ * @lbd_total_drop: Number of packets dropped at load balancer deliver stage
+ * @rx_drop_cnt_lba: load balancer analyser deliver drop counters
+ * @rx_drop_cnt_lbd: load balancer analyser deliver drop counters
+ */
+struct kvx_eth_rx_drop_cnt_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
+	u32 lbd_total_drop;
+	struct kvx_eth_rx_drop_cnt_lba_f rx_drop_cnt_lba[KVX_ETH_LANE_NB];
+	struct kvx_eth_rx_drop_cnt_lbd_f rx_drop_cnt_lbd[KVX_ETH_LANE_NB];
 };
 
 /**
@@ -915,6 +1060,7 @@ struct kvx_eth_parser_cv2_f {
  * @kobj: kobject for sysfs
  * @node: node for tx_fifo_list
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @fifo_id: TX fifo [0, 9] associated with lane id
  * @lane_id: Identifier of the current lane
  * @header_en: Add metadata TX
@@ -931,10 +1077,8 @@ struct kvx_eth_parser_cv2_f {
  * @drop_cnt: Number of packet drop (RO)
  */
 struct kvx_eth_tx_f {
-	struct kobject kobj;
+	KVX_ETH_SYSFS_ITEM_HDR;
 	struct list_head node;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
 	int fifo_id;
 	u8 lane_id;
 	u8 header_en;
@@ -952,9 +1096,7 @@ struct kvx_eth_tx_f {
 };
 
 struct kvx_eth_tx_noc_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	int cid;
 	u32 fifo_level;
 	u32 parity_err;
@@ -968,6 +1110,7 @@ struct kvx_eth_tx_noc_f {
  * struct kvx_eth_dt_f - Dispatch table features
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
+ * @update: pointer function to read/update
  * @cluster_id: dispatch cluster identifier
  * @rx_channel: dma_noc rx channel identifier
  * @split_trigger: threashold for split feature (disabled if 0)
@@ -975,9 +1118,7 @@ struct kvx_eth_tx_noc_f {
  * @id: dispatch table index
  */
 struct kvx_eth_dt_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	u8 cluster_id;
 	u8 rx_channel;
 	u32 split_trigger;
@@ -986,24 +1127,87 @@ struct kvx_eth_dt_f {
 };
 
 struct kvx_eth_dt_acc_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	char weights[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE * 2 + 1];
 	bool reset;
+};
+
+/**
+ * struct kvx_eth_rx_dlv_pfc_xcos_f - load balancer deliver - PFC feature for a xcos
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update
+ * @lane_id: Identifier of the lane
+ * @xcos_id: Identifier of the xcos
+ * @alert_lvl: xcos dedicated pseudo buffer threshold for alerting
+ * @release_lvl: xcos dedicated pseudo buffer threshold for cancelling alert
+ * @drop_lvl: xcos dedicated pseudo buffer threshold for cancelling alert for drop
+ * @wmark: xcos buffer watermark
+ * @xoff_req: counter of xoff requests for the PFC(s) associated to this xcos (except global_pfc)
+ */
+struct kvx_eth_rx_dlv_pfc_xcos_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
+	int lane_id;
+	int xcos_id;
+	u32 alert_lvl;
+	u32 release_lvl;
+	u32 drop_lvl;
+	u32 wmark;
+	u32 xoff_req;
+};
+
+/**
+ * struct kvx_eth_rx_dlv_pfc_param_f - load balancer deliver - PFC feature for a PFC
+ * @kobj: kobject for sysfs
+ * @hw: back pointer to hw description
+ * @update: pointer function to read/update
+ * @lane_id: Identifier of the lane
+ * @pfc_id: Identifier of the pfc
+ * @xcos_subscr: bitmap. set to one to subscribe corresponding xcos to this pfc class
+ * @quanta: quanta of time sent with pause packet
+ * @quanta_thres: threshold below which a new pause frame should be sent
+ */
+struct kvx_eth_rx_dlv_pfc_param_f {
+	KVX_ETH_SYSFS_ITEM_HDR;
+	int lane_id;
+	int pfc_id;
+	u16 xcos_subscr;
+	u16 quanta;
+	u16 quanta_thres;
 };
 
 /**
  * struct kvx_eth_rx_dlv_pfc_f - load balancer deliver features
  * @kobj: kobject for sysfs
  * @hw: back pointer to hw description
- * @total_drop_cnt: counter of packets drop by the deliver
+ * @update: pointer function to read/update
+ * @cfg: pointer Lane configuration
+ * @lane_id: Identifier of the current lane
+ * @glb_alert_lvl: global xcos buffer threshold for alerting (via Global Pause or PFC XOFF)
+ * @glb_release_lvl: global xcos buffer threshold for cancelling alert (via Global Pause or PFC XOFF)
+ * @glb_drop_lvl: global xcos buffer threshold for drop
+ * @glb_wmark: global xcos buffer watermark
+ * @glb_pause_req: counter of global pause or PFC pause (due to reaching of glb_alert_lvl)
+ * @glb_pause_rx_en: IEEE 802.3x: When set, the MAC keeps sending pause XOFF messages when reaching the global alert level
+ * @glb_pfc_en: IEEE 802.1Qbb: When set, the MAC keeps sending PFC XOFF messages on the 8 classes when reaching the global alert level
+ * @pfc_en: Bit mask (one bit per xcos) enabling/disabling PFC message generation for each xcos
+ * @pfc_xcox: PFC feature configuration per xcos
+ * @pfc_param: PFC feature configuration per pfc
  */
 struct kvx_eth_rx_dlv_pfc_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
-	u32 total_drop_cnt;
+	KVX_ETH_SYSFS_ITEM_HDR;
+	struct kvx_eth_lane_cfg *cfg;
+	int lane_id;
+	u32 glb_alert_lvl;
+	u32 glb_release_lvl;
+	u32 glb_drop_lvl;
+	u32 glb_wmark;
+	u32 glb_pause_req;
+	u8 glb_pause_rx_en;
+	u8 glb_pfc_en;
+	u16 pfc_en;
+	struct kvx_eth_rx_dlv_pfc_xcos_f pfc_xcox[KVX_ETH_XCOS_NB];
+	struct kvx_eth_rx_dlv_pfc_param_f pfc_param[KVX_ETH_PFC_CLASS_NB];
 };
 
 /**
@@ -1016,9 +1220,7 @@ struct kvx_eth_rx_dlv_pfc_f {
  * @promisc_mode: promiscuous state
  */
 struct kvx_eth_mac_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	u8 addr[ETH_ALEN];
 	enum kvx_eth_loopback_mode loopback_mode;
 	enum kvx_eth_pfc_mode pfc_mode;
@@ -1044,9 +1246,7 @@ struct kvx_eth_phy_param {
 	bool trig_rx_adapt;
 	bool ovrd_en;
 	int lane_id;
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 };
 
 enum bert_mode {
@@ -1066,9 +1266,7 @@ enum bert_mode {
 };
 
 struct kvx_eth_rx_bert_param {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	enum bert_mode rx_mode;
 	u32  err_cnt;
 	bool sync;
@@ -1076,9 +1274,7 @@ struct kvx_eth_rx_bert_param {
 };
 
 struct kvx_eth_tx_bert_param {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	enum bert_mode tx_mode;
 	bool trig_err;
 	u16 pat0;
@@ -1108,9 +1304,7 @@ struct kvx_eth_polarities {
  * @fw_updated: fw updated once
  */
 struct kvx_eth_phy_f {
-	struct kobject kobj;
-	struct kvx_eth_hw *hw;
-	void (*update)(void *p);
+	KVX_ETH_SYSFS_ITEM_HDR;
 	enum kvx_eth_loopback_mode loopback_mode;
 	struct kvx_eth_phy_param param[KVX_ETH_LANE_NB];
 	struct kvx_eth_rx_bert_param rx_ber[KVX_ETH_LANE_NB];
@@ -1396,10 +1590,12 @@ struct lt_status {
  * @lb_rfs_f: RX load balancer - Receive Side Scaling features (cv2)
  * @lb_cv2_f: RX load balancer global features (cv2)
  * @lb_f: RX load balancer - features (cv1)
+ * @rx_drop_cnt_f: load balancer drop counters (cv2)
  * @parser_f: RX load balancer - parser features (cv1)
  * @parser_cv2_f: RX load balancer - parser features (cv2)
  * @lut_f: RX load balancer - LUT feature (cv1)
- * @lut_cv2_f: RX load balancer - LUT feature (cv2)
+ * @lut_entry_cv2_f: RX load balancer - LUT entries (cv2)
+ * @lb_dlv_noc_f: Load balancer deliver - Completion level configuration (cv2)
  * @rtm_params: retimer relative parameters
  * @lt_status: link training fsm status structure
  * @mac_reset_lock: MAC reset critical section
@@ -1431,17 +1627,19 @@ struct kvx_eth_hw {
 	struct kvx_eth_tx_exp_npre_f tx_exp_npre_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_tx_pre_pbdwrr_f tx_pre_pbdwrr_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_tx_exp_pbdwrr_f tx_exp_pbdwrr_f[KVX_ETH_LANE_NB];
-	struct kvx_eth_rx_dlv_pfc_f rx_dlv_pfc_f;
+	struct kvx_eth_rx_dlv_pfc_f rx_dlv_pfc_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_lb_rfs_f lb_rfs_f;
 	struct kvx_eth_lb_cv2_f lb_cv2_f[KVX_ETH_LANE_NB];
 	struct kvx_eth_lb_f lb_f[KVX_ETH_LANE_NB];
+	struct kvx_eth_rx_drop_cnt_f rx_drop_cnt_f;
 	struct kvx_eth_parser_f parser_f[KVX_ETH_PHYS_PARSER_NB_CV1];
 	struct kvx_eth_parser_cv2_f parser_cv2_f[KVX_ETH_PHYS_PARSER_NB_CV2];
 	struct kvx_eth_lut_f lut_f;
-	struct kvx_eth_lut_cv2_f lut_cv2_f;
 	struct kvx_eth_dt_f dt_f[RX_DISPATCH_TABLE_ENTRY_ARRAY_SIZE];
 	struct kvx_eth_dt_acc_f dt_acc_f;
-	struct kvx_eth_lut_entry_f lut_entry_f[RX_LB_LUT_ARRAY_SIZE];
+	struct kvx_eth_lut_entry_cv1_f lut_entry_cv1_f[RX_LB_LUT_ARRAY_SIZE];
+	struct kvx_eth_lut_entry_cv2_f lut_entry_cv2_f[RX_LB_LUT_ARRAY_SIZE];
+	struct kvx_eth_lb_dlv_noc_f lb_dlv_noc_f[NB_CLUSTER];
 	struct kvx_eth_phy_f phy_f;
 	struct kvx_eth_rtm_params rtm_params[RTM_NB];
 	struct lt_status lt_status[KVX_ETH_LANE_NB];
@@ -1795,28 +1993,31 @@ void kvx_eth_lb_dump_status(struct kvx_eth_hw *hw, int lane_id);
 void kvx_eth_rx_noc_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_noc *rx_noc);
 void kvx_eth_lb_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_lut_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_f *lut);
-void kvx_eth_lut_cv2_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_cv2_f *lut);
 void kvx_eth_lb_cvx_f_cfg(struct kvx_eth_hw *hw, enum coolidge_rev chip_rev, int lane_id);
-void kvx_eth_lut_entry_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_f *l);
 void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb);
 void kvx_eth_lb_cv2_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_cv2_f *lb);
 void kvx_eth_add_dispatch_table_entry_cv1(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg,
 				 struct kvx_eth_dt_f *dt, int idx);
 void kvx_eth_init_dispatch_table_cv1(struct kvx_eth_hw *hw);
-void kvx_eth_add_dispatch_table_entry_cv2(struct kvx_eth_hw *hw,
-				 struct kvx_eth_lane_cfg *cfg,
-				 struct kvx_eth_dt_f *dt, int idx);
-void kvx_eth_init_dispatch_table_cv2(struct kvx_eth_hw *hw);
+
+
+
+
 void kvx_eth_fill_dispatch_table(struct kvx_eth_hw *hw,
 				 struct kvx_eth_lane_cfg *cfg, u32 rx_tag);
 void kvx_eth_parser_cv2_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_parser_cv2_f *p);
+void kvx_eth_pcp_to_xcos_map_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_pcp_to_xcos_map_f *pcp_to_xcos_map);
 void kvx_eth_dt_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_f *dt);
 void kvx_eth_dt_acc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_dt_acc_f *dt_acc);
 void kvx_eth_dt_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
-void kvx_eth_lut_cv1_entry_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_f *l);
-void kvx_eth_lut_cv2_entry_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_f *l);
+void kvx_eth_lut_entry_cv1_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_cv1_f *l);
+void kvx_eth_lut_entry_cv2_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_cv2_f *l);
+void kvx_eth_rx_dlv_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_dlv_pfc_f *rx_dlv_pfc);
+void kvx_eth_rx_dlv_pfc_xcos_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_dlv_pfc_xcos_f *rx_dlv_pfc_xcos);
+void kvx_eth_rx_dlv_pfc_param_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_rx_dlv_pfc_param_f *rx_dlv_pfc_param);
 void kvx_eth_reset_dispatch_table(struct kvx_eth_hw *hw, unsigned int start, unsigned int end);
+void kvx_eth_lb_rss_rfs_enable(struct kvx_eth_hw *hw);
 
 /* PFC */
 void kvx_eth_pfc_f_set_default(struct kvx_eth_hw *hw,
@@ -1839,6 +2040,7 @@ void kvx_eth_tx_stage_one_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_stage_o
 void kvx_eth_lb_rfs_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_rfs_f *lb_rfs);
 void kvx_eth_tx_tdm_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_tdm_f *tdm);
 void kvx_eth_tx_pfc_xoff_subsc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pfc_xoff_subsc_f *subsc);
+void kvx_eth_tx_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pfc_f *tx_pfc_f);
 void kvx_eth_tx_stage_two_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_stage_two_f *tx_stage_two);
 void kvx_eth_tx_exp_npre_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_npre_f *tx_exp_npre);
 void kvx_eth_tx_pre_pbdwrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pre_pbdwrr_priority_f *tx_pbdwrr_prio);
@@ -1847,6 +2049,8 @@ void kvx_eth_tx_pre_pbdwrr_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pre_pb
 void kvx_eth_tx_exp_pbdwrr_priority_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_pbdwrr_priority_f *tx_pbdwrr_prio);
 void kvx_eth_tx_exp_pbdwrr_quantum_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_pbdwrr_quantum_f *tx_pbdwrr_quantum);
 void kvx_eth_tx_exp_pbdwrr_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_pbdwrr_f *tx_pbdwrr);
+void kvx_eth_lb_dlv_noc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_dlv_noc_f *lb_dlv_noc);
+void kvx_eth_lb_dlv_noc_congest_ctrl_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_dlv_noc_congest_ctrl_f *congest_ctrl);
 int kvx_ethtx_credit_en_register_cv1(struct platform_device *pdev);
 int kvx_ethtx_credit_en_register_cv2(struct platform_device *pdev);
 int kvx_ethtx_credit_en_unregister_cv1(struct platform_device *pdev);

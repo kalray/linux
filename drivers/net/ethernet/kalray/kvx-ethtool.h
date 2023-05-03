@@ -49,5 +49,7 @@ enum kvx_roce_version {
 
 enum kvx_traffic_types flow_type_to_traffic_type(u32 flow_type);
 inline bool traffic_type_is_supported(enum kvx_traffic_types tt);
+extern const struct ethtool_ops kvx_ethtool_cv2_ops;
+extern const struct ethtool_ops kvx_ethtool_cv1_ops;
 
 #endif /* KVX_ETHTOOL_H */

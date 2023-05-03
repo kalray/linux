@@ -70,17 +70,6 @@ bool kvx_eth_speed_aggregated(const int speed)
 	return (speed == SPEED_40000 || speed == SPEED_100000);
 }
 
-void kvx_eth_lut_entry_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lut_entry_f *l)
-{
-	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
-	enum coolidge_rev chip_rev = dev->chip_rev_data->revision;
-
-	if (chip_rev == COOLIDGE_V1)
-		kvx_eth_lut_cv1_entry_f_cfg(hw, l);
-	else
-		kvx_eth_lut_cv2_entry_f_cfg(hw, l);
-}
-
 /* All available parsers indexes, sorted by how many CRC check they can
  * handle.
  * This separates them into different pools, as not every parser is able to
