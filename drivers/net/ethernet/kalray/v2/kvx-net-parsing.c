@@ -57,7 +57,7 @@ int parser_commit_filter_cv2(struct kvx_eth_hw *hw,
 			(1 << (KVX_ETH_LBA_PARSER_CTRL_LANE_SRC_SHIFT + (u32)cfg->id)) |
 			((u32)prio << KVX_ETH_LBA_PARSER_CTRL_PRIORITY_SHIFT));
 	kvx_lbana_writel(hw, parser->ctrl, off + KVX_ETH_LBA_PARSER_CTRL_OFFSET);
-
+	kvx_eth_lb_rss_rfs_enable(hw);
 	return i;
 }
 

@@ -154,14 +154,26 @@ static void kvx_eth_tx_tdm_f_update(void *data)
 	tdm->err = kvx_tx_readl(tdm->hw,
 				KVX_ETH_TX_TDM_GRP_OFFSET + KVX_ETH_TX_TDM_ERR_OFFSET);
 }
+void kvx_eth_tx_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pfc_f *tx_pfc_f)
+{
+	int t = 0;
+
+	for (t = 0; t < KVX_ETH_TX_TGT_NB; t++)
+		kvx_eth_tx_pfc_xoff_subsc_f_cfg(hw, &tx_pfc_f->xoff_subsc[t]);
+	kvx_mac_pfc_cfg_cv2(hw, hw->rx_dlv_pfc_f[tx_pfc_f->lane_id].cfg);
+}
 void kvx_eth_tx_pfc_xoff_subsc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_pfc_xoff_subsc_f *subsc)
 {
 	u32 off = KVX_ETH_TX_PFC_GRP_OFFSET +
 			KVX_ETH_TX_PFC_GRP_ELEM_SIZE * subsc->lane_id +
 			KVX_ETH_TX_PFC_XOFF_SUBSCR_OFFSET +
 			KVX_ETH_TX_PFC_XOFF_SUBSCR_ELEM_SIZE * subsc->tgt_id;
+	u32 val = subsc->xoff_subsc;
+	struct kvx_eth_tx_pfc_f *tx_pfc_f = &hw->tx_pfc_f[subsc->lane_id];
 
-	kvx_tx_writel(hw, subsc->xoff_subsc, off);
+	if (tx_pfc_f->glb_pause_tx_en)
+		val |= (1 << KVX_ETH_TX_PFC_XOFF_SUBSCR_GLBL_PAUSE_SUBSCR_SHIFT);
+	kvx_tx_writel(hw, val, off);
 }
 static void kvx_eth_tx_pfc_xoff_subsc_f_update(void *data)
 {
@@ -171,7 +183,7 @@ static void kvx_eth_tx_pfc_xoff_subsc_f_update(void *data)
 			KVX_ETH_TX_PFC_GRP_ELEM_SIZE * subsc->lane_id +
 			KVX_ETH_TX_PFC_XOFF_SUBSCR_OFFSET +
 			KVX_ETH_TX_PFC_XOFF_SUBSCR_ELEM_SIZE * subsc->tgt_id;
-	subsc->xoff_subsc = kvx_tx_readl(subsc->hw, off);
+	subsc->xoff_subsc = kvx_tx_readl(subsc->hw, off) & KVX_ETH_TX_PFC_XOFF_SUBSCR_XOFF_SUBSCR_MASK;
 }
 void kvx_eth_tx_stage_two_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_stage_two_f *tx_stage_two)
 {
@@ -335,65 +347,76 @@ void kvx_eth_tx_exp_pbdwrr_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_exp_pb
 void kvx_eth_tx_f_init(struct kvx_eth_hw *hw)
 {
 	int i, j;
+	struct kvx_eth_tx_pfc_f *tx_pfc_f;
+	struct kvx_eth_tx_stage_two_f *tx_stage_two_f;
+	struct kvx_eth_tx_pre_pbdwrr_f *tx_pre_pbdwrr_f;
+	struct kvx_eth_tx_exp_pbdwrr_f *tx_exp_pbdwrr_f;
 
 	hw->tx_stage_one_f.update = kvx_eth_tx_stage_one_f_update;
 	hw->tx_stage_one_f.hw = hw;
 	hw->tx_tdm_f.update = kvx_eth_tx_tdm_f_update;
 	hw->tx_tdm_f.hw = hw;
 	for (i = 0; i < KVX_ETH_LANE_NB; ++i) {
-		hw->tx_pfc_f[i].hw = hw;
-		hw->tx_pfc_f[i].lane_id = i;
+		tx_pfc_f = &hw->tx_pfc_f[i];
+		tx_pfc_f->hw = hw;
+		tx_pfc_f->lane_id = i;
+		tx_pfc_f->glb_pause_tx_en = 0;
 		for (j = 0; j < KVX_ETH_TX_TGT_NB; ++j) {
-			hw->tx_pfc_f[i].xoff_subsc[j].hw = hw;
-			hw->tx_pfc_f[i].xoff_subsc[j].update = kvx_eth_tx_pfc_xoff_subsc_f_update;
-			hw->tx_pfc_f[i].xoff_subsc[j].lane_id = i;
-			hw->tx_pfc_f[i].xoff_subsc[j].tgt_id = j;
+			tx_pfc_f->xoff_subsc[j].hw = hw;
+			tx_pfc_f->xoff_subsc[j].update = kvx_eth_tx_pfc_xoff_subsc_f_update;
+			tx_pfc_f->xoff_subsc[j].lane_id = i;
+			tx_pfc_f->xoff_subsc[j].tgt_id = j;
 		}
-		hw->tx_stage_two_f[i].hw = hw;
-		hw->tx_stage_two_f[i].lane_id = i;
-		hw->tx_stage_two_f[i].update = kvx_eth_tx_stage_two_f_update;
+		for (j = 0; j < KVX_ETH_PFC_CLASS_NB; ++j) {
+			tx_pfc_f->xoff_subsc[j].xoff_subsc = BIT(j);
+			kvx_eth_tx_pfc_xoff_subsc_f_cfg(hw, &tx_pfc_f->xoff_subsc[j]);
+		}
+		tx_stage_two_f = &hw->tx_stage_two_f[i];
+		tx_stage_two_f->hw = hw;
+		tx_stage_two_f->lane_id = i;
+		tx_stage_two_f->update = kvx_eth_tx_stage_two_f_update;
 		for (j = 0; j < KVX_ETH_TX_TGT_NB; ++j) {
-			hw->tx_stage_two_f[i].drop_status[j].hw = hw;
-			hw->tx_stage_two_f[i].drop_status[j].update = kvx_eth_tx_stage_two_drop_status_f_update;
-			hw->tx_stage_two_f[i].drop_status[j].lane_id = i;
-			hw->tx_stage_two_f[i].drop_status[j].tgt_id = j;
-			hw->tx_stage_two_f[i].wmark[j].hw = hw;
-			hw->tx_stage_two_f[i].wmark[j].update = kvx_eth_tx_stage_two_wmark_f_update;
-			hw->tx_stage_two_f[i].wmark[j].lane_id = i;
-			hw->tx_stage_two_f[i].wmark[j].tgt_id = j;
+			tx_stage_two_f->drop_status[j].hw = hw;
+			tx_stage_two_f->drop_status[j].update = kvx_eth_tx_stage_two_drop_status_f_update;
+			tx_stage_two_f->drop_status[j].lane_id = i;
+			tx_stage_two_f->drop_status[j].tgt_id = j;
+			tx_stage_two_f->wmark[j].hw = hw;
+			tx_stage_two_f->wmark[j].update = kvx_eth_tx_stage_two_wmark_f_update;
+			tx_stage_two_f->wmark[j].lane_id = i;
+			tx_stage_two_f->wmark[j].tgt_id = j;
 		}
 		hw->tx_exp_npre_f[i].hw = hw;
 		hw->tx_exp_npre_f[i].lane_id = i;
 		hw->tx_exp_npre_f[i].update = kvx_eth_tx_exp_npre_f_update;
 
-		hw->tx_pre_pbdwrr_f[i].hw = hw;
-		hw->tx_pre_pbdwrr_f[i].lane_id = i;
-		hw->tx_pre_pbdwrr_f[i].update = kvx_eth_tx_pre_pbdwrr_f_update;
+		tx_pre_pbdwrr_f = &hw->tx_pre_pbdwrr_f[i];
+		tx_pre_pbdwrr_f->hw = hw;
+		tx_pre_pbdwrr_f->lane_id = i;
+		tx_pre_pbdwrr_f->update = kvx_eth_tx_pre_pbdwrr_f_update;
 		for (j = 0; j < KVX_ETH_TX_TGT_NB; ++j) {
-			hw->tx_pre_pbdwrr_f[i].priority[j].hw = hw;
-			hw->tx_pre_pbdwrr_f[i].priority[j].update = kvx_eth_tx_pre_pbdwrr_priority_f_update;
-			hw->tx_pre_pbdwrr_f[i].priority[j].lane_id = i;
-			hw->tx_pre_pbdwrr_f[i].priority[j].tgt_id = j;
-			hw->tx_pre_pbdwrr_f[i].quantum[j].hw = hw;
-			hw->tx_pre_pbdwrr_f[i].quantum[j].update = kvx_eth_tx_pre_pbdwrr_quantum_f_update;
-			hw->tx_pre_pbdwrr_f[i].quantum[j].lane_id = i;
-			hw->tx_pre_pbdwrr_f[i].quantum[j].tgt_id = j;
+			tx_pre_pbdwrr_f->priority[j].hw = hw;
+			tx_pre_pbdwrr_f->priority[j].update = kvx_eth_tx_pre_pbdwrr_priority_f_update;
+			tx_pre_pbdwrr_f->priority[j].lane_id = i;
+			tx_pre_pbdwrr_f->priority[j].tgt_id = j;
+			tx_pre_pbdwrr_f->quantum[j].hw = hw;
+			tx_pre_pbdwrr_f->quantum[j].update = kvx_eth_tx_pre_pbdwrr_quantum_f_update;
+			tx_pre_pbdwrr_f->quantum[j].lane_id = i;
+			tx_pre_pbdwrr_f->quantum[j].tgt_id = j;
 		}
-
-		hw->tx_exp_pbdwrr_f[i].hw = hw;
-		hw->tx_exp_pbdwrr_f[i].lane_id = i;
-		hw->tx_exp_pbdwrr_f[i].update = kvx_eth_tx_exp_pbdwrr_f_update;
+		tx_exp_pbdwrr_f = &hw->tx_exp_pbdwrr_f[i];
+		tx_exp_pbdwrr_f->hw = hw;
+		tx_exp_pbdwrr_f->lane_id = i;
+		tx_exp_pbdwrr_f->update = kvx_eth_tx_exp_pbdwrr_f_update;
 		for (j = 0; j < KVX_ETH_TX_TGT_NB; ++j) {
-			hw->tx_exp_pbdwrr_f[i].priority[j].hw = hw;
-			hw->tx_exp_pbdwrr_f[i].priority[j].update = kvx_eth_tx_exp_pbdwrr_priority_f_update;
-			hw->tx_exp_pbdwrr_f[i].priority[j].lane_id = i;
-			hw->tx_exp_pbdwrr_f[i].priority[j].tgt_id = j;
-			hw->tx_exp_pbdwrr_f[i].quantum[j].hw = hw;
-			hw->tx_exp_pbdwrr_f[i].quantum[j].update = kvx_eth_tx_exp_pbdwrr_quantum_f_update;
-			hw->tx_exp_pbdwrr_f[i].quantum[j].lane_id = i;
-			hw->tx_exp_pbdwrr_f[i].quantum[j].tgt_id = j;
+			tx_exp_pbdwrr_f->priority[j].hw = hw;
+			tx_exp_pbdwrr_f->priority[j].update = kvx_eth_tx_exp_pbdwrr_priority_f_update;
+			tx_exp_pbdwrr_f->priority[j].lane_id = i;
+			tx_exp_pbdwrr_f->priority[j].tgt_id = j;
+			tx_exp_pbdwrr_f->quantum[j].hw = hw;
+			tx_exp_pbdwrr_f->quantum[j].update = kvx_eth_tx_exp_pbdwrr_quantum_f_update;
+			tx_exp_pbdwrr_f->quantum[j].lane_id = i;
+			tx_exp_pbdwrr_f->quantum[j].tgt_id = j;
 		}
-
 	}
 }
 

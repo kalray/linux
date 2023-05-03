@@ -66,3 +66,31 @@ void fill_ipv4_filter_cv1(struct kvx_eth_netdev *ndev,
 			filter->protocol_hash_mask = 0xff;
 	}
 }
+
+void kvx_eth_get_pauseparam_cv1(struct net_device *netdev,
+			    struct ethtool_pauseparam *pause)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_pfc_f *pfc_f = &ndev->hw->lb_f[ndev->cfg.id].pfc_f;
+
+	pause->rx_pause = !!(pfc_f->global_pause_en & MLO_PAUSE_RX);
+	pause->tx_pause = !!(pfc_f->global_pause_en & MLO_PAUSE_TX);
+}
+
+int kvx_eth_set_pauseparam_cv1(struct net_device *netdev,
+			   struct ethtool_pauseparam *pause)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_pfc_f *pfc_f = &ndev->hw->lb_f[ndev->cfg.id].pfc_f;
+	u8 pause_mask = (pause->rx_pause ? MLO_PAUSE_RX : 0);
+
+	if (pause->tx_pause)
+		pause_mask |= MLO_PAUSE_TX;
+
+	pfc_f->global_pause_en = pause_mask;
+	kvx_eth_pfc_f_cfg(ndev->hw, pfc_f);
+
+	kvx_eth_setup_link(ndev, false);
+
+	return 0;
+}
