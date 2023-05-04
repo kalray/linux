@@ -2200,7 +2200,7 @@ static int kvx_netdev_probe(struct platform_device *pdev)
 		goto err;
 
 	ret = rev_d->ethtx_credit_en_register(pdev);
-	
+
 	if (ret)
 		goto err;
 
@@ -2504,7 +2504,7 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
 	.eth_init_dispatch_table = kvx_eth_init_dispatch_table_cv2,
 	.eth_mac_f_cfg = kvx_eth_mac_f_cfg_cv2,
 	.ethtx_credit_en_register = kvx_ethtx_credit_en_register_cv2,
-	.ethtx_credit_en_unregister = kvx_ethtx_credit_en_unregister_cv2,	
+	.ethtx_credit_en_unregister = kvx_ethtx_credit_en_unregister_cv2,
 };
 static const struct of_device_id kvx_eth_match[] = {
 	{ .compatible = "kalray,coolidge-eth", .data = &eth_chip_rev_data_cv1 },
