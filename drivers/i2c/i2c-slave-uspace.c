@@ -11,6 +11,7 @@
 #include <linux/atomic.h>
 #include <linux/kfifo.h>
 #include <linux/i2c.h>
+#include <linux/poll.h>
 
 #define SMBUS_BLOCK_WRITE_MAX (roundup_pow_of_two(I2C_SMBUS_BLOCK_MAX + 1))
 #define BUFFER_SIZE 128
@@ -34,6 +35,7 @@ struct slave_data {
 	spinlock_t wfifo_lock;
 	wait_queue_head_t read_wait_queue;
 	wait_queue_head_t write_wait_queue;
+	wait_queue_head_t wait; /* poll */
 	u8 command_code_received;
 	u8 current_command_code;
 	u8 get_fifo_len_answer[2];
@@ -117,6 +119,7 @@ static void commit_tmp_write_fifo(struct i2c_client *client)
 
 	spin_unlock(&slave->wfifo_lock);
 	wake_up_interruptible(&slave->write_wait_queue);
+	wake_up_all(&slave->wait);
 	return;
 
 err_unlock:
@@ -180,6 +183,7 @@ static int i2c_slave_generic_slave_cb(struct i2c_client *client,
 			if (out != 1)
 				dev_err(dev, "issue while poping from kfifo during i2c READ: %d elements copied\n", out);
 			wake_up_interruptible(&slave->read_wait_queue);
+			wake_up_all(&slave->wait);
 		}
 
 		fallthrough;
@@ -292,6 +296,22 @@ static int slave_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static __poll_t slave_poll(struct file *file, struct poll_table_struct *wait)
+{
+	struct slave_data *slave = file->private_data;
+	__poll_t ret = 0;
+
+	poll_wait(file, &slave->wait, wait);
+
+	if (kfifo_len(&slave->write_fifo) > 0)
+		ret |=  EPOLLIN | EPOLLRDNORM; /* read */
+
+	if (!kfifo_is_full(&slave->read_fifo))
+		ret |=  EPOLLOUT | EPOLLWRNORM; /* write */
+
+	return ret;
+}
+
 static int slave_release(struct inode *inode, struct file *file)
 {
 	struct slave_data *slave = file->private_data;
@@ -311,6 +331,7 @@ static const struct file_operations slave_fileops = {
 	.open = slave_open,
 	.write = slave_write,
 	.read = slave_read,
+	.poll = slave_poll,
 	.release = slave_release,
 	.llseek = slave_llseek,
 };
@@ -332,6 +353,7 @@ static int i2c_slave_generic_probe(struct i2c_client *client, const struct i2c_d
 	atomic_set(&slave->open_rc, 0);
 	init_waitqueue_head(&slave->read_wait_queue);
 	init_waitqueue_head(&slave->write_wait_queue);
+	init_waitqueue_head(&slave->wait);
 	INIT_KFIFO(slave->read_fifo);
 	INIT_KFIFO(slave->write_fifo);
 	INIT_KFIFO(slave->tmp_write_fifo);
