@@ -12,7 +12,7 @@
 
 #include <linux/kobject.h>
 
-#define TI_RTM_NB_LANE (8)
+#define TI_RTM_NB_CHANNEL (8)
 #define TI_RTM_DEFAULT_SPEED (SPEED_10000)
 #define EOM_ROWS       64
 #define EOM_COLS       64
@@ -60,16 +60,16 @@ struct ti_rtm_reg_init {
 
 /**
  * struct ti_rtm_coef - TI retimer coef management in sysfs
- * @p: actual param per lane
+ * @p: actual param per channel
  * @kobj: kref (in sysfs)
  * @i2c_client: back pointer to i2c retimer client
- * @lane: retimer channel/lane id
+ * @channel: retimer channel id
  */
 struct ti_rtm_coef {
 	struct kobject kobj;
 	struct ti_rtm_params p;
 	void *i2c_client;
-	int lane;
+	int channel;
 } __packed;
 
 /**
@@ -77,13 +77,13 @@ struct ti_rtm_coef {
  * @hit_cnt: EOM hit counter array
  * @kobj: kref (in sysfs)
  * @i2c_client: back pointer to i2c retimer client
- * @lane: retimer channel/lane id
+ * @channel: retimer channel/channel id
  */
 struct ti_rtm_eom {
 	struct kobject kobj;
 	u16 hit_cnt[EOM_ROWS][EOM_COLS];
 	void *i2c_client;
-	int lane;
+	int channel;
 } __packed;
 
 /**
@@ -99,8 +99,8 @@ struct ti_rtm_eom {
  *   if en_smb = 0, 0 is E2PROM success, 1 is E2PROM fail
  * @reg_init: reg initialization structure
  * @eeprom_np: eeprom node
- * @coef: pre, post, swing per lane
- * @lock; i2c lock (lane/channel settings are shared between clients)
+ * @coef: pre, post, swing per channel
+ * @lock; i2c lock (channel/channel settings are shared between clients)
  */
 struct ti_rtm_dev {
 	struct i2c_client *client;
@@ -109,16 +109,16 @@ struct ti_rtm_dev {
 	struct gpio_desc *all_done_gpio;
 	struct ti_rtm_reg_init reg_init;
 	struct device_node *eeprom_np;
-	struct ti_rtm_coef coef[TI_RTM_NB_LANE];
-	struct ti_rtm_eom  eom[TI_RTM_NB_LANE];
+	struct ti_rtm_coef coef[TI_RTM_NB_CHANNEL];
+	struct ti_rtm_eom  eom[TI_RTM_NB_CHANNEL];
 	struct mutex lock;
 };
 
-u8 ti_retimer_get_cdr_lock(struct i2c_client *client, u8 lane);
-u8 ti_retimer_get_sig_det(struct i2c_client *client, u8 lane);
-u8 ti_retimer_get_rate(struct i2c_client *client, u8 lane);
+u8 ti_retimer_get_cdr_lock(struct i2c_client *client, u8 channel);
+u8 ti_retimer_get_sig_det(struct i2c_client *client, u8 channel);
+u8 ti_retimer_get_rate(struct i2c_client *client, u8 channel);
 int ti_rtm_sysfs_init(struct ti_rtm_dev *dev);
 void ti_rtm_sysfs_uninit(struct ti_rtm_dev *dev);
-int ti_retimer_req_eom(struct i2c_client *client, u8 lane);
+int ti_retimer_req_eom(struct i2c_client *client, u8 channel);
 
 #endif
