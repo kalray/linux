@@ -12,6 +12,8 @@
 
 #include <linux/i2c.h>
 
+#define TI_RTM_CHANNEL_BROADCAST        0xFF /* channels 0-7 */
+
 /**
  * struct ti_rtm_params - TI retimer tuning params
  * @pre: pre tuning parameter

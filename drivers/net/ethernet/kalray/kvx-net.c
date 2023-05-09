@@ -332,7 +332,7 @@ static bool kvx_eth_rtm_cdr_lock(struct kvx_eth_netdev *ndev)
 	for (i = ndev->cfg.id; i < nb_lanes; i++) {
 		lane = (u8)hw->rtm_params->channels[i];
 
-		if (!ti_retimer_get_cdr_lock(hw->rtm_params[RTM_RX].rtm, lane))
+		if (!ti_retimer_get_cdr_lock(hw->rtm_params[RTM_RX].rtm, BIT(lane)))
 			return false;
 	}
 
@@ -1967,7 +1967,7 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 
 	for (i = lane_id; i < nb_lanes; i++) {
 		lane = (u8)params->channels[i];
-		ti_retimer_set_speed(params->rtm, lane, lane_speed);
+		ti_retimer_set_speed(params->rtm, BIT(lane), lane_speed);
 	}
 
 	return 0;
