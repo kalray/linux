@@ -1935,14 +1935,12 @@ int speed_to_rtm_speed_index(unsigned int speed)
 	}
 }
 
-int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
-		  unsigned int rtm, unsigned int speed)
+int configure_rtm(struct kvx_eth_hw *hw, unsigned int rtm, unsigned int speed)
 {
 	struct kvx_eth_rtm_params *params = &hw->rtm_params[rtm];
 	unsigned int lane_speed;
-	int nb_lanes = kvx_eth_speed_to_nb_lanes(speed, &lane_speed);
-	int i, ret;
-	u8 lane;
+	int ret, nb_lanes = kvx_eth_speed_to_nb_lanes(speed, &lane_speed);
+	u8 rtm_channels = TI_RTM_CHANNEL_FROM_ARRAY(params->channels, nb_lanes);
 
 	if (nb_lanes < 0) {
 		dev_err(hw->dev, "Unsupported speed %d\n", speed);
@@ -1965,10 +1963,7 @@ int configure_rtm(struct kvx_eth_hw *hw, unsigned int lane_id,
 	}
 	dev_dbg(hw->dev, "Setting retimer%d speed to %d\n", rtm, speed);
 
-	for (i = lane_id; i < nb_lanes; i++) {
-		lane = (u8)params->channels[i];
-		ti_retimer_set_speed(params->rtm, BIT(lane), lane_speed);
-	}
+	ti_retimer_set_speed(params->rtm, rtm_channels, lane_speed);
 
 	return 0;
 }

@@ -505,7 +505,7 @@ u8 ti_retimer_get_rate(struct i2c_client *client, u8 channel)
 static int retimer_cfg(struct ti_rtm_dev *rtm)
 {
 	struct device *dev = &rtm->client->dev;
-	int i, ret = 0;
+	int ret = 0;
 
 	/* Activate SMBus slave mode */
 	dev_dbg(dev, "Enabling SMBus mode\n");
@@ -551,8 +551,7 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 	if (ret < 0)
 		return ret;
 
-	for (i = 0; i < TI_RTM_NB_CHANNEL; i++)
-		ti_retimer_set_rx_adapt_mode(rtm->client, BIT(i), 2);
+	ti_retimer_set_rx_adapt_mode(rtm->client, TI_RTM_CHANNEL_BROADCAST, 2);
 
 	return 0;
 
