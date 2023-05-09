@@ -53,7 +53,7 @@ struct kobj_type s##_ktype = { \
 #define FIELD_COEF_ENTRY(f, min, max) \
 static ssize_t coef_##f##_show(struct ti_rtm_coef *p, char *buf) \
 { \
-	ti_retimer_get_tx_coef(p->i2c_client, p->channel, &p->p); \
+	ti_retimer_get_tx_coef(p->i2c_client, BIT(p->channel), &p->p);	\
 	return scnprintf(buf, STR_LEN, "%i\n", p->p.f); \
 } \
 static ssize_t coef_##f##_store(struct ti_rtm_coef *p, const char *buf, \
@@ -67,7 +67,7 @@ static ssize_t coef_##f##_store(struct ti_rtm_coef *p, const char *buf, \
 	if (val < min || val > max) \
 		return -EINVAL; \
 	p->p.f = val; \
-	ti_retimer_set_tx_coef(p->i2c_client, p->channel, &p->p); \
+	ti_retimer_set_tx_coef(p->i2c_client, BIT(p->channel), &p->p);	\
 	return count; \
 } \
 static struct sysfs_coef_entry coef_##f##_attr = __ATTR(f, 0644, \
@@ -150,7 +150,7 @@ static ssize_t cdr_lock_show(struct kobject *kobj, struct kobj_attribute *attr,
 			     char *buf)
 {
 	struct ti_rtm_coef *p = (struct ti_rtm_coef *)kobj;
-	u8 val = ti_retimer_get_cdr_lock(p->i2c_client, p->channel);
+	u8 val = ti_retimer_get_cdr_lock(p->i2c_client, BIT(p->channel));
 
 	return scnprintf(buf, STR_LEN, "%i\n", val);
 }
@@ -160,7 +160,7 @@ static ssize_t sig_det_show(struct kobject *kobj, struct kobj_attribute *attr,
 			     char *buf)
 {
 	struct ti_rtm_coef *p = (struct ti_rtm_coef *)kobj;
-	u8 val = ti_retimer_get_sig_det(p->i2c_client, p->channel);
+	u8 val = ti_retimer_get_sig_det(p->i2c_client, BIT(p->channel));
 
 	return scnprintf(buf, STR_LEN, "%i\n", val);
 }
@@ -170,7 +170,7 @@ static ssize_t rate_show(struct kobject *kobj, struct kobj_attribute *attr,
 			     char *buf)
 {
 	struct ti_rtm_coef *p = (struct ti_rtm_coef *)kobj;
-	u8 val = ti_retimer_get_rate(p->i2c_client, p->channel);
+	u8 val = ti_retimer_get_rate(p->i2c_client, BIT(p->channel));
 
 	return scnprintf(buf, STR_LEN, "%i\n", val);
 }
