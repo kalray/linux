@@ -416,7 +416,7 @@ static int kvx_eth_rtm_tx_coef(struct kvx_eth_hw *hw, int lane_id,
 
 	kvx_eth_get_tx_coef_delta(op, param, &delta);
 
-	ret = ti_retimer_get_tx_coef(rtm->rtm, lane, &rtm_params);
+	ret = ti_retimer_get_tx_coef(rtm->rtm, BIT(lane), &rtm_params);
 	dev_info(hw->dev, "%s lane[%d](rtm channel[%d]) pre: %d, post: %d, main: %d\n",
 		 __func__, lane_id, lane, rtm_params.pre, rtm_params.post,
 		 rtm_params.main);
@@ -425,7 +425,7 @@ static int kvx_eth_rtm_tx_coef(struct kvx_eth_hw *hw, int lane_id,
 	rtm_params.pre += delta.pre;
 	rtm_params.post += delta.post;
 
-	ret = ti_retimer_set_tx_coef(rtm->rtm, lane, &rtm_params);
+	ret = ti_retimer_set_tx_coef(rtm->rtm, BIT(lane), &rtm_params);
 
 	return ret;
 }
