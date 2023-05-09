@@ -19,8 +19,12 @@ static inline void dame_irq_check(struct pt_regs *regs)
 
 	/* Check if we triggered a DAME */
 	ilr = kvx_sfr_get(ILR);
-	if (ilr & KVX_SFR_ILR_IT16_MASK)
-		panic("DAME error encountered while in kernel !!!!\n");
+	if (ilr & KVX_SFR_ILR_IT16_MASK) {
+		if (in_syscall(regs))
+			pr_warn("DAME error ignored");
+		else
+			panic("DAME error encountered while in kernel !!!!\n");
+	}
 }
 
 #endif /* _ASM_KVX_DAME_H */
