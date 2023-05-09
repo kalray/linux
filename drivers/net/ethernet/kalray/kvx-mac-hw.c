@@ -2232,7 +2232,7 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 		return ret;
 	}
 	for (i = 0; i < RTM_NB; i++) {
-		ret = configure_rtm(hw, cfg->id, i, an_speed);
+		ret = configure_rtm(hw, i, an_speed);
 		if (ret) {
 			mutex_unlock(&hw->mac_reset_lock);
 			dev_err(hw->dev, "Failed to configure retimer %i\n", i);
@@ -2276,7 +2276,7 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 
 	if (update_serdes) {
 		for (i = 0; i < RTM_NB; i++) {
-			ret = configure_rtm(hw, cfg->id, i, cfg->speed);
+			ret = configure_rtm(hw, i, cfg->speed);
 			if (ret) {
 				dev_err(hw->dev, "Config RTM[%d] failed\n", i);
 				return ret;
