@@ -14,6 +14,14 @@
 
 #define TI_RTM_CHANNEL_BROADCAST        0xFF /* channels 0-7 */
 
+#define TI_RTM_CHANNEL_FROM_ARRAY(lane_array, len)                             \
+	({                                                                     \
+		u8 chans = 0, i;                                               \
+		for (i = 0; i < len; i++)                                      \
+			chans |= BIT(lane_array[i]);                           \
+		chans;                                                         \
+	})
+
 /**
  * struct ti_rtm_params - TI retimer tuning params
  * @pre: pre tuning parameter
