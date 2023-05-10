@@ -547,7 +547,6 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 	off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
 	val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 	p->fom = GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
-	ret = p->fom;
 
 	val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
 	REG_DBG(hw->dev, val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
@@ -572,7 +571,7 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 
 	dev_dbg(hw->dev, "lane[%d] FOM %d\n", lane_id, p->fom);
 
-	return ret;
+	return p->fom;
 }
 
 /**
@@ -619,7 +618,6 @@ int kvx_phy_rx_adapt_broadcast(struct kvx_eth_hw *hw)
 
 	val = kvx_phy_readw(hw, RAWLANEX_DIG_PCS_XF_RX_ADAPT_FOM);
 	p->fom = GETF(val, RLX_PCS_XF_RX_ADAPT_FOM);
-	ret = p->fom;
 
 #ifdef DEBUG
 	REG_DBG(hw->dev, val, RLX_PCS_XF_RX_ADAPT_FOM);
@@ -649,7 +647,7 @@ int kvx_phy_rx_adapt_broadcast(struct kvx_eth_hw *hw)
 
 	dev_dbg(hw->dev, "FOM %d\n", p->fom);
 
-	return ret;
+	return p->fom;
 }
 
 int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p)
@@ -2680,7 +2678,6 @@ void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
 	int i;
-
 
 	do {
 		if (aggregated_lanes) {
