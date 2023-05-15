@@ -53,6 +53,7 @@ static inline int ti_rtm_i2c_read(struct i2c_client *client, u8 reg, u8 *buf,
 			.flags = I2C_M_RD
 		}
 	};
+
 	return i2c_transfer(client->adapter, read_cmd, 2);
 }
 
@@ -89,8 +90,8 @@ static inline int ti_rtm_i2c_write(struct i2c_client *client, u8 reg, u8 *buf,
 	return i2c_transfer(client->adapter, write_cmd, 1);
 }
 
-static void write_i2c_regs(struct i2c_client *client, struct seq_args seq[],
-		u64 size)
+static void write_i2c_regs(struct i2c_client *client,
+			   struct seq_args seq[], u64 size)
 {
 	struct device *dev = &client->dev;
 	int i, ret;
@@ -126,10 +127,10 @@ static int ti_retimer_select_channel(struct i2c_client *client, u8 channel)
 {
 	struct device *dev = &client->dev;
 	struct seq_args params_set_seq[] = {
-		/* Select channel registers */
-		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
 		/* Select channel */
-		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = 1 << channel},
+		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = BIT(channel)},
+		/* Select channel registers */
+		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01}
 	};
 
 	if (channel >= TI_RTM_NB_CHANNEL) {
@@ -143,6 +144,63 @@ static int ti_retimer_select_channel(struct i2c_client *client, u8 channel)
 	return 0;
 }
 
+/* ti_retimer_channel_read() - Read channel register on eeprom
+ * @client: I2C client
+ * @channel: channel to select before reading register
+ * @addr: register address on the I2C bus to read from
+ * @buf: Buffer to copy data read from device
+ * @len: Buffer size
+ *
+ * Only one channel can be read at a time (broadcast not supported by eeprom
+ * for read operations).
+ *
+ * Return: read bytes on success, < 0 on failure
+ */
+static int ti_retimer_channel_read(struct i2c_client *client, u8 channel, u8 addr,
+				   u8 *buf, size_t len)
+{
+	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
+	int ret;
+
+	mutex_lock(&rtm->lock);
+
+	ret = ti_retimer_select_channel(client, channel);
+	if (ret)
+		goto bail;
+
+	ret = ti_rtm_i2c_read(client, addr, buf, 1);
+bail:
+	mutex_unlock(&rtm->lock);
+	return ret;
+}
+
+/* ti_retimer_channel_write() - Write to channel register on eeprom
+ * @client: I2C client
+ * @channel: channel to select before writing register
+ * @seq: sequences to write
+ * @size: number of sequence
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+static int ti_retimer_channel_write(struct i2c_client *client, u8 channel,
+				    struct seq_args seq[], u64 size)
+{
+	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
+	int ret;
+
+	mutex_lock(&rtm->lock);
+
+	ret = ti_retimer_select_channel(client, channel);
+	if (ret)
+		goto bail;
+
+	write_i2c_regs(client, seq, size);
+	ret = 0;
+bail:
+	mutex_unlock(&rtm->lock);
+	return ret;
+}
+
 /**
  * ti_retimer_get_tx_coef() - Get tuning params for a channel
  * @client: i2c client
@@ -154,43 +212,27 @@ static int ti_retimer_select_channel(struct i2c_client *client, u8 channel)
 int ti_retimer_get_tx_coef(struct i2c_client *client, u8 channel,
 		struct ti_rtm_params *params)
 {
-	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
 	struct device *dev = &client->dev;
-	u8 read_buf;
+	u8 read_buf[3]; /* 0: MAIN_REG, 1: PRE_REG, 2: POST_REG */
 	int ret;
 
-	mutex_lock(&rtm->lock);
-	ret = ti_retimer_select_channel(client, channel);
-	if (ret < 0)
-		goto exit;
-
-	ret = ti_rtm_i2c_read(client, PRE_REG, &read_buf, 1);
+	ret = ti_retimer_channel_read(client, channel, MAIN_REG, read_buf,
+				      ARRAY_SIZE(read_buf));
 	if (ret < 0) {
-		dev_err(dev, "Unable to get PRE value channel[%d]\n", channel);
-		goto exit;
+		dev_err(dev, "Unable to get MAIN/PRE/POST values channel[%d]\n", channel);
+		return ret;
 	}
-	params->pre = read_buf & TX_COEF_MASK;
-	params->pre = (read_buf & TX_SIGN_MASK ? -params->pre : params->pre);
 
-	ret = ti_rtm_i2c_read(client, MAIN_REG, &read_buf, 1);
-	if (ret < 0) {
-		dev_err(dev, "Unable to get MAIN value channel[%d]\n", channel);
-		goto exit;
-	}
-	params->main = read_buf & TX_COEF_MASK;
-	params->main = (read_buf & TX_SIGN_MASK ? -params->main : params->main);
+	params->pre = read_buf[1] & TX_COEF_MASK;
+	params->pre = (read_buf[1] & TX_SIGN_MASK ? -params->pre : params->pre);
 
-	ret = ti_rtm_i2c_read(client, POST_REG, &read_buf, 1);
-	if (ret < 0) {
-		dev_err(dev, "Unable to get POST value channel[%d]\n", channel);
-		goto exit;
-	}
-	params->post = read_buf & TX_COEF_MASK;
-	params->post = (read_buf & TX_SIGN_MASK ? -params->post : params->post);
+	params->main = read_buf[0] & TX_COEF_MASK;
+	params->main = (read_buf[0] & TX_SIGN_MASK ? -params->main : params->main);
 
-exit:
-	mutex_unlock(&rtm->lock);
-	return ret;
+	params->post = read_buf[2] & TX_COEF_MASK;
+	params->post = (read_buf[2] & TX_SIGN_MASK ? -params->post : params->post);
+
+	return 0;
 }
 EXPORT_SYMBOL(ti_retimer_get_tx_coef);
 
@@ -204,7 +246,6 @@ EXPORT_SYMBOL(ti_retimer_get_tx_coef);
  */
 int ti_retimer_set_tx_coef(struct i2c_client *client, u8 channel, struct ti_rtm_params *params)
 {
-	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
 	struct seq_args params_set_seq[] = {
 		/* CDR reset */
 		{.reg = CDR_RESET_REG, .offset = 0x00,
@@ -231,31 +272,25 @@ int ti_retimer_set_tx_coef(struct i2c_client *client, u8 channel, struct ti_rtm_
 		{.reg = CDR_RESET_REG, .offset = 0x00,
 			.mask = CDR_RESET_MASK, .value = 0x00},
 	};
-	int ret = 0;
 
-	mutex_lock(&rtm->lock);
-	ret = ti_retimer_select_channel(client, channel);
-
-	if (ret < 0)
-		goto bail;
-
-	write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq));
-bail:
-	mutex_unlock(&rtm->lock);
-	return ret;
+	return ti_retimer_channel_write(client, channel, params_set_seq,
+					ARRAY_SIZE(params_set_seq));
 }
 EXPORT_SYMBOL(ti_retimer_set_tx_coef);
 
 void ti_retimer_reset_chan_reg(struct i2c_client *client)
 {
+	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
 	struct seq_args params_set_seq[] = {
 		/* Reset all channel registers to default values */
 		{.reg = RESET_CHAN_REG, .offset = 0x00,
-			.mask = RESET_CHAN_MASK, .value = RESET_CHAN_MASK},
+		 .mask = RESET_CHAN_MASK, .value = RESET_CHAN_MASK},
 	};
 
 	dev_warn(&client->dev, "Reset all channels\n");
+	mutex_lock(&rtm->lock);
 	write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq));
+	mutex_unlock(&rtm->lock);
 }
 EXPORT_SYMBOL(ti_retimer_reset_chan_reg);
 
@@ -284,7 +319,6 @@ static inline int speed_to_rtm_reg_value(int speed, u8 *speed_val)
  */
 int ti_retimer_set_speed(struct i2c_client *client, u8 channel, unsigned int speed)
 {
-	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
 	struct device *dev = &client->dev;
 	u8 speed_val = 0;
 	int ret = speed_to_rtm_reg_value(speed, &speed_val);
@@ -305,16 +339,8 @@ int ti_retimer_set_speed(struct i2c_client *client, u8 channel, unsigned int spe
 		return ret;
 	}
 
-	mutex_lock(&rtm->lock);
-	ret = ti_retimer_select_channel(client, channel);
-	if (ret < 0)
-		goto bail;
-
-	write_i2c_regs(client, speed_set_seq, ARRAY_SIZE(speed_set_seq));
-
-bail:
-	mutex_unlock(&rtm->lock);
-	return ret;
+	return ti_retimer_channel_write(client, channel, speed_set_seq,
+					ARRAY_SIZE(speed_set_seq));
 }
 EXPORT_SYMBOL(ti_retimer_set_speed);
 
@@ -338,26 +364,31 @@ static int ti_retimer_set_rx_adapt_mode(struct i2c_client *client, u8 channel, u
 			.mask = EN_PARTIAL_DFE_MASK | DFE_PD_MASK,
 			.value = EN_PARTIAL_DFE_MASK},
 	};
-	int ret = ti_retimer_select_channel(client, channel);
-
-	if (ret < 0)
-		return ret;
 
 	if (rx_adapt > 3) {
 		dev_err(dev, "Unsupported RX adaptation mode (must be < 4)\n");
 		return -EINVAL;
 	}
 
-	write_i2c_regs(client, seq, ARRAY_SIZE(seq));
-
-	return 0;
+	return ti_retimer_channel_write(client, channel, seq, ARRAY_SIZE(seq));
 }
 
-int ti_retimer_req_eom(struct i2c_client *client, u8 channel)
+/**
+ * ti_retimer_req_eom() - Get Eye Opening Monitor
+ * @client: i2c client
+ * @channel_id: retimer channel number id [0-7]
+ *
+ * Return: 0 on success, < 0 on failure
+ */
+int ti_retimer_req_eom(struct i2c_client *client, u8 channel_id)
 {
 	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
 	struct device *dev = &client->dev;
 	struct seq_args seq[] = {
+		/* Select channel */
+		{.reg = 0xfc, .offset = 0x00, .mask = 0xff, .value = BIT(channel_id)},
+		/* Select channel registers */
+		{.reg = 0xff, .offset = 0x00, .mask = 0x01, .value = 0x01},
 		/* Disable EOM lock monitoring */
 		{.reg = 0x67, .offset = 0, .mask = 0x20, .value = 0},
 		/* Enable the eye monitor */
@@ -382,67 +413,47 @@ int ti_retimer_req_eom(struct i2c_client *client, u8 channel)
 		{.reg = 0x2C, .offset = 0, .mask = 0x40, .value = 0x40},
 	};
 	int i, j, ret = 0;
-	u8  buf;
-	u16 v;
+	u8  buf[2];
 
 	mutex_lock(&rtm->lock);
-	ret = ti_retimer_select_channel(client, channel);
-	if (ret < 0)
-		goto exit;
 
 	write_i2c_regs(client, seq, ARRAY_SIZE(seq));
 
-	/* Read to clear out garbage data */
-	for (i = 0; i < 4; i++) {
-		ti_rtm_i2c_read(client, EOM_CNT_MSB_REG, &buf, 1);
-		ti_rtm_i2c_read(client, EOM_CNT_LSB_REG, &buf, 1);
-	}
+	/* Read to clear out garbage data: MSB + LSB of EOM counter */
+	for (i = 0; i < 4; i++)
+		ti_rtm_i2c_read(client, EOM_CNT_MSB_REG, buf, ARRAY_SIZE(buf));
 
 	for (i = 0; i < EOM_ROWS; i++) {
 		for (j = 0; j < EOM_COLS; j++) {
-			ret = ti_rtm_i2c_read(client, EOM_CNT_MSB_REG, &buf, 1);
+			ret = ti_rtm_i2c_read(client, EOM_CNT_MSB_REG, buf, ARRAY_SIZE(buf));
 			if (ret < 0)
 				goto exit;
-			v = buf;
-			v <<= 8;
-			ret = ti_rtm_i2c_read(client, EOM_CNT_LSB_REG, &buf, 1);
-			if (ret < 0)
-				goto exit;
-			v |= (u16)buf;
-			rtm->eom[channel].hit_cnt[i][j] = v;
+			rtm->eom[channel_id].hit_cnt[i][j] = ((u16)buf[0] << 8) | (u16)buf[1];
 		}
 	}
 
 	write_i2c_regs(client, seq2, ARRAY_SIZE(seq2));
-	mutex_unlock(&rtm->lock);
-
-	return 0;
-
+	ret = 0;
 exit:
 	mutex_unlock(&rtm->lock);
-	dev_err(dev, "Failed to read EOM hit counters\n");
-	return -EINVAL;
+
+	if (ret < 0)
+		dev_err(dev, "Failed to read EOM hit counters\n");
+
+	return ret;
 }
 
 static u8 get_sig_det(struct i2c_client *client, u8 channel)
 {
-	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
 	int ret = 0;
 	u8 buf;
 
-	mutex_lock(&rtm->lock);
-	ret = ti_retimer_select_channel(client, channel);
-	if (ret < 0)
-		goto bail;
-
-	ret = ti_rtm_i2c_read(client, SIG_DET_REG, &buf, 1);
+	ret = ti_retimer_channel_read(client, channel, SIG_DET_REG, &buf, 1);
 	if (ret < 0) {
 		dev_err(&client->dev, "Unable to read sigdet reg\n");
-		goto bail;
+		return ret;
 	}
 
-bail:
-	mutex_unlock(&rtm->lock);
 	return buf;
 }
 
@@ -463,23 +474,15 @@ u8 ti_retimer_get_sig_det(struct i2c_client *client, u8 channel)
 
 u8 ti_retimer_get_rate(struct i2c_client *client, u8 channel)
 {
-	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
 	int ret = 0;
 	u8 rate;
 
-	mutex_lock(&rtm->lock);
-	ret = ti_retimer_select_channel(client, channel);
-	if (ret < 0)
-		goto bail;
-
-	ret = ti_rtm_i2c_read(client, RATE_REG, &rate, 1);
+	ret = ti_retimer_channel_read(client, channel, RATE_REG, &rate, 1);
 	if (ret < 0) {
 		dev_err(&client->dev, "Unable to read rate reg\n");
-		goto bail;
+		return ret;
 	}
 
-bail:
-	mutex_unlock(&rtm->lock);
 	return (rate & RATE_MASK);
 }
 
@@ -526,7 +529,9 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 		} while (!gpiod_get_value(rtm->all_done_gpio));
 	}
 
+	mutex_lock(&rtm->lock);
 	write_i2c_regs(rtm->client, rtm->reg_init.seq, rtm->reg_init.size);
+	mutex_unlock(&rtm->lock);
 
 	for (i = 0; i < TI_RTM_NB_CHANNEL; i++)
 		ti_retimer_set_rx_adapt_mode(rtm->client, i, 2);
@@ -648,16 +653,16 @@ static int ti_rtm_probe(struct i2c_client *client,
 	if (!rtm)
 		return -ENODEV;
 	rtm->client = client;
+	i2c_set_clientdata(client, rtm);
 	mutex_init(&rtm->lock);
 
 	ret = parse_dt(rtm);
 	if (ret)
 		return ret;
+
 	ret = retimer_cfg(rtm);
 	if (ret)
 		return ret;
-
-	i2c_set_clientdata(client, rtm);
 
 	ret = ti_rtm_sysfs_init(rtm);
 	if (ret)

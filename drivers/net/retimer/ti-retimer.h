@@ -100,7 +100,8 @@ struct ti_rtm_eom {
  * @reg_init: reg initialization structure
  * @eeprom_np: eeprom node
  * @coef: pre, post, swing per channel
- * @lock; i2c lock (channel/channel settings are shared between clients)
+ * @lock: i2c lock (channel settings are shared between clients), protects
+ *        i2c read/write including channel selection
  */
 struct ti_rtm_dev {
 	struct i2c_client *client;
