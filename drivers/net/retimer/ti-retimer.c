@@ -95,11 +95,20 @@ static inline int ti_rtm_i2c_write(struct i2c_client *client, u8 reg, u8 *buf,
  * @client: I2C client
  * @seq: sequence of commands to write
  * @size: size of seq
+ * @reg_update: do read/update/write
+ *
+ * Write a sequence of registers in the eeprom. The value of the register is
+ * first read if @reg_update is true and then updated based on the mask value.
+ * Read/update/write is compatible with unicast and broadcast channel modes, but
+ * not with multicast channel mode. In the case of multicast, register update must
+ * be disabled by setting @reg_update=false. It is up to the caller to set all
+ * register bits properly. In the case of broadcast, the eeprom allows one channel
+ * to be selected for read operations: @reg_update can then be set to true.
  *
  * Return: 0 on success, < 0 on failure
  */
-static int ti_rtm_write_i2c_regs(struct i2c_client *client,
-				 struct seq_args seq[], u64 size)
+static int ti_rtm_write_i2c_regs(struct i2c_client *client, struct seq_args seq[],
+				 u64 size, bool reg_update)
 {
 	struct device *dev = &client->dev;
 	int i, ret;
@@ -115,15 +124,20 @@ static int ti_rtm_write_i2c_regs(struct i2c_client *client,
 		dev_dbg(dev, "i2c regs values: reg 0x%x, offset 0x%x, mask 0x%x, value 0x%x (%d)\n",
 				reg, offset, mask, value, (s8) value);
 
-		ret = ti_rtm_i2c_read(client, reg, &read_buf, 1);
-		if (ret < 0)
-			dev_warn(dev, "Fail to i2c reg-init read error %d (reg: 0x%x)\n", ret, reg);
+		if (reg_update) {
+			ret = ti_rtm_i2c_read(client, reg, &read_buf, 1);
+			if (ret < 0)
+				dev_warn(dev, "Fail to i2c reg-init read error %d (reg: 0x%x)\n", ret, reg);
 
-		write_buf = ((read_buf & (~mask)) | ((value << offset) & mask));
+			write_buf = ((read_buf & (~mask)) | ((value << offset) & mask));
 
-		/* if read and write buf are identical, no need to write */
-		if (write_buf == read_buf)
-			continue;
+			/* if read and write buf are identical, no need to write */
+			if (write_buf == read_buf)
+				continue;
+
+		} else {
+			write_buf = (value << offset) & mask;
+		}
 
 		ret = ti_rtm_i2c_write(client, reg, &write_buf, 1);
 		if (ret < 0)
@@ -160,7 +174,7 @@ static int ti_retimer_channel_read(struct i2c_client *client, u8 channel, u8 add
 
 	mutex_lock(&rtm->lock);
 
-	ret = ti_rtm_write_i2c_regs(client, chan_select, ARRAY_SIZE(chan_select));
+	ret = ti_rtm_write_i2c_regs(client, chan_select, ARRAY_SIZE(chan_select), true);
 	if (ret < 0)
 		goto bail;
 
@@ -170,6 +184,13 @@ bail:
 	return ret;
 }
 
+static inline bool ti_retimer_is_channel_unicast(u8 channel)
+{
+	return channel == 0x1 || channel == 0x2 || channel == 0x4 ||
+	       channel == 0x8 || channel == 0x10 || channel == 0x20 ||
+	       channel == 0x40 || channel == 0x80;
+}
+
 /* ti_retimer_channel_write() - Write to channel register on eeprom
  * @client: I2C client
  * @channel: channel(s) to select before writing register (bitmap)
@@ -177,6 +198,11 @@ bail:
  * @size: number of sequence
  *
  * Multicast and broadcast are supported. For broadcast: TI_RTM_CHANNEL_BROADCAST
+ * In the case of multicast, register update is disabled, meaning that it is up to
+ * the caller to set all register bits properly.
+ * In the case of broadcast, channel 0 is selected for read operations. However,
+ * register update is disabled because it can be hazardous (if value read on
+ * channel 0 is OK but value on oters channels are not => missing update).
  *
  * Return: 0 on success, < 0 on failure
  */
@@ -190,6 +216,7 @@ static int ti_retimer_channel_write(struct i2c_client *client, u8 channel,
 		/* Select channel registers */
 		{.reg = 0xff, .offset = 0x00, .mask = 0x03, .value = 0x01}
 	};
+	bool unicast = ti_retimer_is_channel_unicast(channel);
 	int ret;
 
 	/* sanity check */
@@ -209,7 +236,7 @@ static int ti_retimer_channel_write(struct i2c_client *client, u8 channel,
 	memcpy(&cmds[2], seq, sizeof(struct seq_args) * size);
 
 	mutex_lock(&rtm->lock);
-	ret = ti_rtm_write_i2c_regs(client, cmds, size + 2);
+	ret = ti_rtm_write_i2c_regs(client, cmds, size + 2, unicast);
 	mutex_unlock(&rtm->lock);
 
 	return ret;
@@ -303,7 +330,7 @@ void ti_retimer_reset_chan_reg(struct i2c_client *client)
 
 	dev_warn(&client->dev, "Reset all channels\n");
 	mutex_lock(&rtm->lock);
-	ti_rtm_write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq));
+	ti_rtm_write_i2c_regs(client, params_set_seq, ARRAY_SIZE(params_set_seq), true);
 	mutex_unlock(&rtm->lock);
 }
 EXPORT_SYMBOL(ti_retimer_reset_chan_reg);
@@ -340,9 +367,11 @@ int ti_retimer_set_speed(struct i2c_client *client, u8 channel, unsigned int spe
 		/* CDR reset */
 		{.reg = CDR_RESET_REG, .offset = 0x00,
 			.mask = CDR_RESET_MASK, .value = CDR_RESET_MASK},
-		/* Write data rate value */
-		{.reg = RATE_REG, .offset = 0x00, .mask = RATE_MASK,
-			.value = speed_val},
+		/* Write data rate value and keep default power-up
+		 * value EN_PPM_CHECK (multicast constraint)
+		 */
+		{.reg = RATE_REG, .offset = 0x00, .mask = 0xff,
+		 .value = speed_val | EN_PPM_CHECK},
 		/* Release CDR reset */
 		{.reg = CDR_RESET_REG, .offset = 0x00,
 			.mask = CDR_RESET_MASK, .value = 0x00},
@@ -431,7 +460,7 @@ int ti_retimer_req_eom(struct i2c_client *client, u8 channel_id)
 
 	mutex_lock(&rtm->lock);
 
-	ret = ti_rtm_write_i2c_regs(client, seq, ARRAY_SIZE(seq));
+	ret = ti_rtm_write_i2c_regs(client, seq, ARRAY_SIZE(seq), true);
 	if (ret < 0)
 		goto exit;
 
@@ -448,7 +477,7 @@ int ti_retimer_req_eom(struct i2c_client *client, u8 channel_id)
 		}
 	}
 
-	ret = ti_rtm_write_i2c_regs(client, seq2, ARRAY_SIZE(seq2));
+	ret = ti_rtm_write_i2c_regs(client, seq2, ARRAY_SIZE(seq2), true);
 exit:
 	mutex_unlock(&rtm->lock);
 
@@ -546,7 +575,7 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 	}
 
 	mutex_lock(&rtm->lock);
-	ret = ti_rtm_write_i2c_regs(rtm->client, rtm->reg_init.seq, rtm->reg_init.size);
+	ret = ti_rtm_write_i2c_regs(rtm->client, rtm->reg_init.seq, rtm->reg_init.size, true);
 	mutex_unlock(&rtm->lock);
 	if (ret < 0)
 		return ret;
