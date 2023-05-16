@@ -40,6 +40,7 @@
 #define EOM_CNT_LSB_REG     0x26
 #define HEO_REG             0x27
 #define VEO_REG             0x28
+#define EN_PPM_CHECK        BIT(2)
 
 struct seq_args {
 	u8 reg;
