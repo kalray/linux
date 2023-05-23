@@ -557,6 +557,17 @@
 #define AN_KXAN_ABILITY_1_TXNONCE_MASK             0x1FUL
 #define AN_KXAN_ABILITY_1_TECHNOLOGY_SHIFT         0x5
 #define AN_KXAN_ABILITY_1_TECHNOLOGY_MASK          0xFFE0UL
+#define AN_KXAN_ABILITY_1_TECH_A0_MASK             BIT(5)
+#define AN_KXAN_ABILITY_1_TECH_A1_MASK             BIT(6)
+#define AN_KXAN_ABILITY_1_TECH_A2_MASK             BIT(7)
+#define AN_KXAN_ABILITY_1_TECH_A3_MASK             BIT(8)
+#define AN_KXAN_ABILITY_1_TECH_A4_MASK             BIT(9)
+#define AN_KXAN_ABILITY_1_TECH_A5_MASK             BIT(10)
+#define AN_KXAN_ABILITY_1_TECH_A6_MASK             BIT(11)
+#define AN_KXAN_ABILITY_1_TECH_A7_MASK             BIT(12)
+#define AN_KXAN_ABILITY_1_TECH_A8_MASK             BIT(13)
+#define AN_KXAN_ABILITY_1_TECH_A9_MASK             BIT(14)
+#define AN_KXAN_ABILITY_1_TECH_A10_MASK            BIT(15)
 #define AN_KXAN_ABILITY_2_OFFSET                   0x10
 #define AN_KXAN_ABILITY_2_TECHNOLOGY_SHIFT         0x0
 #define AN_KXAN_ABILITY_2_TECHNOLOGY_MASK          0x3FFFUL
