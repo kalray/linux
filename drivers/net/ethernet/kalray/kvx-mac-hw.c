@@ -1758,90 +1758,111 @@ static int kvx_eth_an_get_common_speed(struct kvx_eth_hw *hw, int lane_id,
 				   struct link_capability *ln)
 {
 	u32 an_off = MAC_CTRL_AN_OFFSET + lane_id * MAC_CTRL_AN_ELEM_SIZE;
-	u32 val = kvx_mac_readl(hw, an_off + AN_BP_STATUS_OFFSET);
+	/* local device and link partner supported technologies  */
+	u32 ld_tech = kvx_mac_readl(hw, an_off + AN_KXAN_ABILITY_1_OFFSET),
+	    lp_tech = kvx_mac_readl(hw, an_off + AN_KXAN_REM_ABILITY_1_OFFSET),
+	    common_tech = ld_tech & lp_tech;
 
-	AN_DBG(hw->dev, "%s BP_STATUS[%d]: 0x%x\n", __func__, lane_id, val);
-	/* Gets autonegotiation rate and fec */
 	ln->rate = 0;
 	ln->speed = SPEED_UNKNOWN;
 	ln->fec = 0;
-	if (val & AN_BP_STATUS_TECHNOLOGY_A0_MASK) {
+
+	/*
+	 * Compare LD and LP tech abilities. Select the highest speed supported.
+	 * According to Table 11 in the MAC spec, technologies A11:A22 are reserved,
+	 * thus they will not be checked.
+	 * Note: the order matters for speed selection.
+	 */
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A0_MASK) {
 		AN_DBG(hw->dev, "Negotiated 1G KX rate\n");
 		ln->rate |= RATE_1GBASE_KX;
 		ln->speed = SPEED_1000;
 	}
-	if (val & AN_BP_STATUS_TECHNOLOGY_A11_MASK)
-		dev_err(hw->dev, "Unsupported 2.5G-KX negotiated rate\n");
-	if (val & AN_BP_STATUS_TECHNOLOGY_A12_MASK)
-		dev_err(hw->dev, "Unsupported 5G-KR negotiated rate\n");
-	if (val & AN_BP_STATUS_TECHNOLOGY_A1_MASK) {
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A1_MASK) {
 		dev_err(hw->dev, "Negotiated 10G-KX4 negotiated rate\n");
 		ln->rate |= RATE_10GBASE_KX4;
 		ln->speed = SPEED_10000;
 	}
-	if (val & AN_BP_STATUS_TECHNOLOGY_A2_MASK) {
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A2_MASK) {
 		AN_DBG(hw->dev, "Negotiated 10G KR rate.\n");
 		ln->rate |= RATE_10GBASE_KR;
 		ln->speed = SPEED_10000;
 	}
-	if (val & AN_BP_STATUS_TECHNOLOGY_A10_MASK) {
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A10_MASK) {
 		AN_DBG(hw->dev, "Negotiated 25G KR/CR rate.\n");
 		ln->rate |= RATE_25GBASE_KR_CR;
 		ln->speed = SPEED_25000;
 	}
-	if (val & AN_BP_STATUS_TECHNOLOGY_A9_MASK) {
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A9_MASK) {
 		AN_DBG(hw->dev, "Negotiated 25G KR/CR-S rate.\n");
 		ln->rate |= RATE_25GBASE_KR_CR_S;
 		ln->speed = SPEED_25000;
 	}
-	if (val & AN_BP_STATUS_TECHNOLOGY_A3_MASK) {
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A3_MASK) {
 		AN_DBG(hw->dev, "Negotiated 40G KR4 rate.\n");
 		ln->rate |= RATE_40GBASE_KR4;
 		ln->speed = SPEED_40000;
 	}
-	if (val & AN_BP_STATUS_TECHNOLOGY_A4_MASK) {
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A4_MASK) {
 		AN_DBG(hw->dev, "Negotiated 40G CR4 rate.\n");
 		ln->rate |= RATE_40GBASE_CR4;
 		ln->speed = SPEED_40000;
 	}
-	if (val & AN_BP_STATUS_TECHNOLOGY_A5_MASK)
-		dev_err(hw->dev, "Unsupported 100G-CR10 negotiated rate\n");
-	if (val & AN_BP_STATUS_TECHNOLOGY_A6_MASK) {
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A5_MASK) {
+		AN_DBG(hw->dev, "Negotiated 100G CR10 rate.\n");
+		ln->rate |= RATE_100GBASE_CR10;
+		ln->speed = SPEED_100000;
+	}
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A6_MASK) {
 		AN_DBG(hw->dev, "Negotiated 100G KP4 rate.\n");
 		ln->rate |= RATE_100GBASE_KP4;
 		ln->speed = SPEED_100000;
 	}
-	if (val & AN_BP_STATUS_TECHNOLOGY_A7_MASK) {
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A7_MASK) {
 		AN_DBG(hw->dev, "Negotiated 100G KR4 rate.\n");
 		ln->rate |= RATE_100GBASE_KR4;
 		ln->speed = SPEED_100000;
 	}
-	if (val & AN_BP_STATUS_TECHNOLOGY_A8_MASK) {
+
+	if (common_tech & AN_KXAN_ABILITY_1_TECH_A8_MASK) {
 		AN_DBG(hw->dev, "Negotiated 100G CR4 rate.\n");
 		ln->rate |= RATE_100GBASE_CR4;
 		ln->speed = SPEED_100000;
 	}
-	val = kvx_mac_readl(hw, an_off + AN_BP_STATUS_2_OFFSET);
-	if (val & AN_BP_STATUS_2_TECHNOLOGY_A15_MASK)
-		dev_err(hw->dev, "Unsupported 200G-FR4/CR4 negotiated rate\n");
-	if (val & AN_BP_STATUS_2_TECHNOLOGY_A14_MASK)
-		dev_err(hw->dev, "Unsupported 100G-KR2/CR2 negotiated rate.\n");
-	if (val & AN_BP_STATUS_2_TECHNOLOGY_A13_MASK) {
-		AN_DBG(hw->dev, "Negotiated 50G KR/CR rate.\n");
-		ln->rate |= RATE_25GBASE_KR_CR;
-		ln->speed = SPEED_50000;
+
+	/* compare fec abilities */
+	ld_tech = kvx_mac_readl(hw, an_off + AN_KXAN_ABILITY_2_OFFSET);
+	lp_tech = kvx_mac_readl(hw, an_off + AN_KXAN_REM_ABILITY_2_OFFSET);
+	common_tech = ld_tech & lp_tech;
+
+	if (common_tech & AN_KXAN_ABILITY_2_25G_RS_FEC_REQ_MASK) {
+		AN_DBG(hw->dev, "Autoneg RS FEC\n");
+		ln->fec |= FEC_25G_RS_REQUESTED;
 	}
 
-	/* Be careful as for 100G links AN_BP_STATUS_BPETHSTATUSRSV_MASK won't
-	 * go up even if it should, this case is handled in mac_cfg to work even
-	 * with autonegociation off.
-	 */
-	if (val & AN_BP_STATUS_BPETHSTATUSRSV_MASK) {
-		AN_DBG(hw->dev, "Autoneg RS-FEC\n");
-		ln->fec = FEC_25G_RS_REQUESTED;
-	} else if (val & AN_BP_STATUS_FEC_MASK) {
-		AN_DBG(hw->dev, "Autoneg FEC\n");
-		ln->fec = FEC_10G_FEC_ABILITY;
+	if (common_tech & AN_KXAN_ABILITY_2_25G_BASER_FEC_REQ_MASK) {
+		AN_DBG(hw->dev, "Autoneg BaseR FEC\n");
+		ln->fec |= FEC_25G_BASE_R_REQUESTED;
+	}
+
+	if (common_tech & AN_KXAN_ABILITY_2_10G_FEC_ABILITY_MASK) {
+		AN_DBG(hw->dev, "Autoneg FEC Ability\n");
+		ln->fec |= FEC_10G_FEC_ABILITY;
+	}
+
+	if (common_tech & AN_KXAN_ABILITY_2_10G_FEC_REQ_MASK) {
+		AN_DBG(hw->dev, "Autoneg FEC Requested\n");
+		ln->fec |= FEC_10G_FEC_REQUESTED;
 	}
 
 	return 0;
@@ -2347,9 +2368,9 @@ static bool kvx_eth_autoneg_fsm_execute(struct kvx_eth_hw *hw, struct kvx_eth_la
 	u32 reg_clk = 100; /* MHz*/
 	u32 lt_off, an_off = MAC_CTRL_AN_OFFSET + cfg->id * MAC_CTRL_AN_ELEM_SIZE;
 	u32 an_ctrl_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_CTRL_OFFSET;
+	u32 an_status_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_STATUS_OFFSET + 4 * lane_id;
 	u32 nonce, mask, val;
 	char *unit;
-	u32 an_status_off;
 
 next_state:
 	/* prevent infinite looping */
@@ -2448,10 +2469,39 @@ next_state:
 		fallthrough;
 	case AN_STATE_WAIT_BP_EXCHANGE:
 		/*
-		 * Cannot check for autoneg status - assuming it went ok
-		 * According to MAC spec Table 3, Page Received (bit6) is supposed to be set
-		 * once base page exchange has completed. In practice, it is not set.
+		 * According to MAC spec Table 3, Page Received (bit6) is set once base page
+		 * exchange has completed. If timeout, the link partner does not support autoneg.
 		 */
+		mask = AN_KXAN_STATUS_PAGERECEIVED_MASK | AN_KXAN_STATUS_LPANCAPABLE_MASK;
+		ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_STATUS_OFFSET, mask,
+			       mask, AN_TIMEOUT_MS);
+		if (ret) {
+			dev_warn(hw->dev, "link partner might not support auto-negotiation\n");
+#ifdef DEBUG
+			mask = MAC_CTRL_AN_STATUS_AN_STATUS_MASK;
+			ret = kvx_poll(kvx_mac_readl, an_status_off, mask, mask, AN_TIMEOUT_MS);
+			AN_DBG(hw->dev, "%s AN_STATUS OK: %u\n", __func__, !ret);
+#endif
+			state = AN_STATE_ERROR;
+			goto next_state;
+		}
+		fallthrough;
+	case AN_STATE_COMMON_TECH:
+		/* find common speed */
+		kvx_eth_an_get_common_speed(hw, lane_id, &cfg->ln);
+		if (cfg->ln.speed == SPEED_UNKNOWN) {
+			dev_err(hw->dev, "No autonegotiation common speed could be identified\n");
+			state = AN_STATE_ERROR;
+			goto next_state;
+		}
+
+		/* Apply negociated speed */
+		cfg->speed = cfg->ln.speed;
+		cfg->fec = cfg->ln.fec;
+
+		/* Don't display FEC as it could be altered by mac config */
+		kvx_eth_get_formated_speed(cfg->ln.speed, &speed_fmt, &unit);
+		dev_info(hw->dev, "Negociated speed: %d%s\n", speed_fmt, unit);
 		fallthrough;
 	case AN_STATE_NEXT_PAGE_EXCHANGE:
 		/* Page messages to be exchanged have to be configured before enabling AN (AN_XNP registers).
@@ -2466,7 +2516,6 @@ next_state:
 			       AN_KXAN_CTRL_RESET_MASK, 0, AN_TIMEOUT_MS);
 
 		/* wait for AN_GOOD_CHECK state */
-		an_status_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_STATUS_OFFSET + 4 * lane_id;
 		mask = MAC_CTRL_AN_STATUS_AN_STATUS_MASK;
 		ret = kvx_poll(kvx_mac_readl, an_status_off, mask, mask, AN_TIMEOUT_MS);
 		if (ret) {
@@ -2491,15 +2540,6 @@ next_state:
 			state = AN_STATE_RESET;
 			goto next_state;
 		}
-		fallthrough;
-	case AN_STATE_COMMON_TECH:
-		/* find common speed */
-		kvx_eth_an_get_common_speed(hw, lane_id, &cfg->ln);
-		if (cfg->ln.speed == SPEED_UNKNOWN) {
-			dev_err(hw->dev, "No autonegotiation common speed could be identified\n");
-			state = AN_STATE_ERROR;
-			goto next_state;
-		}
 
 		/**
 		 * To end autonegotiation procedure we have to explicitely disable it
@@ -2507,14 +2547,6 @@ next_state:
 		 */
 		mask = MAC_CTRL_AN_CTRL_EN_MASK;
 		updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
-
-		/* Apply negociated speed */
-		cfg->speed = cfg->ln.speed;
-		cfg->fec = cfg->ln.fec;
-
-		/* Don't display FEC as it could be altered by mac config */
-		kvx_eth_get_formated_speed(cfg->ln.speed, &speed_fmt, &unit);
-		dev_info(hw->dev, "Negociated speed: %d%s\n", speed_fmt, unit);
 		fallthrough;
 	case AN_STATE_PCS_CFG:
 		kvx_eth_mac_pcs_pma_hcd_setup(hw, cfg, true);
