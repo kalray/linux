@@ -355,9 +355,13 @@ static void kvx_eth_poll_link(struct work_struct *w)
 		goto bail;
 	}
 
-	if (kvx_eth_mac_getlink(ndev->hw, &ndev->cfg)
-	    && kvx_eth_rtm_cdr_lock(ndev))
-		goto bail;
+	if (kvx_eth_mac_getlink(ndev->hw, &ndev->cfg)) {
+		if (!ndev->hw->rtm_params[RTM_RX].rtm)
+			goto bail; /* no retimer, skip CDR lock check */
+
+		if (kvx_eth_rtm_cdr_lock(ndev))
+			goto bail;
+	}
 
 link_cfg:
 	kvx_eth_setup_link(ndev, false);
