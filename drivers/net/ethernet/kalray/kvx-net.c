@@ -400,8 +400,9 @@ void kvx_eth_up(struct net_device *netdev)
 		napi_enable(&r->napi);
 	}
 
-	if (ndev->qsfp)
+	if (!kvx_eth_is_haps(ndev))
 		kvx_eth_setup_link(ndev, true);
+
 }
 
 /* kvx_eth_netdev_open() - Open ops
