@@ -135,10 +135,11 @@ static void kvx_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 }
 
 static int pci_msi_set_affinity(struct irq_data *data,
-			    const struct cpumask *cpumask,
-			    bool force)
+		const struct cpumask *cpumask,
+		bool force)
 {
 	struct kvx_irq_data *kvx_irq_data = irq_data_get_irq_chip_data(data);
+	struct irq_data *parent = irq_get_irq_data(kvx_irq_data->parent_irq);
 	int ret, new_cpu;
 
 	if (force)
@@ -149,7 +150,10 @@ static int pci_msi_set_affinity(struct irq_data *data,
 	if (new_cpu >= nr_cpu_ids)
 		return -EINVAL;
 
-	ret = irq_set_affinity(kvx_irq_data->parent_irq, cpumask_of(new_cpu));
+	if (!parent)
+		return -EINVAL;
+
+	ret = parent->chip->irq_set_affinity(parent, cpumask, force);
 	if (ret)
 		return ret;
 
