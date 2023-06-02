@@ -14,6 +14,7 @@
 #include <linux/phy.h>
 #include <linux/phylink.h>
 #include <linux/timer.h>
+#include <net/dcbnl.h>
 
 #include <linux/dma/kvx-dma.h>
 #include "kvx-net-hw.h"
@@ -209,6 +210,9 @@ struct kvx_eth_chip_rev_data {
 	int (*const ethtx_credit_en_register)(struct platform_device *pdev);
 	int (*const ethtx_credit_en_unregister)(struct platform_device *pdev);
 	const struct ethtool_ops *kvx_ethtool_ops;
+	u8 (*const kvx_net_dcb_is_pcp_enabled)(struct net_device *netdev, int priority);
+	int (*const kvx_net_dcb_get_pfc)(struct net_device *netdev, struct ieee_pfc *pfc);
+	int (*const kvx_net_dcb_set_pfc)(struct net_device *netdev, struct ieee_pfc *pfc);
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
@@ -248,6 +252,7 @@ static inline void kvx_set_dcb_ops(struct net_device *netdev) {};
 #endif
 
 const struct kvx_eth_chip_rev_data *kvx_eth_get_rev_data(struct kvx_eth_hw *hw);
+const struct kvx_eth_chip_rev_data *kvx_eth_get_rev_data_of_netdev(struct net_device *netdev);
 void fill_ipv4_filter_cv1(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
 		int ptype_ovrd);
@@ -268,6 +273,13 @@ void kvx_eth_get_pauseparam_cv1(struct net_device *netdev, struct ethtool_pausep
 int kvx_eth_set_pauseparam_cv1(struct net_device *netdev, struct ethtool_pauseparam *pause);
 void kvx_eth_get_pauseparam_cv2(struct net_device *netdev, struct ethtool_pauseparam *pause);
 int kvx_eth_set_pauseparam_cv2(struct net_device *netdev, struct ethtool_pauseparam *pause);
+
+u8 kvx_net_dcb_is_pcp_enabled_cv1(struct net_device *netdev, int priority);
+u8 kvx_net_dcb_is_pcp_enabled_cv2(struct net_device *netdev, int priority);
+int kvx_net_dcb_get_pfc_cv1(struct net_device *netdev, struct ieee_pfc *pfc);
+int kvx_net_dcb_get_pfc_cv2(struct net_device *netdev, struct ieee_pfc *pfc);
+int kvx_net_dcb_set_pfc_cv1(struct net_device *netdev, struct ieee_pfc *pfc);
+int kvx_net_dcb_set_pfc_cv2(struct net_device *netdev, struct ieee_pfc *pfc);
 /**
  * @brief macro to sysfs creation
  *
