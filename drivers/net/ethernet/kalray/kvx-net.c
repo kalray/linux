@@ -2376,6 +2376,14 @@ const struct kvx_eth_chip_rev_data *kvx_eth_get_rev_data(struct kvx_eth_hw *hw)
 	return dev->chip_rev_data;
 }
 
+inline const struct kvx_eth_chip_rev_data *kvx_eth_get_rev_data_of_netdev(struct net_device *netdev)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_hw *hw = ndev->hw;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+
+	return rev_d;
+}
 
 /* kvx_eth_probe() - Probe generic device
  * @pdev: Platform device
@@ -2508,6 +2516,9 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv1 = {
 	.ethtx_credit_en_register = kvx_ethtx_credit_en_register_cv1,
 	.ethtx_credit_en_unregister = kvx_ethtx_credit_en_unregister_cv1,
 	.kvx_ethtool_ops = &kvx_ethtool_cv1_ops,
+	.kvx_net_dcb_is_pcp_enabled = &kvx_net_dcb_is_pcp_enabled_cv1,
+	.kvx_net_dcb_get_pfc = &kvx_net_dcb_get_pfc_cv1,
+	.kvx_net_dcb_set_pfc = &kvx_net_dcb_set_pfc_cv1
 };
 
 static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
@@ -2535,6 +2546,9 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
 	.ethtx_credit_en_register = kvx_ethtx_credit_en_register_cv2,
 	.ethtx_credit_en_unregister = kvx_ethtx_credit_en_unregister_cv2,
 	.kvx_ethtool_ops = &kvx_ethtool_cv2_ops,
+	.kvx_net_dcb_is_pcp_enabled = &kvx_net_dcb_is_pcp_enabled_cv2,
+	.kvx_net_dcb_get_pfc = &kvx_net_dcb_get_pfc_cv2,
+	.kvx_net_dcb_set_pfc = &kvx_net_dcb_set_pfc_cv2
 };
 static const struct of_device_id kvx_eth_match[] = {
 	{ .compatible = "kalray,coolidge-eth", .data = &eth_chip_rev_data_cv1 },
