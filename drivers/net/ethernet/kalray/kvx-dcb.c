@@ -12,12 +12,185 @@
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
 
+#define DLV_XCOS_ALERT_DROP_LVL_RATIO_BY_256 (180) /* 70% */
+#define DLV_XCOS_RELEASE_DROP_LVL_RATIO_BY_256 (77) /* 30% */
+
 void kvx_net_init_dcb(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
 	/* enable IEEE by default */
 	ndev->dcb_cfg.dcbx_mode = DCB_CAP_DCBX_HOST | DCB_CAP_DCBX_VER_IEEE;
+}
+
+u8 kvx_net_dcb_is_pcp_enabled_cv1(struct net_device *netdev, int priority)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
+	u8 ret;
+
+	ret = lb_f->cl_f[priority].pfc_ena;
+
+	return ret;
+}
+
+u8 kvx_net_dcb_is_pcp_enabled_cv2(struct net_device *netdev, int priority)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_rx_dlv_pfc_f *rx_dlv_pfc = &cfg->hw->rx_dlv_pfc_f[cfg->id];
+	u8 ret;
+
+	ret = !!(rx_dlv_pfc->pfc_param[priority].xcos_subscr & rx_dlv_pfc->pfc_en);
+
+	return ret;
+}
+
+int kvx_net_dcb_get_pfc_cv1(struct net_device *netdev, struct ieee_pfc *pfc)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
+	int i;
+
+	pfc->pfc_cap = KVX_ETH_PFC_CLASS_NB;
+
+	if (lb_f->pfc_f.global_pause_en) {
+		pfc->pfc_en = 0;
+	} else if (lb_f->pfc_f.global_pfc_en) {
+		pfc->pfc_en = (1 << KVX_ETH_PFC_CLASS_NB) - 1;
+	} else {
+		pfc->pfc_en = 0;
+		for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
+			if (lb_f->cl_f[i].pfc_ena)
+				pfc->pfc_en |= 1 << i;
+		}
+	}
+
+	return 0;
+}
+
+int kvx_net_dcb_get_pfc_cv2(struct net_device *netdev, struct ieee_pfc *pfc)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_rx_dlv_pfc_f *rx_dlv_pfc = &cfg->hw->rx_dlv_pfc_f[cfg->id];
+	int pri;
+
+	pfc->pfc_cap = KVX_ETH_PFC_CLASS_NB;
+
+	pfc->pfc_en = 0;
+	for (pri = 0; pri < KVX_ETH_PFC_CLASS_NB; ++pri) {
+		if ((rx_dlv_pfc->pfc_param[pri].xcos_subscr & rx_dlv_pfc->pfc_en))
+			pfc->pfc_en |= 1 << pri;
+	}
+
+	return 0;
+}
+
+int kvx_net_dcb_set_pfc_cv1(struct net_device *netdev, struct ieee_pfc *pfc)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
+	struct kvx_eth_tx_f *tx_f;
+
+	u32 pfc_cl_ena = 0, modified = false;
+	unsigned int i, val;
+
+	netdev_dbg(netdev, "%s  pfc_en=%u\n", __func__, pfc->pfc_en);
+
+	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
+		val = !!(pfc->pfc_en & BIT(i));
+		if (lb_f->cl_f[i].pfc_ena != val) {
+			lb_f->cl_f[i].pfc_ena = val;
+			kvx_eth_cl_f_cfg(ndev->hw, &lb_f->cl_f[i]);
+			modified = true;
+		}
+		if (lb_f->cl_f[i].pfc_ena)
+			pfc_cl_ena |= BIT(i);
+	}
+
+	if (modified) {
+		if (pfc_cl_ena == 0) {
+			netdev_warn(netdev, "Global pause enabled\n");
+			lb_f->pfc_f.global_pause_en = 1;
+		} else {
+			netdev_warn(netdev, "Global pause/PFC disabled\n");
+			lb_f->pfc_f.global_pause_en = 0;
+		}
+		kvx_eth_pfc_f_cfg(ndev->hw, &lb_f->pfc_f);
+
+		for (i = 0; i < TX_FIFO_NB; ++i) {
+			tx_f = &ndev->hw->tx_f[i];
+			tx_f->pfc_en = pfc_cl_ena;
+			tx_f->pause_en = lb_f->pfc_f.global_pause_en;
+			kvx_eth_tx_f_cfg(ndev->hw, tx_f);
+		}
+	}
+
+	return 0;
+}
+
+int kvx_net_dcb_set_pfc_cv2(struct net_device *netdev, struct ieee_pfc *pfc)
+{
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
+	struct kvx_eth_rx_dlv_pfc_f *rx_dlv_pfc = &cfg->hw->rx_dlv_pfc_f[cfg->id];
+	struct kvx_eth_tx_pfc_f *tx_pfc = &cfg->hw->tx_pfc_f[cfg->id];
+
+	int pcp_enabled_nb = 0;
+	int pcp, xcos, drop_lvl;
+	u16 pcp_bmp;
+
+	netdev_dbg(netdev, "%s  pfc_en=%u\n", __func__, pfc->pfc_en);
+
+	rx_dlv_pfc->pfc_en = 0; /* default: all xcos disable */
+	/* activate the xcos associated to enabled PFC */
+	for (pcp = 0; pcp < KVX_ETH_PFC_CLASS_NB; ++pcp) {
+		if (pfc->pfc_en & BIT(pcp)) {
+			rx_dlv_pfc->pfc_en |= rx_dlv_pfc->pfc_param[pcp].xcos_subscr;
+			pcp_enabled_nb++;
+		}
+	}
+	rx_dlv_pfc->glb_pfc_en = (pcp_enabled_nb > 0) ? 1 : 0;
+	/* disable global pause if pfc enabled */
+	if (pcp_enabled_nb > 0) {
+		tx_pfc->glb_pause_tx_en = 0;
+		rx_dlv_pfc->glb_pause_rx_en = 0;
+	}
+	/* setting des thold */
+	for (xcos = 0; xcos < KVX_ETH_XCOS_NB; ++xcos) {
+		pcp_bmp = 0;
+		if (rx_dlv_pfc->pfc_en & BIT(xcos)) {
+			/*
+			 * The COS buffer is equally divided bwn enabled xcos.
+			 * (number of enabled xcos equal == xcos_enabled_nb as
+			 * a one to one association bwn xcos and pfc is
+			 * expected)
+			 */
+			drop_lvl = rx_dlv_pfc->glb_drop_lvl/pcp_enabled_nb;
+			for (pcp = 0; pcp < KVX_ETH_PFC_CLASS_NB; ++pcp) {
+				if (rx_dlv_pfc->pfc_param[pcp].xcos_subscr & BIT(xcos))
+					pcp_bmp |= BIT(pcp);
+			}
+		} else {
+			drop_lvl = rx_dlv_pfc->glb_drop_lvl;
+		}
+		tx_pfc->xoff_subsc[xcos].xoff_subsc = pcp_bmp;
+		/* thold tuning */
+		rx_dlv_pfc->pfc_xcox[xcos].drop_lvl = drop_lvl;
+		rx_dlv_pfc->pfc_xcox[xcos].alert_lvl = (drop_lvl*DLV_XCOS_ALERT_DROP_LVL_RATIO_BY_256)>>8;
+		rx_dlv_pfc->pfc_xcox[xcos].release_lvl = (drop_lvl*DLV_XCOS_RELEASE_DROP_LVL_RATIO_BY_256)>>8;
+		kvx_eth_rx_dlv_pfc_xcos_f_cfg(ndev->hw, &rx_dlv_pfc->pfc_xcox[xcos]);
+	}
+
+	/* hdw setting */
+	kvx_eth_rx_dlv_pfc_f_cfg(ndev->hw, rx_dlv_pfc);
+	kvx_eth_tx_pfc_f_cfg(ndev->hw, tx_pfc);
+
+	return 0;
 }
 
 static u8 kvx_net_dcbnl_getcap(struct net_device *netdev, int capid, u8 *cap)
@@ -102,91 +275,19 @@ static int kvx_net_dcbnl_getnumtcs(struct net_device *netdev, int tcid, u8 *num)
 static void kvx_net_dcbnl_getpfccfg(struct net_device *netdev, int priority,
 				       u8 *setting)
 {
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
-	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data_of_netdev(netdev);
 
 	if (priority < 0 || priority >= KVX_ETH_PFC_CLASS_NB) {
 		netdev_err(netdev, "Invalid priority\n");
 		return;
 	}
-
-	*setting = lb_f->cl_f[priority].pfc_ena;
-}
-
-static int kvx_net_dcbnl_get_pfc(struct net_device *netdev,
-				 struct ieee_pfc *pfc)
-{
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
-	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
-	int i;
-
-	pfc->pfc_cap = KVX_ETH_PFC_CLASS_NB;
-
-	if (lb_f->pfc_f.global_pause_en) {
-		pfc->pfc_en = 0;
-	} else if (lb_f->pfc_f.global_pfc_en) {
-		pfc->pfc_en = (1 << KVX_ETH_PFC_CLASS_NB) - 1;
-	} else {
-		pfc->pfc_en = 0;
-		for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
-			if (lb_f->cl_f[i].pfc_ena)
-				pfc->pfc_en |= 1 << i;
-		}
-	}
-
-	return 0;
-}
-
-static int kvx_net_dcbnl_set_pfc(struct net_device *netdev,
-				 struct ieee_pfc *pfc)
-{
-	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
-	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
-	struct kvx_eth_tx_f *tx_f;
-
-	u32 pfc_cl_ena = 0, modified = false;
-	unsigned int i, val;
-
-	netdev_dbg(netdev, "%s  pfc_en=%u\n", __func__, pfc->pfc_en);
-
-	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
-		val = !!(pfc->pfc_en & BIT(i));
-		if (lb_f->cl_f[i].pfc_ena != val) {
-			lb_f->cl_f[i].pfc_ena = val;
-			kvx_eth_cl_f_cfg(ndev->hw, &lb_f->cl_f[i]);
-			modified = true;
-		}
-		if (lb_f->cl_f[i].pfc_ena)
-			pfc_cl_ena |= BIT(i);
-	}
-
-	if (modified) {
-		if (pfc_cl_ena == 0) {
-			netdev_warn(netdev, "Global pause enabled\n");
-			lb_f->pfc_f.global_pause_en = 1;
-		} else {
-			netdev_warn(netdev, "Global pause/PFC disabled\n");
-			lb_f->pfc_f.global_pause_en = 0;
-		}
-		kvx_eth_pfc_f_cfg(ndev->hw, &lb_f->pfc_f);
-
-		for (i = 0; i < TX_FIFO_NB; ++i) {
-			tx_f = &ndev->hw->tx_f[i];
-			tx_f->pfc_en = pfc_cl_ena;
-			tx_f->pause_en = lb_f->pfc_f.global_pause_en;
-			kvx_eth_tx_f_cfg(ndev->hw, tx_f);
-		}
-	}
-
-	return 0;
+	*setting = rev_d->kvx_net_dcb_is_pcp_enabled(netdev, priority);
 }
 
 static void kvx_net_dcbnl_setpfccfg(struct net_device *netdev, int priority,
 				       u8 setting)
 {
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data_of_netdev(netdev);
 	struct ieee_pfc pfc;
 
 	if (!setting)
@@ -197,19 +298,20 @@ static void kvx_net_dcbnl_setpfccfg(struct net_device *netdev, int priority,
 		return;
 	}
 
-	kvx_net_dcbnl_get_pfc(netdev, &pfc);
+	rev_d->kvx_net_dcb_get_pfc(netdev, &pfc);
 
 	if (setting != ((pfc.pfc_en >> priority) & 1)) {
 		pfc.pfc_en ^= BIT(priority);
-		kvx_net_dcbnl_set_pfc(netdev, &pfc);
+		rev_d->kvx_net_dcb_set_pfc(netdev, &pfc);
 	}
 }
 
 static u8 kvx_net_dcbnl_getpfcstate(struct net_device *netdev)
 {
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data_of_netdev(netdev);
 	struct ieee_pfc pfc;
 
-	kvx_net_dcbnl_get_pfc(netdev, &pfc);
+	rev_d->kvx_net_dcb_get_pfc(netdev, &pfc);
 	return !!pfc.pfc_en;
 }
 
@@ -217,22 +319,24 @@ static u8 kvx_net_dcbnl_getpfcstate(struct net_device *netdev)
  */
 static void kvx_net_dcbnl_setpfcstate(struct net_device *netdev, u8 state)
 {
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data_of_netdev(netdev);
 	struct ieee_pfc pfc;
 
 	pfc.pfc_en = 0;
 	if (state)
 		pfc.pfc_en = (1 << KVX_ETH_PFC_CLASS_NB) - 1;
 
-	kvx_net_dcbnl_set_pfc(netdev, &pfc);
+	rev_d->kvx_net_dcb_set_pfc(netdev, &pfc);
 }
 
 static int kvx_net_dcbnl_ieee_getpfc(struct net_device *netdev,
 				     struct ieee_pfc *pfc)
 {
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data_of_netdev(netdev);
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	int ret, i;
 
-	ret = kvx_net_dcbnl_get_pfc(netdev, pfc);
+	ret = rev_d->kvx_net_dcb_get_pfc(netdev, pfc);
 	if (ret < 0)
 		return ret;
 
@@ -248,14 +352,15 @@ static int kvx_net_dcbnl_ieee_getpfc(struct net_device *netdev,
 static int kvx_net_dcbnl_ieee_setpfc(struct net_device *netdev,
 				   struct ieee_pfc *pfc)
 {
-	return kvx_net_dcbnl_set_pfc(netdev, pfc);
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data_of_netdev(netdev);
+
+	return rev_d->kvx_net_dcb_set_pfc(netdev, pfc);
 }
 
 static const struct dcbnl_rtnl_ops dcbnl_ops = {
 	/* DCBX configuration */
 	.getdcbx     = kvx_net_dcbnl_getdcbx,
 	.setdcbx     = kvx_net_dcbnl_setdcbx,
-
 	/* CEE std */
 	.getcap      = kvx_net_dcbnl_getcap,
 	.getstate    = kvx_net_dcbnl_getstate,
@@ -265,7 +370,6 @@ static const struct dcbnl_rtnl_ops dcbnl_ops = {
 	.getpfccfg   = kvx_net_dcbnl_getpfccfg,
 	.getpfcstate = kvx_net_dcbnl_getpfcstate,
 	.setpfcstate = kvx_net_dcbnl_setpfcstate,
-
 	/* IEEE 802.1Qaz std */
 	.ieee_getpfc = kvx_net_dcbnl_ieee_getpfc,
 	.ieee_setpfc = kvx_net_dcbnl_ieee_setpfc,
