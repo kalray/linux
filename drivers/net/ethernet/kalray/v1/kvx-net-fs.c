@@ -114,7 +114,7 @@ FIELD_R_ENTRY(tx_f, crc_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, drop_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, nocx_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, nocx_pack_en, 0, 1);
-FIELD_RW_ENTRY(tx_f, pfc_en, 0, 1);
+FIELD_RW_ENTRY(tx_f, pfc_en, 0, 0xFF);
 FIELD_RW_ENTRY(tx_f, pause_en, 0, 1);
 FIELD_RW_ENTRY(tx_f, rr_trigger, 0, 0xF);
 FIELD_RW_ENTRY(tx_f, lane_id, 0, KVX_ETH_LANE_NB - 1);
