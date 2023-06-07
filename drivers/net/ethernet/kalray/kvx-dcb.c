@@ -179,8 +179,9 @@ static int kvx_net_dcbnl_set_pfc(struct net_device *netdev,
 		}
 		kvx_eth_pfc_f_cfg(ndev->hw, &lb_f->pfc_f);
 
-		list_for_each_entry(tx_f, &cfg->tx_fifo_list, node) {
-			tx_f->pfc_en = !!pfc_cl_ena;
+		for (i = 0; i < TX_FIFO_NB; ++i) {
+			tx_f = &ndev->hw->tx_f[i];
+			tx_f->pfc_en = pfc_cl_ena;
 			tx_f->pause_en = lb_f->pfc_f.global_pause_en;
 			kvx_eth_tx_f_cfg(ndev->hw, tx_f);
 		}
