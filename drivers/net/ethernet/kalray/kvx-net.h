@@ -244,6 +244,8 @@ void kvx_set_dcb_ops(struct net_device *netdev);
 static inline void kvx_set_dcb_ops(struct net_device *netdev) {};
 #endif
 
+bool kvx_eth_is_haps(struct kvx_eth_netdev *ndev);
+
 const struct kvx_eth_chip_rev_data *kvx_eth_get_rev_data(struct kvx_eth_hw *hw);
 void fill_ipv4_filter_cv1(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt,
