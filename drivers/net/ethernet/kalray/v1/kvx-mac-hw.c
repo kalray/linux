@@ -34,10 +34,12 @@ void kvx_mac_pfc_cfg_cv1(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	if (kvx_mac_under_reset(hw))
 		return;
 
+	hw->tx_f[tx_fifo_id].pfc_en = 0;
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; i++) {
-		if (cl_f[i].pfc_ena)
+		if (cl_f[i].pfc_ena) {
 			pfc_class_en = true;
-
+			hw->tx_f[tx_fifo_id].pfc_en |= BIT(i);
+		}
 		if ((i % 2) == 0) {
 			val = (u32)cl_f[i + 1].quanta << 16 |
 				(u32)cl_f[i].quanta;
@@ -51,7 +53,6 @@ void kvx_mac_pfc_cfg_cv1(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 	if (pfc_f->global_pfc_en || pfc_class_en) {
 		cfg->mac_f.pfc_mode = MAC_PFC;
-		hw->tx_f[tx_fifo_id].pfc_en = 1;
 		hw->tx_f[tx_fifo_id].pause_en = 0;
 	} else if (pfc_f->global_pause_en) {
 		cfg->mac_f.pfc_mode = MAC_PAUSE;
