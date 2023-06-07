@@ -2318,6 +2318,16 @@ const struct kvx_eth_chip_rev_data *kvx_eth_get_rev_data(struct kvx_eth_hw *hw)
 	return dev->chip_rev_data;
 }
 
+bool kvx_eth_is_haps(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_hw *hw = ndev->hw;
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
+	const struct kvx_eth_chip_rev_data *rev_d;
+
+	rev_d = kvx_eth_get_rev_data(hw);
+	return (dev->type == kvx_haps_data[rev_d->revision]);
+}
+
 static irqreturn_t rx_error_irq_handler(int irq, void *data)
 {
 	struct kvx_eth_dev *dev = data;
