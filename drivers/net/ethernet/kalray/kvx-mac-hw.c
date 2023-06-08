@@ -2363,7 +2363,8 @@ static int kvx_eth_an_good_status_wait(struct kvx_eth_hw *hw,
 
 static bool kvx_eth_autoneg_fsm_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	int ret, lane, nb_lane, lane_id = cfg->id, speed_fmt, fsm_loop = 5;
+	int ret, lane, lane_id = cfg->id, speed_fmt, fsm_loop = 5;
+	int nb_lane = KVX_ETH_LANE_NB;
 	int state = AN_STATE_RESET;
 	u32 reg_clk = 100; /* MHz*/
 	u32 lt_off, an_off = MAC_CTRL_AN_OFFSET + cfg->id * MAC_CTRL_AN_ELEM_SIZE;
@@ -2394,20 +2395,14 @@ next_state:
 			     LT_KR_MODE_OFFSET, LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK, val);
 
 		/* set link training default state */
-		for_each_cfg_lane(nb_lane, lane, cfg) {
+		for (lane = 0; lane < KVX_ETH_LANE_NB; lane++) {
 			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
-			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_STAT_OFFSET);
-			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_COEF_OFFSET);
-		}
 
-		for_each_cfg_lane(nb_lane, lane, cfg) {
-			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
-			/* clear local device coefficient */
-			updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
-				     LT_KR_LD_COEF_UPDATE_MASK, 0);
 			/* Clear local device status register */
-			updatel_bits(hw, MAC, lt_off + LT_KR_LD_STAT_OFFSET,
-				     LT_KR_LD_STAT_STATUSREPORT_MASK, 0);
+			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_STAT_OFFSET);
+
+			/* clear local device coefficient */
+			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_COEF_OFFSET);
 		}
 		fallthrough;
 	case AN_STATE_INIT:
@@ -2498,6 +2493,7 @@ next_state:
 		/* Apply negociated speed */
 		cfg->speed = cfg->ln.speed;
 		cfg->fec = cfg->ln.fec;
+		nb_lane = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 
 		/* Don't display FEC as it could be altered by mac config */
 		kvx_eth_get_formated_speed(cfg->ln.speed, &speed_fmt, &unit);
@@ -2552,9 +2548,6 @@ next_state:
 		kvx_eth_mac_pcs_pma_hcd_setup(hw, cfg, true);
 		fallthrough;
 	case AN_STATE_LT_ENABLE:
-		updatel_bits(hw, MAC, LT_OFFSET + lane_id * LT_ELEM_SIZE +
-			     LT_KR_MODE_OFFSET, LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK, 0);
-
 		/**
 		 * Once the mac/pcs/serdes have been configured exchange link training frame at
 		 * the link nominal width. Note that contrary to autoneg, link training must be done
@@ -2594,14 +2587,10 @@ next_state:
 		break;
 	}
 
-	/* disable AN */
-	mask = BIT(lane_id) << MAC_CTRL_AN_CTRL_EN_SHIFT;
-	updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
-
-	/* Clear AN and LT ITs */
-	mask = MAC_CTRL_AN_CTRL_INT_CLEAR_MASK |
-		MAC_CTRL_AN_STATUS_LT_INT_MASK;
-	updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
+	/* disable AN and clear AN and LT ITs */
+	val = MAC_CTRL_AN_CTRL_INT_CLEAR_MASK | MAC_CTRL_AN_STATUS_LT_INT_MASK;
+	mask = val | (BIT(lane_id) << MAC_CTRL_AN_CTRL_EN_SHIFT);
+	updatel_bits(hw, MAC, an_ctrl_off, mask, val);
 
 	return state == AN_STATE_DONE;
 }
