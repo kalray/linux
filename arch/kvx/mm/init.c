@@ -55,6 +55,14 @@
 
 #define MAX_DMA32_PFN	PHYS_PFN(DDR_64BIT_START + DDR_32BIT_ALIAS_SIZE)
 
+#define SMEM_GLOBAL_START	(16 * 1024 * 1024)
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
+#define SMEM_GLOBAL_END		(20 * 1024 * 1024)
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define SMEM_GLOBAL_END		(24 * 1024 * 1024)
+#endif
+#define MAX_SMEM_MEMBLOCKS	(32)
+
 pgd_t swapper_pg_dir[PTRS_PER_PGD] __page_aligned_bss;
 
 /*
@@ -67,22 +75,6 @@ EXPORT_SYMBOL(empty_zero_page);
 extern char _start[];
 extern char __kernel_smem_code_start[];
 extern char __kernel_smem_code_end[];
-
-struct kernel_section {
-	phys_addr_t start;
-	phys_addr_t end;
-};
-
-struct kernel_section kernel_sections[] = {
-	{
-		.start = (phys_addr_t)__kernel_smem_code_start,
-		.end = (phys_addr_t)__kernel_smem_code_end
-	},
-	{
-		.start = __pa(_start),
-		.end = __pa(_end)
-	}
-};
 
 static void __init zone_sizes_init(void)
 {
@@ -139,21 +131,19 @@ early_param("mem", early_mem);
 
 static void __init setup_bootmem(void)
 {
-	phys_addr_t kernel_start, kernel_end;
 	phys_addr_t start, end = 0;
 	u64 i;
+	struct memblock_region *region = NULL;
+	struct memblock_region to_be_reserved[MAX_SMEM_MEMBLOCKS] = {};
+	struct memblock_region *reserve = to_be_reserved;
 
 	init_mm.start_code = (unsigned long)_stext;
 	init_mm.end_code = (unsigned long)_etext;
 	init_mm.end_data = (unsigned long)_edata;
 	init_mm.brk = (unsigned long)_end;
 
-	for (i = 0; i < ARRAY_SIZE(kernel_sections); i++) {
-		kernel_start = kernel_sections[i].start;
-		kernel_end = kernel_sections[i].end;
+	memblock_reserve(__pa(_start),  __pa(_end) -  __pa(_start));
 
-		memblock_reserve(kernel_start, kernel_end - kernel_start);
-	}
 
 	for_each_mem_range(i, &start, &end) {
 		pr_info("%15s: memory  : 0x%lx - 0x%lx\n", __func__,
@@ -181,6 +171,38 @@ static void __init setup_bootmem(void)
 	if (!is_kernel_rodata((unsigned long) initial_boot_params))
 		early_init_fdt_reserve_self();
 	early_init_fdt_scan_reserved_mem();
+
+	start = SMEM_GLOBAL_START;
+	/*
+	 * make sure all smem is reserved
+	 * It seems that it's not OK to call memblock_reserve() from
+	 * for_each_reserved_mem_region() {} loop, so let's store
+	 * the "to be reserved" regions in the to_be_reserved array.
+	 */
+	for_each_reserved_mem_region(region) {
+		if (region->base >= SMEM_GLOBAL_END)
+			break; /* we finished to scan the smem area */
+
+		if (region->base > SMEM_GLOBAL_START && region->base != start) {
+			if (reserve > &to_be_reserved[MAX_SMEM_MEMBLOCKS - 1]) {
+				pr_crit("Impossible to mark the whole smem as reserved memory.\n");
+				pr_crit("It would take more than the maximum of %d memblocks.\n", MAX_SMEM_MEMBLOCKS);
+				break;
+			}
+			reserve->base = start;
+			reserve->size = region->base - start;
+			reserve++;
+		}
+
+		start = region->base + region->size;
+	}
+
+	if (start < SMEM_GLOBAL_END)
+		memblock_reserve(start, SMEM_GLOBAL_END - start);
+
+	/* Now let's reserve the smem memblocks for real */
+	for (region = to_be_reserved; region->size != 0; region++)
+		memblock_reserve(region->base, region->size);
 
 	memblock_allow_resize();
 	memblock_dump_all();
