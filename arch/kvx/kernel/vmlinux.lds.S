@@ -15,7 +15,8 @@
 #include <asm/page.h>
 #include <asm/fixmap.h>
 
-#define BOOT_ENTRY		0x0
+/* Entry is linked at smem global address */
+#define BOOT_ENTRY		(16 * 1024 * 1024)
 #define DTB_DEFAULT_SIZE	(64 * 1024)
 
 #define LOAD_OFFSET  (DDR_VIRT_OFFSET - DDR_PHYS_OFFSET)
