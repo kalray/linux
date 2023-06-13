@@ -566,6 +566,9 @@ static union mac_filter_desc *fill_eth_filter(struct kvx_eth_netdev *ndev,
 	union mac_filter_desc *filter = &flt->mac_vlan;
 	struct ethhdr *eth_val = &fs->h_u.ether_spec;
 	struct ethhdr *eth_mask = &fs->m_u.ether_spec;
+	struct kvx_eth_hw *hw = ndev->hw;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+
 	u16 etype_rule = ntohs(eth_val->h_proto);
 	u16 etype = 0;
 	u64 src_addr = 0;
@@ -603,6 +606,7 @@ static union mac_filter_desc *fill_eth_filter(struct kvx_eth_netdev *ndev,
 	}
 
 	memcpy(filter, &mac_filter_default, sizeof(mac_filter_default));
+	filter->pfc_en_etype_fk_en = rev_d->default_mac_filter_param_pfc_etype;
 
 	if (src_mask != 0) {
 		filter->sa = src_addr;
