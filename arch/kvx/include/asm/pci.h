@@ -11,7 +11,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/pci.h>
 #include <linux/of_gpio.h>
-#include <asm-generic/pci.h>
 
 #define ARCH_GENERIC_PCI_MMAP_RESOURCE	1
 #define HAVE_PCI_MMAP			1
