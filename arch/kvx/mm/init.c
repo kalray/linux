@@ -527,3 +527,23 @@ void __set_fixmap(enum fixed_addresses idx,
 	}
 	local_flush_tlb_kernel_range(addr, addr + PAGE_SIZE);
 }
+
+static const pgprot_t protection_map[16] = {
+	[VM_NONE]					= PAGE_NONE,
+	[VM_READ]					= PAGE_READ,
+	[VM_WRITE]					= PAGE_READ,
+	[VM_WRITE | VM_READ]				= PAGE_READ,
+	[VM_EXEC]					= PAGE_READ_EXEC,
+	[VM_EXEC | VM_READ]				= PAGE_READ_EXEC,
+	[VM_EXEC | VM_WRITE]				= PAGE_READ_EXEC,
+	[VM_EXEC | VM_WRITE | VM_READ]			= PAGE_READ_EXEC,
+	[VM_SHARED]					= PAGE_NONE,
+	[VM_SHARED | VM_READ]				= PAGE_READ,
+	[VM_SHARED | VM_WRITE]				= PAGE_READ_WRITE,
+	[VM_SHARED | VM_WRITE | VM_READ]		= PAGE_READ_WRITE,
+	[VM_SHARED | VM_EXEC]				= PAGE_READ_EXEC,
+	[VM_SHARED | VM_EXEC | VM_READ]			= PAGE_READ_EXEC,
+	[VM_SHARED | VM_EXEC | VM_WRITE]		= PAGE_READ_WRITE_EXEC,
+	[VM_SHARED | VM_EXEC | VM_WRITE | VM_READ]	= PAGE_READ_WRITE_EXEC
+};
+DECLARE_VM_GET_PAGE_PROT
