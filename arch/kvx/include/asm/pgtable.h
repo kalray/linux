@@ -97,26 +97,6 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 #define PAGE_KERNEL_RO		__pgprot((_PAGE_KERNEL | _PAGE_CACHED) & ~(_PAGE_WRITE))
 #define PAGE_KERNEL_ROX		__pgprot(_PAGE_KERNEL_EXEC  & ~(_PAGE_WRITE))
 
-/* MAP_PRIVATE permissions: xwr (copy-on-write) */
-#define __P000	PAGE_NONE
-#define __P001	PAGE_READ
-#define __P010	PAGE_READ
-#define __P011	PAGE_READ
-#define __P100	PAGE_READ_EXEC
-#define __P101	PAGE_READ_EXEC
-#define __P110	PAGE_READ_EXEC
-#define __P111	PAGE_READ_EXEC
-
-/* MAP_SHARED permissions: xwr */
-#define __S000	PAGE_NONE
-#define __S001	PAGE_READ
-#define __S010	PAGE_READ_WRITE
-#define __S011	PAGE_READ_WRITE
-#define __S100	PAGE_READ_EXEC
-#define __S101	PAGE_READ_EXEC
-#define __S110	PAGE_READ_WRITE_EXEC
-#define __S111	PAGE_READ_WRITE_EXEC
-
 #define pgprot_noncached(prot)	(__pgprot((pgprot_val(prot) & ~KVX_PAGE_CP_MASK) | _PAGE_UNCACHED))
 
 /*
