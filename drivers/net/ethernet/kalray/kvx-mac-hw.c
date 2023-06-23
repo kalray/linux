@@ -1570,6 +1570,10 @@ bail:
 int kvx_eth_mac_getlink(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	u32 v = kvx_mac_readl(hw, MAC_SYNC_STATUS_OFFSET);
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
+
+	if (dev->type->mac_link_status_supported == false)
+		return (true);
 
 	if (cfg->speed <= SPEED_1000) {
 		v = kvx_mac_readl(hw, MAC_1G_OFFSET +

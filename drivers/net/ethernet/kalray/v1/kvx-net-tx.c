@@ -115,7 +115,7 @@ u32 kvx_eth_tx_has_header(struct kvx_eth_hw *hw, int tx_fifo_id)
 
 /**
  * kvx_ethtx_credit_en_register_cv1() - register
-  * callback for tx credit enabling/disabling.
+ * callback for tx credit enabling/disabling.
  *
  * @pdev: netdev platform_device
  *
