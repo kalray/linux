@@ -42,6 +42,8 @@ struct kvx_eth_type {
 	int (*phy_fw_update)(struct platform_device *pdev);
 	int (*phy_lane_rx_serdes_data_enable)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 	void (*phy_rx_adaptation)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+	int mac_link_status_supported;
+	int support_1000baseT_only;
 };
 
 /**
@@ -244,8 +246,6 @@ void kvx_set_dcb_ops(struct net_device *netdev);
 #else
 static inline void kvx_set_dcb_ops(struct net_device *netdev) {};
 #endif
-
-bool kvx_eth_is_haps(struct kvx_eth_netdev *ndev);
 
 const struct kvx_eth_chip_rev_data *kvx_eth_get_rev_data(struct kvx_eth_hw *hw);
 void fill_ipv4_filter_cv1(struct kvx_eth_netdev *ndev,

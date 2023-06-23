@@ -81,6 +81,7 @@ static int rx_jobq_prio[] = {
 };
 
 static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *ring, int count);
+static int kvx_eth_phy_fw_update(struct platform_device *pdev);
 
 enum kvx_eth_speed_units_idx {
 	KVX_ETH_UNITS_GBPS,
@@ -91,6 +92,28 @@ enum kvx_eth_speed_units_idx {
 char *kvx_eth_speed_units[KVX_ETH_UNITS_NB] = {
 	[KVX_ETH_UNITS_GBPS] = "Gbps",
 	[KVX_ETH_UNITS_MBPS] = "Mbps",
+};
+
+static const char *kvx_eth_res_names_cv1[KVX_ETH_NUM_RES_CV1] = {
+	"phy", "phymac", "mac", "eth"};
+
+static const char *kvx_eth_res_names_cv2[KVX_ETH_NUM_RES_CV2] = {
+	"phy", "phyctl", "mac", "ethrx", "ethrx_lb_analyzer", "ethrx_lb_deliver", "ethrx_lb_rfs", "ethtx"};
+
+static const struct kvx_eth_type kvx_haps_data = {
+	.phy_init = kvx_eth_haps_phy_init,
+	.mac_link_status_supported = false,
+	.support_1000baseT_only = true
+};
+
+static struct kvx_eth_type kvx_eth_data = {
+	.phy_init = kvx_eth_phy_init,
+	.phy_cfg = kvx_eth_phy_cfg,
+	.phy_fw_update = kvx_eth_phy_fw_update,
+	.phy_lane_rx_serdes_data_enable = kvx_eth_phy_lane_rx_serdes_data_enable,
+	.phy_rx_adaptation = kvx_eth_phy_rx_adaptation,
+	.mac_link_status_supported = true,
+	.support_1000baseT_only = false
 };
 
 /* kvx_eth_get_formated_speed() - Convert int speed to a displayable format
@@ -247,10 +270,16 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_ser
 	bool link;
 	struct kvx_eth_hw *hw = ndev->hw;
 	enum coolidge_rev chip_rev =  kvx_eth_get_rev_data(hw)->revision;
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 
 	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
 		   ndev->cfg.speed, ndev->cfg.autoneg_en);
-
+	if (dev->type->support_1000baseT_only == true) {
+		ndev->cfg.autoneg_en = false;
+		ndev->cfg.speed = SPEED_1000;
+		ndev->cfg.duplex = DUPLEX_FULL;
+		goto setup_mac;
+	}
 	if (ndev->cfg.speed == SPEED_UNKNOWN)
 		ndev->cfg.speed = SPEED_100000;
 	if (ndev->cfg.duplex == DUPLEX_UNKNOWN)
@@ -264,6 +293,7 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_ser
 		/* FIXME: remove once link training is fixed */
 		kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, false);
 	}
+setup_mac:
 	if (chip_rev == COOLIDGE_V2)
 		kvx_eth_tx_cfg_speed_settings(hw, &ndev->cfg);
 	if (!ndev->cfg.autoneg_en) {
@@ -405,9 +435,7 @@ void kvx_eth_up(struct net_device *netdev)
 		napi_enable(&r->napi);
 	}
 
-	if (!kvx_eth_is_haps(ndev))
-		kvx_eth_setup_link(ndev, true);
-
+	kvx_eth_setup_link(ndev, true);
 }
 
 /* kvx_eth_netdev_open() - Open ops
@@ -434,7 +462,6 @@ void kvx_eth_down(struct net_device *netdev)
 	kvx_eth_reset_tx(ndev);
 	for (qidx = 0; qidx < ndev->dma_cfg.rx_chan_id.nb; qidx++)
 		napi_disable(&ndev->rx_ring[qidx].napi);
-
 	kvx_eth_update_carrier(ndev, false);
 }
 
@@ -2292,46 +2319,11 @@ static int kvx_eth_phy_fw_update(struct platform_device *pdev)
 	return ret;
 }
 
-static const char *kvx_eth_res_names_cv1[KVX_ETH_NUM_RES_CV1] = {
-	"phy", "phymac", "mac", "eth"};
-
-static const char *kvx_eth_res_names_cv2[KVX_ETH_NUM_RES_CV2] = {
-	"phy", "phyctl", "mac", "ethrx", "ethrx_lb_analyzer", "ethrx_lb_deliver", "ethrx_lb_rfs", "ethtx"};
-
-static const struct kvx_eth_type kvx_haps_data_cv1 = {
-	.phy_init = kvx_eth_haps_phy_init_cv1,
-};
-static const struct kvx_eth_type kvx_haps_data_cv2 = {
-	.phy_init = kvx_eth_haps_phy_mac_init_cv2,
-};
-static const struct kvx_eth_type *kvx_haps_data[2] = {
-	&kvx_haps_data_cv1,
-	&kvx_haps_data_cv2
-};
-
-static struct kvx_eth_type kvx_eth_data = {
-	.phy_init = kvx_eth_phy_init,
-	.phy_cfg = kvx_eth_phy_cfg,
-	.phy_fw_update = kvx_eth_phy_fw_update,
-	.phy_lane_rx_serdes_data_enable = kvx_eth_phy_lane_rx_serdes_data_enable,
-	.phy_rx_adaptation = kvx_eth_phy_rx_adaptation,
-};
-
 const struct kvx_eth_chip_rev_data *kvx_eth_get_rev_data(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 
 	return dev->chip_rev_data;
-}
-
-bool kvx_eth_is_haps(struct kvx_eth_netdev *ndev)
-{
-	struct kvx_eth_hw *hw = ndev->hw;
-	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
-	const struct kvx_eth_chip_rev_data *rev_d;
-
-	rev_d = kvx_eth_get_rev_data(hw);
-	return (dev->type == kvx_haps_data[rev_d->revision]);
 }
 
 static irqreturn_t rx_error_irq_handler(int irq, void *data)
@@ -2374,7 +2366,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	mutex_init(&dev->hw.mac_reset_lock);
 
 	if (of_machine_is_compatible("kalray,haps"))
-		dev->type = kvx_haps_data[rev_d->revision];
+		dev->type = &kvx_haps_data;
 
 	for (i = 0; i < rev_d->num_res; ++i) {
 		res_name = rev_d->kvx_eth_res_names[i];
