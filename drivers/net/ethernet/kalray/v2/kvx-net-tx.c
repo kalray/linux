@@ -100,15 +100,18 @@ void kvx_eth_tx_init_cv2(struct kvx_eth_hw *hw)
 
 void kvx_eth_tx_cfg_speed_settings(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	uint32_t stage_one_config = KVX_ETH_TX_TDM_CONFIG_BY4_AGG;
-	uint32_t tdm_config = KVX_ETH_TX_STAGE_ONE_CFG_1_FIFO_8K;
+	uint32_t stage_one_config = KVX_ETH_TX_STAGE_ONE_CFG_1_FIFO_8K;
+	uint32_t tdm_config = KVX_ETH_TX_TDM_CONFIG_BY4_AGG;
 	uint32_t i;
+	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 
-	for (i = 0; i < ARRAY_SIZE(eth_tx_speed_cfg) ; i++) {
-		if (cfg->speed == eth_tx_speed_cfg[i].speed) {
-			stage_one_config = eth_tx_speed_cfg[i].stage_one_config;
-			tdm_config = eth_tx_speed_cfg[i].tdm_config;
-			break;
+	if (dev->type->support_1000baseT_only == false) {
+		for (i = 0; i < ARRAY_SIZE(eth_tx_speed_cfg) ; i++) {
+			if (cfg->speed == eth_tx_speed_cfg[i].speed) {
+				stage_one_config = eth_tx_speed_cfg[i].stage_one_config;
+				tdm_config = eth_tx_speed_cfg[i].tdm_config;
+				break;
+			}
 		}
 	}
 	/* update the stage one configuration (max depth according to used lanes) */
