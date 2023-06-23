@@ -82,7 +82,7 @@ void kvx_mac_pfc_cfg_cv1(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	}
 }
 
-int kvx_eth_haps_phy_init_cv1(struct kvx_eth_hw *hw, unsigned int speed)
+int kvx_eth_haps_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
 {
 	hw->phy_f.reg_avail = false;
 	kvx_phy_reset(hw);
