@@ -8,7 +8,7 @@
 
 #include <linux/types.h>
 #include <linux/uaccess.h>
-#include <linux/kernel.h> // only needed to panic
+#include <linux/kernel.h>
 #include <linux/printk.h>
 #include <linux/perf_event.h>
 #include <linux/sched.h>

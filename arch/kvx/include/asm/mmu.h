@@ -23,7 +23,7 @@
 #define MMU_VIRT_BITS		41
 
 /*
- * See Documentation/kvx/kvx-mmu.txt for details about the division of the
+ * See Documentation/kvx/kvx-mmu.rst for details about the division of the
  * virtual memory space.
  */
 #if defined(CONFIG_KVX_4K_PAGES)
@@ -172,7 +172,7 @@ static inline int get_page_size_shift(int ps)
 }
 
 /*
- * 4 bits are used to index the KVX access permissions. Bytes are used as
+ * 4 bits are used to index the KVX access permissions. Bites are used as
  * follow:
  *
  *   +---------------+------------+-------------+------------+
@@ -181,12 +181,12 @@ static inline int get_page_size_shift(int ps)
  *   |  _PAGE_GLOBAL | _PAGE_EXEC | _PAGE_WRITE | _PAGE_READ |
  *   +---------------+------------+-------------+------------+
  *
- * If _PAGE_GLOBAL is set then the page belongs to the kernel. Otherwise it
- * belongs to the user. When the page belongs to user we set the same
- * rights to kernel.
- * In order to quickly compute policy from this value, we use sbmm operation.
- * The main interest is to avoid an additionnal load and specifically in the
- * assembly refill handler.
+ * If _PAGE_GLOBAL is set then the page belongs to kernel-space. Otherwise it
+ * belongs to user-space. When the page belongs to user-space then give the
+ * same rights to kernel-space.
+ * In order to quickly compute a policy from this value, the sbmm instruction
+ * is used. The main interest is to avoid an additional load, specifically in
+ * the assembly refill handler.
  */
 static inline u8 get_page_access_perms(u8 policy)
 {
@@ -194,7 +194,7 @@ static inline u8 get_page_access_perms(u8 policy)
 	if (!(policy & (_PAGE_READ >> _PAGE_PERMS_SHIFT)))
 		return TLB_PA_NA_NA;
 
-	/* We discard _PAGE_READ bit to get a linear number in [0,7] */
+	/* Discard the _PAGE_READ bit to get a linear number in [0,7] */
 	policy >>= 1;
 
 	/* Use sbmm to directly get the page perms */
@@ -220,7 +220,7 @@ static inline struct kvx_tlb_format tlb_mk_entry(
 	/*
 	 * 0 matches the virtual space:
 	 * - either we are virtualized and the hypervisor will set it
-	 * for us when using writetlb
+	 *   for us when using writetlb
 	 * - Or we are native and the virtual space is 0
 	 */
 	entry.teh_val = TLB_MK_TEH_ENTRY((uintptr_t)vaddr & mask, 0, global,
@@ -264,8 +264,8 @@ static inline int tlb_entry_match_addr(struct kvx_tlb_format tlbe,
 				       unsigned long vaddr)
 {
 	/*
-	 * TLB entries store up to only 41 bits so we must truncate the provided
-	 * address to match teh.pn.
+	 * TLB entries store up to 41 bits so the provided address must be
+	 * truncated to match teh.pn.
 	 */
 	vaddr &= GENMASK(MMU_VIRT_BITS - 1, KVX_SFR_TEH_PN_SHIFT);
 

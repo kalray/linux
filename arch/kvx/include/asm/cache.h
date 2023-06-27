@@ -9,8 +9,8 @@
 #define _ASM_KVX_CACHE_H
 
 /**
- * On KVX I$ and D$ have the same size. (16KB)
- * Caches are 16K bytes big, 4-way set associative, true lru, with 64-byte
+ * On KVX I$ and D$ have the same size (16KB).
+ * Caches are 16KB big, 4-way set associative, true lru, with 64-byte
  * lines. The D$ is also write-through.
  */
 #define KVX_ICACHE_WAY_COUNT	4
@@ -34,7 +34,7 @@
 	(KVX_DCACHE_WAY_COUNT * KVX_DCACHE_SET_COUNT * KVX_DCACHE_LINE_SIZE)
 
 /**
- * Same than for I-cache
+ * Same for I-cache
  */
 #define KVX_DCACHE_INVAL_SIZE	(KVX_DCACHE_SIZE)
 
