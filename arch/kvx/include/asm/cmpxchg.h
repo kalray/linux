@@ -21,7 +21,7 @@
  * old value. However, if it fails, we need to load the value to return it for
  * the caller. If the loaded value is different from the "old" provided by the
  * caller, we can return it since it will means it failed.
- * However, if for some reason the value we read is equals to the old value
+ * However, if for some reason the value we read is equal to the old value
  * provided by the caller, we can't simply return it or the caller will think it
  * succeeded. So if the value we read is the same as the "old" provided by
  * the caller, we try again until either we succeed or we fail with a different
@@ -81,9 +81,9 @@ static __always_inline unsigned long __cmpxchg(unsigned long old,
 		(ptr), sizeof(*(ptr))))
 
 /*
- * In order to optimize xchg for 16 bits, we can use insf/extfz if we know
- * the bounds. This way, we only take one more bundle than standard xchg.
- * We simply do a read modify acswap on a 32 bits word.
+ * In order to optimize xchg for 16 bits, we can use insf/extfz if we know the
+ * bounds. This way, we only take one more bundle than standard xchg. We simply
+ * do a read modify acswap on a 32 bits word.
  */
 
 #define __kvx_insf(org, val, start, stop) __asm__ __volatile__(	\

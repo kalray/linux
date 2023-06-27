@@ -44,13 +44,13 @@ void do_IRQ(struct pt_regs *regs, unsigned long hwirq_mask)
 
 /*
  * Early Hardware specific Interrupt setup
- * -Called very early (start_kernel -> setup_arch -> setup_processor)
- * -Needed for each CPU
+ * - Called very early (start_kernel -> setup_arch -> setup_processor)
+ * - Needed for each CPU
  */
 void kvx_init_core_irq(void)
 {
 	/*
-	 * On KVX, Kernel only care about the following IT:
+	 * On KVX, the kernel only cares about the following ITs:
 	 * - IT0: Timer 0
 	 * - IT2: Watchdog
 	 * - IT4: APIC IT 1
@@ -62,8 +62,8 @@ void kvx_init_core_irq(void)
 	/*
 	 * Specific priorities for ITs:
 	 * - Watchdog has the highest priority: 3
-	 * - Timer has priority 2
-	 * - APIC entries have lowest priority: 1
+	 * - Timer has priority: 2
+	 * - APIC entries have the lowest priority: 1
 	 */
 	uint64_t value = IT_LEVEL(IT0, 0x2) | IT_LEVEL(IT2, 0x3) |
 			IT_LEVEL(IT4, 0x1) | IT_LEVEL(IT24, 0x1);

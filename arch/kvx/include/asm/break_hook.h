@@ -13,8 +13,11 @@
 #include <asm/insns_defs.h>
 
 /*
- * Possible causes of break
- * Since we use set $vsfr0 = $rx, we use the register to differentiate the cause
+ * The following macros define the different causes of break:
+ * The `set $vsfr0 = $rXX` instruction is used which will raise a trap into the
+ * debugger. The trapping instruction is read and decoded to extract the source
+ * register number. The source register number is used to differentiate the
+ * trap cause.
  */
 #define BREAK_CAUSE_BUG		KVX_REG_R1
 #define BREAK_CAUSE_KGDB_DYN	KVX_REG_R2
@@ -31,9 +34,9 @@ enum break_ret {
 	BREAK_HOOK_ERROR = 1,
 };
 
-/**
- * Break insn value for a specific immediate
- * NOTE: We use a set instruction on $vsfr0
+/*
+ * The following macro assembles a `set` instruction targeting $vsfr0
+ * using the source register whose number is __id.
  */
 #define KVX_BREAK_INSN(__id) \
 	KVX_INSN_SET_SYLLABLE_0(KVX_INSN_PARALLEL_EOB, KVX_SFR_VSFR0, __id)

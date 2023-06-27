@@ -13,7 +13,7 @@
  * User-mode register state for core dumps, ptrace, sigcontext
  *
  * This decouples struct pt_regs from the userspace ABI.
- * struct user_regs_struct must form a prefix of struct pt_regs.
+ * The struct user_regs_struct must form a prefix of struct pt_regs.
  */
 struct user_regs_struct {
 	/* GPR */

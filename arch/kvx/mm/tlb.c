@@ -16,8 +16,8 @@
 #include <asm/tlb.h>
 
 /*
- * When in kernel, use dummy asn 42 to be able to catch any problem easily if
- * ASN is not restored properly.
+ * When in kernel, use dummy ASN number 42 to be able to catch any problem
+ * easily if the ASN is not restored properly.
  */
 #define KERNEL_DUMMY_ASN	42
 
@@ -168,9 +168,9 @@ int clear_ltlb_entry(unsigned long vaddr)
 }
 
 /* If mm is current we just need to assign the current task a new ASN. By
- * doing this all previous tlb entries with the former ASN will be invalidated.
- * if mm is not the current one we invalidate the context and when this other
- * mm will be swapped in then a new context will be generated.
+ * doing this all previous TLB entries with the former ASN will be invalidated.
+ * If mm is not the current one we invalidate the context and when this other
+ * mm will be swapped in, a new context will be generated.
  */
 void local_flush_tlb_mm(struct mm_struct *mm)
 {
@@ -224,7 +224,7 @@ void local_flush_tlb_all(void)
 			/* Set is selected automatically according to the
 			 * virtual address.
 			 * With 4K pages the set is the value of the 6 lower
-			 * signigicant bits of the page number.
+			 * significant bits of the page number.
 			 */
 			kvx_sfr_set(TEH, (uint64_t) tlbe.teh_val);
 			kvx_sfr_set_field(MMC, SW, way);
