@@ -24,7 +24,7 @@
 #include <asm/mmu_stats.h>
 #include <asm/stacktrace.h>
 
-int foo(void)
+int asm_offsets(void)
 {
 	BUILD_BUG_ON(sizeof(struct pt_regs) != PT_REGS_STRUCT_EXPECTED_SIZE);
 	/*
@@ -90,7 +90,7 @@ int foo(void)
 	OFFSET(TASK_TI_FLAGS, task_struct, thread_info.flags);
 
 	/*
-	 * Stack pointers
+	 * Stack pointer
 	 */
 	OFFSET(TASK_THREAD_KERNEL_SP, task_struct, thread.kernel_sp);
 

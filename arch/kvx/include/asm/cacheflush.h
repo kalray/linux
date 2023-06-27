@@ -40,8 +40,8 @@ void dcache_wb_inval_phys_range(phys_addr_t addr, unsigned long len, bool wb,
 				bool inval);
 
 /**
- * L1 is indexed by virtual addresses and as such, invalidation takes virtual
- * addresses as arguments.
+ * The L1 is indexed by virtual addresses and as such, invalidation takes a
+ * virtual address as its argument.
  */
 static inline
 void l1_inval_dcache_range(unsigned long vaddr, unsigned long size)
@@ -65,7 +65,7 @@ void inval_dcache_range(phys_addr_t paddr, unsigned long size)
 	/*
 	 * Inval L2 first to avoid refilling from cached L2 values.
 	 * If L2 cache is not enabled, it will return false and hence, we will
-	 * fall back on L1 invalidation.
+	 * fall back to L1 invalidation.
 	 */
 	if (!l2_cache_inval_range(paddr, size))
 		l1_inval_dcache_range((unsigned long) phys_to_virt(paddr),

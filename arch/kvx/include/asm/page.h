@@ -31,7 +31,7 @@
 #define __VA(x)	((x) + PA_TO_VA_OFFSET)
 
 #if defined(CONFIG_KVX_4K_PAGES)
-/* Maximum usable bit using with 4K pages and current page table layout */
+/* Maximum usable bit using 4K pages and current page table layout */
 #define VA_MAX_BITS	40
 #define PGDIR_SHIFT     30
 #define PMD_SHIFT       21
