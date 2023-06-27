@@ -30,25 +30,19 @@
 #define REG_SIZE	sizeof(u64)
 
 /**
- * When updating pt_regs structure, you need to update this size.
- * This is the expected size of the pt_regs struct.
- * It ensure the structure layout from gcc is the same as the one we
- * expect in order to do packed load (load/store octuple) in assembly.
- * It let us to be free of any __packed attribute which might greatly
- * reduce code performance.
- * Conclusion: never put sizeof(pt_regs) in here or we loose this check
- * (build time check done in asm-offsets.c)
+ * When updating the pt_regs structure, the size must be updated as well.
+ * This is the expected size of the pt_regs struct. It ensures the structure
+ * layout from gcc is the same as the one we expect in order to do packed loads
+ * (load/store octuple) in assembly.
  */
 #define PT_REGS_STRUCT_EXPECTED_SIZE \
 			((GPR_COUNT + SFR_COUNT + VIRT_COUNT) * REG_SIZE + \
 			2 * REG_SIZE) /* Padding for stack alignment */
 
-/**
- * Saved register structure. Note that we should save only the necessary
- * registers.
- * When you modify it, please read carefully the comment above.
- * Moreover, you will need to modify user_pt_regs to match the beginning
- * of this struct 1:1
+/*
+ * Saved register structure. Please carefully read the comment above when
+ * modifying this struct. Moreover, user_pt_regs must be modified as well to
+ * match the beginning of this struct 1:1
  */
 struct pt_regs {
 	/* GPR */

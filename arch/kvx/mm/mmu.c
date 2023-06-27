@@ -42,11 +42,10 @@ static int kvx_mmu_ltlb_overlaps(struct kvx_tlb_format tlbe)
 /**
  * kvx_mmu_ltlb_add_entry - Add a kernel entry in the LTLB
  *
- * In order to lock some entries in tlb and be always mapped, this function can
- * be called using physical address, virtual address and protection attribute to
- * add an entry into the LTLB.
- * This is mainly for performances since there won't be any NOMAPPING traps
- * for these pages.
+ * In order to lock some entries in LTLB and be always mapped, this function
+ * can be called with a physical address, a virtual address and protection
+ * attributes to add an entry into the LTLB. This is mainly for performances
+ * gains since there won't be any NOMAPPING traps for these pages.
  *
  * @vaddr: Virtual address for the entry (must be aligned according to tlb_ps)
  * @paddr: Physical address for the entry (must be aligned according to tlb_ps)

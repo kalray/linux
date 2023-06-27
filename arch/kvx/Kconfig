@@ -175,7 +175,7 @@ config CACHECTL_UNSAFE_PHYS_OPERATIONS
 	help
 	  Enable cachectl syscall to allow writebacking/invalidating ranges
 	  based on physical addresses. These operations requires the
-	  CAP_SYS_ADMIN capability
+	  CAP_SYS_ADMIN capability.
 
 config ENABLE_TCA
 	bool "Enable TCA coprocessor support"

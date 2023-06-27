@@ -24,7 +24,7 @@ struct mm_struct;
 struct vm_area_struct;
 
 /*
- * Hugetlb definitions. All sizes are supported (64Ko, 2Mo and 512Mo).
+ * Hugetlb definitions. All sizes are supported (64K, 2M and 512M).
  */
 #if defined(CONFIG_KVX_4K_PAGES)
 #define HUGE_MAX_HSTATE		3
@@ -134,14 +134,14 @@ extern struct page *empty_zero_page;
 #define __pte_to_swp_entry(pte) ((swp_entry_t) { pte_val(pte) })
 #define __swp_entry_to_pte(x)   ((pte_t) { (x).val })
 
-/**********************
+/*
  * PGD definitions:
  *   - pgd_ERROR
  */
 #define pgd_ERROR(e) \
 	pr_err("%s:%d: bad pgd %016lx.\n", __FILE__, __LINE__, pgd_val(e))
 
-/**
+/*
  * PUD
  *
  * As we manage a three level page table the call to set_pud is used to fill
@@ -171,7 +171,7 @@ static inline void pud_clear(pud_t *pud)
 	set_pud(pud, __pud(0));
 }
 
-/**********************
+/*
  * PMD definitions:
  *   - set_pmd
  *   - pmd_present
@@ -204,15 +204,12 @@ static inline int pmd_bad(pmd_t pmd)
 	return pmd_none(pmd);
 }
 
-/* Clears the entry to prevent process to use the linear address that
- * mapped it.
- */
 static inline void pmd_clear(pmd_t *pmdp)
 {
 	set_pmd(pmdp, __pmd(0));
 }
 
-/* Returns the addess of the descriptor of the page table referred by the
+/* Returns the address of the descriptor of the page table referred to by the
  * PMD entry.
  */
 static inline struct page *pmd_page(pmd_t pmd)
@@ -237,7 +234,7 @@ static inline struct page *pud_page(pud_t pud)
 	return pfn_to_page(pud_val(pud) >> PAGE_SHIFT);
 }
 
-/**********************
+/*
  * PTE definitions:
  *   - set_pte
  *   - set_pte_at

@@ -152,8 +152,8 @@ void release_thread(struct task_struct *dead_task)
 
 void flush_thread(void)
 {
-	/* This function should clear the values of the floating point
-	 * registers and debug registers saved in the TSS segment.
+	/* This function clears the values of the floating point registers and
+	 * debug registers saved in the TSS segment.
 	 */
 
 	flush_ptrace_hw_breakpoint(current);
@@ -163,9 +163,9 @@ void flush_thread(void)
 int dump_fpu(struct pt_regs *regs, elf_fpregset_t *fpu)
 {
 	/*
-	 * On KVX, FPU uses standard registers + $cs which is a common register
-	 * also needed for non-fpu execution also so there is no additional
-	 * registers to dump.
+	 * On kvx, the FPU uses standard registers + $cs which is a common
+	 * register also needed for non-fpu execution, so there is no extra
+	 * register to dump.
 	 */
 	return 0;
 }
@@ -178,7 +178,7 @@ static bool find_wchan(unsigned long pc, void *arg)
 	 * If the pc is in a scheduler function (waiting), then, this is the
 	 * address where the process is currently stuck. Note that scheduler
 	 * functions also include lock functions. This functions are
-	 * materialized using annotation to put them is special text sections.
+	 * materialized using annotations to put them in special text sections.
 	 */
 	if (!in_sched_functions(pc)) {
 		*p = pc;

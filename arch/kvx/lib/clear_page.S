@@ -16,8 +16,6 @@
 
 /*
  * Clear page @dest.
- * Use dzerol kvx instruction to clear a page efficiently by zeroing cache
- * lines.
  *
  * Parameters:
  *	r0 - dest page
