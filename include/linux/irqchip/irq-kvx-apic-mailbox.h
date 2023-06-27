@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2018 Kalray Inc.
+ * Copyright (C) 2017-2023 Kalray Inc.
  */
 
 #ifndef IRQ_KVX_APIC_MAILBOX_H

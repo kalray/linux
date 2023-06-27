@@ -2,7 +2,7 @@
 /*
  * derived from drivers/pci/controller/pcie-xilinx-nwl.c
  *
- * Copyright (c) 2017 - 2022 Kalray Inc.
+ * Copyright (C) 2017-2023 Kalray Inc.
  * Author(s): Vincent Chardon
  *            Clement Leger
  *
