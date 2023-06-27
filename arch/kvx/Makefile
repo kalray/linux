@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# Copyright (C) 2018 Kalray Inc.
+# Copyright (C) 2017-2023 Kalray Inc.
 
 ifeq ($(CROSS_COMPILE),)
 CROSS_COMPILE := kvx-elf-

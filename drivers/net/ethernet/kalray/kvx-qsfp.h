@@ -4,7 +4,7 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2022 Kalray Inc.
+ * Copyright (C) 2017-2023 Kalray Inc.
  */
 #ifndef NET_KVX_QSFP_H
 #define NET_KVX_QSFP_H

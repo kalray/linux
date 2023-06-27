@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2017 - 2023 Kalray Inc.
+ * Copyright (C) 2017-2023 Kalray Inc.
  * Author(s): Guillaume Thouvenin
  *            Clement Leger
  *            Vincent Chardon

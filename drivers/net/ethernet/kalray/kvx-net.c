@@ -4,8 +4,9 @@
  * License.  See the file "COPYING" in the main directory of this archive
  * for more details.
  *
- * Copyright (C) 2019 Kalray Inc.
+ * Copyright (C) 2017-2023 Kalray Inc.
  */
+
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/types.h>
