@@ -4,17 +4,16 @@ config KVX_DEBUG_ASN
 	bool "Check ASN before writing TLB entry"
 	default n
 	help
-	  This option allows to check if the ASN of the current
-	  process is matching the ASN found in MMC. If it is not the
-	  case an error will be printed.
+	  This option allows to check if the ASN of the current process matches
+	  the ASN found in MMC. If it is not the case an error will be printed.
 
 config KVX_DEBUG_TLB_WRITE
 	bool "Enable TLBs write checks"
 	default n
 	help
 	  Enabling this option will enable TLB access checks. This is
-	  particularly helpful when modifying the assembly code responsible
-	  of TLB refill. If set, mmc.e will be checked each time the tlb are
+	  particularly helpful when modifying the assembly code responsible for
+	  the TLB refill. If set, mmc.e will be checked each time the TLB is
 	  written and a panic will be thrown on error.
 
 config KVX_DEBUG_TLB_ACCESS
@@ -22,9 +21,9 @@ config KVX_DEBUG_TLB_ACCESS
 	default n
 	help
 	  Enabling this option will enable TLB entry manipulation logging.
-	  Each time an entry will be added to the TLBs, it will be logged in
-	  an array readable via gdb scripts. This can be useful to understand
-	  strange crashes related to suspicious virtual/physical addresses.
+	  Each time an entry is added to the TLBs, it will be logged in an
+	  array readable via gdb scripts. This can be useful to understand
+	  crashes related to suspicious virtual/physical addresses.
 
 config KVX_DEBUG_TLB_ACCESS_BITS
 	int "Number of bits used as index of entries in log table"
@@ -35,16 +34,16 @@ config KVX_DEBUG_TLB_ACCESS_BITS
 	  in a ring buffer called kvx_tlb_access. One entry in the table
 	  contains registers TEL, TEH and MMC. It also logs the type of the
 	  operations (0:read, 1:write, 2:probe). Buffer is per CPU. For one
-	  entry 24 bytes are used. So by default it uses 96Ko of memory per
+	  entry 24 bytes are used. So by default it uses 96KB of memory per
 	  CPU to store 2^12 (4096) entries.
 
 config KVX_MMU_STATS
-	bool "Register mmu stats debugfs entries"
+	bool "Register MMU stats debugfs entries"
 	default n
 	select DEBUG_FS
 	help
-	  Enable debugfs attribute which will allow inspecting various metric
-	  regarding MMU:
+	  Enable debugfs attribute which will allow inspecting various metrics
+	  regarding the MMU:
 	  - Number of nomapping traps handled
 	  - avg/min/max time for nomapping refill (user/kernel)
 
@@ -53,8 +52,8 @@ config DEBUG_SFR_SET_MASK
 	default n
 	help
 	  Verify that values written using kvx_sfr_set_mask are matching the
-	  mask. This ensure that no extra bits of sfr will be overridden by some
-	  incorrectly truncated values. This can lead to huge problems by
-	  modifying important bits in system registers.
+	  mask. This ensure that no extra bits of sfr will be overridden by
+	  incorrectly truncated values, which can lead to problems by modifying
+	  important bits in system registers.
 
 endmenu
