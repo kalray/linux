@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# Copyright (C) 2017 Kalray Inc.
+# Copyright (C) 2017-2023 Kalray Inc.
 #
 
 obj-y := init.o mmu.o fault.o tlb.o extable.o dma-mapping.o cacheflush.o

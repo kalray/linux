@@ -2,7 +2,7 @@
 /*
  * derived from arch/riscv/kernel/syscall_table.c
  *
- * Copyright (C) 2017-2022 Kalray Inc.
+ * Copyright (C) 2017-2023 Kalray Inc.
  * Author(s): Clement Leger
  */
 

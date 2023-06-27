@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017 - 2022 Kalray Inc.
+ * Copyright (C) 2017-2023 Kalray Inc.
  * Author(s): Thomas Costis
  */
+
 #include <linux/sysfs.h>
 #include <linux/platform_device.h>
 #include <linux/debugfs.h>
