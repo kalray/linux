@@ -2,7 +2,7 @@
 /*
  * derived from arch/riscv/kernel/ptrace.c
  *
- * Copyright (C) 2017-2022 Kalray Inc.
+ * Copyright (C) 2017-2023 Kalray Inc.
  * Author(s): Marius Gligor
  *            Clement Leger
  */

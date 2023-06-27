@@ -6,7 +6,7 @@
  * autonomous. This driver is derived from the usb-nop-xceiv driver, but
  * this one use the new generic phy api.
  *
- * Copyright (c) 2022 Kalray Inc.
+ * Copyright (C) 2017-2023 Kalray Inc.
  * Author(s): Jules Maselbas
  */
 
