@@ -50,8 +50,8 @@
 
 #ifndef __ASSEMBLY__
 
-typedef void (*trap_handler_func) (uint64_t es, uint64_t ea,
-				   struct pt_regs *regs);
+typedef void (*trap_handler_func) (struct pt_regs *regs, uint64_t es,
+				   uint64_t ea);
 
 #define trap_cause(__es) kvx_sfr_field_val(__es, ES, HTC)
 
@@ -65,8 +65,8 @@ typedef void (*trap_handler_func) (uint64_t es, uint64_t ea,
 	kvx_sfr_field_val((__es), ES, SFRP)
 
 #ifdef CONFIG_MMU
-extern void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs);
-extern void do_writetoclean(uint64_t es, uint64_t ea, struct pt_regs *regs);
+extern void do_page_fault(struct pt_regs *regs, uint64_t es, uint64_t ea);
+extern void do_writetoclean(struct pt_regs *regs, uint64_t es, uint64_t ea);
 #endif
 
 void user_do_sig(struct pt_regs *regs, int signo, int code, unsigned long addr);
