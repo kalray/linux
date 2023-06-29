@@ -115,8 +115,9 @@ extern long strncpy_from_user(char *dest, const char __user *src, long count);
 	might_fault();							\
 	if (likely(access_ok(__p, sizeof(*__p)))) {			\
 		__e = __get_user(x, __p);				\
-	} else								\
+	} else {							\
 		x = 0;							\
+	}								\
 	__e;								\
 })
 

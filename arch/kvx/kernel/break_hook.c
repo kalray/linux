@@ -23,9 +23,9 @@ void kvx_skip_break_insn(struct pt_regs *regs)
 	regs->spc += KVX_BREAK_INSN_SIZE;
 }
 
-int break_hook_handler(uint64_t es, struct pt_regs *regs)
+int break_hook_handler(struct pt_regs *regs, uint64_t es)
 {
-	int (*fn)(struct break_hook *brk_hook, struct pt_regs *regs) = NULL;
+	int (*fn)(struct pt_regs *regs, struct break_hook *brk_hook) = NULL;
 	struct break_hook *tmp_hook, *hook = NULL;
 	struct list_head *list;
 	unsigned long flags;
@@ -51,7 +51,7 @@ int break_hook_handler(uint64_t es, struct pt_regs *regs)
 		return BREAK_HOOK_ERROR;
 
 	fn = hook->handler;
-	return fn(hook, regs);
+	return fn(regs, hook);
 }
 
 void break_hook_register(struct break_hook *brk_hook)

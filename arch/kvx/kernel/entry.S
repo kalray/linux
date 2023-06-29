@@ -318,8 +318,8 @@ SYM_FUNC_END(return_from_exception)
 .macro debug_function
 	get $r1 = $ea
 	;;
-	/* debug_handler($r0: pt_regs, $r1: ea) */
-	call debug_handler
+	/* do_debug($r0: pt_regs, $r1: ea) */
+	call do_debug
 	;;
 .endm
 
@@ -349,32 +349,27 @@ SYM_FUNC_END(return_from_exception)
 	 * On kvx, we do not have hardware page walking, hence, TLB refill is
 	 * done using the core on no-mapping traps.
 	 * This routine must be as fast as possible to avoid wasting CPU time.
-	 * For that purpose, it is called directly from trap_handle after saving
-	 * only 8 registers ($r0 -> $r7) in a dedicated buffer.
-	 * To avoid taking nomapping while accessing page tables inside this
-	 * refill handler we switch to physical accesses using DAUS.
-	 * Once the switch is done, we save up to 8 registers to compute
-	 * the refill data.
-	 * This allows to avoid computing a complete task switching in order
-	 * to greatly reduce the refill time.
+	 * For that purpose, it is called directly after saving only 12 registers
+	 * ($r0 -> $r7) in a dedicated buffer. To avoid taking nomapping while
+	 * accessing page tables inside this refill handler we switch to
+	 * physical accesses using DAUS. Once the switch is done, we save 12
+	 * registers to compute the refill data. This avoids doing a full
+	 * context switch, thus greatly reducing the refill time.
 	 *
 	 * We refill the JTLB which contains 128 sets with 4 way each.
 	 * Currently, the way selection is done using a round robin algorithm.
 	 *
 	 * The refill is using the basic flow:
-	 * 1 -	Enable physical access using DAUS.
-	 * 2 -	Save necessary registers
-	 * 3 -	Walk the page table to find the TLB entry to add (virtual to
-	 *	physical)
-	 * 4 -	Compute the TLB entry to be written (convert PTE to TLB entry)
-	 * 5 - 	Compute the target set (0 -> 127) for the new TLB entry
-	 *	This is done by extracting the 6 lsb of page number
-	 * 6 -	Get the current way to be used which is selected using a
-		simple round robin
-	 * 7 -	Mark PTE entry as _PAGE_ACCESSED (and optionally PAGE_DIRTY)
-	 * 8 -	Commit the new tlb entry
-	 * 9 -  Restore the virtual memory by disabling DAUS.
-	 *
+	 * 1 - Enable physical access using DAUS
+	 * 2 - Save necessary registers
+	 * 3 - Walk the page table to find the TLB entry to add (virt to phys)
+	 * 4 - Compute the TLB entry to be written (convert PTE to TLB entry)
+	 * 5 - Compute the target set (0 -> 127) for the new TLB entry. This
+	 *     is done by extracting the 6 lsb of page number
+	 * 6 - Get the current way, which is selected using round robin
+	 * 7 - Mark PTE entry as _PAGE_ACCESSED (and optionally PAGE_DIRTY)
+	 * 8 - Commit the new TLB entry
+	 * 9 - Restore the virtual memory by disabling DAUS
 	 */
 	/* Get current task */
 	rswap $r63 = $sr
@@ -391,7 +386,7 @@ SYM_FUNC_END(return_from_exception)
 	so __PA(TASK_THREAD_SAVE_AREA_QUAD(2))[$r63] = $r8r9r10r11
 	;;
 	get $r8 = $tel
-	/* Save register for refill handler */
+	/* Save registers for refill handler */
 	so __PA(TASK_THREAD_SAVE_AREA_QUAD(1))[$r63] = $r4r5r6r7
 	;;
 	/* Get exception address */
@@ -407,7 +402,7 @@ SYM_FUNC_END(return_from_exception)
 	rswap $r63 = $sr
 	/* Check kernel address range */
 	addd $r4 = $r0, -KERNEL_DIRECT_MEMORY_MAP_BASE
-	/* Load task active mm for pgd loading in macro_tlb_refill */
+	/* Load task active mm to access pgd used in kvx_std_tlb_refill */
 	ld $r1 = __PA(TASK_ACTIVE_MM)[$r63]
 	;;
 kvx_perf_tlb_refill:
@@ -456,12 +451,12 @@ kvx_std_tlb_refill:
 	cmoved.deqz $r1? $r1 = init_mm
 	;;
 	get $r7 = $pcr
-	/* Load pgd base address into $r1 */
+	/* Load PGD base address into $r1 */
 	ld $r1 = __PA(MM_PGD)[$r1]
 	;;
 	/* Add offset for physical address */
 	addd $r1 = $r1, VA_TO_PA_OFFSET
-	/* Extract processor ID to compute cpu_offset*/
+	/* Extract processor ID to compute cpu_offset */
 	extfz $r7 = $r7, KVX_SFR_END(PCR_PID), KVX_SFR_START(PCR_PID)
 	;;
 	/* Load PGD entry offset */
@@ -473,7 +468,7 @@ kvx_std_tlb_refill:
 	;;
 	/* extract PMD offset*/
 	extfz $r3 = $r0, (ASM_PMD_SHIFT + ASM_PMD_BITS - 1), ASM_PMD_SHIFT
-	/* If pgd entry is null -> out */
+	/* If PGD entry is null -> out */
 	cb.deqz $r1? refill_err_out
 #if defined(CONFIG_SMP)
 	/* Load cpu offset */
@@ -489,7 +484,7 @@ kvx_std_tlb_refill:
 	;;
 	/* Check if it is a huge page (2Mb or 512Mb in PMD table)*/
 	andd $r6 = $r1, _PAGE_HUGE
-	/* If pmd entry is null -> out */
+	/* If PMD entry is null -> out */
 	cb.deqz $r1? refill_err_out
 	/* extract PTE offset */
 	extfz $r3 = $r0, (PAGE_SHIFT + 8), PAGE_SHIFT
@@ -518,8 +513,8 @@ kvx_std_tlb_refill:
 /*
  * This path expects the following:
  * - $r0 = set index
- * - $r1 = pte entry
- * - $r2 = pte entry address
+ * - $r1 = PTE entry
+ * - $r2 = PTE entry address
  * - $r4 = virtual page address
  */
 pte_prepared:
@@ -578,7 +573,7 @@ pte_prepared:
 	/* Add _PAGE_ACCESSED bit to PTE entry for writeback */
 	ord $r7 = $r7, _PAGE_ACCESSED
 	;;
-	/* OR PTE value with accessed/dirty flags */
+	/* Or PTE value with accessed/dirty flags */
 	ord $r1 = $r1, $r7
 	/* Generate the byte selection for sbmm */
 	slld $r5 = $r5, $r3
@@ -600,9 +595,9 @@ pte_prepared:
 	slld $r6 = $r6, KVX_SFR_TEL_PA_SHIFT
 	set $teh = $r4
 	;;
-	/* Store updated pte entry */
+	/* Store updated PTE entry */
 	sd 0[$r2] = $r1
-	/* Prepare tel */
+	/* Prepare $tel */
 	ord $r6 = $r0, $r6
 	/* Get current task pointer for register restoration */
 	get $r11 = $sr
@@ -736,7 +731,6 @@ asn_check_ok:
 	/* Enable MME in $sps */
 	make $r4 = MME_WFXL(1)
 	;;
-	/* Reenable $mme in $sps */
 	wfxl $sps, $r4
 	;;
 	get $r4 = TMP_SCRATCH_SR
@@ -748,19 +742,18 @@ is_huge_page:
 	/*
 	 * When entering this path:
 	 * - $r0 = $ea
-	 * - $r1 = pte entry
+	 * - $r1 = PTE entry
 	 * - $r7 = cpu offset for tlb_current_set_way
 	 *
-	 * From now on, we have the pte value in $r1 so we can extract the page
+	 * From now on, we have the PTE value in $r1 so we can extract the page
 	 * size. This value is stored as it is expected by the MMU (ie between
 	 * 0 and 3).
-	 * Note that page size value is located at the same place as in $tel
-	 * and this is checked at build time so we can use TEL_PS defines.
-	 * In this codepath, we will extract the set and mask exception address
-	 * and align virt and phys address with what the hardware expect.
-	 * Indeed, MMU expect lsb of the virtual and physycal address to be 0
-	 * according to page size.
-	 * This means that for 4K pages, the 12 lsb must be 0, for 64K
+	 * Note that the page size value is located at the same place as in
+	 * $tel and this is checked at build time so we can use TEL_PS defines.
+	 * In this codepath, we extract the set and mask exception address and
+	 * align virt and phys address with what the hardware expects. The MMU
+	 * expects the lsb of the virt and phys addresses to be 0 according to
+	 * the page size, i.e., for 4K pages, the 12 lsb must be 0, for 64K
 	 * pages, the 16 lsb must be 0 and so on.
 	 */
 	extfz $r5 = $r1, KVX_SFR_END(TEL_PS), KVX_SFR_START(TEL_PS)
@@ -775,7 +768,7 @@ is_huge_page:
 	sbmm8 $r5 = $r4, $r6
 	make $r4 = 0xFFFFFFFFFFFFFFFF
 	;;
-	/* extract TLB set from ea (6 lsb of virtual page) */
+	/* extract TLB set from $ea (6 lsb of virt page) */
 	srld $r5 = $r0, $r5
 	/* Generate ea masking according to page shift */
 	slld $r4 = $r4, $r5
@@ -785,7 +778,7 @@ is_huge_page:
 	/* Extract virt page from ea */
 	andd $r4 = $r0, $r4
 	;;
-	/* Returned to fast path */
+	/* Return to fast path */
 	goto pte_prepared
 	;;
 
@@ -804,7 +797,7 @@ mmc_error_check:
 #ifdef CONFIG_KVX_DEBUG_ASN
 /*
  * When entering this path $r11 = $sr.
- * WARNING: Do not clobber it here if you don't want to mess up with registers
+ * WARNING: Do not clobber it here if you don't want to mess up the register
  * restoration above.
  */
 asn_check:
@@ -820,22 +813,22 @@ asn_check:
 	ld $r3 = __PA(TASK_ACTIVE_MM)[$r11]
 	;;
 	get $r5 = $mmc
-	/* Extract processor ID to compute cpu_offset*/
+	/* Extract processor ID to compute cpu_offset */
 	extfz $r2 = $r2, KVX_SFR_END(PCR_PID), KVX_SFR_START(PCR_PID)
 	addd $r3 = $r3, MM_CTXT_ASN
 	;;
 	extfz $r4 = $r5, KVX_SFR_END(MMC_ASN), KVX_SFR_START(MMC_ASN)
 	addd $r3 = $r3, VA_TO_PA_OFFSET
 	;;
-	/* Load current asn from active_mm */
+	/* Load current ASN from active_mm */
 	ld.xs $r3 = $r2[$r3]
 	;;
 	/* Error if ASN is not set */
 	cb.deqz $r3? asn_check_err
-	/* Mask $r3 asn cycle part */
+	/* Mask $r3 ASN cycle part */
 	andd $r5 = $r3, ((1 << KVX_SFR_MMC_ASN_WIDTH) - 1)
 	;;
-	/* Compare asn in $mmc and asn in current task mm */
+	/* Compare the ASN in $mmc and the ASN in current task mm */
 	compd.eq $r3 = $r5, $r4
 	;;
 	cb.dnez $r3? asn_check_ok
@@ -897,8 +890,8 @@ trap_slow_path:
 	;;
 	get $r1 = $es
 	;;
-	/* trap_handler($r0: pt_regs, $r1: es, $r2: ea) */
-	call trap_handler
+	/* do_hwtrap($r0: pt_regs, $r1: es, $r2: ea) */
+	call do_hwtrap
 	;;
 .endm
 
@@ -911,11 +904,11 @@ trap_slow_path:
 	get $r2 = $ile
 	;;
 	/**
-	 * When an interrupt happens, the processor automatically clears
-	 * the corresponding bit in $ilr. However, as we are using $ilr
-	 * to get the list of irq we want to handle, we need to or the
-	 * current interrupt number in the irq mask coming from $ilr.
-	 * In order to do that, get $es to get the pending irq.
+	 * When an interrupt happens, the processor automatically clears the
+	 * corresponding bit in $ilr. However, as we are using $ilr to get the
+	 * list of irq we want to handle, we need to or the current interrupt
+	 * number in the irq mask coming from $ilr. In order to do that, read
+	 * $es to get the pending irq.
 	 */
 	get $r3 = $es
 	make $r4 = 1
@@ -923,9 +916,9 @@ trap_slow_path:
 	/* Extract interrupt number from $es */
 	extfz $r3 = $r3, KVX_SFR_END(ES_ITN), KVX_SFR_START(ES_ITN)
 	/**
-	 * Mask requests with enabled line since ILR will also contain disabled
-	 * interrupt lines (ie not enabled in $ile) and we want to respect the
-	 * current state of interrupt lines.
+	 * Mask requests with $ile, because $ilr also contains disabled
+	 * interrupt lines (i.e., not enabled in $ile) and we want to respect
+	 * the current state of interrupt lines.
 	 */
 	andd $r1 = $r1, $r2
 	;;
@@ -933,11 +926,11 @@ trap_slow_path:
 	wfxl $ilr, $r1
 	slld $r4 = $r4, $r3
 	;;
-	/* Or the irq mask with the current pending irq */
+	/* Or the irq mask with the currently pending irq */
 	ord $r1 = $r1, $r4
 
-	/* do_IRQ($r0: pt_regs, $r1: hwirq_mask) */
-	call do_IRQ
+	/* do_irq($r0: pt_regs, $r1: hwirq_mask) */
+	call do_irq
 	;;
 .endm
 
