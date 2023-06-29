@@ -168,10 +168,11 @@ static int setup_rt_frame(struct ksignal *ksig, sigset_t *set,
 
 static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 {
+	bool stepping;
 	sigset_t *oldset = sigmask_to_save();
 	int ret;
 
-	/* Are we from a system call? */
+	/* Are we in a system call? */
 	if (in_syscall(regs)) {
 		/* If so, check system call restarting.. */
 		switch (regs->r0) {
@@ -192,21 +193,31 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 		}
 	}
 
+	/*
+	 * If TF is set due to a debugger (TIF_FORCED_TF), clear TF now
+	 * so that register information in the sigcontext is correct and
+	 * then notify the tracer before entering the signal handler.
+	 */
+	stepping = test_thread_flag(TIF_SINGLESTEP);
+	if (stepping)
+		user_disable_single_step(current);
+
 	ret = setup_rt_frame(ksig, oldset, regs);
 
-	signal_setup_done(ret, ksig, 0);
+	signal_setup_done(ret, ksig, stepping);
 }
 
-asmlinkage void arch_do_signal_or_restart(struct pt_regs *regs, bool has_signal)
+asmlinkage void arch_do_signal_or_restart(struct pt_regs *regs,
+					  bool has_signal)
 {
 	struct ksignal ksig;
 
-	if (get_signal(&ksig)) {
+	if (has_signal && get_signal(&ksig)) {
 		handle_signal(&ksig, regs);
 		return;
 	}
 
-	/* Are we from a system call? */
+	/* Did we come from a system call? */
 	if (in_syscall(regs)) {
 		/*
 		 * If we are here, this means there is no handler
