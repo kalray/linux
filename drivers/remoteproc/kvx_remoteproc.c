@@ -396,6 +396,15 @@ int kvx_rproc_unreg_ethtx_crd_set(struct platform_device *pdev, struct net_devic
 }
 EXPORT_SYMBOL(kvx_rproc_unreg_ethtx_crd_set);
 
+static void zero_smem(struct kvx_rproc_mem *mem)
+{
+	void __iomem *p = mem->cpu_addr;
+
+	for (; p < mem->cpu_addr + mem->size; p += 8)
+		writeq(0ULL, p);
+
+	__builtin_kvx_fence();
+}
 
 static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
 {
@@ -440,6 +449,8 @@ static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
 	ret = wait_cluster_ready(kvx_rproc);
 	if (ret)
 		return ret;
+
+	zero_smem(&kvx_rproc->mem[KVX_INTERNAL_MEM_TCM]);
 
 	for (i = 0; i < ARRAY_SIZE(kvx_rproc->ethtx_credit) ; i++) {
 		if (p_crd[i].set_enabled) {
