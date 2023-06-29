@@ -84,7 +84,7 @@ static int handle_vmalloc_fault(uint64_t ea)
 	return 0;
 }
 
-void do_page_fault(uint64_t es, uint64_t ea, struct pt_regs *regs)
+void do_page_fault(struct pt_regs *regs, uint64_t es, uint64_t ea)
 {
 	struct mm_struct *mm;
 	struct vm_area_struct *vma;
@@ -258,7 +258,7 @@ do_sigbus:
 
 }
 
-void do_writetoclean(uint64_t es, uint64_t ea, struct pt_regs *regs)
+void do_writetoclean(struct pt_regs *regs, uint64_t es, uint64_t ea)
 {
 	panic("%s not implemented", __func__);
 }

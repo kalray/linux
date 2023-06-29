@@ -54,7 +54,7 @@ struct pt_regs;
  */
 struct break_hook {
 	struct list_head node;
-	int (*handler)(struct break_hook *brk_hook, struct pt_regs *regs);
+	int (*handler)(struct pt_regs *regs, struct break_hook *brk_hook);
 	u8 id;
 	u8 mode;
 };
@@ -64,6 +64,6 @@ void kvx_skip_break_insn(struct pt_regs *regs);
 void break_hook_register(struct break_hook *brk_hook);
 void break_hook_unregister(struct break_hook *brk_hook);
 
-int break_hook_handler(u64 es, struct pt_regs *regs);
+int break_hook_handler(struct pt_regs *regs, u64 es);
 
 #endif /* __ASM_KVX_BREAK_HOOK_H_ */

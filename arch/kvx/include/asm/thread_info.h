@@ -16,8 +16,8 @@
 /*
  * Size of the kernel stack for each process.
  */
-#define THREAD_SIZE_ORDER       2
-#define THREAD_SIZE             (PAGE_SIZE << THREAD_SIZE_ORDER)
+#define THREAD_SIZE_ORDER	2
+#define THREAD_SIZE		(PAGE_SIZE << THREAD_SIZE_ORDER)
 
 /*
  * Thread information flags
@@ -30,11 +30,11 @@
 #define TIF_SIGPENDING		2	/* signal pending */
 #define TIF_NEED_RESCHED	3	/* rescheduling necessary */
 #define TIF_SINGLESTEP		4	/* restore singlestep on return to user mode */
-#define TIF_UPROBE		5
+#define TIF_UPROBE		5	/* uprobe breakpoint or singlestep */
 #define TIF_RESTORE_SIGMASK	9
 #define TIF_NOTIFY_SIGNAL	10	/* signal notifications exist */
 #define TIF_POLLING_NRFLAG	16	/* true if poll_idle() is polling TIF_NEED_RESCHED */
-#define TIF_MEMDIE		17
+#define TIF_MEMDIE		17	/* is terminating due to OOM killer */
 
 #define _TIF_NOTIFY_RESUME	(1 << TIF_NOTIFY_RESUME)
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
@@ -64,10 +64,10 @@ struct thread_info {
 #define INIT_THREAD_INFO(tsk)			\
 {						\
 	.flags		= 0,			\
-	.preempt_count  = INIT_PREEMPT_COUNT,	\
+	.preempt_count	= INIT_PREEMPT_COUNT,	\
 }
 
-/* how to get the current stack pointer from C */
+/* Get the current stack pointer from C */
 register unsigned long current_stack_pointer asm("$sp") __used;
 
 #endif /* __ASSEMBLY__*/

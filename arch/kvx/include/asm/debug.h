@@ -25,10 +25,11 @@ enum debug_ret {
  */
 struct debug_hook {
 	struct list_head node;
-	int (*handler)(u64 ea, struct pt_regs *regs);
+	int (*handler)(struct pt_regs *regs, u64 ea);
 	u8 mode;
 };
 
+void debug_handler(struct pt_regs *regs, u64 ea);
 void debug_hook_register(struct debug_hook *dbg_hook);
 void debug_hook_unregister(struct debug_hook *dbg_hook);
 
