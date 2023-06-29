@@ -333,7 +333,7 @@ long arch_ptrace(struct task_struct *child, long request,
 	return ret;
 }
 
-static int kvx_bkpt_handler(struct break_hook *brk_hook, struct pt_regs *regs)
+static int kvx_bkpt_handler(struct pt_regs *regs, struct break_hook *brk_hook)
 {
 	/* Unexpected breakpoint */
 	if (!(current->ptrace & PT_PTRACED))
@@ -372,7 +372,7 @@ void user_disable_single_step(struct task_struct *child)
  * @ea: Exception Address register
  * @regs: pointer to registers saved when enter debug
  */
-int ptrace_debug_handler(u64 ea, struct pt_regs *regs)
+int ptrace_debug_handler(struct pt_regs *regs, u64 ea)
 {
 	int debug_cause = debug_dc(regs->es);
 

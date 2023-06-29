@@ -180,7 +180,7 @@ int kgdb_arch_handle_exception(int vector, int signo, int err_code,
 	return -1;
 }
 
-static int kgdb_break_handler(struct break_hook *brk_hook, struct pt_regs *regs)
+static int kgdb_break_handler(struct pt_regs *regs, struct break_hook *brk_hook)
 {
 	kgdb_handle_exception(1, SIGTRAP, 0, regs);
 
