@@ -2311,50 +2311,6 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 }
 
 /**
- * kvx_eth_mac_pcs_pma_hcd_setup - Configure mac/pcs/serdes to work at the
- * defined speed
- * @ndev: this network device
- * @update_serdes: Update serdes before configuring mac/pcs
- * Return 0 on success
- */
-int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
-		struct kvx_eth_lane_cfg *cfg, bool update_serdes)
-{
-	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
-	int ret = 0;
-
-	dev_dbg(hw->dev, "%s update_serdes: %d speed: %d\n", __func__,
-		update_serdes, cfg->speed);
-
-	if (update_serdes) {
-		/* configure retimer */
-		ret = kvx_eth_rtm_speed_cfg(hw, cfg->speed);
-		if (ret) {
-			dev_err(hw->dev, "retimers speed config failed\n");
-			return ret;
-		}
-
-		/* Setup PHY + serdes */
-		if (dev->type->phy_cfg) {
-			ret = dev->type->phy_cfg(hw, cfg);
-			if (ret) {
-				dev_err(hw->dev, "Failed to configure PHY/MAC\n");
-				return ret;
-			}
-		}
-	}
-
-	ret = kvx_eth_mac_cfg(hw, cfg);
-	if (ret)
-		dev_dbg(hw->dev, "Failed to configure MAC\n");
-	/* Restore parser configuration (WA for CV1 only) */
-	if ((dev->chip_rev_data->revision == COOLIDGE_V1) && (update_serdes))
-		parser_config_update(hw, cfg);
-
-	return ret;
-}
-
-/**
  * kvx_eth_an_good_status_wait() - Wait for auto negotiation end
  * @hw: hardware description
  * @cfg: lane configuration
@@ -2391,8 +2347,24 @@ static int kvx_eth_an_good_status_wait(struct kvx_eth_hw *hw,
 	return 0;
 }
 
+/**
+ * kvx_eth_autoneg_fsm_execute() - Autoneg finite state machine
+ * @hw: hardware description
+ * @cfg: lane configuration
+ *
+ * Implementation of the autoneg FSM defined in the MAC specification.
+ * If autonegociation is enabled, the fsm will:
+ * - configure serdes/mac/pcs for auto negotiation, perform auto negociation,
+ * - configure serdes/mac/pcs for the common speed, perform link training, and
+ *   wait auto negociation completion
+ * If autonegociation is disabled, the autoneg fsm will only configure
+ * serdes/mac/pcs with the requested speed.
+ *
+ * Returns true on success.
+ */
 static bool kvx_eth_autoneg_fsm_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
+	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
 	int ret, lane, lane_id = cfg->id, speed_fmt, fsm_loop = 5;
 	int nb_lane = KVX_ETH_LANE_NB;
 	int state = AN_STATE_RESET;
@@ -2417,6 +2389,12 @@ next_state:
 			       an_off + AN_KXAN_CTRL_OFFSET);
 		ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_CTRL_OFFSET,
 			       AN_KXAN_CTRL_RESET_MASK, 0, AN_TIMEOUT_MS);
+
+		/* if autoneg is disabled, go directly to link config */
+		if (!cfg->autoneg_en) {
+			state = AN_STATE_PCS_CFG;
+			goto next_state;
+		}
 		fallthrough;
 	case AN_STATE_LT_CFG:
 		/* Enable clause 72 MAX TIMER instead of clause 92 (25G rate) */
@@ -2440,8 +2418,7 @@ next_state:
 		ret = kvx_eth_mac_pcs_pma_autoneg_setup(hw, cfg, SPEED_10000);
 		if (ret) {
 			dev_err(hw->dev, "autoneg setup failure\n");
-			state = AN_STATE_ERROR;
-			goto next_state;
+			goto err;
 		}
 
 		/* Write abilities */
@@ -2507,8 +2484,7 @@ next_state:
 			ret = kvx_poll(kvx_mac_readl, an_status_off, mask, mask, AN_TIMEOUT_MS);
 			AN_DBG(hw->dev, "%s AN_STATUS OK: %u\n", __func__, !ret);
 #endif
-			state = AN_STATE_ERROR;
-			goto next_state;
+			goto err;
 		}
 		fallthrough;
 	case AN_STATE_COMMON_TECH:
@@ -2516,14 +2492,14 @@ next_state:
 		kvx_eth_an_get_common_speed(hw, lane_id, &cfg->ln);
 		if (cfg->ln.speed == SPEED_UNKNOWN) {
 			dev_err(hw->dev, "No autonegotiation common speed could be identified\n");
-			state = AN_STATE_ERROR;
-			goto next_state;
+			goto err;
 		}
 
 		/* Apply negociated speed */
 		cfg->speed = cfg->ln.speed;
 		cfg->fec = cfg->ln.fec;
 		nb_lane = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+		cfg->restart_serdes = true;
 
 		/* Don't display FEC as it could be altered by mac config */
 		kvx_eth_get_formated_speed(cfg->ln.speed, &speed_fmt, &unit);
@@ -2575,7 +2551,34 @@ next_state:
 		updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
 		fallthrough;
 	case AN_STATE_PCS_CFG:
-		kvx_eth_mac_pcs_pma_hcd_setup(hw, cfg, true);
+		if (cfg->restart_serdes) {
+			/* configure retimer */
+			ret = kvx_eth_rtm_speed_cfg(hw, cfg->speed);
+			if (ret) {
+				dev_err(hw->dev, "retimers speed config failed\n");
+				goto err;
+			}
+
+			/* Setup PHY + serdes */
+			if (dev->type->phy_cfg) {
+				ret = dev->type->phy_cfg(hw, cfg);
+				if (ret) {
+					dev_err(hw->dev, "Failed to configure PHY/MAC\n");
+					goto err;
+				}
+			}
+		}
+
+		ret = kvx_eth_mac_cfg(hw, cfg);
+		if (ret)
+			dev_dbg(hw->dev, "Failed to configure MAC\n");
+
+		/* Restore parser configuration (WA for CV1 only) */
+		if ((dev->chip_rev_data->revision == COOLIDGE_V1) && cfg->restart_serdes)
+			parser_config_update(hw, cfg);
+
+		if (!cfg->autoneg_en)
+			return true; /* we are done here */
 		fallthrough;
 	case AN_STATE_LT_ENABLE:
 		/**
@@ -2613,6 +2616,8 @@ next_state:
 		state = AN_STATE_DONE;
 		break;
 	case AN_STATE_ERROR:
+err:
+		state = AN_STATE_ERROR;
 		kvx_eth_dump_an_regs(hw, cfg, 0);
 		break;
 	}
@@ -2626,17 +2631,15 @@ next_state:
 }
 
 /**
- * kvx_eth_an_execute() - Top level auto negotiation
+ * kvx_eth_mac_setup_link() - Top level link configuration
  * @hw: hardware description
  * @cfg: lane configuration
  *
- * Configure serdes/mac/pcs for auto negotiation, perform auto negociation,
- * configure serdes/mac/pcs for the common speed, perform link training, and
- * wait auto negociation completion
+ * Sets up driver/cable capabilities and start the autoneg finite state machine.
  *
  * Return 0 on success
  */
-int kvx_eth_an_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+int kvx_eth_mac_setup_link(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	struct kvx_eth_netdev *ndev = container_of(cfg, struct kvx_eth_netdev, cfg);
 
