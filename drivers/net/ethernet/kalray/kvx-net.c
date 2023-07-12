@@ -187,22 +187,6 @@ static struct netdev_queue *get_txq(const struct kvx_eth_ring *ring)
 	return netdev_get_tx_queue(ring->netdev, ring->qidx);
 }
 
-/**
- * kvx_eth_autoneg() - Autoneg config: set phy/serdes in 10G mode (mandatory)
- */
-static int kvx_eth_autoneg(struct kvx_eth_netdev *ndev)
-{
-	struct kvx_eth_hw *hw = ndev->hw;
-	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
-
-	if (dev->hw.rxtx_crossed) {
-		netdev_err(ndev->netdev, "Autonegotiation is not supported with inverted lanes\n");
-		return -EINVAL;
-	}
-
-	return kvx_eth_an_execute(ndev->hw, &ndev->cfg);
-}
-
 static void kvx_eth_reset_tx(struct kvx_eth_netdev *ndev)
 {
 	struct kvx_eth_ring *txr;
@@ -264,7 +248,7 @@ void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes)
 	queue_work(system_power_efficient_wq, &ndev->link_cfg);
 }
 
-static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_serdes)
+static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 {
 	int ret = 0;
 	bool link;
@@ -274,38 +258,34 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev, bool restart_ser
 
 	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
 		   ndev->cfg.speed, ndev->cfg.autoneg_en);
+
 	if (dev->type->support_1000baseT_only == true) {
 		ndev->cfg.autoneg_en = false;
 		ndev->cfg.speed = SPEED_1000;
 		ndev->cfg.duplex = DUPLEX_FULL;
-		goto setup_mac;
 	}
+
+	if (ndev->cfg.autoneg_en && hw->rxtx_crossed) {
+		netdev_err(ndev->netdev, "Autonegotiation is not supported with inverted lanes\n");
+		return false;
+	}
+
 	if (ndev->cfg.speed == SPEED_UNKNOWN)
 		ndev->cfg.speed = SPEED_100000;
 	if (ndev->cfg.duplex == DUPLEX_UNKNOWN)
 		ndev->cfg.duplex = DUPLEX_FULL;
 
-	if (ndev->cfg.autoneg_en && !ndev->cfg.mac_f.loopback_mode) {
-		ret = kvx_eth_autoneg(ndev);
+	if (!ndev->cfg.mac_f.loopback_mode) {
+		/* configure speed and set the link up - do the autoneg/link training if enabled */
+		ret = kvx_eth_mac_setup_link(ndev->hw, &ndev->cfg);
 		if (ret)
-			netdev_dbg(ndev->netdev, "Autonegotiation failed\n");
-
-		/* FIXME: remove once link training is fixed */
-		kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, false);
+			netdev_warn(ndev->netdev, "Failed to setup link\n");
 	}
-setup_mac:
+
 	if (chip_rev == COOLIDGE_V2)
 		kvx_eth_tx_cfg_speed_settings(hw, &ndev->cfg);
-	if (!ndev->cfg.autoneg_en) {
-		ret = kvx_eth_mac_pcs_pma_hcd_setup(ndev->hw, &ndev->cfg, restart_serdes);
-		if (ret) {
-			netdev_warn(ndev->netdev, "Failed to setup link\n");
-			return false;
-		}
-	}
-	netdev_dbg(ndev->netdev, "%s done\n", __func__);
 
-	/* avoid false detection: check mac link other a period of 10ms */
+	/* avoid false detection: check mac link over a period of 10ms */
 	read_poll_timeout(kvx_eth_mac_getlink, link, link == true, 1000, 10000, false,
 			  hw, &ndev->cfg);
 	if (link) {
@@ -345,7 +325,7 @@ static void kvx_eth_link_cfg(struct work_struct *w)
 		if (ndev->qsfp && !is_cable_connected(ndev->qsfp))
 			break;
 
-		if (kvx_eth_link_configure(ndev, ndev->cfg.restart_serdes))
+		if (kvx_eth_link_configure(ndev))
 			break;
 
 		msleep(LINK_POLL_DELAY_IN_MS);
