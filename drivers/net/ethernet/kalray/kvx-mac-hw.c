@@ -2226,6 +2226,33 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 	return ret;
 }
 
+static int kvx_eth_rtm_speed_cfg(struct kvx_eth_hw *hw, unsigned int speed)
+{
+	struct kvx_eth_rtm_params *params;
+	unsigned int lane_speed;
+	u8 rtm_channels, rtm;
+	int ret, nb_lanes = kvx_eth_speed_to_nb_lanes(speed, &lane_speed);
+
+	if (nb_lanes == 0) {
+		dev_err(hw->dev, "incorrect speed %d\n", speed);
+		return -EINVAL;
+	}
+
+	for (rtm = 0; rtm < RTM_NB; rtm++) {
+		params = &hw->rtm_params[rtm];
+		if (!params->rtm)
+			continue;
+
+		dev_dbg(hw->dev, "Setting retimer%d speed to %d\n", rtm, lane_speed);
+		rtm_channels = TI_RTM_CHANNEL_FROM_ARRAY(params->channels, nb_lanes);
+		ret = ti_retimer_set_speed(params->rtm, rtm_channels, lane_speed);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
 /**
  * kvx_eth_mac_pcs_pma_autoneg_setup() - Set MAC/PCS to handle auto negotiation
  * @hw: hardware description
@@ -2244,7 +2271,7 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 {
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
-	int i, ret;
+	int ret;
 
 	/* Before reconfiguring retimers, serdes must be disabled */
 	mutex_lock(&hw->mac_reset_lock);
@@ -2257,13 +2284,12 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 		dev_err(hw->dev, "Failed to configure serdes\n");
 		return ret;
 	}
-	for (i = 0; i < RTM_NB; i++) {
-		ret = configure_rtm(hw, i, an_speed);
-		if (ret) {
-			mutex_unlock(&hw->mac_reset_lock);
-			dev_err(hw->dev, "Failed to configure retimer %i\n", i);
-			return ret;
-		}
+
+	ret = kvx_eth_rtm_speed_cfg(hw, an_speed);
+	if (ret) {
+		mutex_unlock(&hw->mac_reset_lock);
+		dev_err(hw->dev, "Failed to configure retimers\n");
+		return ret;
 	}
 
 	/* Width is used to set up an_sd25_en to oversample DME on serdes rate:
@@ -2295,18 +2321,17 @@ int kvx_eth_mac_pcs_pma_hcd_setup(struct kvx_eth_hw *hw,
 		struct kvx_eth_lane_cfg *cfg, bool update_serdes)
 {
 	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
-	int i, ret = 0;
+	int ret = 0;
 
 	dev_dbg(hw->dev, "%s update_serdes: %d speed: %d\n", __func__,
 		update_serdes, cfg->speed);
 
 	if (update_serdes) {
-		for (i = 0; i < RTM_NB; i++) {
-			ret = configure_rtm(hw, i, cfg->speed);
-			if (ret) {
-				dev_err(hw->dev, "Config RTM[%d] failed\n", i);
-				return ret;
-			}
+		/* configure retimer */
+		ret = kvx_eth_rtm_speed_cfg(hw, cfg->speed);
+		if (ret) {
+			dev_err(hw->dev, "retimers speed config failed\n");
+			return ret;
 		}
 
 		/* Setup PHY + serdes */
