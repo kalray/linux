@@ -236,8 +236,6 @@ void kvx_eth_netdev_sysfs_uninit_cv2(struct kvx_eth_netdev *ndev);
 void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev);
 void kvx_eth_get_formated_speed(int speed, int *speed_fmt, char **unit);
 
-int configure_rtm(struct kvx_eth_hw *hw, unsigned int rtm, unsigned int speed);
-
 int kvx_eth_get_lut_indir(struct net_device *netdev, u32 lut_id, u32 *cluster_id, u32 *rx_channel);
 
 void kvx_net_init_dcb(struct net_device *netdev);
