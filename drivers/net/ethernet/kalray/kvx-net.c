@@ -1953,54 +1953,6 @@ int kvx_eth_speed_to_nb_lanes(unsigned int speed, unsigned int *lane_speed)
 	return nb_lanes;
 }
 
-int speed_to_rtm_speed_index(unsigned int speed)
-{
-	switch (speed) {
-	case SPEED_100000:
-	case SPEED_50000:
-	case SPEED_25000:
-		return RTM_SPEED_25G;
-	case SPEED_40000:
-	case SPEED_10000:
-		return RTM_SPEED_10G;
-	default:
-		return -EINVAL;
-	}
-}
-
-int configure_rtm(struct kvx_eth_hw *hw, unsigned int rtm, unsigned int speed)
-{
-	struct kvx_eth_rtm_params *params = &hw->rtm_params[rtm];
-	unsigned int lane_speed;
-	int ret, nb_lanes = kvx_eth_speed_to_nb_lanes(speed, &lane_speed);
-	u8 rtm_channels = TI_RTM_CHANNEL_FROM_ARRAY(params->channels, nb_lanes);
-
-	if (nb_lanes < 0) {
-		dev_err(hw->dev, "Unsupported speed %d\n", speed);
-		return -EINVAL;
-	}
-
-	if (rtm > RTM_NB) {
-		dev_err(hw->dev, "Unknown retimer id %d\n", rtm);
-		return -EINVAL;
-	}
-	if (!params->rtm) {
-		dev_dbg(hw->dev, "No retimers to configure\n");
-		return 0;
-	}
-
-	ret = speed_to_rtm_speed_index(speed);
-	if (ret < 0) {
-		dev_err(hw->dev, "Speed %d not supported by retimer\n", speed);
-		return -EINVAL;
-	}
-	dev_dbg(hw->dev, "Setting retimer%d speed to %d\n", rtm, speed);
-
-	ti_retimer_set_speed(params->rtm, rtm_channels, lane_speed);
-
-	return 0;
-}
-
 void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev)
 {
 	if (!bitmap_empty(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS))
