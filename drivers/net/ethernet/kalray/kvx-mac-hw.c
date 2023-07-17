@@ -1064,10 +1064,10 @@ int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 }
 
 static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
-				   struct kvx_eth_lane_cfg *cfg,
-				   bool aggregated_lanes)
+				   struct kvx_eth_lane_cfg *cfg)
 {
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	u32 off, mask, val = 0;
 	int i, ret = 0;
 
@@ -1155,34 +1155,24 @@ bool kvx_mac_under_reset(struct kvx_eth_hw *hw)
 	return (val & mask);
 }
 
-static int kvx_eth_mac_reset(struct kvx_eth_hw *hw,
+static int kvx_eth_mac_full_reset(struct kvx_eth_hw *hw,
 			     struct kvx_eth_lane_cfg *cfg)
 {
-	bool aggregated_lanes = kvx_eth_speed_aggregated(cfg->speed);
-	u32 mask, val;
+	u32 mask;
 	int ret = 0;
 
 	mutex_lock(&hw->mac_reset_lock);
-	val = kvx_mac_readl(hw, MAC_RESET_OFFSET);
-	if (val || aggregated_lanes) {
-		mask = ~0U;
-		kvx_mac_writel(hw, mask, MAC_RESET_SET_OFFSET);
-		/* Initial state: MAC under reset */
-		kvx_mac_writel(hw, mask, MAC_RESET_CLEAR_OFFSET);
-	} else {
-		val = (BIT(cfg->id + MAC_RESET_SD_TX_CLK_SHIFT)) |
-		       (BIT(cfg->id + MAC_RESET_SD_RX_CLK_SHIFT));
-		mask = MAC_RESET_SD_TX_CLK_MASK | MAC_RESET_SD_RX_CLK_MASK;
-		updatel_bits(hw, MAC, MAC_RESET_SET_OFFSET, mask, val);
-		updatel_bits(hw, MAC, MAC_RESET_CLEAR_OFFSET, mask, val);
-	}
 
-	ret = kvx_poll(kvx_mac_readl, MAC_RESET_OFFSET, ~mask, 0,
-		       RESET_TIMEOUT_MS);
+	mask = ~0U;
+	kvx_mac_writel(hw, mask, MAC_RESET_SET_OFFSET);
+	kvx_mac_writel(hw, mask, MAC_RESET_CLEAR_OFFSET);
+
+	ret = kvx_poll(kvx_mac_readl, MAC_RESET_OFFSET, ~mask, 0, RESET_TIMEOUT_MS);
+
 	mutex_unlock(&hw->mac_reset_lock);
+
 	if (ret)
 		dev_err(hw->dev, "Mac reset failed\n");
-
 
 	return ret;
 }
@@ -2270,7 +2260,6 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 		struct kvx_eth_lane_cfg *cfg, unsigned int an_speed)
 {
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
-	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	int ret;
 
 	/* Before reconfiguring retimers, serdes must be disabled */
@@ -2304,8 +2293,7 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 	kvx_mac_phy_enable_serdes(hw, cfg->id, lane_nb, PSTATE_P0);
 	mutex_unlock(&hw->mac_reset_lock);
 
-	kvx_mac_restore_default(hw, cfg, aggregated_lanes);
-	kvx_eth_mac_reset(hw, cfg);
+	kvx_mac_restore_default(hw, cfg);
 
 	return 0;
 }
@@ -2384,6 +2372,13 @@ next_state:
 
 	switch (state) {
 	case AN_STATE_RESET:
+		/* reset MAC module (initial state: under reset) */
+		ret = kvx_eth_mac_full_reset(hw, cfg);
+		if (ret) {
+			dev_warn(hw->dev, "MAC reset failed\n");
+			goto err;
+		}
+
 		/* reset AN module */
 		kvx_mac_writel(hw, AN_KXAN_CTRL_RESET_MASK,
 			       an_off + AN_KXAN_CTRL_OFFSET);
@@ -2757,7 +2752,6 @@ void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
  */
 int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	bool aggregated_lanes = kvx_eth_lanes_aggregated(hw);
 	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	u32 serdes_mask = get_serdes_mask(cfg->id, lane_nb);
@@ -2766,12 +2760,7 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 	enum coolidge_rev chip_rev = rev_d->revision;
 
-	kvx_mac_restore_default(hw, cfg, aggregated_lanes);
-	ret = kvx_eth_mac_reset(hw, cfg);
-	if (ret) {
-		dev_warn(hw->dev, "MAC reset failed\n");
-		return ret;
-	}
+	kvx_mac_restore_default(hw, cfg);
 
 	if (cfg->speed == SPEED_40000)
 		val = MAC_MODE40_EN_IN_MASK;
