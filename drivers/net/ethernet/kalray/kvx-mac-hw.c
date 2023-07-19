@@ -1052,17 +1052,6 @@ int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	return 0;
 }
 
-int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
-{
-	kvx_mac_phy_serdes_cfg(hw, cfg, 0);
-
-	/* FTTB force refclk for 100G */
-	kvx_phy_refclk_cfg(hw, SPEED_100000);
-	kvx_eth_phy_param_cfg(hw, hw->phy_f.param);
-
-	return 0;
-}
-
 static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
 				   struct kvx_eth_lane_cfg *cfg)
 {
@@ -2384,6 +2373,11 @@ next_state:
 			       an_off + AN_KXAN_CTRL_OFFSET);
 		ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_CTRL_OFFSET,
 			       AN_KXAN_CTRL_RESET_MASK, 0, AN_TIMEOUT_MS);
+		fallthrough;
+	case AN_STATE_PHY_INIT:
+		/* FTTB force refclk for 100G */
+		kvx_phy_refclk_cfg(hw, SPEED_100000);
+		kvx_eth_phy_param_cfg(hw, hw->phy_f.param);
 
 		/* if autoneg is disabled, go directly to link config */
 		if (!cfg->autoneg_en) {
@@ -2391,7 +2385,7 @@ next_state:
 			goto next_state;
 		}
 		fallthrough;
-	case AN_STATE_LT_CFG:
+	case AN_STATE_LT_INIT:
 		/* Enable clause 72 MAX TIMER instead of clause 92 (25G rate) */
 		val = LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK;
 		updatel_bits(hw, MAC, LT_OFFSET + lane_id * LT_ELEM_SIZE +
@@ -2408,7 +2402,7 @@ next_state:
 			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_COEF_OFFSET);
 		}
 		fallthrough;
-	case AN_STATE_INIT:
+	case AN_STATE_AN_INIT:
 		/* config lane in 10G for autoneg */
 		ret = kvx_eth_mac_pcs_pma_autoneg_setup(hw, cfg, SPEED_10000);
 		if (ret) {
@@ -2455,7 +2449,7 @@ next_state:
 		mask = BIT(lane_id) << MAC_CTRL_AN_CTRL_DIS_TIMER_SHIFT;
 		updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
 		fallthrough;
-	case AN_STATE_ENABLE:
+	case AN_STATE_AN_ENABLE:
 		/* start autoneg */
 		mask = BIT(lane_id) << MAC_CTRL_AN_CTRL_EN_SHIFT;
 		updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
@@ -2555,12 +2549,10 @@ next_state:
 			}
 
 			/* Setup PHY + serdes */
-			if (dev->type->phy_cfg) {
-				ret = dev->type->phy_cfg(hw, cfg);
-				if (ret) {
-					dev_err(hw->dev, "Failed to configure PHY/MAC\n");
-					goto err;
-				}
+			ret = kvx_mac_phy_serdes_cfg(hw, cfg, 0);
+			if (ret) {
+				dev_err(hw->dev, "Failed to configure PHY/MAC\n");
+				goto err;
 			}
 		}
 
