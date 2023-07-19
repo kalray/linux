@@ -177,11 +177,6 @@ static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
 		param->pre, param->post, param->swing);
 }
 
-void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f)
-{
-	kvx_phy_param_tuning(hw);
-}
-
 void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_tx_bert_param *p)
 {
