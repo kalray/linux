@@ -1385,9 +1385,10 @@ enum lt_ld_states {
 
 enum autoneg_states {
 	AN_STATE_RESET = 0,
-	AN_STATE_LT_CFG,
-	AN_STATE_INIT,
-	AN_STATE_ENABLE,
+	AN_STATE_PHY_INIT,
+	AN_STATE_LT_INIT,
+	AN_STATE_AN_INIT,
+	AN_STATE_AN_ENABLE,
 	AN_STATE_WAIT_BP_EXCHANGE,
 	AN_STATE_NEXT_PAGE_EXCHANGE,
 	AN_STATE_GOOD_CHECK,
@@ -1922,7 +1923,6 @@ bool kvx_eth_speed_aggregated(const int speed);
 
 /* PHY */
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
-void kvx_eth_phy_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_f *phy_f);
 void kvx_phy_serdes_reset(struct kvx_eth_hw *hw, u32 serdes_mask);
 int kvx_serdes_handshake(struct kvx_eth_hw *hw, u32 serdes_mask,
 			 unsigned int serdes);
