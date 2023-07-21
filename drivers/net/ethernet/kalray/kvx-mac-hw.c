@@ -1064,6 +1064,8 @@ static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
 		return -EINVAL;
 
 	ret = kvx_eth_mac_init(hw, cfg);
+	if (ret)
+		return ret;
 
 	/* Reset all config registers */
 	/* Disable all ena registers: FEC, RS-FEC, PCS100G, ... */
@@ -2752,7 +2754,9 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 	enum coolidge_rev chip_rev = rev_d->revision;
 
-	kvx_mac_restore_default(hw, cfg);
+	ret = kvx_mac_restore_default(hw, cfg);
+	if (ret)
+		return ret;
 
 	if (cfg->speed == SPEED_40000)
 		val = MAC_MODE40_EN_IN_MASK;
@@ -2788,11 +2792,6 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		kvx_eth_lb_cvx_f_cfg(hw, chip_rev, cfg->id);
 	}
 
-	ret = kvx_eth_mac_init(hw, cfg);
-	if (ret) {
-		dev_warn(hw->dev, "MAC init failed\n");
-		return ret;
-	}
 	rev_d->mac_pfc_cfg(hw, cfg);
 	/* For 100G links FEC can't be deduced from autoneg registers,
 	 * but is mandatory according to 802.3. Force it as needed for most
