@@ -2383,7 +2383,7 @@ next_state:
 
 		/* if autoneg is disabled, go directly to link config */
 		if (!cfg->autoneg_en) {
-			state = AN_STATE_PCS_CFG;
+			state = AN_STATE_RTM_CFG;
 			goto next_state;
 		}
 		fallthrough;
@@ -2496,6 +2496,21 @@ next_state:
 		kvx_eth_get_formated_speed(cfg->ln.speed, &speed_fmt, &unit);
 		dev_info(hw->dev, "Negociated speed: %d%s\n", speed_fmt, unit);
 		fallthrough;
+	case AN_STATE_RTM_CFG:
+		if (cfg->restart_serdes) {
+			/* configure retimer */
+			ret = kvx_eth_rtm_speed_cfg(hw, cfg->speed);
+			if (ret) {
+				dev_err(hw->dev, "retimers speed config failed\n");
+				goto err;
+			}
+		}
+
+		if (!cfg->autoneg_en) {
+			state = AN_STATE_PHYMAC_CFG;
+			goto next_state;
+		}
+		fallthrough;
 	case AN_STATE_NEXT_PAGE_EXCHANGE:
 		/* Page messages to be exchanged have to be configured before enabling AN (AN_XNP registers).
 		 * If no message is set, null message codes are exchanged with the link partner
@@ -2541,15 +2556,8 @@ next_state:
 		mask = MAC_CTRL_AN_CTRL_EN_MASK;
 		updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
 		fallthrough;
-	case AN_STATE_PCS_CFG:
+	case AN_STATE_PHYMAC_CFG:
 		if (cfg->restart_serdes) {
-			/* configure retimer */
-			ret = kvx_eth_rtm_speed_cfg(hw, cfg->speed);
-			if (ret) {
-				dev_err(hw->dev, "retimers speed config failed\n");
-				goto err;
-			}
-
 			/* Setup PHY + serdes */
 			ret = kvx_mac_phy_serdes_cfg(hw, cfg, 0);
 			if (ret) {
