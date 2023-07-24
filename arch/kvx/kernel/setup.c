@@ -154,7 +154,9 @@ void __init setup_arch(char **cmdline_p)
 
 	setup_device_tree();
 
+#ifdef CONFIG_SMP
 	smp_init_cpus();
+#endif
 
 #ifdef CONFIG_VT
 	conswitchp = &dummy_con;
