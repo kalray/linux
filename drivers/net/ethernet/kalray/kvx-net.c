@@ -405,15 +405,6 @@ static void kvx_eth_netdev_uninit(struct net_device *netdev)
 void kvx_eth_up(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	struct kvx_eth_ring *r;
-	int i;
-
-	netdev_dbg(netdev, "%s\n", __func__);
-	for (i = 0; i < NB_RX_RING; i++) {
-		r = &ndev->rx_ring[i];
-		kvx_eth_alloc_rx_buffers(r, kvx_eth_desc_unused(r));
-		napi_enable(&r->napi);
-	}
 
 	kvx_eth_setup_link(ndev, true);
 }
@@ -423,6 +414,16 @@ void kvx_eth_up(struct net_device *netdev)
  */
 static int kvx_eth_netdev_open(struct net_device *netdev)
 {
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	struct kvx_eth_ring *r;
+	int i;
+
+	for (i = 0; i < NB_RX_RING; i++) {
+		r = &ndev->rx_ring[i];
+		kvx_eth_alloc_rx_buffers(r, kvx_eth_desc_unused(r));
+		napi_enable(&r->napi);
+	}
+
 	kvx_eth_up(netdev);
 
 	return 0;
@@ -434,14 +435,11 @@ static int kvx_eth_netdev_open(struct net_device *netdev)
 void kvx_eth_down(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	int qidx;
 
 	cancel_delayed_work(&ndev->link_poll);
 	cancel_link_cfg(ndev);
 
 	kvx_eth_reset_tx(ndev);
-	for (qidx = 0; qidx < ndev->dma_cfg.rx_chan_id.nb; qidx++)
-		napi_disable(&ndev->rx_ring[qidx].napi);
 	kvx_eth_update_carrier(ndev, false);
 }
 
@@ -450,6 +448,12 @@ void kvx_eth_down(struct net_device *netdev)
  */
 static int kvx_eth_netdev_stop(struct net_device *netdev)
 {
+	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
+	int qidx;
+
+	for (qidx = 0; qidx < ndev->dma_cfg.rx_chan_id.nb; qidx++)
+		napi_disable(&ndev->rx_ring[qidx].napi);
+
 	kvx_eth_down(netdev);
 
 	return 0;
