@@ -49,32 +49,22 @@ void __init smp_cpus_done(unsigned int max_cpus)
 
 void __init smp_init_cpus(void)
 {
-	struct cpumask cpumask;
 	struct device_node *cpu;
-	const __be32 *reg;
-	u32 cpu_num;
+	u32 cpu_id;
 	unsigned int nr_cpus = 0;
-
-	cpumask_clear(&cpumask);
 
 	for_each_of_cpu_node(cpu) {
 		if (!of_device_is_available(cpu))
 			continue;
 
-		reg = of_get_property(cpu, "reg", NULL);
-		if (!reg)
-			continue;
-
-		cpu_num = be32_to_cpup(reg);
-		if (cpu_num >= nr_cpu_ids)
-			continue;
-
-		nr_cpus++;
-		cpumask_set_cpu(cpu_num, &cpumask);
+		cpu_id = of_get_cpu_hwid(cpu, 0);
+		if ((cpu_id < NR_CPUS) && (nr_cpus < nr_cpu_ids)) {
+			nr_cpus++;
+			set_cpu_possible(cpu_id, true);
+		}
 	}
 
 	pr_info("%d possible cpus\n", nr_cpus);
-	init_cpu_possible(&cpumask);
 }
 
 void __init smp_prepare_cpus(unsigned int max_cpus)
