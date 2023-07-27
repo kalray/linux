@@ -207,12 +207,11 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 	signal_setup_done(ret, ksig, stepping);
 }
 
-asmlinkage void arch_do_signal_or_restart(struct pt_regs *regs,
-					  bool has_signal)
+void arch_do_signal_or_restart(struct pt_regs *regs)
 {
 	struct ksignal ksig;
 
-	if (has_signal && get_signal(&ksig)) {
+	if (get_signal(&ksig)) {
 		handle_signal(&ksig, regs);
 		return;
 	}
