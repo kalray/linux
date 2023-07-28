@@ -33,9 +33,9 @@
 #define MAC_RESET_REG_CLK_SHIFT                    0x14
 #define MAC_RESET_REG_CLK_MASK                     0x100000UL
 #define MAC_1MS_DIV_OFFSET                         0x60E0
-#define MAC_LINK_DOWN_IT_EN                        0x60E4 /* cv2 only */
-#define MAC_LINK_DOWN_IT                           0x60E8 /* cv2 only */
-#define MAC_LINK_DOWN_IT_LAC                       0x60EC /* cv2 only */
+#define MAC_LINK_DOWN_IT_EN_OFFSET                 0x60E4 /* cv2 only */
+#define MAC_LINK_DOWN_IT_OFFSET                    0x60E8 /* cv2 only */
+#define MAC_LINK_DOWN_IT_LAC_OFFSET                0x60EC /* cv2 only */
 #define MAC_BYPASS_OFFSET                          0x6000
 #define MAC_BYPASS_ETH_LOOPBACK_SHIFT              0x0
 #define MAC_BYPASS_ETH_LOOPBACK_MASK               0x1UL
