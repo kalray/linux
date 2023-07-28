@@ -1659,6 +1659,7 @@ struct kvx_eth_hw {
 	u32 max_frame_size;
 	u32 rx_chan_error;
 	u8 fom_thres;
+	spinlock_t link_down_lock;
 };
 
 struct kvx_eth_hw_rx_stats {
