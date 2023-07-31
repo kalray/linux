@@ -233,7 +233,7 @@ no_context:
 	}
 	die(regs, ea, "Oops");
 	bust_spinlocks(0);
-	do_exit(SIGKILL);
+	make_task_dead(SIGKILL);
 
 out_of_memory:
 	/*
