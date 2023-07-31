@@ -88,7 +88,7 @@ void die(struct pt_regs *regs, unsigned long ea, const char *str)
 	if (panic_on_oops)
 		panic("Fatal exception");
 	if (ret != NOTIFY_STOP)
-		do_exit(SIGSEGV);
+		make_task_dead(SIGSEGV);
 }
 
 void user_do_sig(struct pt_regs *regs, int signo, int code, unsigned long addr)
@@ -132,7 +132,7 @@ static void panic_or_kill(uint64_t es, uint64_t ea, struct pt_regs *regs,
 	pr_alert(CUT_HERE "ERROR: TRAP %s received at 0x%.16llx\n",
 		 trap_name[trap_cause(es)], regs->spc);
 	die(regs, ea, "Oops");
-	do_exit(SIGKILL);
+	make_task_dead(SIGKILL);
 }
 
 int is_valid_bugaddr(unsigned long pc)
