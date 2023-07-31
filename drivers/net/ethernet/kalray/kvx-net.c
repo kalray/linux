@@ -110,6 +110,7 @@ static const struct kvx_eth_type kvx_haps_data = {
 
 static struct kvx_eth_type kvx_eth_data = {
 	.phy_init = kvx_eth_phy_init,
+	.phy_cfg = kvx_eth_phy_cfg,
 	.phy_fw_update = kvx_eth_phy_fw_update,
 	.phy_lane_rx_serdes_data_enable = kvx_eth_phy_lane_rx_serdes_data_enable,
 	.phy_rx_adaptation = kvx_eth_phy_rx_adaptation,
