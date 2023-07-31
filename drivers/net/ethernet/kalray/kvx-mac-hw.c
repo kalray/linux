@@ -1052,6 +1052,17 @@ int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	return 0;
 }
 
+int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	kvx_mac_phy_serdes_cfg(hw, cfg, 0);
+
+	/* FTTB force refclk for 100G */
+	kvx_phy_refclk_cfg(hw, SPEED_100000);
+	kvx_eth_phy_param_cfg(hw, hw->phy_f.param);
+
+	return 0;
+}
+
 static int kvx_mac_restore_default(struct kvx_eth_hw *hw,
 				   struct kvx_eth_lane_cfg *cfg)
 {
@@ -2375,11 +2386,6 @@ next_state:
 			       an_off + AN_KXAN_CTRL_OFFSET);
 		ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_CTRL_OFFSET,
 			       AN_KXAN_CTRL_RESET_MASK, 0, AN_TIMEOUT_MS);
-		fallthrough;
-	case AN_STATE_PHY_INIT:
-		/* FTTB force refclk for 100G */
-		kvx_phy_refclk_cfg(hw, SPEED_100000);
-		kvx_eth_phy_param_cfg(hw, hw->phy_f.param);
 
 		/* if autoneg is disabled, go directly to link config */
 		if (!cfg->autoneg_en) {
@@ -2559,10 +2565,12 @@ next_state:
 	case AN_STATE_PHYMAC_CFG:
 		if (cfg->restart_serdes) {
 			/* Setup PHY + serdes */
-			ret = kvx_mac_phy_serdes_cfg(hw, cfg, 0);
-			if (ret) {
-				dev_err(hw->dev, "Failed to configure PHY/MAC\n");
-				goto err;
+			if (dev->type->phy_cfg) {
+				ret = dev->type->phy_cfg(hw, cfg);
+				if (ret) {
+					dev_err(hw->dev, "Failed to configure PHY/MAC\n");
+					goto err;
+				}
 			}
 		}
 
