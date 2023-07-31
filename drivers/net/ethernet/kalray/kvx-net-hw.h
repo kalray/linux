@@ -1385,7 +1385,6 @@ enum lt_ld_states {
 
 enum autoneg_states {
 	AN_STATE_RESET = 0,
-	AN_STATE_PHY_INIT,
 	AN_STATE_LT_INIT,
 	AN_STATE_AN_INIT,
 	AN_STATE_AN_ENABLE,
