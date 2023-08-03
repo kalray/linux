@@ -2393,23 +2393,6 @@ next_state:
 			goto next_state;
 		}
 		fallthrough;
-	case AN_STATE_LT_INIT:
-		/* Enable clause 72 MAX TIMER instead of clause 92 (25G rate) */
-		val = LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK;
-		updatel_bits(hw, MAC, LT_OFFSET + lane_id * LT_ELEM_SIZE +
-			     LT_KR_MODE_OFFSET, LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK, val);
-
-		/* set link training default state */
-		for (lane = 0; lane < KVX_ETH_LANE_NB; lane++) {
-			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
-
-			/* Clear local device status register */
-			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_STAT_OFFSET);
-
-			/* clear local device coefficient */
-			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_COEF_OFFSET);
-		}
-		fallthrough;
 	case AN_STATE_AN_INIT:
 		/* config lane in 10G for autoneg */
 		ret = kvx_eth_mac_pcs_pma_autoneg_setup(hw, cfg, SPEED_10000);
@@ -2482,6 +2465,23 @@ next_state:
 			AN_DBG(hw->dev, "%s AN_STATUS OK: %u\n", __func__, !ret);
 #endif
 			goto err;
+		}
+		fallthrough;
+	case AN_STATE_LT_INIT:
+		/* Enable clause 72 MAX TIMER instead of clause 92 (25G rate) */
+		val = LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK;
+		updatel_bits(hw, MAC, LT_OFFSET + lane_id * LT_ELEM_SIZE +
+			     LT_KR_MODE_OFFSET, LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK, val);
+
+		/* set link training default state */
+		for (lane = 0; lane < KVX_ETH_LANE_NB; lane++) {
+			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
+
+			/* Clear local device status register */
+			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_STAT_OFFSET);
+
+			/* clear local device coefficient */
+			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_COEF_OFFSET);
 		}
 		fallthrough;
 	case AN_STATE_COMMON_TECH:
