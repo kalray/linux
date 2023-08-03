@@ -114,6 +114,7 @@ static struct attribute *lut_entry_cv1_f_attrs[] = {
 	&lut_entry_cv1_f_dt_id_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(lut_entry_cv1_f);
 SYSFS_TYPES(lut_entry_cv1_f);
 DECLARE_SYSFS_ENTRY(tx_f);
 FIELD_R_ENTRY(tx_f, header_en, 0, 1);

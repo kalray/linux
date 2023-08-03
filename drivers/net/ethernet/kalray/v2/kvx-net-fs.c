@@ -232,6 +232,7 @@ static struct attribute *lut_entry_cv2_f_attrs[] = {
 	&lut_entry_cv2_f_rx_cache_id_split_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(lut_entry_cv2_f);
 SYSFS_TYPES(lut_entry_cv2_f);
 
 DECLARE_SYSFS_ENTRY(lb_cv2_f);
@@ -297,6 +298,7 @@ static struct attribute *rx_dlv_pfc_xcos_f_attrs[] = {
 	&rx_dlv_pfc_xcos_f_xoff_req_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(rx_dlv_pfc_xcos_f);
 SYSFS_TYPES(rx_dlv_pfc_xcos_f);
 
 DECLARE_SYSFS_ENTRY(rx_dlv_pfc_param_f);
@@ -309,6 +311,7 @@ static struct attribute *rx_dlv_pfc_param_f_attrs[] = {
 	&rx_dlv_pfc_param_f_quanta_thres_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(rx_dlv_pfc_param_f);
 SYSFS_TYPES(rx_dlv_pfc_param_f);
 
 DECLARE_SYSFS_ENTRY(lb_dlv_noc_f);
@@ -322,6 +325,7 @@ static struct attribute *lb_dlv_noc_f_attrs[] = {
 	&lb_dlv_noc_f_noc_route_hi_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(lb_dlv_noc_f);
 SYSFS_TYPES(lb_dlv_noc_f);
 
 DECLARE_SYSFS_ENTRY(lb_dlv_noc_congest_ctrl_f);
@@ -331,6 +335,7 @@ static struct attribute *lb_dlv_noc_congest_ctrl_f_attrs[] = {
 	&lb_dlv_noc_congest_ctrl_f_dma_thold_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(lb_dlv_noc_congest_ctrl_f);
 SYSFS_TYPES(lb_dlv_noc_congest_ctrl_f);
 
 DECLARE_SYSFS_ENTRY(parser_cv2_f);
@@ -376,6 +381,7 @@ static struct attribute *pcp_to_xcos_map_f_attrs[] = {
 	&pcp_to_xcos_map_f_xcos_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(pcp_to_xcos_map_f);
 SYSFS_TYPES(pcp_to_xcos_map_f);
 
 DECLARE_SYSFS_ENTRY(rx_drop_cnt_f);
@@ -385,6 +391,7 @@ static struct attribute *rx_drop_cnt_f_attrs[] = {
 	&rx_drop_cnt_f_lbd_total_drop_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(rx_drop_cnt_f);
 SYSFS_TYPES(rx_drop_cnt_f);
 
 DECLARE_SYSFS_ENTRY(rx_drop_cnt_lba_f);
@@ -421,6 +428,7 @@ static struct attribute *rx_drop_cnt_lba_f_attrs[] = {
 	&rx_drop_cnt_lba_f_total_drop_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(rx_drop_cnt_lba_f);
 SYSFS_TYPES(rx_drop_cnt_lba_f);
 
 DECLARE_SYSFS_ENTRY(rx_drop_cnt_lbd_f);
@@ -429,6 +437,7 @@ static struct attribute *rx_drop_cnt_lbd_f_attrs[] = {
 	&rx_drop_cnt_lbd_f_global_drop_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(rx_drop_cnt_lbd_f);
 SYSFS_TYPES(rx_drop_cnt_lbd_f);
 
 DECLARE_SYSFS_ENTRY(rx_drop_cnt_lbd_xcos_f);
@@ -437,6 +446,7 @@ static struct attribute *rx_drop_cnt_lbd_xcos_f_attrs[] = {
 	&rx_drop_cnt_lbd_xcos_f_drop_attr.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(rx_drop_cnt_lbd_xcos_f);
 SYSFS_TYPES(rx_drop_cnt_lbd_xcos_f);
 
 static struct kset *lut_entry_cv2_kset;
