@@ -2301,43 +2301,6 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 }
 
 /**
- * kvx_eth_an_good_status_wait() - Wait for auto negotiation end
- * @hw: hardware description
- * @cfg: lane configuration
- *
- * This is the last step.
- * Once link training has been completed (from AN_GOOD_CHECK state)
- * The link shall come up, and the autonegociation complete.
- * There is no hardware module between the AN module and the PCS.
- * Thus the software must poll on align_done pcs status, and report
- * it to the autonegociation module in order for the autoneg to
- * complete and to enter the AN_GOOD state.
- *
- * Return 0 on success
- */
-static int kvx_eth_an_good_status_wait(struct kvx_eth_hw *hw,
-		struct kvx_eth_lane_cfg *cfg)
-{
-	int ret, mask;
-	u32 an_ctrl_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_CTRL_OFFSET;
-	u32 an_off = MAC_CTRL_AN_OFFSET + cfg->id * MAC_CTRL_AN_ELEM_SIZE;
-
-	/* Force link status up (and stop autoneg) */
-	mask = BIT(MAC_CTRL_AN_CTRL_PCS_LINK_STATUS_SHIFT + cfg->id);
-	updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
-
-	mask = AN_KXAN_STATUS_AN_COMPLETE_MASK;
-	ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_STATUS_OFFSET,
-			mask, mask, AN_TIMEOUT_MS);
-	if (ret) {
-		dev_dbg(hw->dev, "Autonegotiation completion timeout\n");
-		return ret;
-	}
-
-	return 0;
-}
-
-/**
  * kvx_eth_autoneg_fsm_execute() - Autoneg finite state machine
  * @hw: hardware description
  * @cfg: lane configuration
@@ -2530,17 +2493,12 @@ next_state:
 		}
 		fallthrough;
 	case AN_STATE_NEXT_PAGE_EXCHANGE:
-		/* Page messages to be exchanged have to be configured before enabling AN (AN_XNP registers).
-		 * If no message is set, null message codes are exchanged with the link partner
+		/*
+		 * Page messages to be exchanged have to be configured before enabling AN (AN_XNP registers).
+		 * If no message is set, null message codes are exchanged with the link partner.
 		 */
 		fallthrough;
 	case AN_STATE_GOOD_CHECK:
-		/* reset AN module */
-		kvx_mac_writel(hw, AN_KXAN_CTRL_RESET_MASK,
-			       an_off + AN_KXAN_CTRL_OFFSET);
-		ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_CTRL_OFFSET,
-			       AN_KXAN_CTRL_RESET_MASK, 0, AN_TIMEOUT_MS);
-
 		/* wait for AN_GOOD_CHECK state */
 		mask = MAC_CTRL_AN_STATUS_AN_STATUS_MASK;
 		ret = kvx_poll(kvx_mac_readl, an_status_off, mask, mask, AN_TIMEOUT_MS);
@@ -2566,13 +2524,6 @@ next_state:
 			state = AN_STATE_RESET;
 			goto next_state;
 		}
-
-		/**
-		 * To end autonegotiation procedure we have to explicitely disable it
-		 * even if everything succeeded
-		 */
-		mask = MAC_CTRL_AN_CTRL_EN_MASK;
-		updatel_bits(hw, MAC, an_ctrl_off, mask, 0);
 		fallthrough;
 	case AN_STATE_PHYMAC_CFG:
 		if (cfg->restart_serdes) {
@@ -2614,9 +2565,27 @@ next_state:
 		}
 		fallthrough;
 	case AN_STATE_DONE:
-		/* Link training went well, missing AN completion -> trust negociated speed */
-		kvx_eth_an_good_status_wait(hw, cfg); /* FIXME: ret is ignored */
+		/*
+		 * Once link training has been completed (from AN_GOOD_CHECK state)
+		 * The link shall come up, and the autonegociation complete.
+		 * There is no hardware module between the AN module and the PCS.
+		 * Thus the software must poll on align_done pcs status, and report
+		 * it to the autonegociation module in order for the autoneg to
+		 * complete and to enter the AN_GOOD state.
+		 */
 		state = AN_STATE_DONE;
+
+		/* FIXME: Force link status up (and stop autoneg) */
+		mask = BIT(MAC_CTRL_AN_CTRL_PCS_LINK_STATUS_SHIFT + cfg->id);
+		updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
+
+		mask = AN_KXAN_STATUS_AN_COMPLETE_MASK;
+		ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_STATUS_OFFSET,
+			       mask, mask, AN_TIMEOUT_MS);
+		if (ret) {
+			dev_err(hw->dev, "Autonegotiation completion timeout\n");
+			goto err;
+		}
 		break;
 	case AN_STATE_ERROR:
 err:
