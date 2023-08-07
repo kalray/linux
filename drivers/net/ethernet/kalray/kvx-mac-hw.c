@@ -2356,10 +2356,10 @@ static bool kvx_eth_autoneg_fsm_execute(struct kvx_eth_hw *hw, struct kvx_eth_la
 {
 	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
 	int ret, lane, lane_id = cfg->id, speed_fmt, fsm_loop = 5;
-	int nb_lane = KVX_ETH_LANE_NB;
+	int nb_lane = KVX_ETH_LANE_NB; /* configure all lanes until the nogotiated speed is known */
 	int state = AN_STATE_RESET;
 	u32 reg_clk = 100; /* MHz*/
-	u32 lt_off, an_off = MAC_CTRL_AN_OFFSET + cfg->id * MAC_CTRL_AN_ELEM_SIZE;
+	u32 lt_off, an_off = MAC_CTRL_AN_OFFSET + lane_id * MAC_CTRL_AN_ELEM_SIZE;
 	u32 an_ctrl_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_CTRL_OFFSET;
 	u32 an_status_off = MAC_CTRL_AN_OFFSET + MAC_CTRL_AN_STATUS_OFFSET + 4 * lane_id;
 	u32 nonce, mask, val;
@@ -2484,6 +2484,23 @@ next_state:
 			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_COEF_OFFSET);
 		}
 		fallthrough;
+	case AN_STATE_LT_ENABLE:
+		updatel_bits(hw, MAC, LT_OFFSET + lane_id * LT_ELEM_SIZE +
+			     LT_KR_MODE_OFFSET, LT_KR_MODE_MAX_WAIT_TIMER_OVR_EAN_MASK, 0);
+
+		/**
+		 * Note that contrary to autoneg, link training must be done on all lanes (and not
+		 * only on the first one). On return the local device and the link partner have
+		 * defined equalization parameters, but the link is still not up.
+		 */
+		val = LT_KR_CTRL_RESTARTTRAINING_MASK | LT_KR_CTRL_TRAININGEN_MASK;
+		for_each_cfg_lane(nb_lane, lane, cfg) {
+			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
+			updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET,
+				     LT_KR_STATUS_RECEIVERSTATUS_MASK, 0);
+			kvx_mac_writel(hw, val, lt_off + LT_KR_CTRL_OFFSET);
+		}
+		fallthrough;
 	case AN_STATE_COMMON_TECH:
 		/* find common speed */
 		kvx_eth_an_get_common_speed(hw, lane_id, &cfg->ln);
@@ -2585,21 +2602,6 @@ next_state:
 		if (!cfg->autoneg_en)
 			return true; /* we are done here */
 		fallthrough;
-	case AN_STATE_LT_ENABLE:
-		/**
-		 * Once the mac/pcs/serdes have been configured exchange link training frame at
-		 * the link nominal width. Note that contrary to autoneg, link training must be done
-		 * on all lanes (and not only on the first one). On return the local device and the
-		 * link partner have defined equalization parameters, but the link is still not up.
-		 */
-		val = LT_KR_CTRL_RESTARTTRAINING_MASK | LT_KR_CTRL_TRAININGEN_MASK;
-		for_each_cfg_lane(nb_lane, lane, cfg) {
-			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
-			updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET,
-				     LT_KR_STATUS_RECEIVERSTATUS_MASK, 0);
-			kvx_mac_writel(hw, val, lt_off + LT_KR_CTRL_OFFSET);
-		}
-		fallthrough;
 	case AN_STATE_LT_PERFORM:
 		ret = kvx_eth_perform_link_training(hw, cfg);
 		if (ret) {
@@ -2608,7 +2610,7 @@ next_state:
 		}
 
 		/* Disable link training */
-		for_each_cfg_lane(nb_lane, lane, cfg) {
+		for (lane = 0; lane < KVX_ETH_LANE_NB; lane++) {
 			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
 			updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET, LT_KR_STATUS_RECEIVERSTATUS_MASK,
 				     LT_KR_STATUS_RECEIVERSTATUS_MASK);
