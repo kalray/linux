@@ -480,6 +480,7 @@
 #define LT_KR_LD_COEF_OFFSET                       0x10
 #define LT_KR_LD_COEF_UPDATE_SHIFT                 0x0
 #define LT_KR_LD_COEF_UPDATE_MASK                  0xFFFFUL
+#define LT_KR_LD_COEF_UPDATE_INITIALIZE_MASK       0x1000L
 #define LT_KR_LD_STAT_OFFSET                       0x14
 #define LT_KR_LD_STAT_STATUSREPORT_SHIFT           0x0
 #define LT_KR_LD_STAT_STATUSREPORT_MASK            0xFFFFUL

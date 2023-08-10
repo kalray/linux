@@ -2480,8 +2480,9 @@ next_state:
 			/* Clear local device status register */
 			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_STAT_OFFSET);
 
-			/* clear local device coefficient */
-			kvx_mac_writel(hw, 0, lt_off + LT_KR_LD_COEF_OFFSET);
+			/* clear local device coefficient & initialize */
+			val = LT_KR_LD_COEF_UPDATE_INITIALIZE_MASK;
+			kvx_mac_writel(hw, val, lt_off + LT_KR_LD_COEF_OFFSET);
 		}
 		fallthrough;
 	case AN_STATE_LT_ENABLE:
@@ -2614,7 +2615,8 @@ next_state:
 			lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
 			updatel_bits(hw, MAC, lt_off + LT_KR_STATUS_OFFSET, LT_KR_STATUS_RECEIVERSTATUS_MASK,
 				     LT_KR_STATUS_RECEIVERSTATUS_MASK);
-			kvx_mac_writel(hw, 0, lt_off + LT_KR_CTRL_OFFSET);
+			/* AN & LT spec: Restart Training bit should always be set to 1 */
+			kvx_mac_writel(hw, LT_KR_CTRL_RESTARTTRAINING_MASK, lt_off + LT_KR_CTRL_OFFSET);
 		}
 		fallthrough;
 	case AN_STATE_DONE:
