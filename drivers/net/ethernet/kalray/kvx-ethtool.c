@@ -872,7 +872,6 @@ static int find_elligible_parser(struct kvx_eth_netdev *ndev,
 static int check_parser_availability(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs)
 {
-	int i;
 	struct kvx_eth_hw *hw = ndev->hw;
 
 	if (hw->parsing.parsers[fs->location].loc == -1)
