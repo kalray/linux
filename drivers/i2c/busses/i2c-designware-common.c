@@ -443,8 +443,25 @@ void __i2c_dw_disable(struct dw_i2c_dev *dev)
 {
 	int timeout = 100;
 	u32 status;
+	u32 raw_intr_stats;
+	u32 enable;
+	bool abort_needed;
+	bool abort_done = false;
+
+	regmap_read(dev->map, DW_IC_RAW_INTR_STAT, &raw_intr_stats);
+	regmap_read(dev->map, DW_IC_ENABLE, &enable);
+
+	abort_needed = raw_intr_stats & DW_IC_INTR_MST_ON_HOLD;
+	if (abort_needed)
+		regmap_write(dev->map, DW_IC_ENABLE, enable | DW_IC_ENABLE_ABORT);
 
 	do {
+		if (abort_needed && !abort_done) {
+			regmap_read(dev->map, DW_IC_ENABLE, &enable);
+			abort_done = !(enable & DW_IC_ENABLE_ABORT);
+			continue;
+		}
+
 		__i2c_dw_disable_nowait(dev);
 		/*
 		 * The enable status register may be unimplemented, but
