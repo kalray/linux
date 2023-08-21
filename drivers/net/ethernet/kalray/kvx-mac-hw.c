@@ -2403,11 +2403,6 @@ next_state:
 
 		/* Write abilities */
 		val = (1 << AN_KXAN_ABILITY_0_SEL_SHIFT);
-		/*
-		 * enable next page ability, even if nothing needs to be exchanged.
-		 * Because it is required by some link partners
-		 */
-		val |= AN_KXAN_ABILITY_0_NEXTPAGE_MASK;
 		if (cfg->lc.pause)
 			val |= (1 << AN_KXAN_ABILITY_0_PAUSEABILITY_SHIFT);
 		kvx_mac_writel(hw, val, an_off + AN_KXAN_ABILITY_0_OFFSET);
@@ -2446,7 +2441,6 @@ next_state:
 		updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
 
 		val = AN_KXAN_CTRL_ANEN_MASK | AN_KXAN_CTRL_ANRESTART_MASK;
-		val |= AN_KXAN_CTRL_NEXTPAGEEN_MASK; /* some LP require next page exchange */
 		kvx_mac_writel(hw, val, an_off + AN_KXAN_CTRL_OFFSET);
 		fallthrough;
 	case AN_STATE_WAIT_BP_EXCHANGE:
