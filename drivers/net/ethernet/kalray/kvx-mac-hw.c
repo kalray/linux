@@ -2575,10 +2575,20 @@ next_state:
 		 */
 		state = AN_STATE_DONE;
 
-		/* FIXME: Force link status up (and stop autoneg) */
+		/* check PCS link status (align_done, block_lock, hi_ber) */
+		mask = BIT(MAC_SYNC_STATUS_LINK_STATUS_SHIFT + cfg->id);
+		ret = kvx_poll(kvx_mac_readl, MAC_SYNC_STATUS_OFFSET, mask, mask, MAC_SYNC_TIMEOUT_MS);
+		if (ret) {
+			dev_err(hw->dev, "PCS link status timeout\n");
+			kvx_eth_mac_pcs_status(hw, cfg);
+			goto err;
+		}
+
+		/* feedback PCS status to the AN module */
 		mask = BIT(MAC_CTRL_AN_CTRL_PCS_LINK_STATUS_SHIFT + cfg->id);
 		updatel_bits(hw, MAC, an_ctrl_off, mask, mask);
 
+		/* check for AN completion */
 		mask = AN_KXAN_STATUS_AN_COMPLETE_MASK;
 		ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_STATUS_OFFSET,
 			       mask, mask, AN_TIMEOUT_MS);
