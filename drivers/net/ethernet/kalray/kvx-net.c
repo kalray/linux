@@ -296,7 +296,7 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 		/* configure speed and set the link up - do the autoneg/link training if enabled */
 		ret = kvx_eth_mac_setup_link(ndev->hw, &ndev->cfg);
 		if (ret)
-			netdev_warn(ndev->netdev, "Failed to setup link\n");
+			return false; /* kvx_eth_link_cfg() will restart link config */
 	}
 
 	if (chip_rev == COOLIDGE_V2)

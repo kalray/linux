@@ -2551,8 +2551,9 @@ next_state:
 	case AN_STATE_LT_PERFORM:
 		ret = kvx_eth_perform_link_training(hw, cfg);
 		if (ret) {
-			/* not fatal */
-			dev_err(hw->dev, "Link training failed (not fatal)\n");
+			dev_err(hw->dev, "Link training failed\n");
+			state = AN_STATE_RESET;
+			goto next_state;
 		}
 
 		/* Disable link training */
