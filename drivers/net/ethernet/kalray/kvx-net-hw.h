@@ -1408,7 +1408,7 @@ enum autoneg_states {
  * @duplex: duplex mode
  * @fec: fec mode
  * @phy_mode: phy interface mode
- * @an_mode: enable autonegociation
+ * @an_mode: enable autonegotiation
  * @lc: link capabilities
  * @ln: link negotiated rate/fec/pause
  * @hw: back pointer to hw description
@@ -1557,9 +1557,9 @@ struct lt_saturate {
 };
 
 struct tx_coefs {
-	u8 pre;
-	u8 post;
-	u8 main;
+	s8 pre;
+	s8 post;
+	s8 main;
 };
 
 /**
