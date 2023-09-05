@@ -1912,7 +1912,7 @@ void kvx_eth_lt_report_ld_status_updated(struct kvx_eth_hw *hw, int lane)
 		}
 
 		coef = (val & LT_COEF_P_1_MASK) >> LT_COEF_P_1_SHIFT;
-		ret = kvx_phy_tx_coef_op(hw, lane, coef, TX_EQ_MAIN);
+		ret = kvx_phy_tx_coef_op(hw, lane, coef, TX_EQ_POST);
 		if (!ret) {
 			sts |= LT_COEF_UP_UPDATED << LT_COEF_P_1_SHIFT;
 		} else {
@@ -2306,11 +2306,11 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
  * @cfg: lane configuration
  *
  * Implementation of the autoneg FSM defined in the MAC specification.
- * If autonegociation is enabled, the fsm will:
- * - configure serdes/mac/pcs for auto negotiation, perform auto negociation,
+ * If autonegotiation is enabled, the fsm will:
+ * - configure serdes/mac/pcs for auto negotiation, perform auto negotiation,
  * - configure serdes/mac/pcs for the common speed, perform link training, and
- *   wait auto negociation completion
- * If autonegociation is disabled, the autoneg fsm will only configure
+ *   wait auto negotiation completion
+ * If autonegotiation is disabled, the autoneg fsm will only configure
  * serdes/mac/pcs with the requested speed.
  *
  * Returns true on success.
@@ -2467,7 +2467,7 @@ next_state:
 			goto err;
 		}
 
-		/* Apply negociated speed */
+		/* Apply negotiated speed */
 		cfg->speed = cfg->ln.speed;
 		cfg->fec = cfg->ln.fec;
 		nb_lane = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
@@ -2475,7 +2475,7 @@ next_state:
 
 		/* Don't display FEC as it could be altered by mac config */
 		kvx_eth_get_formated_speed(cfg->ln.speed, &speed_fmt, &unit);
-		dev_info(hw->dev, "Negociated speed: %d%s\n", speed_fmt, unit);
+		dev_info(hw->dev, "Negotiated speed: %d%s\n", speed_fmt, unit);
 		fallthrough;
 	case AN_STATE_RTM_CFG:
 		if (cfg->restart_serdes) {
@@ -2568,10 +2568,10 @@ next_state:
 	case AN_STATE_DONE:
 		/*
 		 * Once link training has been completed (from AN_GOOD_CHECK state)
-		 * The link shall come up, and the autonegociation complete.
+		 * The link shall come up, and the autonegotiation complete.
 		 * There is no hardware module between the AN module and the PCS.
 		 * Thus the software must poll on align_done pcs status, and report
-		 * it to the autonegociation module in order for the autoneg to
+		 * it to the autonegotiation module in order for the autoneg to
 		 * complete and to enter the AN_GOOD state.
 		 */
 		state = AN_STATE_DONE;
