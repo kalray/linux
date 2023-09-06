@@ -230,6 +230,8 @@ struct kvx_eth_chip_rev_data {
 	void (*const phy_set_tx_default_eq_coef)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 	int  (*const phy_rx_adapt)(struct kvx_eth_hw *hw, int lane_id);
 	int (*const phy_rx_adapt_broadcast)(struct kvx_eth_hw *hw);
+	int (*const phy_start_rx_adapt)(struct kvx_eth_hw *hw, int lane_id);
+	int (*const phy_get_result_rx_adapt)(struct kvx_eth_hw *hw, int lane_id, bool blocking, struct tx_coefs *coefs);
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);

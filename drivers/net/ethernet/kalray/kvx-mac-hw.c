@@ -571,6 +571,61 @@ int kvx_phy_rx_adapt_cv1(struct kvx_eth_hw *hw, int lane_id)
 }
 
 /**
+ * kvx_phy_start_rx_adapt_cv1() - Launch RX adaptation process
+ *
+ * Return: 0 on success, < 0 on error
+ */
+int kvx_phy_start_rx_adapt_cv1(struct kvx_eth_hw *hw, int lane_id)
+{
+	unsigned int off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id;
+
+	updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
+		     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK,
+		     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK);
+	return 0;
+}
+
+/**
+ * kvx_phy_get_result_rx_adapt_cv1() - get RX adaptation process results
+ *
+ * Return: FOM on success, < 0 on error
+ */
+int kvx_phy_get_result_rx_adapt_cv1(struct kvx_eth_hw *hw, int lane_id, bool blocking, struct tx_coefs *coefs)
+{
+	u32 off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane_id, v;
+	struct kvx_eth_phy_param *p = &hw->phy_f.param[lane_id];
+	int ret = 0;
+
+	if (blocking) {	/* actually not used */
+		/* wait for completion */
+		ret = kvx_poll(kvx_phymac_readl, off + PHY_LANE_RX_SERDES_STATUS_OFFSET,
+			PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+			PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+			SERDES_ACK_TIMEOUT_MS);
+		if (ret) {
+			dev_err(hw->dev, "RX_ADAPT_ACK SET TIMEOUT l.%d\n", __LINE__);
+			return -ETIMEDOUT;
+		}
+		v = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+	} else {
+		v = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+		if (GETF(v, PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK) == 0)
+			return -EAGAIN;
+	}
+	/* Deassert request */
+	updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
+		     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK, 0);
+
+	p->fom = GETF(v, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
+	/* Check coefficients for LP to update */
+	coefs->pre  = GETF(v, PHY_LANE_RX_SERDES_STATUS_TXPRE_DIR);
+	coefs->post = GETF(v, PHY_LANE_RX_SERDES_STATUS_TXPOST_DIR);
+	coefs->main = GETF(v, PHY_LANE_RX_SERDES_STATUS_TXMAIN_DIR);
+
+	return p->fom;
+}
+
+/**
  * kvx_phy_rx_adapt_broadcast_cv1() - Launch RX adaptation process, update FOM value
  *
  * RX adaptation is done in brodcast mode, for all lanes simultaneously.
@@ -2007,8 +2062,11 @@ void kvx_eth_lt_lp_fsm(struct kvx_eth_hw *hw, int lane)
  */
 void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 {
-	unsigned int val, lt_off, off, mask;
-	int pre, post, swing;
+	unsigned int val, lt_off, mask;
+	int ret;
+	u8 lp_status_coef = 0;
+	struct tx_coefs ld_update_coefs;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 
 	lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
 
@@ -2043,19 +2101,17 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 		val = kvx_mac_readl(hw, lt_off + LT_KR_LP_STAT_OFFSET);
 		mask = LT_COEF_M_1_MASK | LT_COEF_0_MASK | LT_COEF_P_1_MASK;
 		if ((val & mask) != 0) {
-			pre = GETF(val, LT_COEF_M_1);
-			post = GETF(val, LT_COEF_P_1);
-			swing = GETF(val, LT_COEF_0);
-			if ((pre == LT_COEF_UP_MAXIMUM) ||
-					(pre == LT_COEF_UP_MINIMUM))
+			lp_status_coef = GETF(val, LT_COEF_M_1);
+			if ((lp_status_coef == LT_COEF_UP_MAXIMUM) ||
+					(lp_status_coef == LT_COEF_UP_MINIMUM))
 				hw->lt_status[lane].saturate.pre = true;
-			post = GETF(val, LT_COEF_P_1);
-			if ((post == LT_COEF_UP_MAXIMUM) ||
-					(post == LT_COEF_UP_MINIMUM))
+			lp_status_coef = GETF(val, LT_COEF_P_1);
+			if ((lp_status_coef == LT_COEF_UP_MAXIMUM) ||
+					(lp_status_coef == LT_COEF_UP_MINIMUM))
 				hw->lt_status[lane].saturate.post = true;
-			swing = GETF(val, LT_COEF_0);
-			if ((swing == LT_COEF_UP_MAXIMUM) ||
-					(swing == LT_COEF_UP_MINIMUM))
+			lp_status_coef = GETF(val, LT_COEF_0);
+			if ((lp_status_coef == LT_COEF_UP_MAXIMUM) ||
+					(lp_status_coef == LT_COEF_UP_MINIMUM))
 				hw->lt_status[lane].saturate.swing = true;
 
 			/* Mark as hold */
@@ -2073,43 +2129,28 @@ void kvx_eth_lt_ld_fsm(struct kvx_eth_hw *hw, int lane)
 		mask = LT_COEF_M_1_MASK | LT_COEF_0_MASK | LT_COEF_P_1_MASK;
 		if ((val & mask) == 0) {
 			/* Request adaptation */
-			off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane;
-			updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
-				     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK,
-				     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK);
+			rev_d->phy_start_rx_adapt(hw, lane);
 			hw->lt_status[lane].ld_state = LT_LD_STATE_PROCESS_UPDATE;
 		}
 		break;
 	case LT_LD_STATE_PROCESS_UPDATE:
 		LT_DBG(hw->dev, "%s LT_LD_STATE_PROCESS_UPDATE lane[%d]\n",
 		       __func__, lane);
+		ret = rev_d->phy_get_result_rx_adapt(hw, lane, false, &ld_update_coefs);
 		/* Wait for the end of adaptation */
-		off = PHY_LANE_OFFSET + PHY_LANE_ELEM_SIZE * lane;
-		val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
-		if (GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_ACK) == 0)
+		if (ret == -EAGAIN)
 			return;
-
-		/* Deassert request */
-		updatel_bits(hw, PHYMAC, off + PHY_LANE_RX_SERDES_CFG_OFFSET,
-			     PHY_LANE_RX_SERDES_CFG_ADAPT_REQ_MASK, 0);
-
-		/* Check coefficients for LP to update */
-		val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
-		pre  = GETF(val, PHY_LANE_RX_SERDES_STATUS_TXPRE_DIR);
-		post = GETF(val, PHY_LANE_RX_SERDES_STATUS_TXPOST_DIR);
-		swing = GETF(val, PHY_LANE_RX_SERDES_STATUS_TXMAIN_DIR);
-
 		hw->lt_status[lane].ld_state = LT_LD_STATE_WAIT_UPDATE;
 		/* If 3 HOLD parameters, link training is done */
-		if ((pre == 0 || hw->lt_status[lane].saturate.pre) &&
-				(post == 0 || hw->lt_status[lane].saturate.post) &&
-				(swing == 0 || hw->lt_status[lane].saturate.swing)) {
+		if ((ld_update_coefs.pre == 0 || hw->lt_status[lane].saturate.pre) &&
+				(ld_update_coefs.post == 0 || hw->lt_status[lane].saturate.post) &&
+				(ld_update_coefs.main == 0 || hw->lt_status[lane].saturate.swing)) {
 			hw->lt_status[lane].ld_state = LT_LD_STATE_PREPARE_DONE;
 			return;
 		}
 		/* Send request to LP */
-		val = pre << LT_COEF_M_1_SHIFT | post << LT_COEF_P_1_SHIFT |
-			swing << LT_COEF_0_SHIFT;
+		val = ld_update_coefs.pre << LT_COEF_M_1_SHIFT | ld_update_coefs.post << LT_COEF_P_1_SHIFT |
+			ld_update_coefs.main << LT_COEF_0_SHIFT;
 		updatel_bits(hw, MAC, lt_off + LT_KR_LD_COEF_OFFSET,
 			     LT_COEF_M_1_MASK | LT_COEF_P_1_MASK | LT_COEF_0_MASK,
 			     val);

@@ -676,7 +676,6 @@ void kvx_phy_set_tx_default_eq_coef_cv2(struct kvx_eth_hw *hw, struct kvx_eth_la
 	}
 }
 
-
 /**
  * kvx_phy_rx_adapt_v1_cv2() - Launch RX adaptation process, update FOM value
  *
@@ -685,37 +684,87 @@ void kvx_phy_set_tx_default_eq_coef_cv2(struct kvx_eth_hw *hw, struct kvx_eth_la
  */
 int kvx_phy_rx_adapt_v1_cv2(struct kvx_eth_hw *hw, int lane_id)
 {
+	int ret = 0;
+
+	ret = kvx_phy_start_rx_adapt_v1_cv2(hw, lane_id);
+	if (ret) {
+		dev_err(hw->dev, "RX_ADAPT start failure)\n");
+		return ret;
+	}
+
+	ret = kvx_phy_get_result_rx_adapt_v1_cv2(hw, lane_id, true, NULL);
+
+	return ret;
+}
+
+/**
+ * kvx_phy_start_rx_adapt_v1_cv2() - Launch RX adaptation process
+ *
+ * version 1: follow the same steps as cv1.
+ *
+ * Return: 0 on success, < 0 on error
+ */
+int kvx_phy_start_rx_adapt_v1_cv2(struct kvx_eth_hw *hw, int lane_id)
+{
+	u32 off = KVX_PHY_SERDES_CONTROL_GRP_OFFSET + (KVX_PHY_SERDES_CONTROL_GRP_ELEM_SIZE * lane_id);
+	u32 v;
+
+	/* power state compatible with adaptation procedure */
+	v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET);
+	if (GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_PSTATE) != PSTATE_P0) {
+		dev_err(hw->dev, "RX_ADAPT can not be done (not in P0)\n");
+		return -EINVAL;
+	}
+	/* no adaptation procedure in progress (non sense .. it s an input) */
+	if (GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_IN_PROG)) {
+		dev_err(hw->dev, "RX_ADAPT already in progress\n");
+		return -EINVAL;
+	}
+	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
+		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK,
+		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK);
+
+	return 0;
+}
+
+/**
+ * kvx_phy_get_result_rx_adapt_v1_cv2() - get RX adaptation process results
+ *
+ * version 1: follow the same steps as cv1.
+ *
+ * Return: FOM on success, < 0 on error
+ */
+int kvx_phy_get_result_rx_adapt_v1_cv2(struct kvx_eth_hw *hw, int lane_id, bool blocking, struct tx_coefs *coefs)
+{
 	struct kvx_eth_phy_param *p = &hw->phy_f.param[lane_id];
 	u32 off = KVX_PHY_SERDES_CONTROL_GRP_OFFSET + (KVX_PHY_SERDES_CONTROL_GRP_ELEM_SIZE * lane_id);
 	u32 v;
 	int ret;
 
-	/* power state compatible with adaptation procedure */
-	v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET);
-	if (GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_PSTATE) != PSTATE_P0) {
-		dev_dbg(hw->dev, "RX_ADAPT can not be done (not in P0)\n");
-		return -EINVAL;
-	}
-	/* no adaptation procedure in progress (non sense .. it s an input) */
-	if (GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_IN_PROG)) {
-		dev_dbg(hw->dev, "RX_ADAPT already in progress\n");
-		return -EINVAL;
-	}
-
-	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
-		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK,
-		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK);
-
-	ret = kvx_poll(kvx_phy_readl, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET,
-		KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
-		KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
-		PHY_SERDES_ADAPT_ACK_TIMEOUT_MS);
-	if (ret) {
-		dev_err(hw->dev, "RX_ADAPT_ACK SET TIMEOUT l.%d\n", __LINE__);
-		return -ETIMEDOUT;
+	if (blocking) {
+		/* wait for completion */
+		ret = kvx_poll(kvx_phy_readl, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET,
+			KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+			KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+			PHY_SERDES_ADAPT_ACK_TIMEOUT_MS);
+		if (ret) {
+			dev_err(hw->dev, "RX_ADAPT_ACK SET TIMEOUT l.%d\n", __LINE__);
+			return -ETIMEDOUT;
+	} else {
+		/* check completion */
+		v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET);
+		if (GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK) == 0x0)
+			return -EAGAIN;
+		}
+		v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET);
 	}
 
 	v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET);
+	if (coefs) {
+		coefs->pre = GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXPRE_DIR);
+		coefs->post = GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXPOST_DIR);
+		coefs->main = GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXMAIN_DIR);
+	}
 	p->fom = GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_FOM);
 	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_FOM);
 	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXMAIN_DIR);
@@ -741,10 +790,8 @@ int kvx_phy_rx_adapt_v1_cv2(struct kvx_eth_hw *hw, int lane_id)
 
 	return p->fom;
 }
-
-
 /**
- * kvx_phy_rx_adapt_v2_cv2() - Launch RX adaptation process, update FOM value
+ * kvx_phy_rx_adapt_v2_cv2() - Execution of RX adaptation process, update FOM value
  *
  * version 2: follow the step specified in the doc.
  *
@@ -768,11 +815,42 @@ int kvx_phy_rx_adapt_v1_cv2(struct kvx_eth_hw *hw, int lane_id)
  */
 int kvx_phy_rx_adapt_v2_cv2(struct kvx_eth_hw *hw, int lane_id)
 {
-	struct kvx_eth_phy_param *p = &hw->phy_f.param[lane_id];
+	int ret = 0;
+
+	ret = kvx_phy_start_rx_adapt_v2_cv2(hw, lane_id);
+	if (ret)
+		return (ret);
+	ret = kvx_phy_get_result_rx_adapt_v2_cv2(hw, lane_id, true, NULL);
+
+	return ret;
+}
+
+/**
+ * kvx_phy_start_rx_adapt_v2_cv2() - Launch RX adaptation process
+ *
+ * version 2: follow the step specified in the doc.
+ *
+ *  1.	Set rxX_data_en to 1. (expected to be done before)
+ *	    The PHY firmware triggers the coarse adaptation algorithm.
+ *	2. Wait for rxX_valid to assert. (expected to be done before)
+ *	3. De-assert rxX_data_en.
+ *	4. Assert rxX_adapt_in_prog to the PHY.
+ *	5. Toggle rxX_reset to the PHY.
+ *	6. Wait for de-assertion of rxX_ack from the PHY.
+ *	7. Ensure the PHY lane receiver is in P0 state. Transition to P0, if not already in P0 out of reset.
+ *	8. Wait for detection of electrical idle exit condition on rxX_sigdet_lf (for low-frequency data)
+ *	9. Assert rxX_data_en to the PHY.
+ *	10. Wait for assertion of rxX_valid from the PHY.
+ *	11. Perform an RX adaptation request and assert rxX_adapt_req.
+ *
+ * Return: 0 on success, < 0 on error
+ */
+int kvx_phy_start_rx_adapt_v2_cv2(struct kvx_eth_hw *hw, int lane_id)
+{
 	u32 off = KVX_PHY_SERDES_CONTROL_GRP_OFFSET + (KVX_PHY_SERDES_CONTROL_GRP_ELEM_SIZE * lane_id);
 	u32 v;
 	u8 serdes_mask = (1 << lane_id);
-	int ret;
+	int ret = 0;
 
 	/* De-assert rxX_data_en */
 	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
@@ -839,18 +917,50 @@ int kvx_phy_rx_adapt_v2_cv2(struct kvx_eth_hw *hw, int lane_id)
 		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK,
 		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK);
 
-	/* wait for report of completion */
-	ret = kvx_poll(kvx_phy_readl, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET,
-		KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
-		KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
-		PHY_SERDES_ADAPT_ACK_TIMEOUT_MS);
-	if (ret) {
-		dev_err(hw->dev, "RX_ADAPT_ACK SET TIMEOUT l.%d\n", __LINE__);
-		return -ETIMEDOUT;
-	}
+	return 0;
+}
 
-	v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET);
+/**
+ * kvx_phy_get_result_rx_adapt_v2_cv2() - get RX adaptation process results
+ *
+ * version 2: follow the step specified in the doc.
+ *
+ *	1. The PHY performs RX adaptation, then signals the completion by asserting rxX_adapt_ack.
+ *	2. De-assert rxX_adapt_req to the PHY.
+ *	3. De-assert rxX_adapt_in_prog to the PHY.
+
+ * Return: FOM on success, < 0 on error
+ */
+int kvx_phy_get_result_rx_adapt_v2_cv2(struct kvx_eth_hw *hw, int lane_id, bool blocking, struct tx_coefs *coefs)
+{
+	int ret = 0;
+	struct kvx_eth_phy_param *p = &hw->phy_f.param[lane_id];
+	u32 off = KVX_PHY_SERDES_CONTROL_GRP_OFFSET + (KVX_PHY_SERDES_CONTROL_GRP_ELEM_SIZE * lane_id);
+	u32 v;
+
+	if (blocking) {
+		/* wait for completion */
+		ret = kvx_poll(kvx_phy_readl, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET,
+			KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+			KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+			PHY_SERDES_ADAPT_ACK_TIMEOUT_MS);
+		if (ret) {
+			dev_err(hw->dev, "RX_ADAPT_ACK SET TIMEOUT l.%d\n", __LINE__);
+			return -ETIMEDOUT;
+		}
+		v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET);
+	} else {
+		/* check completion */
+		v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET);
+		if (GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK) == 0x0)
+			return -EAGAIN;
+	}
 	p->fom = GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_FOM);
+	if (coefs) {
+		coefs->pre = GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXPRE_DIR);
+		coefs->post = GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXPOST_DIR);
+		coefs->main = GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXMAIN_DIR);
+	}
 	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_FOM);
 	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXMAIN_DIR);
 	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXPOST_DIR);
