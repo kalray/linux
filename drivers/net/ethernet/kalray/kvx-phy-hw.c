@@ -30,7 +30,7 @@ u16 kvx_phy_readw(struct kvx_eth_hw *hw, u64 off)
 	return val;
 }
 
-static void tx_ber_param_update(void *data)
+void kvx_phy_tx_ber_param_update_cv1(void *data)
 {
 	struct kvx_eth_tx_bert_param *p = (struct kvx_eth_tx_bert_param *)data;
 	u32 reg = LANE0_TX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
@@ -41,7 +41,7 @@ static void tx_ber_param_update(void *data)
 	p->tx_mode = GETF(val, LANE0_TX_LBERT_CTL_MODE);
 }
 
-static void rx_ber_param_update(void *data)
+void kvx_phy_rx_ber_param_update_cv1(void *data)
 {
 	struct kvx_eth_rx_bert_param *p = (struct kvx_eth_rx_bert_param *)data;
 	u32 reg = LANE0_RX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
@@ -58,6 +58,7 @@ static void rx_ber_param_update(void *data)
 	if (v)
 		p->err_cnt *= 128;
 }
+
 
 /* Reads actual values or overridden ones if enabled */
 void kvx_phy_get_tx_eq_coef_cv1(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef)
@@ -140,6 +141,7 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 	struct kvx_eth_rx_bert_param *rx_ber;
 	struct kvx_eth_tx_bert_param *tx_ber;
 	struct kvx_eth_phy_param *p;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 	int i = 0;
 
 	hw->phy_f.hw = hw;
@@ -155,11 +157,11 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 		p->ovrd_en = false;
 		rx_ber->hw = hw;
 		rx_ber->lane_id = i;
-		rx_ber->update = rx_ber_param_update;
+		rx_ber->update = rev_d->phy_rx_ber_param_update;
 		rx_ber->rx_mode = BERT_DISABLED;
 		tx_ber->hw = hw;
 		tx_ber->lane_id = i;
-		tx_ber->update = tx_ber_param_update;
+		tx_ber->update = rev_d->phy_tx_ber_param_update;
 		tx_ber->tx_mode = BERT_DISABLED;
 	}
 }
@@ -204,6 +206,22 @@ void kvx_phy_set_tx_default_eq_coef_cv1(struct kvx_eth_hw *hw, struct kvx_eth_la
 void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
 			       struct kvx_eth_tx_bert_param *p)
 {
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+
+	rev_d->phy_tx_bert_param_cfg(hw, p);
+}
+
+void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
+			       struct kvx_eth_rx_bert_param *p)
+{
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+
+	rev_d->phy_rx_bert_param_cfg(hw, p);
+}
+
+void kvx_phy_tx_bert_param_cfg_cv1(struct kvx_eth_hw *hw,
+			       struct kvx_eth_tx_bert_param *p)
+{
 	u32 reg = LANE0_TX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;
 	u16 mask, val;
 
@@ -232,7 +250,7 @@ void kvx_eth_tx_bert_param_cfg(struct kvx_eth_hw *hw,
 	updatew_bits(hw, PHY, reg, LANE0_TX_LBERT_CTL_TRIG_ERR_MASK, val);
 }
 
-void kvx_eth_rx_bert_param_cfg(struct kvx_eth_hw *hw,
+void kvx_phy_rx_bert_param_cfg_cv1(struct kvx_eth_hw *hw,
 			       struct kvx_eth_rx_bert_param *p)
 {
 	u32 reg = LANE0_RX_LBERT_CTL_OFFSET + p->lane_id * LANE_OFFSET;

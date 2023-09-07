@@ -1331,7 +1331,9 @@ enum bert_mode {
 	BERT_FIXEDWORD,
 	BERT_DCBALANCEDWORD,
 	BERT_FIXEDPATTERN,
-	BERT_MODE_NB
+	BERT_EXTENDEDPATTERN, /* supported on cv2 only */
+	BERT_LSF13, /* supported on cv2 only */
+	BERT_MODE_MAX = BERT_LSF13
 };
 
 struct kvx_eth_rx_bert_param {
@@ -1347,6 +1349,10 @@ struct kvx_eth_tx_bert_param {
 	enum bert_mode tx_mode;
 	bool trig_err;
 	u16 pat0;
+	u16 pat_ext0; /* supported on cv2 only */
+	u16 pat_ext1; /* supported on cv2 only */
+	u16 pat_ext2; /* supported on cv2 only */
+	u16 pat_ext3; /* supported on cv2 only */
 	int lane_id;
 };
 
@@ -2061,6 +2067,10 @@ int kvx_phy_rx_adapt_cv1(struct kvx_eth_hw *hw, int lane_id);
 int kvx_phy_rx_adapt_broadcast_cv1(struct kvx_eth_hw *hw);
 int kvx_phy_start_rx_adapt_cv1(struct kvx_eth_hw *hw, int lane_id);
 int kvx_phy_get_result_rx_adapt_cv1(struct kvx_eth_hw *hw, int lane_id, bool blocking, struct tx_coefs *coefs);
+void kvx_phy_tx_ber_param_update_cv1(void *data);
+void kvx_phy_rx_ber_param_update_cv1(void *data);
+void kvx_phy_tx_bert_param_cfg_cv1(struct kvx_eth_hw *hw, struct kvx_eth_tx_bert_param *p);
+void kvx_phy_rx_bert_param_cfg_cv1(struct kvx_eth_hw *hw, struct kvx_eth_rx_bert_param *p);
 
 /* MAC */
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);

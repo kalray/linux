@@ -34,5 +34,9 @@ int kvx_phy_get_result_rx_adapt_v1_cv2(struct kvx_eth_hw *hw, int lane_id, bool 
 int kvx_phy_rx_adapt_v2_cv2(struct kvx_eth_hw *hw, int lane_id);
 int kvx_phy_start_rx_adapt_v2_cv2(struct kvx_eth_hw *hw, int lane_id);
 int kvx_phy_get_result_rx_adapt_v2_cv2(struct kvx_eth_hw *hw, int lane_id, bool blocking, struct tx_coefs *coefs);
+void kvx_phy_tx_ber_param_update_cv2(void *data);
+void kvx_phy_rx_ber_param_update_cv2(void *data);
+void kvx_phy_tx_bert_param_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_tx_bert_param *p);
+void kvx_phy_rx_bert_param_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_rx_bert_param *p);
 
 #endif

@@ -310,6 +310,16 @@ static inline u32 kvx_phy_readl(struct kvx_eth_hw *hw, u64 off)
 	return readl(hw->res[KVX_ETH_RES_PHYCTL].base + off);
 }
 
+static inline void kvx_phyint_writew(struct kvx_eth_hw *hw, u16 val, u64 off)
+{
+	writew(val, hw->res[KVX_ETH_RES_PHY].base + off);
+}
+
+static inline u16 kvx_phyint_readw(struct kvx_eth_hw *hw, u64 off)
+{
+	return readw(hw->res[KVX_ETH_RES_PHY].base + off);
+}
+
 static void kvx_eth_phy_mplla_configure(struct kvx_eth_hw *hw)
 {
 	u32 base = KVX_PHY_PLL_PRESET_GRP_OFFSET; /* pll preset 0 */
@@ -982,4 +992,132 @@ int kvx_phy_get_result_rx_adapt_v2_cv2(struct kvx_eth_hw *hw, int lane_id, bool 
 	dev_dbg(hw->dev, "lane[%d] FOM %d\n", lane_id, p->fom);
 
 	return p->fom;
+}
+
+void kvx_phy_tx_ber_param_update_cv2(void *data)
+{
+	struct kvx_eth_tx_bert_param *p = (struct kvx_eth_tx_bert_param *)data;
+	u32 reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_CTL_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	u16 val = kvx_phyint_readw(p->hw, reg);
+
+	p->trig_err = GETF(val, KVX_PHY_INT_TX_LBERT_CTL_TRIGGER_ERR);
+	p->pat0 = GETF(val, KVX_PHY_INT_TX_LBERT_CTL_PAT0);
+	p->tx_mode = GETF(val, KVX_PHY_INT_TX_LBERT_CTL_MODE);
+	reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_0_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	p->pat_ext0 = kvx_phyint_readw(p->hw, reg);
+	reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_1_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	p->pat_ext1 = kvx_phyint_readw(p->hw, reg);
+	reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_2_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	p->pat_ext2 = kvx_phyint_readw(p->hw, reg);
+	reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_3_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	p->pat_ext3 = kvx_phyint_readw(p->hw, reg);
+}
+
+void kvx_phy_rx_ber_param_update_cv2(void *data)
+{
+	struct kvx_eth_rx_bert_param *p = (struct kvx_eth_rx_bert_param *)data;
+	u32 reg = KVX_PHY_INT_LANE0_DIG_RX_LBERT_CTL_OFFSET + p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	u16 v, val = kvx_phyint_readw(p->hw, reg);
+
+	p->rx_mode = GETF(val, KVX_PHY_INT_DIG_RX_LBERT_CTL_MODE);
+
+	reg = KVX_PHY_INT_LANE0_DIG_RX_LBERT_ERR_OFFSET + p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	/* Read it twice */
+	val = kvx_phyint_readw(p->hw, reg);
+	val = kvx_phyint_readw(p->hw, reg);
+	p->err_cnt = GETF(val, KVX_PHY_INT_DIG_RX_LBERT_ERR_COUNT);
+	v = GETF(val, KVX_PHY_INT_DIG_RX_LBERT_ERR_OV14);
+	if (v)
+		p->err_cnt = (p->err_cnt << 7);
+}
+
+void kvx_phy_tx_bert_param_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_tx_bert_param *p)
+{
+	u32 reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_CTL_OFFSET + p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	u16 mask, val;
+	bool restart = false;
+
+	if (p->tx_mode == BERT_DISABLED) {
+		kvx_mac_tx_flush_lane(hw, p->lane_id, false);
+		kvx_phyint_writew(hw, 0, reg);
+		return;
+	}
+
+	kvx_mac_tx_flush_lane(hw, p->lane_id, true);
+	reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_0_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	restart |= (kvx_phyint_readw(p->hw, reg) != p->pat_ext0);
+	reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_1_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	restart |= (kvx_phyint_readw(p->hw, reg) != p->pat_ext1);
+	reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_2_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	restart |= (kvx_phyint_readw(p->hw, reg) != p->pat_ext2);
+	reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_3_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	restart |= (kvx_phyint_readw(p->hw, reg) != p->pat_ext3);
+	reg = KVX_PHY_INT_LANE0_DIG_TX_LBERT_CTL_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	val = kvx_phyint_readw(hw, reg);
+	restart |= (GETF(val, KVX_PHY_INT_TX_LBERT_CTL_MODE) != p->tx_mode);
+	restart |= (GETF(val, KVX_PHY_INT_TX_LBERT_CTL_PAT0) != p->pat0);
+	if (restart) {
+		mask = (KVX_PHY_INT_TX_LBERT_CTL_MODE_MASK |
+			KVX_PHY_INT_TX_LBERT_CTL_PAT0_MASK);
+		/* Write it twice (recommended by spec as volatile reg) */
+		updatew_bits(hw, PHY, reg, mask, 0);
+		updatew_bits(hw, PHY, reg, mask, 0);
+		kvx_phyint_writew(hw, p->pat_ext0, KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_0_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET);
+		kvx_phyint_writew(hw, p->pat_ext1, KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_1_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET);
+		kvx_phyint_writew(hw, p->pat_ext2, KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_2_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET);
+		kvx_phyint_writew(hw, p->pat_ext3, KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_3_OFFSET +
+			p->lane_id * KVX_PHY_INT_LANE_OFFSET);
+		val = ((u16)p->tx_mode << KVX_PHY_INT_TX_LBERT_CTL_MODE_SHIFT) |
+			((u16)p->pat0 << KVX_PHY_INT_TX_LBERT_CTL_PAT0_SHIFT);
+		/* Write it twice (recommended) */
+		updatew_bits(hw, PHY, reg, mask, val);
+		updatew_bits(hw, PHY, reg, mask, val);
+	}
+	val = ((u16)(p->trig_err) << LANE0_TX_LBERT_CTL_TRIG_ERR_SHIFT);
+	updatew_bits(hw, PHY, reg, LANE0_TX_LBERT_CTL_TRIG_ERR_MASK, val);
+}
+
+void kvx_phy_rx_bert_param_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_rx_bert_param *p)
+{
+	u32 reg = KVX_PHY_INT_LANE0_DIG_RX_LBERT_CTL_OFFSET + p->lane_id * KVX_PHY_INT_LANE_OFFSET;
+	u16 val;
+
+	if (p->rx_mode == BERT_DISABLED) {
+		kvx_phyint_writew(hw, 0, reg);
+		return;
+	}
+
+	val = kvx_phyint_readw(hw, reg);
+	if (GETF(val, KVX_PHY_INT_DIG_RX_LBERT_CTL_MODE) != p->rx_mode) {
+		/* Write it twice (recommended) */
+		kvx_phyint_writew(hw, 0, reg);
+		kvx_phyint_writew(hw, 0, reg);
+		val = ((u16) p->rx_mode) << KVX_PHY_INT_DIG_RX_LBERT_CTL_MODE_SHIFT;
+		updatew_bits(hw, PHY, reg, KVX_PHY_INT_DIG_RX_LBERT_CTL_MODE_MASK, val);
+		updatew_bits(hw, PHY, reg, KVX_PHY_INT_DIG_RX_LBERT_CTL_MODE_MASK, val);
+	}
+	/* Write sync: Synchronization and error counting are initiated by asserting the sync bit
+	 * This bit must be toggled twice for reliable operation.
+	 */
+	if (p->sync) {
+		updatew_bits(hw, PHY, reg, KVX_PHY_INT_DIG_RX_LBERT_CTL_SYNC_MASK, 0);
+		updatew_bits(hw, PHY, reg, KVX_PHY_INT_DIG_RX_LBERT_CTL_SYNC_MASK, KVX_PHY_INT_DIG_RX_LBERT_CTL_SYNC_MASK);
+		updatew_bits(hw, PHY, reg, KVX_PHY_INT_DIG_RX_LBERT_CTL_SYNC_MASK, 0);
+		updatew_bits(hw, PHY, reg, KVX_PHY_INT_DIG_RX_LBERT_CTL_SYNC_MASK, KVX_PHY_INT_DIG_RX_LBERT_CTL_SYNC_MASK);
+		updatew_bits(hw, PHY, reg, KVX_PHY_INT_DIG_RX_LBERT_CTL_SYNC_MASK, 0);
+		p->sync = 0;
+	}
 }

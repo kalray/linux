@@ -232,6 +232,10 @@ struct kvx_eth_chip_rev_data {
 	int (*const phy_rx_adapt_broadcast)(struct kvx_eth_hw *hw);
 	int (*const phy_start_rx_adapt)(struct kvx_eth_hw *hw, int lane_id);
 	int (*const phy_get_result_rx_adapt)(struct kvx_eth_hw *hw, int lane_id, bool blocking, struct tx_coefs *coefs);
+	void (*const phy_tx_ber_param_update)(void *data);
+	void (*const phy_rx_ber_param_update)(void *data);
+	void (*const phy_tx_bert_param_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_tx_bert_param *p);
+	void (*const phy_rx_bert_param_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_rx_bert_param *p);
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);

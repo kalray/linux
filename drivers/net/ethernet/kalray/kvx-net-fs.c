@@ -58,7 +58,7 @@ SYSFS_TYPES(phy_param);
 DECLARE_SYSFS_ENTRY(rx_bert_param);
 FIELD_RW_ENTRY(rx_bert_param, err_cnt, 0, U32_MAX);
 FIELD_RW_ENTRY(rx_bert_param, sync, 0, 1);
-FIELD_RW_ENTRY(rx_bert_param, rx_mode, BERT_DISABLED, BERT_MODE_NB);
+FIELD_RW_ENTRY(rx_bert_param, rx_mode, BERT_DISABLED, BERT_MODE_MAX);
 
 static struct attribute *rx_bert_param_attrs[] = {
 	&rx_bert_param_err_cnt_attr.attr,
@@ -72,11 +72,21 @@ SYSFS_TYPES(rx_bert_param);
 
 DECLARE_SYSFS_ENTRY(tx_bert_param);
 FIELD_RW_ENTRY(tx_bert_param, trig_err, 0, 1);
-FIELD_RW_ENTRY(tx_bert_param, tx_mode, BERT_DISABLED, BERT_MODE_NB);
+FIELD_RW_ENTRY(tx_bert_param, tx_mode, BERT_DISABLED, BERT_MODE_MAX);
+FIELD_RW_ENTRY(tx_bert_param, pat0, 0, 0x3FF);
+FIELD_RW_ENTRY(tx_bert_param, pat_ext0, 0, U16_MAX);
+FIELD_RW_ENTRY(tx_bert_param, pat_ext1, 0, U16_MAX);
+FIELD_RW_ENTRY(tx_bert_param, pat_ext2, 0, U16_MAX);
+FIELD_RW_ENTRY(tx_bert_param, pat_ext3, 0, U16_MAX);
 
 static struct attribute *tx_bert_param_attrs[] = {
 	&tx_bert_param_trig_err_attr.attr,
 	&tx_bert_param_tx_mode_attr.attr,
+	&tx_bert_param_pat0_attr.attr,
+	&tx_bert_param_pat_ext0_attr.attr,
+	&tx_bert_param_pat_ext1_attr.attr,
+	&tx_bert_param_pat_ext2_attr.attr,
+	&tx_bert_param_pat_ext3_attr.attr,
 	NULL,
 };
 
