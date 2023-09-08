@@ -2218,6 +2218,49 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 	return ret;
 }
 
+static void kvx_eth_set_training_pattern(struct kvx_eth_hw *hw,
+					 struct kvx_eth_lane_cfg *cfg)
+{
+	u32 val, lane, nb_lane, lt_off;
+
+	for_each_cfg_lane(nb_lane, lane, cfg) {
+		lt_off = LT_OFFSET + lane * LT_ELEM_SIZE;
+
+		/* the training pattern is set on each lane according to clause 92 for 100G-CR4.
+		 * for 25G-CR, use the same control function as lane 0 of 100G (clause 110.7).
+		 */
+		if (cfg->speed == SPEED_100000 || cfg->speed == SPEED_25000)  {
+			switch (lane) {
+			case 0:
+				val = (0x3f5 << LT_KR_TRAINING_PATTERN_SEED_SHIFT) |
+				      (4 << LT_KR_TRAINING_PATTERN_PRBSSELECT_SHIFT);
+				break;
+			case 1:
+				val = (0x513 << LT_KR_TRAINING_PATTERN_SEED_SHIFT) |
+				      (5 << LT_KR_TRAINING_PATTERN_PRBSSELECT_SHIFT);
+				break;
+			case 2:
+				val = (0x5a7 << LT_KR_TRAINING_PATTERN_SEED_SHIFT) |
+				      (6 << LT_KR_TRAINING_PATTERN_PRBSSELECT_SHIFT);
+				break;
+			case 3:
+				val = (0x36f << LT_KR_TRAINING_PATTERN_SEED_SHIFT) |
+				      (7 << LT_KR_TRAINING_PATTERN_PRBSSELECT_SHIFT);
+				break;
+			default:
+				val = 0;
+				dev_err(hw->dev, "wrong lane number\n");
+			}
+		} else { /* apply clause 72.6 for 10G/40G - gen a random seed for each lane */
+			get_random_bytes(&val, sizeof(val));
+			/* prbs select = 0 */
+			val = (val & LT_KR_TRAINING_PATTERN_SEED_MASK) << LT_KR_TRAINING_PATTERN_SEED_SHIFT;
+		}
+
+		kvx_mac_writel(hw, val, lt_off + LT_KR_TRAINING_PATTERN_OFFSET);
+	}
+}
+
 static int kvx_eth_rtm_speed_cfg(struct kvx_eth_hw *hw, unsigned int speed)
 {
 	struct kvx_eth_rtm_params *params;
@@ -2476,6 +2519,9 @@ next_state:
 		/* Don't display FEC as it could be altered by mac config */
 		kvx_eth_get_formated_speed(cfg->ln.speed, &speed_fmt, &unit);
 		dev_info(hw->dev, "Negotiated speed: %d%s\n", speed_fmt, unit);
+
+		/* knowing the speed, set the correct training pattern (required for 100G) */
+		kvx_eth_set_training_pattern(hw, cfg);
 		fallthrough;
 	case AN_STATE_RTM_CFG:
 		if (cfg->restart_serdes) {
