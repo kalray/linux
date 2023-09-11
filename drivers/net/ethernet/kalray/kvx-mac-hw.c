@@ -23,16 +23,17 @@
 
 #define KVX_PHY_RAM_SIZE 0x8000
 
-#define MAC_SYNC_TIMEOUT_MS   500
-#define SIGDET_TIMEOUT_MS     200
-#define RESET_TIMEOUT_MS      50
-#define SERDES_ACK_TIMEOUT_MS 60
-#define AN_TIMEOUT_MS         1000
-#define NONCE                 0x13
-#define MS_COUNT_SHIFT        5
-#define LT_FSM_TIMEOUT_MS     500
-#define LT_STAT_RECEIVER_READY BIT(15)
-#define PHY_LOS_TIMEOUT_MS    400
+#define MAC_SYNC_TIMEOUT_MS         500
+#define SIGDET_TIMEOUT_MS           200
+#define RESET_TIMEOUT_MS            50
+#define SERDES_ACK_TIMEOUT_MS       60
+#define AN_TIMEOUT_MS               1000
+#define AN_BP_EXCHANGE_TIMEOUT_MS   3000
+#define NONCE                       0x13
+#define MS_COUNT_SHIFT              5
+#define LT_FSM_TIMEOUT_MS           500
+#define LT_STAT_RECEIVER_READY      BIT(15)
+#define PHY_LOS_TIMEOUT_MS          400
 
 #define LT_OP_INIT_MASK BIT(12)
 #define LT_OP_PRESET_MASK BIT(13)
@@ -2456,7 +2457,7 @@ next_state:
 		 */
 		mask = AN_KXAN_STATUS_PAGERECEIVED_MASK | AN_KXAN_STATUS_LPANCAPABLE_MASK;
 		ret = kvx_poll(kvx_mac_readl, an_off + AN_KXAN_STATUS_OFFSET, mask,
-			       mask, AN_TIMEOUT_MS);
+			       mask, AN_BP_EXCHANGE_TIMEOUT_MS);
 		if (ret) {
 			dev_warn(hw->dev, "link partner might not support auto-negotiation\n");
 #ifdef DEBUG
