@@ -250,6 +250,8 @@ init_core:
 	;;
 	set $spc = $r27
 	;;
+	fence /* Ensure there is no outstanding load/store before dcache enable */
+	;;
 	rfe /* return into a virtual memory world */
 	;;
 
@@ -257,6 +259,12 @@ init_core:
 	 * mmu is enabled and virtual addresses of kernel text can be accessed
 	 * by gdb. See Documentation/kvx/kvx.txt for more details. */
 gdb_mmu_enabled:
+	i1inval
+	;;
+	barrier
+	;;
+	d1inval
+	;;
 	/* Extract processor identifier */
 	get $r24 = $pcr
 	;;
