@@ -578,6 +578,7 @@ static int dw_spi_kvx_probe(struct platform_device *pdev)
 	/* On AHB-SSI, the registers are always 32 bits wide */
 	dws->reg_io_width = 4;
 	dws->caps = DW_SPI_CAP_DWC_SSI | DW_SPI_CAP_ENHANCED;
+	dws->ip = DW_HSSI_ID;
 
 	dw_spi_dma_setup_generic(dws);
 
