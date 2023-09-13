@@ -167,9 +167,12 @@ static void kvx_mailbox_unmask(struct irq_data *data)
 }
 
 static void kvx_mailbox_set_cpu(struct kvx_apic_mailbox *mb, int mb_id,
-			       int new_cpu)
+			       int new_cpu, bool force)
 {
-	irq_set_affinity(mb->mb_data[mb_id].parent_irq, cpumask_of(new_cpu));
+	struct irq_data *parent_data = irq_get_irq_data(mb->mb_data[mb_id].parent_irq);
+
+	if (parent_data->chip->irq_set_affinity)
+		parent_data->chip->irq_set_affinity(parent_data, cpumask_of(new_cpu), force);
 	mb->mb_data[mb_id].cpu = new_cpu;
 }
 
@@ -182,11 +185,11 @@ static void kvx_mailbox_free_bit(struct kvx_apic_mailbox *mb, int hw_irq)
 
 	/* If there is no more IRQ on this mailbox, reset it to CPU 0 */
 	if (mb->available[mb_num] == 0)
-		kvx_mailbox_set_cpu(mb, mb_num, 0);
+		kvx_mailbox_set_cpu(mb, mb_num, 0, true);
 }
 
 static int kvx_mailbox_get_mailbox_for_cpu(struct kvx_apic_mailbox *mb,
-				    int new_cpu, unsigned int *new_mb)
+				    int new_cpu, unsigned int *new_mb, bool force)
 {
 	int i;
 
@@ -209,7 +212,7 @@ static int kvx_mailbox_get_mailbox_for_cpu(struct kvx_apic_mailbox *mb,
 	 */
 	for (i = 0; i < mb->mb_count; i++) {
 		if (mb->available[i] == 0) {
-			kvx_mailbox_set_cpu(mb, i, new_cpu);
+			kvx_mailbox_set_cpu(mb, i, new_cpu, force);
 			*new_mb = i;
 			return 0;
 		}
@@ -247,7 +250,7 @@ static int kvx_mailbox_set_affinity(struct irq_data *data,
 		return IRQ_SET_MASK_OK;
 	}
 
-	err = kvx_mailbox_get_mailbox_for_cpu(mb, new_cpu, &new_mb);
+	err = kvx_mailbox_get_mailbox_for_cpu(mb, new_cpu, &new_mb, force);
 	if (err) {
 		spin_unlock(&mb->mailboxes_lock);
 		return err;
