@@ -401,14 +401,13 @@ static int __init i2c_slave_init(void)
 	return 0;
 }
 
-static int i2c_slave_generic_remove(struct i2c_client *client)
+static void i2c_slave_generic_remove(struct i2c_client *client)
 {
 	struct slave_data *slave = i2c_get_clientdata(client);
 
 	i2c_slave_unregister(client);
 	cdev_del(&slave->cdev);
 	unregister_chrdev_region(slave->char_dev_num, 1);
-	return 0;
 }
 
 static const struct i2c_device_id i2c_slave_generic_id[] = {
