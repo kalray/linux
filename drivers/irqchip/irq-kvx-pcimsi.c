@@ -11,6 +11,7 @@
 #include <linux/of_address.h>
 #include <linux/mm_types.h>
 #include <linux/interrupt.h>
+#include <linux/iommu.h>
 #include <linux/irqdomain.h>
 #include <linux/irqchip.h>
 #include <linux/module.h>
@@ -18,7 +19,6 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/dma-mapping.h>
-#include <linux/dma-iommu.h>
 #include <linux/dma-direct.h>
 #include <linux/iommu.h>
 #include <linux/pci.h>
