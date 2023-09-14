@@ -1359,8 +1359,7 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 		goto exit;
 	}
 
-	netif_napi_add(ndev->netdev, &r->napi,
-		       kvx_eth_netdev_poll, NAPI_POLL_WEIGHT);
+	netif_napi_add(ndev->netdev, &r->napi, kvx_eth_netdev_poll);
 	r->netdev = ndev->netdev;
 
 	/* Reserve channel only once */
