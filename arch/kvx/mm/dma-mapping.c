@@ -7,7 +7,7 @@
  *            Julian Vetter
  */
 #include <linux/dma-mapping.h>
-#include <linux/dma-iommu.h>
+#include <linux/iommu.h>
 
 #include <asm/cacheflush.h>
 

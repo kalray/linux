@@ -14,7 +14,6 @@
  */
 
 #include <linux/device.h>
-#include <linux/dma-iommu.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/iommu-helper.h>
@@ -33,6 +32,7 @@
 /* Some fields are common between MMU and IOMMU like protection attributes */
 #include <asm/tlb_defs.h>
 
+#include "dma-iommu.h"
 #include "kvx_iommu.h"
 #include "kvx_iommu_defs.h"
 
