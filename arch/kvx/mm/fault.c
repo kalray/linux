@@ -130,8 +130,9 @@ retry:
 		goto good_area;
 	if (unlikely(!(vma->vm_flags & VM_GROWSDOWN)))
 		goto bad_area;
-	if (unlikely(expand_stack(vma, ea)))
-		goto bad_area;
+	vma = expand_stack(mm, ea);
+	if (unlikely(!vma))
+		goto bad_area_nosemaphore;
 
 good_area:
 	/* Handle access type */
@@ -204,6 +205,7 @@ good_area:
 
 bad_area:
 	mmap_read_unlock(mm);
+bad_area_nosemaphore:
 
 	if (user_mode(regs)) {
 		user_do_sig(regs, SIGSEGV, code, ea);
