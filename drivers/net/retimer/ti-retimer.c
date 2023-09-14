@@ -720,16 +720,13 @@ static int ti_rtm_probe(struct i2c_client *client,
 
 /* ti_rtm_remove() - Remove generic device
  * @client: I2C client
- *
- * Return: 0
  */
-static int ti_rtm_remove(struct i2c_client *client)
+static void ti_rtm_remove(struct i2c_client *client)
 {
 	struct ti_rtm_dev *rtm = i2c_get_clientdata(client);
 
 	ti_rtm_sysfs_uninit(rtm);
 	i2c_set_clientdata(client, NULL);
-	return 0;
 }
 
 const struct of_device_id ti_retimer_match[] = {
