@@ -41,7 +41,7 @@ struct kvx_eth_type {
 	int (*phy_init)(struct kvx_eth_hw *hw, unsigned int speed);
 	int (*phy_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 	int (*phy_fw_update)(struct platform_device *pdev);
-	int (*phy_lane_rx_serdes_data_enable)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+	bool phy_lane_rx_serdes_data_en_supported;
 	void (*phy_rx_adaptation)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 	int mac_link_status_supported;
 	int support_1000baseT_only;
@@ -216,6 +216,10 @@ struct kvx_eth_chip_rev_data {
 	u8 (*const kvx_net_dcb_is_pcp_enabled)(struct net_device *netdev, int priority);
 	int (*const kvx_net_dcb_get_pfc)(struct net_device *netdev, struct ieee_pfc *pfc);
 	int (*const kvx_net_dcb_set_pfc)(struct net_device *netdev, struct ieee_pfc *pfc);
+	int (*const phy_lane_rx_serdes_data_enable)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+	int (*const phy_enable_serdes)(struct kvx_eth_hw *hw, int fst_lane, int lane_nb, int lane_speed);
+	int (*const phy_disable_serdes)(struct kvx_eth_hw *hw, int fst_lane, int lane_nb);
+	int (*const phy_pll_serdes_reconf)(struct kvx_eth_hw *hw, unsigned int lane_id, unsigned int speed);
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);

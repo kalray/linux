@@ -109,14 +109,15 @@ static const char *kvx_eth_res_names_cv2[KVX_ETH_NUM_RES_CV2] = {
 static const struct kvx_eth_type kvx_haps_data = {
 	.phy_init = kvx_eth_haps_phy_init,
 	.mac_link_status_supported = false,
-	.support_1000baseT_only = true
+	.support_1000baseT_only = true,
+	.phy_lane_rx_serdes_data_en_supported = false
 };
 
 static struct kvx_eth_type kvx_eth_data = {
 	.phy_init = kvx_eth_phy_init,
 	.phy_cfg = kvx_eth_phy_cfg,
 	.phy_fw_update = kvx_eth_phy_fw_update,
-	.phy_lane_rx_serdes_data_enable = kvx_eth_phy_lane_rx_serdes_data_enable,
+	.phy_lane_rx_serdes_data_en_supported = true,
 	.phy_rx_adaptation = kvx_eth_phy_rx_adaptation,
 	.mac_link_status_supported = true,
 	.support_1000baseT_only = false
@@ -2586,7 +2587,11 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv1 = {
 	.kvx_ethtool_ops = &kvx_ethtool_cv1_ops,
 	.kvx_net_dcb_is_pcp_enabled = &kvx_net_dcb_is_pcp_enabled_cv1,
 	.kvx_net_dcb_get_pfc = &kvx_net_dcb_get_pfc_cv1,
-	.kvx_net_dcb_set_pfc = &kvx_net_dcb_set_pfc_cv1
+	.kvx_net_dcb_set_pfc = &kvx_net_dcb_set_pfc_cv1,
+	.phy_lane_rx_serdes_data_enable = &kvx_eth_phy_lane_rx_serdes_data_enable_cv1,
+	.phy_enable_serdes = &kvx_mac_phy_enable_serdes_cv1,
+	.phy_disable_serdes = &kvx_mac_phy_disable_serdes_cv1,
+	.phy_pll_serdes_reconf = &kvx_eth_phy_pll_serdes_reconf_cv1
 };
 
 static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
@@ -2618,7 +2623,11 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
 	.kvx_ethtool_ops = &kvx_ethtool_cv2_ops,
 	.kvx_net_dcb_is_pcp_enabled = &kvx_net_dcb_is_pcp_enabled_cv2,
 	.kvx_net_dcb_get_pfc = &kvx_net_dcb_get_pfc_cv2,
-	.kvx_net_dcb_set_pfc = &kvx_net_dcb_set_pfc_cv2
+	.kvx_net_dcb_set_pfc = &kvx_net_dcb_set_pfc_cv2,
+	.phy_lane_rx_serdes_data_enable = &kvx_phy_lane_rx_serdes_data_enable_cv2,
+	.phy_enable_serdes = &kvx_phy_enable_serdes_cv2,
+	.phy_disable_serdes = &kvx_phy_disable_serdes_cv2,
+	.phy_pll_serdes_reconf = NULL,
 };
 static const struct of_device_id kvx_eth_match[] = {
 	{ .compatible = "kalray,coolidge-eth", .data = &eth_chip_rev_data_cv1 },

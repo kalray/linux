@@ -2047,9 +2047,12 @@ void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
 void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
-int kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_eth_phy_lane_rx_serdes_data_enable_cv1(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int kvx_phy_init_sequence_cv1(struct kvx_eth_hw *hw, const struct firmware *fw);
+int kvx_mac_phy_enable_serdes_cv1(struct kvx_eth_hw *hw, int fst_lane, int lane_nb, int lane_speed);
+int kvx_mac_phy_disable_serdes_cv1(struct kvx_eth_hw *hw, int fst_lane, int lane_nb);
+int kvx_eth_phy_pll_serdes_reconf_cv1(struct kvx_eth_hw *hw, unsigned int lane_id, unsigned int speed);
 
 /* MAC */
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);

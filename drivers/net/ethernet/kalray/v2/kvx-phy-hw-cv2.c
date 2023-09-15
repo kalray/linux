@@ -8,6 +8,7 @@
  */
 
 #include "../kvx-net-hw.h"
+#include "../kvx-phy-hw.h"
 #include "kvx-phy-regs-cv2.h"
 #include "kvx-phy-intregs-cv2.h"
 #include "kvx-phy-hw-cv2.h"
@@ -15,6 +16,11 @@
 #define PHY_FMW_SRAM_BOOTLOADING_TIMEOUT_MS (15)
 #define PHY_CLK_REF_PRESENCE_TIMEOUT_MS (15)
 #define PHY_SERDES_ACK_TIMEOUT_MS (60)
+#define PHY_RX_SIGDET_TIMEOUT_MS (15)
+#define PHY_RX_DATA_VALID_TIMEOUT_MS (15)
+
+#define PHY_SLEEP_PHY_RESET_MS (5) /* > 10ns in spec */
+#define PHY_SLEEP_SERDES_RESET_MS (5)
 
 #define REF_SEL_INIT_VALUE \
 	((0x6 << KVX_PHY_REF_SEL_REF_RANGE_SHIFT) | \
@@ -240,7 +246,6 @@
 #define SERDES_UNIT_CONTROL_RX_CFG_PARTIAL_INIT_VALUE \
 	((0 << KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_LPD_SHIFT) | \
 	(1 << KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_TERM_EN_SHIFT) | \
-	(0 << KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_INVERT_SHIFT) | \
 	(1 << KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFCAN_CONT_SHIFT) | \
 	(0 << KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_CONT_SHIFT) | \
 	(0 << KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_SHIFT) | \
@@ -255,7 +260,6 @@
 
 #define SERDES_UNIT_CONTROL_TX_CFG_PARTIAL_INIT_VALUE \
 	((0 << KVX_PHY_SERDES_CONTROL_TX_SERDES_CFG_BEACON_EN_SHIFT) | \
-	(0 << KVX_PHY_SERDES_CONTROL_TX_SERDES_CFG_INVERT_SHIFT) | \
 	(0 << KVX_PHY_SERDES_CONTROL_TX_SERDES_CFG_DETRX_REQ_SHIFT) | \
 	(0 << KVX_PHY_SERDES_CONTROL_TX_SERDES_CFG_LPD_SHIFT))
 
@@ -416,6 +420,31 @@ static int kvx_eth_phy_serdes_unit_cfg(struct kvx_eth_hw *hw, u8 lane_id, enum u
 	return 0;
 }
 
+static int kvx_phy_serdes_handshake(struct kvx_eth_hw *hw, u32 serdes_mask)
+{
+	int ret;
+	u32 req = (serdes_mask << KVX_PHY_SERDES_CTRL_RX_REQ_SHIFT) |
+		(serdes_mask << KVX_PHY_SERDES_CTRL_TX_REQ_SHIFT);
+	u32 ack = (serdes_mask << KVX_PHY_SERDES_STATUS_RX_ACK_SHIFT) |
+		(serdes_mask << KVX_PHY_SERDES_STATUS_TX_ACK_SHIFT);
+
+	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_CTRL_OFFSET,
+		req, 0, PHY_SERDES_ACK_TIMEOUT_MS);
+	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_STATUS_OFFSET,
+		ack, 0, PHY_SERDES_ACK_TIMEOUT_MS);
+	updatel_bits(hw, PHYCTL, KVX_PHY_SERDES_CTRL_OFFSET,
+		req, req);
+	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_STATUS_OFFSET,
+		ack, ack, PHY_SERDES_ACK_TIMEOUT_MS);
+	updatel_bits(hw, PHYCTL, KVX_PHY_SERDES_CTRL_OFFSET,
+		req, 0);
+	/*wait for transition completion */
+	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_STATUS_OFFSET,
+		ack, 0,	PHY_SERDES_ACK_TIMEOUT_MS);
+
+	return ret;
+}
+
 int kvx_phy_init_sequence_cv2(struct kvx_eth_hw *hw, const struct firmware *fw)
 {
 	int ret = 0, lane_id;
@@ -438,6 +467,7 @@ int kvx_phy_init_sequence_cv2(struct kvx_eth_hw *hw, const struct firmware *fw)
 		dev_err(hw->dev, "phy reset: ack failed\n");
 		return ret;
 	}
+	usleep_range(PHY_SLEEP_PHY_RESET_MS, 2 * PHY_SLEEP_PHY_RESET_MS);
 	/* boot mode select: bootload and boot from sram */
 	kvx_phy_writel(hw, 0x0, KVX_PHY_SRAM_CTRL_OFFSET);
 	/* ref_clk A settings (ref_clk B unused) */
@@ -498,4 +528,105 @@ int kvx_phy_init_sequence_cv2(struct kvx_eth_hw *hw, const struct firmware *fw)
 		return ret;
 	}
 	return ret;
+}
+
+int kvx_phy_enable_serdes_cv2(struct kvx_eth_hw *hw, int fst_lane, int lane_nb, int lane_speed)
+{
+	int ret = 0, lane_id;
+	u32 serdes_mask = get_serdes_mask(fst_lane, lane_nb);
+	enum serdes_width serdes_if_width = (lane_speed == SPEED_10000) ? WIDTH_20BITS : WIDTH_40BITS;
+
+	kvx_eth_phy_serdes_preset_configure(hw, lane_speed);
+
+	/* clear tx_clock rdy */
+	updatel_bits(hw, PHYCTL, KVX_PHY_SERDES_CTRL_OFFSET,
+		serdes_mask << KVX_PHY_SERDES_CTRL_TX_CLK_RDY_SHIFT,
+		0);
+	for (lane_id = fst_lane; lane_id < fst_lane + lane_nb; lane_id++) {
+		/* 1st lane clk as tx_clk for all the lanes */
+		ret = kvx_eth_phy_serdes_unit_cfg(hw, lane_id, CFG_PSTATE_P1_SERDES_EN, serdes_if_width, fst_lane);
+		if (ret) {
+			dev_err(hw->dev, "phy - serdes transition to P1 failed\n");
+			return ret;
+		}
+	}
+	kvx_phy_serdes_handshake(hw, serdes_mask);
+	/* set tx_clock rdy */
+	updatel_bits(hw, PHYCTL, KVX_PHY_SERDES_CTRL_OFFSET,
+		serdes_mask << KVX_PHY_SERDES_CTRL_TX_CLK_RDY_SHIFT,
+		serdes_mask << KVX_PHY_SERDES_CTRL_TX_CLK_RDY_SHIFT);
+	for (lane_id = fst_lane; lane_id < fst_lane + lane_nb; lane_id++) {
+		ret = kvx_eth_phy_serdes_unit_cfg(hw, lane_id, CFG_PSTATE_P0, serdes_if_width, fst_lane);
+		if (ret) {
+			dev_err(hw->dev, "phy - serdes transition to P0 failed\n");
+			return ret;
+		}
+	}
+	kvx_phy_serdes_handshake(hw, serdes_mask);
+
+	return 0;
+}
+
+int kvx_phy_disable_serdes_cv2(struct kvx_eth_hw *hw, int fst_lane, int lane_nb)
+{
+	int ret = 0, lane_id;
+	u32 serdes_mask = get_serdes_mask(fst_lane, lane_nb);
+	u32 reset_mask = (serdes_mask << KVX_PHY_RESET_SERDES_RX_RESET_SHIFT) |
+		(serdes_mask << KVX_PHY_RESET_SERDES_TX_RESET_SHIFT);
+
+	/* clear tx_clock rdy */
+	updatel_bits(hw, PHYCTL, KVX_PHY_SERDES_CTRL_OFFSET,
+		serdes_mask << KVX_PHY_SERDES_CTRL_TX_CLK_RDY_SHIFT,
+		0);
+	for (lane_id = fst_lane; lane_id < fst_lane + lane_nb; lane_id++) {
+		/* 1st lane clk as tx_clk for all the lanes, width should not matter... */
+		ret = kvx_eth_phy_serdes_unit_cfg(hw, lane_id, CFG_PSTATE_P1_SERDES_DIS, WIDTH_40BITS, fst_lane);
+		if (ret)
+			return ret;
+	}
+	kvx_phy_serdes_handshake(hw, serdes_mask);
+	/*
+	 * WARNING: reset procedure could be unnecessary...
+	 */
+	/* enable reset on serdes */
+	updatel_bits(hw, PHYCTL, KVX_PHY_RESET_OFFSET,
+		reset_mask, reset_mask);
+	usleep_range(PHY_SLEEP_SERDES_RESET_MS, 2 * PHY_SLEEP_SERDES_RESET_MS);
+	/* release reset on serdes */
+	updatel_bits(hw, PHYCTL, KVX_PHY_RESET_OFFSET,
+		reset_mask, 0);
+	return 0;
+}
+
+int kvx_phy_lane_rx_serdes_data_enable_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	int ret = 0, lane_id, nb_lanes = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	u32 serdes_mask = get_serdes_mask(cfg->id, nb_lanes), off;
+
+	/* check the low-frequency signal detection */
+	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_STATUS_OFFSET,
+		serdes_mask << KVX_PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT,
+		serdes_mask << KVX_PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT,
+		PHY_RX_SIGDET_TIMEOUT_MS);
+	if (ret) {
+		dev_dbg(hw->dev, "Serdes Rx LF signal detection failure\n");
+		return ret;
+	}
+	for (lane_id = cfg->id; lane_id < cfg->id + nb_lanes; lane_id++) {
+		off = KVX_PHY_SERDES_CONTROL_GRP_OFFSET + (lane_id * KVX_PHY_SERDES_CONTROL_GRP_ELEM_SIZE);
+		/* active rx_data_en */
+		updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
+			KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_RX_DATA_EN_MASK,
+			KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_RX_DATA_EN_MASK);
+	}
+	/* check the data valid indicator (clock & data recovery locked) */
+	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_STATUS_OFFSET,
+		serdes_mask << KVX_PHY_SERDES_STATUS_RX_VALID_SHIFT,
+		serdes_mask << KVX_PHY_SERDES_STATUS_RX_VALID_SHIFT,
+		PHY_RX_DATA_VALID_TIMEOUT_MS);
+	if (ret) {
+		dev_err(hw->dev, "Serdes Rx data valid indicator failure\n");
+		return ret;
+	}
+	return 0;
 }

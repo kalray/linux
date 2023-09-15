@@ -22,4 +22,7 @@
 #define ROPLL_DIV16p5_CLK 7
 
 int kvx_phy_init_sequence_cv2(struct kvx_eth_hw *hw, const struct firmware *fw);
+int kvx_phy_enable_serdes_cv2(struct kvx_eth_hw *hw, int fst_lane, int lane_nb, int lane_speed);
+int kvx_phy_disable_serdes_cv2(struct kvx_eth_hw *hw, int fst_lane, int lane_nb);
+int kvx_phy_lane_rx_serdes_data_enable_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 #endif
