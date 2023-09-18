@@ -41,7 +41,8 @@
 #include "kvx-mac-regs.h"
 #include "kvx-qsfp.h"
 
-#define KVX_PHY_FW_NAME "dwc_phy.bin"
+#define KVX_PHY_FW_NAME_CV1 "dwc_phy.bin"
+#define KVX_PHY_FW_NAME_CV2 "dwc_phy_cv2.bin"
 
 #define KVX_RX_HEADROOM  (NET_IP_ALIGN + NET_SKB_PAD)
 #define KVX_SKB_PAD      (SKB_DATA_ALIGN(sizeof(struct skb_shared_info) + \
@@ -65,7 +66,7 @@
 
 static bool load_phy_fw = true;
 module_param(load_phy_fw, bool, 0);
-MODULE_PARM_DESC(load_phy_fw, "Update PHY firmware ("KVX_PHY_FW_NAME")");
+MODULE_PARM_DESC(load_phy_fw, "Update PHY firmware ("KVX_PHY_FW_NAME_CV1", "KVX_PHY_FW_NAME_CV2")");
 
 static bool autoneg_en = true;
 module_param(autoneg_en, bool, 0);
@@ -87,7 +88,7 @@ static int rx_jobq_prio[] = {
 };
 
 static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *ring, int count);
-static int kvx_eth_phy_fw_update(struct platform_device *pdev);
+static int kvx_eth_phy_fw_update(struct platform_device *pdev,  const char *filename);
 
 enum kvx_eth_speed_units_idx {
 	KVX_ETH_UNITS_GBPS,
@@ -2410,7 +2411,7 @@ static struct platform_driver kvx_netdev_driver = {
 	},
 };
 
-static int kvx_eth_phy_fw_update(struct platform_device *pdev)
+static int kvx_eth_phy_fw_update(struct platform_device *pdev, const char *filename)
 {
 	struct kvx_eth_dev *dev = platform_get_drvdata(pdev);
 	const struct firmware *fw = NULL;
@@ -2419,12 +2420,13 @@ static int kvx_eth_phy_fw_update(struct platform_device *pdev)
 	if (!load_phy_fw)
 		return -EINVAL;
 
-	dev_info(&pdev->dev, "Requesting phy firmware %s\n", KVX_PHY_FW_NAME);
-	ret = request_firmware(&fw, KVX_PHY_FW_NAME, &pdev->dev);
+	dev_info(&pdev->dev, "Requesting phy firmware %s\n", filename);
+
+	ret = request_firmware(&fw, filename, &pdev->dev);
 	if (ret < 0 || fw->size == 0) {
 		fw = NULL;
 		dev_warn(&pdev->dev, "Unable to load firmware %s\n",
-			KVX_PHY_FW_NAME);
+			filename);
 	}
 
 	/* Update parameters according to probbed fw informations */
@@ -2520,9 +2522,9 @@ static int kvx_eth_probe(struct platform_device *pdev)
 
 	/* Try loading phy firmware */
 	if (dev->type->phy_fw_update) {
-		ret = dev->type->phy_fw_update(pdev);
-		if (ret)
-			kvx_phy_reset(&dev->hw);
+		ret = dev->type->phy_fw_update(pdev, rev_d->fw_filename);
+		if (ret && rev_d->phy_dynamic_global_reset)
+			rev_d->phy_dynamic_global_reset(&dev->hw);
 	}
 	if (rev_d->eth_init_dispatch_table)
 		rev_d->eth_init_dispatch_table(&dev->hw);
@@ -2562,6 +2564,7 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv1 = {
 	.limited_parser_cap = true,
 	.kvx_eth_res_names = kvx_eth_res_names_cv1,
 	.num_res = KVX_ETH_NUM_RES_CV1,
+	.fw_filename = KVX_PHY_FW_NAME_CV1,
 	.kvx_phy_init_sequence = kvx_phy_init_sequence_cv1,
 	.fill_ipv4_filter = fill_ipv4_filter_cv1,
 	.default_mac_filter_param_pfc_etype = 1,
@@ -2591,7 +2594,11 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv1 = {
 	.phy_lane_rx_serdes_data_enable = &kvx_eth_phy_lane_rx_serdes_data_enable_cv1,
 	.phy_enable_serdes = &kvx_mac_phy_enable_serdes_cv1,
 	.phy_disable_serdes = &kvx_mac_phy_disable_serdes_cv1,
-	.phy_pll_serdes_reconf = &kvx_eth_phy_pll_serdes_reconf_cv1
+	.phy_pll_serdes_reconf = &kvx_eth_phy_pll_serdes_reconf_cv1,
+	.phy_dynamic_global_reset = &kvx_phy_reset,
+	.phy_set_vph_indication = &kvx_phy_refclk_cfg,
+	.phy_dump_status = &kvx_eth_dump_phy_status,
+	.phy_mac_10G_cfg = &kvx_phy_mac_10G_cfg
 };
 
 static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
@@ -2600,6 +2607,7 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
 	.limited_parser_cap = false,
 	.kvx_eth_res_names = kvx_eth_res_names_cv2,
 	.num_res = KVX_ETH_NUM_RES_CV2,
+	.fw_filename = KVX_PHY_FW_NAME_CV2,
 	.default_mac_filter_param_pfc_etype = 0,
 	.lnk_dwn_it_support = true,
 	.kvx_phy_init_sequence = kvx_phy_init_sequence_cv2,
@@ -2628,6 +2636,10 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
 	.phy_enable_serdes = &kvx_phy_enable_serdes_cv2,
 	.phy_disable_serdes = &kvx_phy_disable_serdes_cv2,
 	.phy_pll_serdes_reconf = NULL,
+	.phy_dynamic_global_reset = NULL,
+	.phy_set_vph_indication = NULL,
+	.phy_dump_status = NULL,
+	.phy_mac_10G_cfg = NULL,
 };
 static const struct of_device_id kvx_eth_match[] = {
 	{ .compatible = "kalray,coolidge-eth", .data = &eth_chip_rev_data_cv1 },

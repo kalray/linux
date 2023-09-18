@@ -490,7 +490,7 @@ int kvx_eth_phy_pll_serdes_reconf_cv1(struct kvx_eth_hw *hw, unsigned int lane_i
 	return 0;
 }
 
-static void dump_phy_status(struct kvx_eth_hw *hw)
+void kvx_eth_dump_phy_status(struct kvx_eth_hw *hw)
 {
 	u32 val = kvx_phymac_readl(hw, PHY_PLL_STATUS_OFFSET);
 
@@ -1029,8 +1029,8 @@ int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 	 */
 	rev_d->phy_disable_serdes(hw, cfg->id, lane_nb);
 
-	if (phy_reset)
-		kvx_phy_reset(hw);
+	if (phy_reset && rev_d->phy_dynamic_global_reset)
+		rev_d->phy_dynamic_global_reset(hw);
 
 	rev_d->phy_enable_serdes(hw, cfg->id, lane_nb, lane_speed);
 
@@ -1046,17 +1046,21 @@ int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 			hw->phy_f.param[i].update(&hw->phy_f.param[i]);
 	}
 
-	dump_phy_status(hw);
+	if (rev_d->phy_dump_status)
+		rev_d->phy_dump_status(hw);
 
 	return 0;
 }
 
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 	kvx_mac_phy_serdes_cfg(hw, cfg, 0);
 
-	/* FTTB force refclk for 100G */
-	kvx_phy_refclk_cfg(hw, SPEED_100000);
+	if (rev_d->phy_set_vph_indication) {
+		/* FTTB force refclk for 100G */
+		rev_d->phy_set_vph_indication(hw, SPEED_100000);
+	}
 	kvx_eth_phy_param_cfg(hw, hw->phy_f.param);
 
 	return 0;
@@ -2333,8 +2337,9 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 	 * a) an_sd25_ena = 0: Must use Serdes at 10.3125Gbps during AN
 	 * b) an_sd25_ena = 1: Must use Serdes at 25.78125Gbps during AN
 	 */
-	if (an_speed == SPEED_10000 || an_speed == SPEED_40000)
-		kvx_phy_mac_10G_cfg(hw, LANE_RATE_10GBASE_KR, WIDTH_20BITS);
+	if ((an_speed == SPEED_10000 || an_speed == SPEED_40000) && rev_d->phy_mac_10G_cfg)
+		rev_d->phy_mac_10G_cfg(hw, LANE_RATE_10GBASE_KR, WIDTH_20BITS);
+
 	/* For 25G/100G, width is already set to  40bits */
 
 	rev_d->phy_disable_serdes(hw, cfg->id, lane_nb);

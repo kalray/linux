@@ -40,7 +40,7 @@ enum rx_ring_type {
 struct kvx_eth_type {
 	int (*phy_init)(struct kvx_eth_hw *hw, unsigned int speed);
 	int (*phy_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
-	int (*phy_fw_update)(struct platform_device *pdev);
+	int (*phy_fw_update)(struct platform_device *pdev, const char *filename);
 	bool phy_lane_rx_serdes_data_en_supported;
 	void (*phy_rx_adaptation)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 	int mac_link_status_supported;
@@ -187,6 +187,7 @@ struct kvx_eth_chip_rev_data {
 	int num_res;
 	int default_mac_filter_param_pfc_etype;
 	const bool lnk_dwn_it_support;
+	const char *fw_filename;
 	int (* const kvx_phy_init_sequence)(struct kvx_eth_hw *hw, const struct firmware *fw);
 	void (* const fill_ipv4_filter)(struct kvx_eth_netdev *ndev, struct ethtool_rx_flow_spec *fs,
 		union filter_desc *flt,	int ptype_ovrd);
@@ -220,6 +221,10 @@ struct kvx_eth_chip_rev_data {
 	int (*const phy_enable_serdes)(struct kvx_eth_hw *hw, int fst_lane, int lane_nb, int lane_speed);
 	int (*const phy_disable_serdes)(struct kvx_eth_hw *hw, int fst_lane, int lane_nb);
 	int (*const phy_pll_serdes_reconf)(struct kvx_eth_hw *hw, unsigned int lane_id, unsigned int speed);
+	void (*const phy_dynamic_global_reset)(struct kvx_eth_hw *hw);
+	void (*const phy_set_vph_indication)(struct kvx_eth_hw *hw, unsigned int speed);
+	void (*const phy_dump_status)(struct kvx_eth_hw *hw);
+	void (*const phy_mac_10G_cfg)(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg, enum serdes_width w);
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
