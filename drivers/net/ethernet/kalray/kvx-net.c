@@ -263,11 +263,10 @@ static u32 kvx_eth_lane_mask(struct kvx_eth_netdev *ndev)
 	return msk;
 }
 
-static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
+static int kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 {
-	int ret = 0;
-	bool link;
 	struct kvx_eth_hw *hw = ndev->hw;
+	bool link;
 	enum coolidge_rev chip_rev =  kvx_eth_get_rev_data(hw)->revision;
 	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 	u32 msk;
@@ -284,7 +283,7 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 
 	if (ndev->cfg.autoneg_en && hw->rxtx_crossed) {
 		netdev_err(ndev->netdev, "Autonegotiation is not supported with inverted lanes\n");
-		return false;
+		return -EOPNOTSUPP;
 	}
 
 	if (ndev->cfg.speed == SPEED_UNKNOWN)
@@ -294,9 +293,8 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 
 	if (!ndev->cfg.mac_f.loopback_mode) {
 		/* configure speed and set the link up - do the autoneg/link training if enabled */
-		ret = kvx_eth_mac_setup_link(ndev->hw, &ndev->cfg);
-		if (ret)
-			return false; /* kvx_eth_link_cfg() will restart link config */
+		if (kvx_eth_mac_setup_link(ndev->hw, &ndev->cfg))
+			return -EAGAIN; /* kvx_eth_link_cfg() will retry link config */
 	}
 
 	if (chip_rev == COOLIDGE_V2)
@@ -305,23 +303,24 @@ static bool kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 	/* avoid false detection: check mac link over a period of 10ms */
 	read_poll_timeout(kvx_eth_mac_getlink, link, link == true, 1000, 10000, false,
 			  hw, &ndev->cfg);
-	if (link) {
-		kvx_eth_update_carrier(ndev, link);
+	if (!link)
+		return -ENOLINK;
 
-		/* link is up: start polling link status after 3s */
-		if (ndev->link_poll_en)
-			queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
-					   msecs_to_jiffies(POST_LINK_UP_DELAY_IN_MS));
-		if (dev->chip_rev_data->lnk_dwn_it_support) {
-			/* enable downlink ITs */
-			msk = kvx_eth_lane_mask(ndev);
-			spin_lock_irqsave(&hw->link_down_lock, flags);
-			KVX_LINKDOWN_IT_UNMASK_EVENTS(msk);
-			spin_unlock_irqrestore(&hw->link_down_lock, flags);
-		}
-	} /* else, no need to update carrier, it's already down */
+	kvx_eth_update_carrier(ndev, link);
 
-	return link;
+	/* link is up: start polling link status after 3s */
+	if (ndev->link_poll_en)
+		queue_delayed_work(system_power_efficient_wq, &ndev->link_poll,
+				   msecs_to_jiffies(POST_LINK_UP_DELAY_IN_MS));
+	if (dev->chip_rev_data->lnk_dwn_it_support) {
+		/* enable downlink ITs */
+		msk = kvx_eth_lane_mask(ndev);
+		spin_lock_irqsave(&hw->link_down_lock, flags);
+		KVX_LINKDOWN_IT_UNMASK_EVENTS(msk);
+		spin_unlock_irqrestore(&hw->link_down_lock, flags);
+	}
+
+	return 0;
 }
 
 static inline void cancel_link_cfg(struct kvx_eth_netdev *ndev)
@@ -349,7 +348,7 @@ static void kvx_eth_link_cfg(struct work_struct *w)
 		if (ndev->qsfp && !is_cable_connected(ndev->qsfp))
 			break;
 
-		if (kvx_eth_link_configure(ndev))
+		if (!kvx_eth_link_configure(ndev))
 			break;
 
 		msleep(LINK_POLL_DELAY_IN_MS);
