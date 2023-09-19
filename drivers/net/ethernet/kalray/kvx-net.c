@@ -67,6 +67,10 @@ static bool load_phy_fw = true;
 module_param(load_phy_fw, bool, 0);
 MODULE_PARM_DESC(load_phy_fw, "Update PHY firmware ("KVX_PHY_FW_NAME")");
 
+static bool autoneg_en = true;
+module_param(autoneg_en, bool, 0);
+MODULE_PARM_DESC(autoneg_en, "Enable auto-negotiation");
+
 /* Device tree related entries */
 static const char *rtm_prop_name[RTM_NB] = {
 	[RTM_RX] = "kalray,rtmrx",
@@ -523,7 +527,7 @@ static int kvx_eth_init_netdev(struct kvx_eth_netdev *ndev)
 	ndev->rx_buffer_len = ALIGN(hw->max_frame_size,
 				    KVX_ETH_PKT_ALIGN);
 
-	ndev->cfg.autoneg_en = true;
+	ndev->cfg.autoneg_en = autoneg_en;
 	ndev->cfg.speed = SPEED_UNKNOWN;
 	ndev->cfg.duplex = DUPLEX_FULL;
 	ndev->cfg.fec = 0;
