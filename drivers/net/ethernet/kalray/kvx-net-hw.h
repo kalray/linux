@@ -2057,6 +2057,8 @@ void kvx_eth_dump_phy_status(struct kvx_eth_hw *hw);
 void kvx_phy_get_tx_eq_coef_cv1(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef);
 void kvx_phy_set_tx_eq_coef_cv1(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef);
 void kvx_phy_set_tx_default_eq_coef_cv1(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_phy_rx_adapt_cv1(struct kvx_eth_hw *hw, int lane_id);
+int kvx_phy_rx_adapt_broadcast_cv1(struct kvx_eth_hw *hw);
 
 /* MAC */
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);

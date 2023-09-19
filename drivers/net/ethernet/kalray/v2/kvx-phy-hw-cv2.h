@@ -28,4 +28,7 @@ int kvx_phy_lane_rx_serdes_data_enable_cv2(struct kvx_eth_hw *hw, struct kvx_eth
 void kvx_phy_get_tx_eq_coef_cv2(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef);
 void kvx_phy_set_tx_eq_coef_cv2(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef);
 void kvx_phy_set_tx_default_eq_coef_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_phy_rx_adapt_v1_cv2(struct kvx_eth_hw *hw, int lane_id);
+int kvx_phy_rx_adapt_v2_cv2(struct kvx_eth_hw *hw, int lane_id);
+
 #endif

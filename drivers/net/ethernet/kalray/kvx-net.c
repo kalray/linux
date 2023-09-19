@@ -272,13 +272,21 @@ static int kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 {
 	struct kvx_eth_hw *hw = ndev->hw;
 	bool link;
-	enum coolidge_rev chip_rev =  kvx_eth_get_rev_data(hw)->revision;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+	enum coolidge_rev chip_rev =  rev_d->revision;
 	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 	u32 msk;
 	unsigned long flags;
 
 	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
 		   ndev->cfg.speed, ndev->cfg.autoneg_en);
+
+	if ((rev_d->phy_rx_adapt == NULL) && (ndev->cfg.speed == SPEED_UNKNOWN)) {
+		/* as rx_adapt not supported: autoneg not supported, default speed to 10G */
+		ndev->cfg.autoneg_en = false;
+		ndev->cfg.speed = SPEED_10000;
+		ndev->cfg.duplex = DUPLEX_FULL;
+	}
 
 	if (dev->type->support_1000baseT_only == true) {
 		ndev->cfg.autoneg_en = false;
@@ -2602,6 +2610,8 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv1 = {
 	.phy_get_tx_eq_coef = &kvx_phy_get_tx_eq_coef_cv1,
 	.phy_set_tx_eq_coef = &kvx_phy_set_tx_eq_coef_cv1,
 	.phy_set_tx_default_eq_coef = &kvx_phy_set_tx_default_eq_coef_cv1,
+	.phy_rx_adapt = &kvx_phy_rx_adapt_cv1,
+	.phy_rx_adapt_broadcast = &kvx_phy_rx_adapt_broadcast_cv1,
 };
 
 static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {

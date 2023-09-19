@@ -18,9 +18,13 @@
 #define PHY_SERDES_ACK_TIMEOUT_MS (60)
 #define PHY_RX_SIGDET_TIMEOUT_MS (15)
 #define PHY_RX_DATA_VALID_TIMEOUT_MS (15)
+#define PHY_SERDES_ADAPT_ACK_TIMEOUT_MS (15)
+
+#define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 
 #define PHY_SLEEP_PHY_RESET_MS (5) /* > 10ns in spec */
-#define PHY_SLEEP_SERDES_RESET_MS (5)
+#define PHY_SLEEP_SERDES_RESET_MS (1)
+#define PHY_SLEEP_SERDES_RESET_FOR_ADAPT_MS (1) // spec. : assert rxX_reset for at least 8 ns between performing RX adaptation requests
 
 #define REF_SEL_INIT_VALUE \
 	((0x6 << KVX_PHY_REF_SEL_REF_RANGE_SHIFT) | \
@@ -670,4 +674,202 @@ void kvx_phy_set_tx_default_eq_coef_cv2(struct kvx_eth_hw *hw, struct kvx_eth_la
 		coef.pre = param->pre;
 		kvx_phy_set_tx_eq_coef_cv2(hw, lane_id, &coef);
 	}
+}
+
+
+/**
+ * kvx_phy_rx_adapt_v1_cv2() - Launch RX adaptation process, update FOM value
+ *
+ * version 1: follow the same steps as cv1.
+ * Return: FOM on success, < 0 on error
+ */
+int kvx_phy_rx_adapt_v1_cv2(struct kvx_eth_hw *hw, int lane_id)
+{
+	struct kvx_eth_phy_param *p = &hw->phy_f.param[lane_id];
+	u32 off = KVX_PHY_SERDES_CONTROL_GRP_OFFSET + (KVX_PHY_SERDES_CONTROL_GRP_ELEM_SIZE * lane_id);
+	u32 v;
+	int ret;
+
+	/* power state compatible with adaptation procedure */
+	v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET);
+	if (GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_PSTATE) != PSTATE_P0) {
+		dev_dbg(hw->dev, "RX_ADAPT can not be done (not in P0)\n");
+		return -EINVAL;
+	}
+	/* no adaptation procedure in progress (non sense .. it s an input) */
+	if (GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_IN_PROG)) {
+		dev_dbg(hw->dev, "RX_ADAPT already in progress\n");
+		return -EINVAL;
+	}
+
+	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
+		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK,
+		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK);
+
+	ret = kvx_poll(kvx_phy_readl, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+		PHY_SERDES_ADAPT_ACK_TIMEOUT_MS);
+	if (ret) {
+		dev_err(hw->dev, "RX_ADAPT_ACK SET TIMEOUT l.%d\n", __LINE__);
+		return -ETIMEDOUT;
+	}
+
+	v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET);
+	p->fom = GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_FOM);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_FOM);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXMAIN_DIR);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXPOST_DIR);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXPRE_DIR);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_PPM_DRIFT);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_PPM_DRIFT_VLD);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_MARGIN_ERROR);
+
+	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
+		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK,
+		     0);
+
+	ret = kvx_poll(kvx_phy_readl, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+		0,
+		PHY_SERDES_ADAPT_ACK_TIMEOUT_MS);
+	if (ret) {
+		dev_err(hw->dev, "RX_ADAPT_ACK RELEASE TIMEOUT l.%d\n", __LINE__);
+		return -ETIMEDOUT;
+	}
+	dev_dbg(hw->dev, "lane[%d] FOM %d\n", lane_id, p->fom);
+
+	return p->fom;
+}
+
+
+/**
+ * kvx_phy_rx_adapt_v2_cv2() - Launch RX adaptation process, update FOM value
+ *
+ * version 2: follow the step specified in the doc.
+ *
+ *  1.	Set rxX_data_en to 1. (expected to be done before)
+ *	    The PHY firmware triggers the coarse adaptation algorithm.
+ *	2. Wait for rxX_valid to assert. (expected to be done before)
+ *	3. De-assert rxX_data_en.
+ *	4. Assert rxX_adapt_in_prog to the PHY.
+ *	5. Toggle rxX_reset to the PHY.
+ *	6. Wait for de-assertion of rxX_ack from the PHY.
+ *	7. Ensure the PHY lane receiver is in P0 state. Transition to P0, if not already in P0 out of reset.
+ *	8. Wait for detection of electrical idle exit condition on rxX_sigdet_lf (for low-frequency data)
+ *	9. Assert rxX_data_en to the PHY.
+ *	10. Wait for assertion of rxX_valid from the PHY.
+ *	11. Perform an RX adaptation request and assert rxX_adapt_req.
+ *	    The PHY performs RX adaptation, then signals the completion by asserting rxX_adapt_ack.
+ *	12. De-assert rxX_adapt_req to the PHY.
+ *	13. De-assert rxX_adapt_in_prog to the PHY.
+ *
+ * Return: FOM on success, < 0 on error
+ */
+int kvx_phy_rx_adapt_v2_cv2(struct kvx_eth_hw *hw, int lane_id)
+{
+	struct kvx_eth_phy_param *p = &hw->phy_f.param[lane_id];
+	u32 off = KVX_PHY_SERDES_CONTROL_GRP_OFFSET + (KVX_PHY_SERDES_CONTROL_GRP_ELEM_SIZE * lane_id);
+	u32 v;
+	u8 serdes_mask = (1 << lane_id);
+	int ret;
+
+	/* De-assert rxX_data_en */
+	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_RX_DATA_EN_MASK,
+		0);
+
+	/* assert rxX_adapt_in_prog to the PHY */
+	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_IN_PROG_MASK,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_IN_PROG_MASK);
+
+	/* Toggle rxX_reset to the PHY */
+	updatel_bits(hw, PHYCTL, KVX_PHY_RESET_OFFSET,
+		serdes_mask << KVX_PHY_RESET_SERDES_RX_RESET_SHIFT,
+		serdes_mask << KVX_PHY_RESET_SERDES_RX_RESET_SHIFT);
+	usleep_range(PHY_SLEEP_SERDES_RESET_FOR_ADAPT_MS, 2 * PHY_SLEEP_SERDES_RESET_FOR_ADAPT_MS);
+	updatel_bits(hw, PHYCTL, KVX_PHY_RESET_OFFSET,
+		serdes_mask << KVX_PHY_RESET_SERDES_RX_RESET_SHIFT,
+		0);
+
+	/* Wait for de-assertion of rxX_ack from the PHY. */
+	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_STATUS_OFFSET,
+		(serdes_mask << KVX_PHY_SERDES_STATUS_RX_ACK_SHIFT), 0,
+		PHY_SERDES_ACK_TIMEOUT_MS);
+	if (ret) {
+		dev_err(hw->dev, "RX_ADAPT_ACK RELEASE TIMEOUT l.%d\n", __LINE__);
+		return ret;
+	}
+
+	/* Ensure the PHY lane receiver is in P0 state */
+	v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET);
+	if (GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_PSTATE) != PSTATE_P0) {
+		dev_dbg(hw->dev, "RX_ADAPT can not be done (not in P0)\n");
+		return -EINVAL;
+	}
+
+	/* Wait for detection of electrical idle exit condition on rxX_sigdet_lf */
+	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_STATUS_OFFSET,
+		serdes_mask << KVX_PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT,
+		serdes_mask << KVX_PHY_SERDES_STATUS_RX_SIGDET_LF_SHIFT,
+		PHY_RX_SIGDET_TIMEOUT_MS);
+	if (ret) {
+		dev_err(hw->dev, "Serdes Rx LF signal detection failure\n");
+		return ret;
+	}
+
+	/* Assert rxX_data_en to the PHY */
+	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_RX_DATA_EN_MASK,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_RX_DATA_EN_MASK)
+
+	/* Wait for assertion of rxX_valid from the PHY */
+	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_STATUS_OFFSET,
+		serdes_mask << KVX_PHY_SERDES_STATUS_RX_VALID_SHIFT,
+		serdes_mask << KVX_PHY_SERDES_STATUS_RX_VALID_SHIFT,
+		PHY_RX_DATA_VALID_TIMEOUT_MS);
+	if (ret) {
+		dev_err(hw->dev, "Serdes Rx data valid indicator failure\n");
+		return ret;
+	}
+
+	/* assert rxX_adapt_req */
+	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
+		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK,
+		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK);
+
+	/* wait for report of completion */
+	ret = kvx_poll(kvx_phy_readl, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_ACK_MASK,
+		PHY_SERDES_ADAPT_ACK_TIMEOUT_MS);
+	if (ret) {
+		dev_err(hw->dev, "RX_ADAPT_ACK SET TIMEOUT l.%d\n", __LINE__);
+		return -ETIMEDOUT;
+	}
+
+	v = kvx_phy_readl(hw, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_OFFSET);
+	p->fom = GETF(v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_FOM);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_ADAPT_FOM);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXMAIN_DIR);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXPOST_DIR);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_TXPRE_DIR);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_PPM_DRIFT);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_PPM_DRIFT_VLD);
+	REG_DBG(hw->dev, v, KVX_PHY_SERDES_CONTROL_RX_SERDES_STATUS_MARGIN_ERROR);
+
+	/* De-assert rxX_adapt_req to the PHY */
+	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
+		     KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_REQ_MASK,
+		     0);
+
+	/* De-assert rxX_adapt_in_prog to the PHY */
+	updatel_bits(hw, PHYCTL, off + KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_OFFSET,
+		KVX_PHY_SERDES_CONTROL_RX_SERDES_CFG_ADAPT_IN_PROG_MASK,
+		0);
+
+	dev_dbg(hw->dev, "lane[%d] FOM %d\n", lane_id, p->fom);
+
+	return p->fom;
 }

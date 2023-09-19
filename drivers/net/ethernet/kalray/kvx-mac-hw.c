@@ -503,11 +503,11 @@ void kvx_eth_dump_phy_status(struct kvx_eth_hw *hw)
 }
 
 /**
- * kvx_phy_rx_adapt() - Launch RX adaptation process, update FOM value
+ * kvx_phy_rx_adapt_cv1() - Launch RX adaptation process, update FOM value
  *
  * Return: FOM on success, < 0 on error
  */
-int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
+int kvx_phy_rx_adapt_cv1(struct kvx_eth_hw *hw, int lane_id)
 {
 	struct kvx_eth_phy_param *p = &hw->phy_f.param[lane_id];
 	u32 off, val;
@@ -571,13 +571,13 @@ int kvx_phy_rx_adapt(struct kvx_eth_hw *hw, int lane_id)
 }
 
 /**
- * kvx_phy_rx_adapt_broadcast() - Launch RX adaptation process, update FOM value
+ * kvx_phy_rx_adapt_broadcast_cv1() - Launch RX adaptation process, update FOM value
  *
  * RX adaptation is done in brodcast mode, for all lanes simultaneously.
  *
  * Return: FOM on success, < 0 on error
  */
-int kvx_phy_rx_adapt_broadcast(struct kvx_eth_hw *hw)
+int kvx_phy_rx_adapt_broadcast_cv1(struct kvx_eth_hw *hw)
 {
 	struct kvx_eth_phy_param *p = &hw->phy_f.param[0];
 	u32 off, val;
@@ -648,6 +648,7 @@ int kvx_phy_rx_adapt_broadcast(struct kvx_eth_hw *hw)
 
 int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p)
 {
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(p->hw);
 	int ret = 0;
 
 	if (!test_bit(p->lane_id, &p->hw->pll_cfg.serdes_mask)) {
@@ -656,7 +657,8 @@ int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p)
 		return -EINVAL;
 	}
 
-	ret = kvx_phy_rx_adapt(p->hw, p->lane_id);
+	if (rev_d->phy_rx_adapt)
+		ret = rev_d->phy_rx_adapt(p->hw, p->lane_id);
 
 	return ret;
 }
@@ -2814,12 +2816,16 @@ void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
 	int i;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+
+	if (rev_d->phy_rx_adapt == NULL)
+		return;
 
 	mutex_lock(&hw->phy_serdes_reset_lock);
 
 	do {
-		if (aggregated_lanes) {
-			if (kvx_phy_rx_adapt_broadcast(hw) >= hw->fom_thres)
+		if (aggregated_lanes && rev_d->phy_rx_adapt_broadcast) {
+			if (rev_d->phy_rx_adapt_broadcast(hw) >= hw->fom_thres)
 				lane_fom_ok = lane_nb;
 		} else {
 			lane_fom_ok = 0;
@@ -2828,7 +2834,7 @@ void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 					continue;
 
 				if (lane_fom[i] < hw->fom_thres)
-					lane_fom[i] = kvx_phy_rx_adapt(hw, i);
+					lane_fom[i] = rev_d->phy_rx_adapt(hw, i);
 				else
 					lane_fom_ok++;
 			}
