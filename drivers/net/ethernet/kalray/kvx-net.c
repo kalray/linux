@@ -61,9 +61,6 @@
 
 #define KVX_TEST_BIT(name, bitmap)  test_bit(ETHTOOL_LINK_MODE_ ## name ## _BIT, bitmap)
 
-#define KVX_LINKDOWN_IT_MASK_EVENTS(evt_msk) updatel_bits(hw, MAC, MAC_LINK_DOWN_IT_EN_OFFSET, evt_msk, 0)
-#define KVX_LINKDOWN_IT_UNMASK_EVENTS(evt_msk) updatel_bits(hw, MAC, MAC_LINK_DOWN_IT_EN_OFFSET, evt_msk, evt_msk)
-
 static bool load_phy_fw = true;
 module_param(load_phy_fw, bool, 0);
 MODULE_PARM_DESC(load_phy_fw, "Update PHY firmware ("KVX_PHY_FW_NAME_CV1", "KVX_PHY_FW_NAME_CV2")");
@@ -330,14 +327,14 @@ static int kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 		/* enable downlink ITs */
 		msk = kvx_eth_lane_mask(ndev);
 		spin_lock_irqsave(&hw->link_down_lock, flags);
-		KVX_LINKDOWN_IT_UNMASK_EVENTS(msk);
+		updatel_bits(hw, MAC, MAC_LINK_DOWN_IT_EN_OFFSET, msk, msk)
 		spin_unlock_irqrestore(&hw->link_down_lock, flags);
 	}
 
 	return 0;
 }
 
-static inline void cancel_link_cfg(struct kvx_eth_netdev *ndev)
+void kvx_net_cancel_link_cfg(struct kvx_eth_netdev *ndev)
 {
 	atomic_set(&ndev->link_cfg_running, 0);
 	cancel_work_sync(&ndev->link_cfg);
@@ -485,12 +482,12 @@ void kvx_eth_down(struct net_device *netdev)
 	if (dev->chip_rev_data->lnk_dwn_it_support) {
 		msk = kvx_eth_lane_mask(ndev);
 		spin_lock_irqsave(&hw->link_down_lock, flags);
-		KVX_LINKDOWN_IT_MASK_EVENTS(msk);
+		updatel_bits(hw, MAC, MAC_LINK_DOWN_IT_EN_OFFSET, msk, 0)
 		spin_unlock_irqrestore(&hw->link_down_lock, flags);
 	}
 
 	cancel_delayed_work(&ndev->link_poll);
-	cancel_link_cfg(ndev);
+	kvx_net_cancel_link_cfg(ndev);
 
 	kvx_eth_reset_tx(ndev);
 	netif_tx_stop_all_queues(ndev->netdev);
@@ -1768,7 +1765,7 @@ static irqreturn_t kvx_eth_irq_link_down(int irq, void *data)
 	v &= kvx_mac_readl(hw, MAC_LINK_DOWN_IT_EN_OFFSET); /* skip disabled ITs */
 
 	/* disable raised ITs */
-	KVX_LINKDOWN_IT_MASK_EVENTS(v)
+	updatel_bits(hw, MAC, MAC_LINK_DOWN_IT_EN_OFFSET, v, 0)
 
 	/* trig setup links of proper net dev in the link_polling context */
 	list_for_each_entry(ndev, &dev->list, node) {
@@ -1776,7 +1773,7 @@ static irqreturn_t kvx_eth_irq_link_down(int irq, void *data)
 		if (msk & v) {
 			netdev_dbg(ndev->netdev, "%s netdev[%d}\n", __func__, ndev->cfg.id);
 			/* disable ITs linked to the lanes hold by this netdev */
-			KVX_LINKDOWN_IT_MASK_EVENTS(msk);
+			updatel_bits(hw, MAC, MAC_LINK_DOWN_IT_EN_OFFSET, msk, 0)
 			/* serdes restart not requested:
 			 * - autoneg disabled: same speed,
 			 * - autoneg enabled: restart done in AN procedure

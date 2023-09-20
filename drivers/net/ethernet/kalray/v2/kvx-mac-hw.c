@@ -16,6 +16,8 @@
 #include "../kvx-net.h"
 #include "../kvx-mac-regs.h"
 #include "../kvx-phy-regs.h"
+#include "kvx-phy-hw-cv2.h"
+
 
 void kvx_mac_pfc_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
@@ -70,14 +72,31 @@ void kvx_mac_pfc_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 
 void kvx_eth_mac_f_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 {
-	u32 val = MAC_LOOPBACK_LATENCY << MAC_BYPASS_LOOPBACK_LATENCY_SHIFT;
+	struct kvx_eth_lane_cfg *cfg = container_of(mac_f,
+					    struct kvx_eth_lane_cfg, mac_f);
+	struct kvx_eth_netdev *ndev = container_of(cfg, struct kvx_eth_netdev, cfg);
+	bool pma_loopb_cur = (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK);
+	bool pma_loopb_req = (mac_f->loopback_mode == PHY_PMA_LOOPBACK);
+	unsigned long flags;
 
-	if (mac_f->loopback_mode == MAC_SERDES_LOOPBACK) {
-		dev_info(hw->dev, "Mac out loopback\n");
-		val |= 0x0F << MAC_BYPASS_MAC_OUT_LOOPBACK_SHIFT;
-	} else if (mac_f->loopback_mode == MAC_ETH_LOOPBACK) {
-		dev_info(hw->dev, "Mac eth loopback\n");
-		val |= MAC_BYPASS_ETH_LOOPBACK_MASK;
+	if (pma_loopb_req && !pma_loopb_cur) {
+		/* wait completion of possible ongoing link configuration to avoid race condition */
+		spin_lock_irqsave(&hw->link_down_lock, flags);
+		updatel_bits(hw, MAC, MAC_LINK_DOWN_IT_EN_OFFSET, 0xF, 0);
+		spin_unlock_irqrestore(&hw->link_down_lock, flags);
+		if (atomic_read(&ndev->link_cfg_running) || work_pending(&ndev->link_cfg)) {
+			kvx_net_cancel_link_cfg(ndev);
+			msleep(100);
+		}
+		/* update is an activation or deactivation of the PHY_PMA_LOOPBACK: phy reinit necessary*/
+		hw->phy_f.loopback_mode = mac_f->loopback_mode;
+		kvx_phy_reinit_sequence_serdes_cv2(hw, cfg);
+		kvx_eth_mac_cfg(hw, cfg);
+	} else if (pma_loopb_cur && !pma_loopb_req) {
+		hw->phy_f.loopback_mode = mac_f->loopback_mode;
+		kvx_phy_reinit_sequence_serdes_cv2(hw, cfg);
+		kvx_eth_setup_link(ndev, true, true);
+	} else {
+		kvx_eth_mac_cfg(hw, cfg);
 	}
-	kvx_mac_writel(hw, val, MAC_BYPASS_OFFSET);
 }

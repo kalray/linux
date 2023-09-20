@@ -26,6 +26,14 @@
 #define PHY_SLEEP_SERDES_RESET_MS (1)
 #define PHY_SLEEP_SERDES_RESET_FOR_ADAPT_MS (1) // spec. : assert rxX_reset for at least 8 ns between performing RX adaptation requests
 
+#define SERDES_CTRL_INIT_VALUE \
+	((0x0 << KVX_PHY_SERDES_CTRL_RX_REQ_SHIFT) | \
+	(0x0 << KVX_PHY_SERDES_CTRL_TX_REQ_SHIFT) | \
+	(0x0 << KVX_PHY_SERDES_CTRL_FORCE_SIGNAL_DET_SHIFT) |\
+	(0x0 << KVX_PHY_SERDES_CTRL_RX2TX_LOOPBACK_SHIFT) |\
+	(0x0 << KVX_PHY_SERDES_CTRL_TX2RX_LOOPBACK_SHIFT) |\
+	(0x0 << KVX_PHY_SERDES_CTRL_TX_CLK_RDY_SHIFT))
+
 #define REF_SEL_INIT_VALUE \
 	((0x6 << KVX_PHY_REF_SEL_REF_RANGE_SHIFT) | \
 	(0x1 << KVX_PHY_REF_SEL_REF_CLK_SEL_SHIFT) | \
@@ -392,6 +400,12 @@ static int kvx_eth_phy_serdes_unit_cfg(struct kvx_eth_hw *hw, u8 lane_id, enum u
 	u8 tx_clk_sel;
 	u8 p_rx = hw->phy_f.polarities[lane_id].rx, p_tx = hw->phy_f.polarities[lane_id].tx;
 
+	/* no lane inversion when loopback enabled */
+	if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK) {
+		p_rx = 0;
+		p_tx = 0;
+	}
+
 	switch (serdes_if_width) {
 	case WIDTH_10BITS:
 		tx_clk_sel = ROPLL_QWORD_CLK;
@@ -459,11 +473,12 @@ static int kvx_phy_serdes_handshake(struct kvx_eth_hw *hw, u32 serdes_mask)
 	return ret;
 }
 
-int kvx_phy_init_sequence_cv2(struct kvx_eth_hw *hw, const struct firmware *fw)
+static int kvx_phy_init_sequence_opt_cv2(struct kvx_eth_hw *hw, const struct firmware *fw, bool bootload)
 {
 	int ret = 0, lane_id;
 	int i, addr;
 	u16 data;
+	u32 v = 0x0;
 
 	/* CR Parallel interface enabling (direct access to control registers inside the PHY) */
 	kvx_phy_writel(hw,
@@ -483,7 +498,9 @@ int kvx_phy_init_sequence_cv2(struct kvx_eth_hw *hw, const struct firmware *fw)
 	}
 	usleep_range(PHY_SLEEP_PHY_RESET_MS, 2 * PHY_SLEEP_PHY_RESET_MS);
 	/* boot mode select: bootload and boot from sram */
-	kvx_phy_writel(hw, 0x0, KVX_PHY_SRAM_CTRL_OFFSET);
+	if (bootload == false)
+		v = 0x1;
+	kvx_phy_writel(hw, v << KVX_PHY_SRAM_CTRL_SRAM_BOOT_BYPASS_SHIFT, KVX_PHY_SRAM_CTRL_OFFSET);
 	/* ref_clk A settings (ref_clk B unused) */
 	kvx_phy_writel(hw, REF_SEL_INIT_VALUE, KVX_PHY_REF_SEL_OFFSET);
 	/* ref_clk A detection check */
@@ -497,6 +514,11 @@ int kvx_phy_init_sequence_cv2(struct kvx_eth_hw *hw, const struct firmware *fw)
 	kvx_eth_phy_mplla_configure(hw);
 	/* settings of TERM */
 	kvx_phy_writel(hw, TERM_CTRL_INIT_VALUE, KVX_PHY_TERM_CTRL_OFFSET);
+	v = SERDES_CTRL_INIT_VALUE;
+	if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK)
+		v |= KVX_PHY_SERDES_CTRL_TX2RX_LOOPBACK_MASK | KVX_PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK; /* loopback on all lanes */
+
+	kvx_phy_writel(hw, v, KVX_PHY_SERDES_CTRL_OFFSET);
 	/* default serdes configuration */
 	ret = kvx_eth_phy_serdes_preset_configure(hw, SPEED_10000);
 	if (ret) {
@@ -542,6 +564,11 @@ int kvx_phy_init_sequence_cv2(struct kvx_eth_hw *hw, const struct firmware *fw)
 		return ret;
 	}
 	return ret;
+}
+
+int kvx_phy_init_sequence_cv2(struct kvx_eth_hw *hw, const struct firmware *fw)
+{
+	return kvx_phy_init_sequence_opt_cv2(hw, fw, true);
 }
 
 int kvx_phy_enable_serdes_cv2(struct kvx_eth_hw *hw, int fst_lane, int lane_nb, int lane_speed)
@@ -1120,4 +1147,13 @@ void kvx_phy_rx_bert_param_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_rx_bert
 		updatew_bits(hw, PHY, reg, KVX_PHY_INT_DIG_RX_LBERT_CTL_SYNC_MASK, 0);
 		p->sync = 0;
 	}
+}
+
+void kvx_phy_reinit_sequence_serdes_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	int lane_speed = 0;
+	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, &lane_speed);
+
+	kvx_phy_init_sequence_opt_cv2(hw, NULL, false);
+	kvx_phy_enable_serdes_cv2(hw, cfg->id, lane_nb, lane_speed);
 }

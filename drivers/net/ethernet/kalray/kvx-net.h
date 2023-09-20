@@ -268,6 +268,7 @@ void kvx_eth_get_formated_speed(int speed, int *speed_fmt, char **unit);
 int kvx_eth_get_lut_indir(struct net_device *netdev, u32 lut_id, u32 *cluster_id, u32 *rx_channel);
 
 void kvx_net_init_dcb(struct net_device *netdev);
+void kvx_net_cancel_link_cfg(struct kvx_eth_netdev *ndev);
 #ifdef CONFIG_DCB
 void kvx_set_dcb_ops(struct net_device *netdev);
 #else
