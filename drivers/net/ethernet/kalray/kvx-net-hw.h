@@ -56,18 +56,46 @@
 #define PARSER_STATUS_RD_DELAY (10)
 #define PARSER_STATUS_RD_TOUT (5000)
 
+#ifdef CONFIG_TRACING
+#define TRACE_REGISTER(off, val)                                               \
+	trace_printk("%s(off=0x%llx) = 0x%llx\n", __func__, off, (u64)val)
+#define updatel_bits(hw, bl, off, mask, v)                                                           \
+	{                                                                                            \
+		u32 regval1 = readl(hw->res[KVX_ETH_RES_##bl].base + off),                           \
+		    regval2 = (v) | (regval1 & ~(mask));                                             \
+		writel(regval2, hw->res[KVX_ETH_RES_##bl].base + off);                               \
+		trace_printk(                                                                        \
+			"%s l.%d: updatel_bits(bl=%s off=0x%llx mask=0x%llx) = (0x%x -> 0x%x)\n",    \
+			__func__, __LINE__, #bl, (u64)off, (u64)mask, regval1, regval2);             \
+	}
+#define updatew_bits(hw, bl, off, mask, v)                                                           \
+	{                                                                                            \
+		u16 regval1 = readw(hw->res[KVX_ETH_RES_##bl].base + off),                           \
+		    regval2 = (v) | (regval1 & ~(mask));                                             \
+		writew(regval2, hw->res[KVX_ETH_RES_##bl].base + off);                               \
+		trace_printk(                                                                        \
+			"%s l.%d: updatew_bits(bl=%s off=0x%llx mask=0x%llx) = (0x%x -> 0x%x)\n",    \
+			__func__, __LINE__, #bl, (u64)off, (u64)mask, regval1, regval2);             \
+	}
+#else
+#define TRACE_REGISTER(off, val)
+#define updatel_bits(hw, bl, off, mask, v)                                                           \
+	{                                                                                            \
+		u32 regval = readl(hw->res[KVX_ETH_RES_##bl].base + off) & ~(mask);                  \
+		writel((v) | regval, hw->res[KVX_ETH_RES_##bl].base + off);                          \
+	}
+#define updatew_bits(hw, bl, off, mask, v)                                                           \
+	{                                                                                            \
+		u16 regval = readw(hw->res[KVX_ETH_RES_##bl].base + off) & ~(mask);                  \
+		writew((v) | regval, hw->res[KVX_ETH_RES_##bl].base + off);                          \
+	}
+#endif /* CONFIG_TRACING */
+
 #define DUMP_REG(hw, bl, off) { \
 	u32 v = readl(hw->res[KVX_ETH_RES_##bl].base + off); \
 	pr_debug("%s @ 0x%x - 0x%x\n", #off, (u32)off, v); }
+
 #define GETF(reg, field) (((reg) & field ## _MASK) >> (field ## _SHIFT))
-
-#define updatel_bits(hw, bl, off, mask, v) { \
-	u32 regval = readl(hw->res[KVX_ETH_RES_##bl].base + off) & ~(mask); \
-	writel(((v) | (regval)), hw->res[KVX_ETH_RES_##bl].base + off); }
-
-#define updatew_bits(hw, bl, off, mask, v) { \
-	u16 regval = readw(hw->res[KVX_ETH_RES_##bl].base + off) & ~(mask); \
-	writew(((v) | (regval)), hw->res[KVX_ETH_RES_##bl].base + off); }
 
 #define for_each_cfg_lane(nb_lane, lane, cfg) \
 	for (nb_lane = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL), \
@@ -1852,26 +1880,35 @@ enum kvx_eth_rx_lb_ana_parser_status_running_values {
 static inline void kvx_eth_writeq(struct kvx_eth_hw *hw, u64 val, const u64 off)
 {
 	writeq(val, hw->res[KVX_ETH_RES_ETH].base + off);
+	TRACE_REGISTER(off, val);
 }
 
 static inline u64 kvx_eth_readq(struct kvx_eth_hw *hw, const u64 off)
 {
-	return readq(hw->res[KVX_ETH_RES_ETH].base + off);
+	u64 val = readq(hw->res[KVX_ETH_RES_ETH].base + off);
+
+	TRACE_REGISTER(off, val);
+	return val;
 }
 
 static inline void kvx_eth_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_ETH].base + off);
+	TRACE_REGISTER(off, val);
 }
 
 static inline u32 kvx_eth_readl(struct kvx_eth_hw *hw, const u64 off)
 {
-	return readl(hw->res[KVX_ETH_RES_ETH].base + off);
+	u32 val = readl(hw->res[KVX_ETH_RES_ETH].base + off);
+
+	TRACE_REGISTER(off, val);
+	return val;
 }
 
 static inline void kvx_mac_writel(struct kvx_eth_hw *hw, u32 val, u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_MAC].base + off);
+	TRACE_REGISTER(off, val);
 }
 
 static inline void kvx_mac_writeq(struct kvx_eth_hw *hw, u64 val, u64 off)
@@ -1882,39 +1919,55 @@ static inline void kvx_mac_writeq(struct kvx_eth_hw *hw, u64 val, u64 off)
 static inline void kvx_tx_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_ETH_TX].base + off);
+	TRACE_REGISTER(off, val);
 }
 
 static inline u32 kvx_tx_readl(struct kvx_eth_hw *hw, const u64 off)
 {
-	return readl(hw->res[KVX_ETH_RES_ETH_TX].base + off);
+	u32 val = readl(hw->res[KVX_ETH_RES_ETH_TX].base + off);
+
+	TRACE_REGISTER(off, val);
+	return val;
 }
 
 static inline u32 kvx_lbana_readl(struct kvx_eth_hw *hw, const u64 off)
 {
-	return readl(hw->res[KVX_ETH_RES_ETH_RX_LB_ANA].base + off);
+	u32 val = readl(hw->res[KVX_ETH_RES_ETH_RX_LB_ANA].base + off);
+
+	TRACE_REGISTER(off, val);
+	return val;
 }
 
 static inline void kvx_lbana_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_ETH_RX_LB_ANA].base + off);
+	TRACE_REGISTER(off, val);
 }
 
 static inline u32 kvx_lbdel_readl(struct kvx_eth_hw *hw, const u64 off)
 {
-	return readl(hw->res[KVX_ETH_RES_ETH_RX_LB_DEL].base + off);
+	u32 val = readl(hw->res[KVX_ETH_RES_ETH_RX_LB_DEL].base + off);
+
+	TRACE_REGISTER(off, val);
+	return val;
 }
 
 static inline void kvx_lbdel_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_ETH_RX_LB_DEL].base + off);
+	TRACE_REGISTER(off, val);
 }
 static inline u32 kvx_lbrfs_readl(struct kvx_eth_hw *hw, const u64 off)
 {
-	return readl(hw->res[KVX_ETH_RES_ETH_RX_LB_RFS].base + off);
+	u32 val = readl(hw->res[KVX_ETH_RES_ETH_RX_LB_RFS].base + off);
+
+	TRACE_REGISTER(off, val);
+	return val;
 }
 static inline void kvx_lbrfs_writel(struct kvx_eth_hw *hw, u32 val, const u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_ETH_RX_LB_RFS].base + off);
+	TRACE_REGISTER(off, val);
 }
 
 u32 noc_route_c2eth(enum kvx_eth_io eth_id, int cluster_id);
