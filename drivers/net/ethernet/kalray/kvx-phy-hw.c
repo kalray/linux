@@ -18,11 +18,15 @@
 void kvx_phy_writew(struct kvx_eth_hw *hw, u16 val, u64 off)
 {
 	writew(val, hw->res[KVX_ETH_RES_PHY].base + off);
+	TRACE_REGISTER(off, val);
 }
 
 u16 kvx_phy_readw(struct kvx_eth_hw *hw, u64 off)
 {
-	return readw(hw->res[KVX_ETH_RES_PHY].base + off);
+	u16 val = readw(hw->res[KVX_ETH_RES_PHY].base + off);
+
+	TRACE_REGISTER(off, val);
+	return val;
 }
 
 static void tx_ber_param_update(void *data)
