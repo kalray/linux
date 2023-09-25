@@ -70,11 +70,14 @@
 static void kvx_phymac_writel(struct kvx_eth_hw *hw, u32 val, u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_PHYMAC].base + off);
+	TRACE_REGISTER(off, val);
 }
 
 static u32 kvx_phymac_readl(struct kvx_eth_hw *hw, u64 off)
 {
 	u32 val = readl(hw->res[KVX_ETH_RES_PHYMAC].base + off);
+
+	TRACE_REGISTER(off, val);
 	return val;
 }
 
@@ -82,6 +85,7 @@ u32 kvx_mac_readl(struct kvx_eth_hw *hw, u64 off)
 {
 	u32 val = readl(hw->res[KVX_ETH_RES_MAC].base + off);
 
+	TRACE_REGISTER(off, val);
 	return val;
 }
 
