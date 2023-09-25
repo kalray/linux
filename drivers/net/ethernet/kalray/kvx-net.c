@@ -1171,7 +1171,7 @@ static int kvx_eth_set_mac_addr(struct net_device *netdev, void *p)
 static int kvx_eth_change_mtu(struct net_device *netdev, int new_mtu)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
-	int max_frame_len = new_mtu + (2 * KVX_ETH_HEADER_SIZE);
+	int ret = 0, max_frame_len = new_mtu + (2 * KVX_ETH_HEADER_SIZE);
 	struct kvx_eth_hw *hw = ndev->hw;
 	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 
@@ -1179,13 +1179,15 @@ static int kvx_eth_change_mtu(struct net_device *netdev, int new_mtu)
 	ndev->hw->max_frame_size = max_frame_len;
 	netdev->mtu = new_mtu;
 
-	if (netif_running(netdev))
-		kvx_eth_down(netdev);
 	rev_d->eth_hw_change_mtu(ndev->hw, ndev->cfg.id, max_frame_len);
-	if (netif_running(netdev))
-		kvx_eth_up(netdev);
 
-	return 0;
+	if (netif_running(netdev)) {
+		ret = kvx_eth_mac_cfg(hw, &ndev->cfg);
+		if (ret)
+			dev_warn(hw->dev, "Failed to reconfigure MAC\n");
+	}
+
+	return ret;
 }
 
 static void kvx_eth_change_rx_flags(struct net_device *netdev, int flags)
