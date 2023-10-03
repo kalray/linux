@@ -17,6 +17,34 @@
 #include "kvx-dma-hw.h"
 #include "kvx-dma-ucode.h"
 
+
+#define KVX_DMA_CVX(r) ((phy->chip_rev_data->revision == COOLIDGE_V1) ? (KVX_DMA_CV1_##r) : (KVX_DMA_CV2_##r))
+
+#define KVX_DMA_RX_CHAN_BUF_EN_OFFSET                   KVX_DMA_CVX(RX_CHAN_BUF_EN_OFFSET)
+#define KVX_DMA_RX_CHAN_CUR_OFFSET                      KVX_DMA_CVX(RX_CHAN_CUR_OFFSET)
+#define KVX_DMA_RX_CHAN_JOB_Q_CFG_OFFSET                KVX_DMA_CVX(RX_CHAN_JOB_Q_CFG_OFFSET)
+#define KVX_DMA_RX_CHAN_ACTIVATED_OFFSET                KVX_DMA_CVX(RX_CHAN_ACTIVATED_OFFSET)
+#define KVX_DMA_RX_CHAN_BYTE_CNT_OFFSET                 KVX_DMA_CVX(RX_CHAN_BYTE_CNT_OFFSET)
+#define KVX_DMA_RX_CHAN_NOTIF_CNT_OFFSET                KVX_DMA_CVX(RX_CHAN_NOTIF_CNT_OFFSET)
+#define KVX_DMA_RX_CHAN_CNT_CLEAR_MODE_OFFSET           KVX_DMA_CVX(RX_CHAN_CNT_CLEAR_MODE_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_CFG_OFFSET               KVX_DMA_CVX(RX_CHAN_COMP_Q_CFG_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_MODE_OFFSET              KVX_DMA_CVX(RX_CHAN_COMP_Q_MODE_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_SA_OFFSET                KVX_DMA_CVX(RX_CHAN_COMP_Q_SA_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_SLOT_NB_LOG2_OFFSET      KVX_DMA_CVX(RX_CHAN_COMP_Q_SLOT_NB_LOG2_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_WP_OFFSET                KVX_DMA_CVX(RX_CHAN_COMP_Q_WP_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_RP_OFFSET                KVX_DMA_CVX(RX_CHAN_COMP_Q_RP_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_LOAD_INCR_RP_OFFSET      KVX_DMA_CVX(RX_CHAN_COMP_Q_LOAD_INCR_RP_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_VALID_RP_OFFSET          KVX_DMA_CVX(RX_CHAN_COMP_Q_VALID_RP_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_NOTIF_ADDR_OFFSET        KVX_DMA_CVX(RX_CHAN_COMP_Q_NOTIF_ADDR_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_FULL_NOTIF_ADDR_OFFSET   KVX_DMA_CVX(RX_CHAN_COMP_Q_FULL_NOTIF_ADDR_OFFSET)
+#define KVX_DMA_RX_CHAN_COMP_Q_NOTIF_ARG_OFFSET         KVX_DMA_CVX(RX_CHAN_COMP_Q_NOTIF_ARG_OFFSET)
+#define KVX_DMA_RX_CHAN_ASN_OFFSET                      KVX_DMA_CVX(RX_CHAN_ASN_OFFSET)
+
+#define KVX_DMA_TX_JOB_Q_OFFSET                         KVX_DMA_CVX(TX_JOB_Q_OFFSET)
+
+#define KVX_DMA_TX_COMP_Q_OFFSET                        KVX_DMA_CVX(TX_COMP_Q_OFFSET)
+
+
 struct kvx_dma_pkt_desc {
 	u64 base;
 	u64 size;
@@ -220,13 +248,8 @@ int kvx_dma_pkt_rx_channel_queue_init(struct kvx_dma_phy *phy, int rx_cache_id)
 	kvx_dma_q_writeq_relaxed(phy,
 			((phy->msi_cfg.msi_data) & KVX_DMA_NOTIF_ARG_INDEX_MASK),
 			KVX_DMA_RX_CHAN_COMP_Q_NOTIF_ARG_OFFSET);
-	#ifdef CONFIG_KVX_SUBARCH_KV3_1
 	kvx_dma_q_writeq_relaxed(phy, phy->asn,
-				 KVX_DMA_RX_CHAN_COMP_Q_ASN_OFFSET);
-	#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-	kvx_dma_q_writeq_relaxed(phy, phy->asn,
-				 KVX_DMA_RX_CHAN_ASN_OFFSET);
-	#endif
+			KVX_DMA_RX_CHAN_ASN_OFFSET);
 	/* Activate once configuration is done and commited in memory */
 	kvx_dma_q_writeq(phy, 1ULL, KVX_DMA_RX_CHAN_ACTIVATED_OFFSET);
 
@@ -243,7 +266,7 @@ int kvx_dma_pkt_rx_channel_queue_init(struct kvx_dma_phy *phy, int rx_cache_id)
  * Return: 0 - OK -ENOMEM - queue not allocated -ENODEV - queue already in use
  */
 int kvx_dma_pkt_rx_jobq_init(struct kvx_dma_hw_queue *jobq, u32 asn,
-				  u32 cache_id, u32 prio)
+				  u32 cache_id, u32 prio, const struct kvx_dma_chip_rev_data *rev_d)
 {
 	u32 v;
 
@@ -272,14 +295,14 @@ int kvx_dma_pkt_rx_jobq_init(struct kvx_dma_hw_queue *jobq, u32 asn,
 	kvx_dma_jobq_writeq_relaxed(jobq, 0, KVX_DMA_RX_JOB_Q_RP_OFFSET);
 	/* set notification addr to zero as we use silent mode, so it is unused */
 	kvx_dma_jobq_writeq_relaxed(jobq, 0, KVX_DMA_RX_JOB_Q_NOTIF_ADDR_OFFSET);
-	#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	kvx_dma_jobq_writeq_relaxed(jobq, 0, KVX_DMA_RX_JOB_Q_NOTIF_ARG_OFFSET);
-	kvx_dma_jobq_writeq_relaxed(jobq, KVX_DMA_RX_Q_ENABLE,
-			KVX_DMA_RX_JOB_Q_NOTIF_MODE_OFFSET);
-	#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-	kvx_dma_jobq_writeq_relaxed(jobq, KVX_DMA_RX_Q_ENABLE<<KVX_DMA_COMP_Q_MODE_SHIFT,
-			KVX_DMA_RX_JOB_Q_NOTIF_ARG_OFFSET);
-	#endif
+	if (rev_d->revision == COOLIDGE_V1) {
+		kvx_dma_jobq_writeq_relaxed(jobq, 0, KVX_DMA_RX_JOB_Q_NOTIF_ARG_OFFSET);
+		kvx_dma_jobq_writeq_relaxed(jobq, KVX_DMA_RX_Q_ENABLE,
+				KVX_DMA_CV1_RX_JOB_Q_NOTIF_MODE_OFFSET);
+	} else if (rev_d->revision == COOLIDGE_V2) {
+		kvx_dma_jobq_writeq_relaxed(jobq, KVX_DMA_RX_Q_ENABLE<<KVX_DMA_CV2_COMP_Q_MODE_SHIFT,
+				KVX_DMA_RX_JOB_Q_NOTIF_ARG_OFFSET);
+	}
 	v = (cache_id << KVX_DMA_RX_JOB_Q_CACHE_ID_CACHE_ID_SHIFT) |
 		(prio << KVX_DMA_RX_JOB_Q_CACHE_ID_PRIO_SHIFT);
 	kvx_dma_jobq_writeq_relaxed(jobq, v, KVX_DMA_RX_JOB_Q_CACHE_ID_OFFSET);
@@ -998,9 +1021,6 @@ int kvx_dma_rdma_tx_push_mem2mem(struct kvx_dma_phy *phy,
 			(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
 			pgrm_id << KVX_DMA_PRGM_ID_SHIFT |
 			entry << KVX_DMA_ROUTE_ID_SHIFT  | comp_queue_id,
-		#ifdef CONFIG_KVX_SUBARCH_KV3_2
-		.config_bis = 0ULL,
-		#endif
 	};
 
 	dev_dbg(phy->dev, "%s s: 0x%llx d: 0x%llx len: %lld comp_q_id: %lld\n",
@@ -1050,9 +1070,6 @@ int kvx_dma_rdma_tx_push_mem2noc(struct kvx_dma_phy *phy,
 			(pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
 			(noc_route_id << KVX_DMA_ROUTE_ID_SHIFT) |
 			comp_queue_id,
-		#ifdef CONFIG_KVX_SUBARCH_KV3_2
-		.config_bis = 0ULL,
-		#endif
 	};
 
 	return kvx_dma_push_job_fast(phy, &p, hw_job_id);
@@ -1117,16 +1134,11 @@ static void kvx_dma_dump_tx_jobq(struct kvx_dma_phy *phy)
 		r -= 2;
 	while (r <= rp) {
 		job = &tx_jobq[r & jobq->size_mask];
-		dev_dbg(phy->dev, "Tx jobq[%d][%lld] param: 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx\n",
+		dev_dbg(phy->dev, "Tx jobq[%d][%lld] param: 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx\n",
 			phy->hw_id, r & jobq->size_mask,
 			job->param[0], job->param[1], job->param[2],
 			job->param[3], job->param[4], job->param[5],
-			job->param[6], job->param[7], job->config,
-			#ifdef CONFIG_KVX_SUBARCH_KV3_1
-			job->reserved
-			#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-			job->config_bis
-			#endif
+			job->param[6], job->param[7], job->config
 			);
 		r++;
 	}
@@ -1156,10 +1168,6 @@ void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
 		(mem2eth_ucode.pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
 		(tx_job->route_id << KVX_DMA_ROUTE_ID_SHIFT) |
 		tx_job->comp_q_id;
-	#ifdef CONFIG_KVX_SUBARCH_KV3_2
-	/* FIXME to be supportted properly by this API */
-	u64 config_bis = 0ULL;
-	#endif
 
 	dev_dbg(phy->dev, "%s queue[%d] ticket: %lld route: 0x%llx hdr_en:%lld eot:%lld tx_hdr: 0x%llx\n",
 		 __func__, phy->hw_id, ticket, tx_job->route_id,
@@ -1175,9 +1183,6 @@ void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
 	writeq_relaxed(0, &job->param[6]);
 	writeq_relaxed(object_len, &job->param[7]);
 	writeq_relaxed(config, &job->config);
-	#ifdef CONFIG_KVX_SUBARCH_KV3_2
-	writeq_relaxed(config_bis, &job->config_bis);
-	#endif
 	/* Expect write done */
 	wmb();
 }
@@ -1235,11 +1240,7 @@ int kvx_dma_dbg_get_q_regs(struct kvx_dma_phy *phy, char *buf, size_t buf_size)
 		n += REG64(off + KVX_DMA_RX_CHAN_COMP_Q_WP_OFFSET);
 		n += REG64(off + KVX_DMA_RX_CHAN_COMP_Q_RP_OFFSET);
 		n += REG64(off + KVX_DMA_RX_CHAN_COMP_Q_VALID_RP_OFFSET);
-		#ifdef CONFIG_KVX_SUBARCH_KV3_1
-		n += REG64(off + KVX_DMA_RX_CHAN_COMP_Q_ASN_OFFSET);
-		#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
 		n += REG64(off + KVX_DMA_RX_CHAN_ASN_OFFSET);
-		#endif
 		n += REG64(off + KVX_DMA_RX_CHAN_ACTIVATED_OFFSET);
 	} else {
 		off = phy->base + KVX_DMA_TX_JOB_Q_OFFSET +

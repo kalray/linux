@@ -3,7 +3,10 @@
 The KVX DMA controller has 64 RX/TX channels.
 
 Required properties:
-- compatible: Should be "kalray,kvx-dma-noc"
+- compatible: must be one of the following strings:
+                       "kalray,kvx-dma-noc" (deprecated)
+                       "kalray,coolidge-dma-noc"
+                       "kalray,coolidge-v2-dma-noc"
 - reg: DMA NOC registers and length
 - dma-channels: number of used channels
 - dma-requests: max number of requests per channel

@@ -517,11 +517,9 @@ int kvx_dma_add_route(struct kvx_dma_dev *d, struct kvx_dma_phy *phy,
 		((u64)(phy->asn & KVX_DMA_ASN_MASK) <<
 		 KVX_DMA_NOC_RT_ASN_SHIFT) |
 		((u64)(phy->vchan & 0x1)     << KVX_DMA_NOC_RT_VCHAN_SHIFT)  |
-		((u64)(1)                    << KVX_DMA_NOC_RT_VALID_SHIFT)
-#ifndef CONFIG_KVX_SUBARCH_KV3_1
-		| ((u64)(param->rx_cache_id)    << KVX_DMA_NOC_RT_CACHE_ID_SHIFT)
-#endif
-		;
+		((u64)(1)                    << KVX_DMA_NOC_RT_VALID_SHIFT);
+	if (d->chip_rev_data->revision == COOLIDGE_V2)
+		route |= ((u64)(param->rx_cache_id) << KVX_DMA_CV2_NOC_RT_CACHE_ID_SHIFT);
 	spin_lock(&d->lock);
 	ret = kvx_dma_get_route_id(d, route, &param->route_id);
 	spin_unlock(&d->lock);
@@ -743,6 +741,7 @@ static int kvx_dma_allocate_phy(struct kvx_dma_dev *dev)
 			INIT_LIST_HEAD(&p->chan_list);
 			tasklet_init(&p->comp_task, kvx_dma_comp_task,
 				     (unsigned long)p);
+			p->chip_rev_data = dev->chip_rev_data;
 
 			if (kvx_dma_dbg_init(p, dev->dbg))
 				dev_warn(dev->dma.dev, "Failed to init debugfs\n");
@@ -756,8 +755,18 @@ static int kvx_dma_allocate_phy(struct kvx_dma_dev *dev)
 	return 0;
 }
 
+static const struct kvx_dma_chip_rev_data dma_chip_rev_data_cv1 = {
+	.revision = COOLIDGE_V1
+};
+
+static const struct kvx_dma_chip_rev_data dma_chip_rev_data_cv2 = {
+	.revision = COOLIDGE_V2
+};
+
 static const struct of_device_id kvx_dma_match[] = {
-	{ .compatible = "kalray,kvx-dma-noc" },
+	{ .compatible = "kalray,kvx-dma-noc", .data = &dma_chip_rev_data_cv1 }, /* deprecated */
+	{ .compatible = "kalray,coolidge-dma-noc", .data = &dma_chip_rev_data_cv1 },
+	{ .compatible = "kalray,coolidge-v2-dma-noc", .data = &dma_chip_rev_data_cv2 },
 	{ }
 };
 
@@ -987,6 +996,7 @@ static int kvx_dma_probe(struct platform_device *pdev)
 	}
 	dev_cnt++;
 	platform_set_drvdata(pdev, dev);
+	dev->chip_rev_data = of_device_get_match_data(&pdev->dev);
 
 	/* DMA struct fields */
 	dma = &dev->dma;

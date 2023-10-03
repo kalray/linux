@@ -116,7 +116,7 @@ int kvx_dma_reserve_rx_jobq(struct platform_device *pdev, void **jobq,
 		return ret;
 	}
 
-	ret = kvx_dma_pkt_rx_jobq_init(q, d->asn, cache_id, prio);
+	ret = kvx_dma_pkt_rx_jobq_init(q, d->asn, cache_id, prio, d->chip_rev_data);
 
 	*jobq = q;
 

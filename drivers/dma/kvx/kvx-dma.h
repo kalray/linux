@@ -145,7 +145,8 @@ struct kvx_dma_fws {
  * @err_vec: Error vector
  * @asn: device specific asn for iommu / hw
  * @vchan: device specific vchan for hw
- * @dma_fws: Information about firmwares pool probed from dt
+ * @dma_fws: firmwares structure
+ * @chip_rev_data: Information from devicetree
  *
  * One dev per rx/tx channels
  */
@@ -170,6 +171,7 @@ struct kvx_dma_dev {
 	u32 asn;
 	u32 vchan;
 	struct kvx_dma_fws dma_fws;
+	const struct kvx_dma_chip_rev_data *chip_rev_data;
 };
 
 int kvx_dma_request_msi(struct platform_device *pdev);

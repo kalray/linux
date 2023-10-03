@@ -14,6 +14,15 @@
 
 #include "kvx-dma-regs.h"
 
+enum coolidge_rev {
+	COOLIDGE_V1 = 0,
+	COOLIDGE_V2,
+};
+
+struct kvx_dma_chip_rev_data {
+	enum coolidge_rev revision;
+};
+
 #define KVX_DMA_CACHE_ID  (1ULL)
 #define KVX_DMA_THREAD_ID (1ULL)
 
@@ -151,7 +160,7 @@ struct kvx_dma_channel {
  * struct kvx_dma_phy - HW description, limited to one transfer type
  * @dev: This device
  * @base: Base addr of DMA device
- * @msi_data: MSI related data
+ * @msi_cfg: MSI related data
  * @q: Channel queue
  * @jobq: Job queue (for rx, only for eth usecase. Typically, 2 must be assigned
  *        to 1 rx_cache_id: 1 for soft rx buffer provisioning + 1 for HW refill
@@ -162,8 +171,7 @@ struct kvx_dma_channel {
  * @hw_id: default: -1, [0, 63] if assigned
  * @asn: device specific asn for iommu / hw
  * @vchan: device specific vchan for hw
- * @irq_handler: External callback
- * @irq_data: Callback data
+ * @chip_rev_data: Information from devicetree
  */
 struct kvx_dma_phy {
 	struct device *dev;
@@ -180,6 +188,7 @@ struct kvx_dma_phy {
 	u32 vchan;
 	struct list_head chan_list;
 	struct tasklet_struct comp_task;
+	const struct kvx_dma_chip_rev_data *chip_rev_data;
 };
 
 /*
@@ -198,11 +207,6 @@ struct kvx_dma_tx_comp {
 struct kvx_dma_tx_job_desc {
 	u64 param[KVX_DMA_UC_NB_PARAMS];
 	u64 config;
-	#ifdef CONFIG_KVX_SUBARCH_KV3_1
-	u64 reserved;
-	#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-	u64 config_bis;
-	#endif
 } __packed  __aligned(16);
 
 int is_asn_global(u32 asn);
@@ -251,7 +255,7 @@ int kvx_dma_get_rx_jobq(struct kvx_dma_hw_queue **jobq,
 			struct kvx_dma_job_queue_list *jobq_list,
 			unsigned int rx_jobq_id);
 int kvx_dma_pkt_rx_jobq_init(struct kvx_dma_hw_queue *jobq, u32 asn,
-				  u32 cache_id, u32 prio);
+				  u32 cache_id, u32 prio, const struct kvx_dma_chip_rev_data *rev_d);
 int kvx_dma_init_rx_queues(struct kvx_dma_phy *phy,
 		enum kvx_dma_transfer_type trans_type);
 int kvx_dma_init_tx_queues(struct kvx_dma_phy *phy);
