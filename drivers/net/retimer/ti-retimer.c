@@ -574,13 +574,15 @@ static int retimer_cfg(struct ti_rtm_dev *rtm)
 		} while (!gpiod_get_value(rtm->all_done_gpio));
 	}
 
+	/* Write the initial configuration sequence for RTM.
+	 * Configuration is defined in the dt
+	 * w.r.t the front-port application from the DS2x0DFx10 programming guide.
+	 */
 	mutex_lock(&rtm->lock);
 	ret = ti_rtm_write_i2c_regs(rtm->client, rtm->reg_init.seq, rtm->reg_init.size, true);
 	mutex_unlock(&rtm->lock);
 	if (ret < 0)
 		return ret;
-
-	ti_retimer_set_rx_adapt_mode(rtm->client, TI_RTM_CHANNEL_BROADCAST, 2);
 
 	return 0;
 
