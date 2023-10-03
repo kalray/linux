@@ -204,4 +204,11 @@
 /* Program memory */
 #define KVX_DMA_TX_PGRM_MEM_OFFSET                 0x64000
 
+/* TX fifo cfg */
+#define KVX_DMA_CV2_TX_ETH_FIFO_CFG_OFFSET             0x68050
+#define KVX_DMA_CV2_TX_ETH_FIFO_CFG_ELEM_SIZE          0x8
+#define KVX_DMA_CV2_TX_ETH_FIFO_CFG_ARRAY_SIZE         0x2
+#define KVX_DMA_CV2_TX_ETH_FIFO_CFG_FIFO_CFG_SHIFT     0
+#define KVX_DMA_CV2_TX_ETH_FIFO_CFG_FIFO_CFG_MASK      0x3
+
 #endif /* ASM_KVX_DMA_REGS_H */

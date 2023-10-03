@@ -257,6 +257,18 @@ void *kvx_dma_get_eth_tx_hdr(void *phy, const u64 job_idx)
 }
 EXPORT_SYMBOL_GPL(kvx_dma_get_eth_tx_hdr);
 
+void kvx_dma_set_tx_fifo_cfg_cv2(struct platform_device *pdev, int eth_id,
+				 enum tx_fifo_cfg_mode mode)
+{
+	struct kvx_dma_dev *d = platform_get_drvdata(pdev);
+	u64 v = ((u64)mode << KVX_DMA_CV2_TX_ETH_FIFO_CFG_FIFO_CFG_SHIFT);
+
+	v &= KVX_DMA_CV2_TX_ETH_FIFO_CFG_FIFO_CFG_MASK;
+	writeq(v, d->iobase + KVX_DMA_CV2_TX_ETH_FIFO_CFG_OFFSET +
+	       eth_id * KVX_DMA_CV2_TX_ETH_FIFO_CFG_ELEM_SIZE);
+}
+EXPORT_SYMBOL_GPL(kvx_dma_set_tx_fifo_cfg_cv2);
+
 /**
  * kvx_dma_prepare_pkt() - Acquire and write N jobs in Tx fifo
  *

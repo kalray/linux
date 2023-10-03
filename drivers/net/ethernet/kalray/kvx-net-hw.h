@@ -17,6 +17,7 @@
 #include <linux/ti-retimer.h>
 #include <net/page_pool.h>
 #include <linux/gpio/consumer.h>
+#include <linux/dma/kvx-dma-api.h>
 
 #include "kvx-net-hdr.h"
 #include "kvx-ethtool.h"
@@ -1893,6 +1894,7 @@ enum kvx_eth_tx_errfcs_values {
 
 struct eth_tx_speed_cfg_t {
 	unsigned int speed;
+	enum tx_fifo_cfg_mode fifo_mode;
 	uint32_t stage_one_config;
 	uint32_t tdm_config;
 };

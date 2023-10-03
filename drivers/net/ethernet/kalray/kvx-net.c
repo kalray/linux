@@ -27,7 +27,6 @@
 #include <linux/of_dma.h>
 #include <linux/of_platform.h>
 #include <net/checksum.h>
-#include <linux/dma/kvx-dma-api.h>
 #include <linux/ti-retimer.h>
 #include <linux/rtnetlink.h>
 #include <linux/hash.h>
@@ -767,9 +766,9 @@ static void kvx_eth_fill_tx_hdr_cv1(struct kvx_eth_netdev *ndev,
 	if (skb->ip_summed != CHECKSUM_PARTIAL)
 		goto bail;
 
-	if (eth_h->h_proto == ETH_P_IP)
+	if (eth_h->h_proto == htons(ETH_P_IP))
 		ip_mode = IP_V4_MODE;
-	else if (eth_h->h_proto == ETH_P_IPV6)
+	else if (eth_h->h_proto == htons(ETH_P_IPV6))
 		ip_mode = IP_V6_MODE;
 
 	if (iph && ndev->hw->tx_f[cfg->tx_fifo_id].crc_en) {
@@ -809,7 +808,6 @@ static void kvx_eth_fill_tx_hdr_cv2(struct kvx_eth_netdev *ndev,
 	struct iphdr *iph = ip_hdr(skb);
 	enum tx_ip_mode ip_mode = NO_IP_MODE;
 	enum tx_crc_mode crc_mode = NO_CRC_MODE;
-	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
 	/* declared as volatile to insure write access order */
 	volatile union eth_tx_metadata *h =
 		kvx_dma_get_eth_tx_hdr(txr->dma_chan, tx->job_idx);
@@ -819,14 +817,15 @@ static void kvx_eth_fill_tx_hdr_cv2(struct kvx_eth_netdev *ndev,
 
 	/* Packet size without tx metadata */
 	h->pkt_size = tx->len;
-	h->lane = cfg->id;
 
 	if (skb->ip_summed != CHECKSUM_PARTIAL)
 		goto bail;
 
-	if (eth_h->h_proto == ETH_P_IP)
+	//Seems to never pass here
+
+	if (eth_h->h_proto == htons(ETH_P_IP))
 		ip_mode = IP_V4_MODE;
-	else if (eth_h->h_proto == ETH_P_IPV6)
+	else if (eth_h->h_proto == htons(ETH_P_IPV6))
 		ip_mode = IP_V6_MODE;
 
 	if (iph) {

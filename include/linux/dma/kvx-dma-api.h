@@ -23,6 +23,14 @@ struct kvx_dma_pkt_full_desc {
 	u64 notif;
 } __aligned(16);
 
+enum tx_fifo_cfg_mode {
+	KVX_DMA_TX_FIFO_CONFIG_2KB = 0,  /* 4 independent lanes, ie: 4x25G ethernet */
+	KVX_DMA_TX_FIFO_CONFIG_4KB,      /* 2 independent lanes, ie: 2x50G ethernet */
+	KVX_DMA_TX_FIFO_CONFIG_8KB,      /* 1 lane, ie: 100G ethernet */
+	KVX_DMA_TX_FIFO_CONFIG_INFINITE, /* No credit, only for testing */
+	KVX_DMA_TX_FIFO_CONFIG_INVALID,
+};
+
 /**
  * union tx_metadata
  */
@@ -67,6 +75,8 @@ void kvx_dma_release_rx_jobq(struct platform_device *pdev, void *jobq);
 
 int kvx_dma_enqueue_rx_buffer(void *jobq, u64 dma_addr, u64 len);
 void *kvx_dma_get_eth_tx_hdr(void *phy, const u64 job_idx);
+void kvx_dma_set_tx_fifo_cfg_cv2(struct platform_device *pdev, int eth_id,
+				 enum tx_fifo_cfg_mode mode);
 int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
 		     u16 route_id, u64 *job_idx);
 int kvx_dma_submit_pkt(void *phy, u64 job_idx, size_t nb);

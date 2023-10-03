@@ -15,12 +15,18 @@
 #include <linux/of_platform.h>
 
 const struct eth_tx_speed_cfg_t eth_tx_speed_cfg[] = {
-	{SPEED_100000, KVX_ETH_TX_STAGE_ONE_CFG_1_FIFO_8K, KVX_ETH_TX_TDM_CONFIG_BY4_AGG},
-	{SPEED_40000, KVX_ETH_TX_STAGE_ONE_CFG_1_FIFO_8K, KVX_ETH_TX_TDM_CONFIG_BY4_AGG},
-	{SPEED_50000, KVX_ETH_TX_STAGE_ONE_CFG_2_FIFO_4K, KVX_ETH_TX_TDM_CONFIG_BY2_AGG},
-	{SPEED_25000, KVX_ETH_TX_STAGE_ONE_CFG_4_FIFO_2K, KVX_ETH_TX_TDM_CONFIG_NO_AGG},
-	{SPEED_10000, KVX_ETH_TX_STAGE_ONE_CFG_4_FIFO_2K, KVX_ETH_TX_TDM_CONFIG_NO_AGG},
-	{SPEED_1000, KVX_ETH_TX_STAGE_ONE_CFG_4_FIFO_2K, KVX_ETH_TX_TDM_CONFIG_NO_AGG},
+	{.speed = SPEED_100000, .stage_one_config = KVX_ETH_TX_STAGE_ONE_CFG_1_FIFO_8K,
+		.fifo_mode = KVX_DMA_TX_FIFO_CONFIG_8KB, .tdm_config = KVX_ETH_TX_TDM_CONFIG_BY4_AGG},
+	{.speed = SPEED_40000,  .stage_one_config = KVX_ETH_TX_STAGE_ONE_CFG_1_FIFO_8K,
+		.fifo_mode = KVX_DMA_TX_FIFO_CONFIG_8KB, .tdm_config = KVX_ETH_TX_TDM_CONFIG_BY4_AGG},
+	{.speed = SPEED_50000,  .stage_one_config = KVX_ETH_TX_STAGE_ONE_CFG_2_FIFO_4K,
+		.fifo_mode = KVX_DMA_TX_FIFO_CONFIG_4KB, .tdm_config = KVX_ETH_TX_TDM_CONFIG_BY2_AGG},
+	{.speed = SPEED_25000,  .stage_one_config = KVX_ETH_TX_STAGE_ONE_CFG_4_FIFO_2K,
+		.fifo_mode = KVX_DMA_TX_FIFO_CONFIG_2KB, .tdm_config = KVX_ETH_TX_TDM_CONFIG_NO_AGG},
+	{.speed = SPEED_10000,  .stage_one_config = KVX_ETH_TX_STAGE_ONE_CFG_4_FIFO_2K,
+		.fifo_mode = KVX_DMA_TX_FIFO_CONFIG_2KB, .tdm_config = KVX_ETH_TX_TDM_CONFIG_NO_AGG},
+	{.speed = SPEED_1000,   .stage_one_config = KVX_ETH_TX_STAGE_ONE_CFG_4_FIFO_2K,
+		.fifo_mode = KVX_DMA_TX_FIFO_CONFIG_2KB, .tdm_config = KVX_ETH_TX_TDM_CONFIG_NO_AGG},
 };
 
 void kvx_eth_tx_init_cv2(struct kvx_eth_hw *hw)
@@ -100,16 +106,20 @@ void kvx_eth_tx_init_cv2(struct kvx_eth_hw *hw)
 
 void kvx_eth_tx_cfg_speed_settings(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
-	uint32_t stage_one_config = KVX_ETH_TX_STAGE_ONE_CFG_1_FIFO_8K;
-	uint32_t tdm_config = KVX_ETH_TX_TDM_CONFIG_BY4_AGG;
+	enum kvx_eth_tx_stage_one_cfg_values stage_one_config = KVX_ETH_TX_STAGE_ONE_CFG_4_FIFO_2K;
+	enum kvx_eth_tx_tdm_cfg_values tdm_config = KVX_ETH_TX_TDM_CONFIG_NO_AGG;
+	enum tx_fifo_cfg_mode fifo_mode = KVX_DMA_TX_FIFO_CONFIG_2KB;
 	uint32_t i;
 	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
+	struct kvx_eth_netdev *ndev = container_of(cfg, struct kvx_eth_netdev, cfg);
+	struct kvx_dma_config *dma_cfg = &ndev->dma_cfg;
 
 	if (dev->type->support_1000baseT_only == false) {
 		for (i = 0; i < ARRAY_SIZE(eth_tx_speed_cfg) ; i++) {
 			if (cfg->speed == eth_tx_speed_cfg[i].speed) {
 				stage_one_config = eth_tx_speed_cfg[i].stage_one_config;
 				tdm_config = eth_tx_speed_cfg[i].tdm_config;
+				fifo_mode = eth_tx_speed_cfg[i].fifo_mode;
 				break;
 			}
 		}
@@ -118,6 +128,11 @@ void kvx_eth_tx_cfg_speed_settings(struct kvx_eth_hw *hw, struct kvx_eth_lane_cf
 	kvx_tx_writel(hw, stage_one_config, KVX_ETH_TX_STAGE_ONE_GRP_OFFSET + KVX_ETH_TX_STAGE_ONE_CONFIG_OFFSET);
 	/* update the TDM configuration */
 	kvx_tx_writel(hw, tdm_config, KVX_ETH_TX_TDM_GRP_OFFSET + KVX_ETH_TX_TDM_CONFIG_OFFSET);
+
+	if (kvx_eth_get_rev_data(ndev->hw)->revision == COOLIDGE_V2) {
+		/* Configure dma tx fifo mode */
+		kvx_dma_set_tx_fifo_cfg_cv2(dma_cfg->pdev, hw->eth_id, fifo_mode);
+	}
 }
 void kvx_eth_tx_stage_one_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_tx_stage_one_f *stage_one)
 {
