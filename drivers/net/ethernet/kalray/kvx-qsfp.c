@@ -195,6 +195,9 @@ static int i2c_rw(struct kvx_qsfp *qsfp,
 		if (ret < 0) {
 			mutex_unlock(&qsfp->i2c_lock);
 			return ret;
+		} else if (ret != len) {
+			mutex_unlock(&qsfp->i2c_lock);
+			return -EINVAL;
 		}
 
 		offset = 128; /* for page > 0, offset starts at 128 */
