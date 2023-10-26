@@ -94,6 +94,7 @@ int kvx_net_dcb_set_pfc_cv1(struct net_device *netdev, struct ieee_pfc *pfc)
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_eth_lane_cfg *cfg = &ndev->cfg;
 	struct kvx_eth_lb_f *lb_f = &cfg->hw->lb_f[cfg->id];
+	struct kvx_eth_cl_f *cl_f;
 	struct kvx_eth_tx_f *tx_f;
 
 	u32 pfc_cl_ena = 0, modified = false;
@@ -102,17 +103,42 @@ int kvx_net_dcb_set_pfc_cv1(struct net_device *netdev, struct ieee_pfc *pfc)
 	netdev_dbg(netdev, "%s  pfc_en=%u\n", __func__, pfc->pfc_en);
 
 	for (i = 0; i < KVX_ETH_PFC_CLASS_NB; ++i) {
+		cl_f = &lb_f->cl_f[i];
 		val = !!(pfc->pfc_en & BIT(i));
-		if (lb_f->cl_f[i].pfc_ena != val) {
-			lb_f->cl_f[i].pfc_ena = val;
-			kvx_eth_cl_f_cfg(ndev->hw, &lb_f->cl_f[i]);
+		if (cl_f->pfc_ena != val) {
+			cl_f->pfc_ena = val;
 			modified = true;
 		}
-		if (lb_f->cl_f[i].pfc_ena)
+
+		if (lb_f->pfc_handling_by_quanta) {
+			/*
+			 * Set quanta to 0 on classes where pfc is disabled,
+			 * or restore quanta to its default value otherwise
+			 */
+			if (!cl_f->pfc_ena) {
+				if (cl_f->quanta != 0) {
+					cl_f->quanta = 0;
+					modified = true;
+				}
+			} else {
+				if (cl_f->quanta != DEFAULT_PAUSE_QUANTA) {
+					cl_f->quanta = DEFAULT_PAUSE_QUANTA;
+					modified = true;
+				}
+			}
+		}
+
+		if (modified)
+			kvx_eth_cl_f_cfg(ndev->hw, cl_f);
+
+		if (cl_f->pfc_ena)
 			pfc_cl_ena |= BIT(i);
 	}
 
 	if (modified) {
+		netdev_warn(netdev, "pfc_handling_by_quanta %s\n",
+			lb_f->pfc_handling_by_quanta ? "enabled" : "disabled");
+
 		if (pfc_cl_ena == 0) {
 			netdev_warn(netdev, "Global pause enabled\n");
 			lb_f->pfc_f.global_pause_en = 1;
