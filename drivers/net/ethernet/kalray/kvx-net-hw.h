@@ -846,6 +846,7 @@ struct kvx_eth_cl_f {
  * @default_hit_cnt: counter of packet hit default policy
  * @global_drop_cnt: counter of packet drop (global pause)
  * @global_no_pfc_drop_cnt: counter packet dropped (not related with pfc)
+ * @pfc_handling_by_quanta: enable pfc handling by quanta
  * @id: lane id
  */
 struct kvx_eth_lb_f {
@@ -867,6 +868,7 @@ struct kvx_eth_lb_f {
 	u32 default_hit_cnt;
 	u32 global_drop_cnt;
 	u32 global_no_pfc_drop_cnt;
+	u8 pfc_handling_by_quanta;
 	int id;
 };
 
