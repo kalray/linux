@@ -367,6 +367,8 @@ void kvx_phy_serdes_reset(struct kvx_eth_hw *hw, u32 serdes_mask)
 	if (serdes_mask == 0xF)
 		val |= PHY_RESET_MASK;
 
+	mutex_lock(&hw->phy_serdes_reset_lock);
+
 	updatel_bits(hw, PHYMAC, PHY_RESET_OFFSET, val, val);
 	kvx_poll(kvx_phymac_readl, PHY_RESET_OFFSET, val, val, RESET_TIMEOUT_MS);
 	/* PHY Power-Down Sequence requests 15us delay after reset in power-up
@@ -377,6 +379,8 @@ void kvx_phy_serdes_reset(struct kvx_eth_hw *hw, u32 serdes_mask)
 	updatel_bits(hw, PHYMAC, PHY_RESET_OFFSET, val, 0);
 	kvx_poll(kvx_phymac_readl, PHY_RESET_OFFSET, val | PHY_RESET_MASK,
 		 0, RESET_TIMEOUT_MS);
+
+	mutex_unlock(&hw->phy_serdes_reset_lock);
 }
 
 int kvx_eth_phy_init(struct kvx_eth_hw *hw, unsigned int speed)
@@ -2595,6 +2599,12 @@ next_state:
 		if (ret)
 			dev_dbg(hw->dev, "Failed to configure MAC\n");
 
+		/* According Spec (5.13 RX Equalization and Adaptation),
+		 * rx adaptation process **MUST** be done after rx_data_en is asserted
+		 */
+		if (dev->type->phy_rx_adaptation)
+			dev->type->phy_rx_adaptation(hw, cfg);
+
 		/* Restore parser configuration (WA for CV1 only) */
 		if ((dev->chip_rev_data->revision == COOLIDGE_V1) && cfg->restart_serdes)
 			parser_config_update(hw, cfg);
@@ -2785,6 +2795,8 @@ void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
 	int i;
 
+	mutex_lock(&hw->phy_serdes_reset_lock);
+
 	do {
 		if (aggregated_lanes) {
 			if (kvx_phy_rx_adapt_broadcast(hw) >= hw->fom_thres)
@@ -2802,6 +2814,8 @@ void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 			}
 		}
 	} while (fom_retry-- && lane_fom_ok < lane_nb);
+
+	mutex_unlock(&hw->phy_serdes_reset_lock);
 }
 
 /**
@@ -2892,12 +2906,6 @@ int kvx_eth_mac_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 		if (ret && cfg->mac_f.loopback_mode == NO_LOOPBACK)
 			return ret;
 	}
-
-	/* According Spec (5.13 RX Equalization and Adaptation),
-	 * rx adaptation process **MUST** be done after rx_data_en is asserted
-	 */
-	if (dev->type->phy_rx_adaptation)
-		dev->type->phy_rx_adaptation(hw, cfg);
 
 	val = MAC_LOOPBACK_LATENCY << MAC_BYPASS_LOOPBACK_LATENCY_SHIFT;
 	if (cfg->mac_f.loopback_mode == MAC_SERDES_LOOPBACK) {
