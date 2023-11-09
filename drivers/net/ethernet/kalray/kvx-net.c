@@ -216,16 +216,12 @@ static void kvx_eth_reset_tx(struct kvx_eth_netdev *ndev)
 static void kvx_eth_update_carrier(struct kvx_eth_netdev *ndev, bool en)
 {
 	if (en) {
-		kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, false);
-		netif_tx_start_all_queues(ndev->netdev);
 		netif_carrier_on(ndev->netdev);
 		netdev_info(ndev->netdev, "Link is Up - %s/%s - flow control %s\n",
 			    phy_speed_to_str(ndev->cfg.speed),
 			    phy_duplex_to_str(ndev->cfg.duplex),
 			    pause_to_str(ndev->hw->lb_f[ndev->cfg.id].pfc_f.global_pause_en));
 	} else {
-		kvx_eth_mac_tx_flush(ndev->hw, &ndev->cfg, true);
-		netif_tx_stop_all_queues(ndev->netdev);
 		netif_carrier_off(ndev->netdev);
 		netdev_info(ndev->netdev, "Link is down\n");
 	}
@@ -310,7 +306,8 @@ static int kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 	if (!link)
 		return -ENOLINK;
 
-	kvx_eth_update_carrier(ndev, link);
+	netif_tx_start_all_queues(ndev->netdev);
+	kvx_eth_update_carrier(ndev, true);
 
 	/* link is up: start polling link status after 3s */
 	if (ndev->link_poll_en)
@@ -339,24 +336,28 @@ static void kvx_eth_link_cfg(struct work_struct *w)
 
 	atomic_set(&ndev->link_cfg_running, 1);
 
+	/* if no cable, qsfp connect callback will restart link cfg */
+	if (ndev->qsfp && !is_cable_connected(ndev->qsfp))
+		goto bail;
+
 	/* make sure carrier is off before starting link config  */
-	if (netif_carrier_ok(ndev->netdev))
+	if (netif_carrier_ok(ndev->netdev)) {
+		kvx_eth_reset_tx(ndev);
+		netif_tx_stop_all_queues(ndev->netdev);
 		kvx_eth_update_carrier(ndev, false);
+	}
 
 	/* keep looping while link config is not successful
 	 * however, link_cfg_running can be set to 0 remotely to stop
 	 * the work, followed by cancel_work_sync()
 	 */
 	while (atomic_read(&ndev->link_cfg_running)) {
-		/* if no cable, qsfp connect callback will restart link cfg */
-		if (ndev->qsfp && !is_cable_connected(ndev->qsfp))
-			break;
-
 		if (!kvx_eth_link_configure(ndev))
 			break;
 
 		msleep(LINK_POLL_DELAY_IN_MS);
 	}
+bail:
 	ndev->cfg.restart_serdes = false;
 	atomic_set(&ndev->link_cfg_running, 0); /* in case of break */
 }
@@ -478,6 +479,7 @@ void kvx_eth_down(struct net_device *netdev)
 	cancel_link_cfg(ndev);
 
 	kvx_eth_reset_tx(ndev);
+	netif_tx_stop_all_queues(ndev->netdev);
 	kvx_eth_update_carrier(ndev, false);
 }
 
