@@ -2392,6 +2392,9 @@ next_state:
 			goto err;
 		}
 
+		/* MAC tx flush must be done only after mac reset (atleast once) */
+		kvx_eth_mac_tx_flush(hw, cfg, true);
+
 		/* reset AN module */
 		kvx_mac_writel(hw, AN_KXAN_CTRL_RESET_MASK,
 			       an_off + AN_KXAN_CTRL_OFFSET);
@@ -2596,8 +2599,10 @@ next_state:
 		if ((dev->chip_rev_data->revision == COOLIDGE_V1) && cfg->restart_serdes)
 			parser_config_update(hw, cfg);
 
-		if (!cfg->autoneg_en)
-			return true; /* we are done here */
+		if (!cfg->autoneg_en) {
+			state = AN_STATE_DONE;
+			goto next_state;
+		}
 		fallthrough;
 	case AN_STATE_LT_PERFORM:
 		ret = kvx_eth_perform_link_training(hw, cfg);
@@ -2616,7 +2621,7 @@ next_state:
 			kvx_mac_writel(hw, LT_KR_CTRL_RESTARTTRAINING_MASK, lt_off + LT_KR_CTRL_OFFSET);
 		}
 		fallthrough;
-	case AN_STATE_DONE:
+	case AN_STATE_WAIT_AN_COMPLETION:
 		/*
 		 * Once link training has been completed (from AN_GOOD_CHECK state)
 		 * The link shall come up, and the autonegotiation complete.
@@ -2625,7 +2630,6 @@ next_state:
 		 * it to the autonegotiation module in order for the autoneg to
 		 * complete and to enter the AN_GOOD state.
 		 */
-		state = AN_STATE_DONE;
 
 		/* check PCS link status (align_done, block_lock, hi_ber) */
 		mask = BIT(MAC_SYNC_STATUS_LINK_STATUS_SHIFT + cfg->id);
@@ -2648,6 +2652,20 @@ next_state:
 			dev_err(hw->dev, "Autonegotiation completion timeout\n");
 			goto err;
 		}
+		fallthrough;
+	case AN_STATE_DONE:
+		/*
+		 * Autonegotiation SM completed at this state. If no autonegotiation
+		 * this state is reached directly from AN_STATE_PHYMAC_CFG.
+		 */
+		state = AN_STATE_DONE;
+
+		/* restore MAC TX flush */
+		kvx_eth_mac_tx_flush(hw, cfg, false);
+
+		if (!cfg->autoneg_en)
+			return true; /* we are done here */
+
 		break;
 	case AN_STATE_ERROR:
 err:
