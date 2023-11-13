@@ -1749,7 +1749,18 @@ static int kvx_iommu_of_xlate(struct device *dev,
 	return ret;
 }
 
+static bool kvx_iommu_capable(struct device *dev, enum iommu_cap cap)
+{
+	switch (cap) {
+	case IOMMU_CAP_CACHE_COHERENCY:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static const struct iommu_ops kvx_iommu_ops = {
+	.capable = kvx_iommu_capable,
 	.domain_alloc = kvx_iommu_domain_alloc,
 	.probe_device = kvx_iommu_probe_device,
 	.release_device = kvx_iommu_release_device,
