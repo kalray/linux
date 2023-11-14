@@ -12,7 +12,8 @@
 /* GIC enable register definitions */
 #define KVX_GIC_ENABLE_OFFSET     0x0
 #define KVX_GIC_ENABLE_ELEM_SIZE  0x1
-#define KVX_GIC_INPUT_IT_COUNT 0x9D
+#define KVX_GIC_INPUT_IT_COUNT 157
+#define KVX_GIC_INPUT_IT_COUNT_MAX 159
 #define KVX_GIC_ELEM_SIZE 0x400
 
 /* GIC status lac register definitions */
