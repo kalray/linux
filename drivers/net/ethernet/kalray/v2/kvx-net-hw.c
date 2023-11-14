@@ -127,6 +127,27 @@ const int eth_rfs_seed_1[] = {
 	(KVX_ETH_LBA_PARSER_GRP_OFFSET + ((PARSER) * KVX_ETH_LBA_PARSER_GRP_ELEM_SIZE) + \
 	KVX_ETH_LBA_PARSER_HIT_CNT_OFFSET)
 
+void kvx_eth_dump_rx_hdr_cv2(struct kvx_eth_hw *hw, struct rx_metadata_cv2 *hdr)
+{
+	dev_dbg(hw->dev, "Timestamp          : %llu\n", hdr->timestamp);
+	dev_dbg(hw->dev, "ethernet_flow_id   : %u\n", hdr->ethernet_flow_id);
+	dev_dbg(hw->dev, "ethernet_flow_parser_id: %u\n", hdr->ethernet_flow_parser_id);
+	dev_dbg(hw->dev, "lane_id            : %u\n", hdr->lane_id);
+	dev_dbg(hw->dev, "dispatch_source    : %u\n", hdr->dispatch_source);
+	dev_dbg(hw->dev, "class_of_traffic   : %u\n", hdr->class_of_traffic);
+	dev_dbg(hw->dev, "pkt_size           : %u\n", hdr->pkt_size);
+	dev_dbg(hw->dev, "mac_error          : %u\n", hdr->mac_error);
+	dev_dbg(hw->dev, "crc_errors         : 0x%x\n", hdr->crc_errors);
+	dev_dbg(hw->dev, "lossy              : %u\n", hdr->lossy);
+	dev_dbg(hw->dev, "high_prio_mac_port : %u\n", hdr->high_prio_mac_port);
+	dev_dbg(hw->dev, "wred_level_from_policer: %u\n", hdr->wred_level_from_policer);
+	dev_dbg(hw->dev, "hash_key           : 0x%x\n", hdr->hash_key);
+	dev_dbg(hw->dev, "rfs_rss_entry      : 0x%x\n", hdr->rfs_rss_entry);
+	dev_dbg(hw->dev, "early_cong_notif   : %u\n", hdr->early_cong_notif);
+	dev_dbg(hw->dev, "drop_precedence    : %u\n", hdr->drop_precedence);
+	dev_dbg(hw->dev, "global_packet_id   : 0x%x\n", hdr->global_packet_id);
+}
+
 void kvx_eth_hw_change_mtu_cv2(struct kvx_eth_hw *hw, int lane, int mtu)
 {
 	kvx_tx_writel(hw, mtu, KVX_ETH_TX_STAGE_TWO_GRP_OFFSET +

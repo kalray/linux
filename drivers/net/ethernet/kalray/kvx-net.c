@@ -977,9 +977,9 @@ static void kvx_eth_alloc_rx_buffers(struct kvx_eth_ring *rxr, int count)
 }
 
 /**
- * kvx_eth_rx_hdr() - Extract hw header (assuming header is always enabled)
+ * kvx_eth_rx_hdr_cv1() - Extract hw header (assuming header is always enabled)
  */
-static int kvx_eth_rx_hdr(struct kvx_eth_netdev *ndev, struct sk_buff *skb)
+static int kvx_eth_rx_hdr_cv1(struct kvx_eth_netdev *ndev, struct sk_buff *skb)
 {
 	struct rx_metadata *hdr = NULL;
 	size_t hdr_size = sizeof(*hdr);
@@ -987,12 +987,37 @@ static int kvx_eth_rx_hdr(struct kvx_eth_netdev *ndev, struct sk_buff *skb)
 	netdev_dbg(ndev->netdev, "%s header rx (skb->len: %d data_len: %d)\n",
 		   __func__, skb->len, skb->data_len);
 	hdr = (struct rx_metadata *)skb->data;
-	kvx_eth_dump_rx_hdr(ndev->hw, hdr);
+	kvx_eth_dump_rx_hdr_cv1(ndev->hw, hdr);
 
 	if (hdr->f.fcs_errors)
 		ndev->stats.ring.skb_fcs_err++;
 
 	if (hdr->f.crc_errors)
+		ndev->stats.ring.skb_crc_err++;
+
+	skb_pull(skb, hdr_size);
+	skb->ip_summed = CHECKSUM_UNNECESSARY;
+
+	return 0;
+}
+
+/**
+ * kvx_eth_rx_hdr_cv2() - Extract hw header (assuming header is always enabled)
+ */
+static int kvx_eth_rx_hdr_cv2(struct kvx_eth_netdev *ndev, struct sk_buff *skb)
+{
+	struct rx_metadata_cv2 *hdr = NULL;
+	size_t hdr_size = sizeof(*hdr);
+
+	netdev_dbg(ndev->netdev, "%s header rx (skb->len: %d data_len: %d)\n",
+		   __func__, skb->len, skb->data_len);
+	hdr = (struct rx_metadata_cv2 *)skb->data;
+	kvx_eth_dump_rx_hdr_cv2(ndev->hw, hdr);
+
+	if (hdr->mac_error)
+		ndev->stats.ring.skb_mac_err++;
+
+	if (hdr->crc_errors)
 		ndev->stats.ring.skb_crc_err++;
 
 	skb_pull(skb, hdr_size);
@@ -1007,6 +1032,7 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 	struct net_device *netdev = rxr->netdev;
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 	struct kvx_qdesc *qdesc = &rxr->pool.qdesc[qdesc_idx];
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(ndev->hw);
 	enum dma_data_direction dma_dir;
 	void *data, *data_end, *va = NULL;
 	struct page *page = NULL;
@@ -1041,7 +1067,7 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 	}
 
 	if (eop) {
-		kvx_eth_rx_hdr(ndev, rxr->skb);
+		rev_d->kvx_eth_rx_hdr(ndev, rxr->skb);
 		rxr->skb->dev = rxr->napi.dev;
 		skb_record_rx_queue(rxr->skb, ndev->dma_cfg.rx_chan_id.start +
 				    rxr->qidx);
@@ -2510,6 +2536,7 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv1 = {
 	.write_parser_ram_word = write_parser_ram_word_cv1,
 	.parser_disable = parser_disable_cv1,
 	.eth_init_netdev_hdw = kvx_eth_init_netdev_hdw_cv1,
+	.kvx_eth_rx_hdr = kvx_eth_rx_hdr_cv1,
 	.eth_fill_tx_hdr = kvx_eth_fill_tx_hdr_cv1,
 	.eth_hw_change_mtu = kvx_eth_hw_change_mtu_cv1,
 	.netdev_probe_hw = kvx_netdev_probe_hw_cv1,
@@ -2542,6 +2569,7 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
 	.write_parser_ram_word = write_parser_ram_word_cv2,
 	.parser_disable = parser_disable_cv2,
 	.eth_init_netdev_hdw = kvx_eth_init_netdev_hdw_cv2,
+	.kvx_eth_rx_hdr = kvx_eth_rx_hdr_cv2,
 	.eth_fill_tx_hdr = kvx_eth_fill_tx_hdr_cv2,
 	.eth_hw_change_mtu = kvx_eth_hw_change_mtu_cv2,
 	.netdev_probe_hw = kvx_netdev_probe_hw_cv2,
