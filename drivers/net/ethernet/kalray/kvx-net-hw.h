@@ -188,6 +188,28 @@ struct rx_metadata {
 	u32 rule_pkt_id;    /* [255:224] ++ if received on any lane by a rule */
 } __packed;
 
+struct rx_metadata_cv2 {
+	u64  ethernet_flow_id : 20;
+	u64  ethernet_flow_parser_id : 4;
+	u64  lane_id : 2;
+	u64  dispatch_source : 2;
+	u64  class_of_traffic : 4;
+	u64  pkt_size : 14;
+	u64  mac_error : 1;
+	u64  crc_errors : 4;
+	u64  reserved0 : 8;
+	u64  lossy : 1;
+	u64  high_prio_mac_port : 1;
+	u64  wred_level_from_policer : 3;
+	u64  timestamp : 64;
+	u64  hash_key : 11;
+	u64  rfs_rss_entry : 13;
+	u64  reserved1 : 4;
+	u64  early_cong_notif : 2;
+	u64  drop_precedence : 2;
+	u64  global_packet_id : 32;
+	u8 ethernet_flow_key[56]; /* 448-bit */
+} __packed;
 
 enum kvx_eth_phy_supply_voltage {
 	KVX_PHY_SUPLY_1_5V = 0x10,
@@ -1748,7 +1770,10 @@ struct kvx_eth_hw_tx_stats {
 } __packed;
 
 struct ring_stats {
-	u64 skb_fcs_err;
+	union {
+		u64 skb_mac_err;	// CV2 only
+		u64 skb_fcs_err;	// CV1 only
+	};
 	u64 skb_crc_err;
 	u64 skb_alloc_err;
 	u64 skb_rx_frag_missed;
@@ -1978,7 +2003,8 @@ static inline void kvx_lbrfs_writel(struct kvx_eth_hw *hw, u32 val, const u64 of
 
 u32 noc_route_c2eth(enum kvx_eth_io eth_id, int cluster_id);
 u32 noc_route_eth2c(enum kvx_eth_io eth_id, int cluster_id);
-void kvx_eth_dump_rx_hdr(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
+void kvx_eth_dump_rx_hdr_cv1(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
+void kvx_eth_dump_rx_hdr_cv2(struct kvx_eth_hw *hw, struct rx_metadata_cv2 *hdr);
 bool kvx_eth_speed_aggregated(const int speed);
 
 /* PHY */
