@@ -43,6 +43,27 @@
 	(RX_DISPATCH_TABLE_OFFSET + RX_DISPATCH_TABLE_ENTRY_OFFSET + \
 	(ENTRY) * RX_DISPATCH_TABLE_ENTRY_ELEM_SIZE)
 
+void kvx_eth_dump_rx_hdr_cv1(struct kvx_eth_hw *hw, struct rx_metadata *hdr)
+{
+	dev_dbg(hw->dev, "Timestamp    :   %lld\n", hdr->timestamp);
+	dev_dbg(hw->dev, "pkt_size     :   %d\n", hdr->f.pkt_size);
+	dev_dbg(hw->dev, "hash_key     : 0x%x\n", hdr->f.hash_key);
+	dev_dbg(hw->dev, "lut_entry    : 0x%x\n", hdr->f.lut_entry);
+	dev_dbg(hw->dev, "lane_id      :   %d\n", hdr->f.lane_id);
+	dev_dbg(hw->dev, "eth_id       :   %d\n", hdr->f.eth_id);
+	dev_dbg(hw->dev, "coolidge_id  :   %d\n", hdr->f.coolidge_id);
+	dev_dbg(hw->dev, "parser_id    :   %d\n", hdr->f.parser_id);
+	dev_dbg(hw->dev, "default_rule :   %d\n", hdr->f.default_rule);
+	dev_dbg(hw->dev, "fcs_errors   : 0x%x\n", hdr->f.fcs_errors);
+	dev_dbg(hw->dev, "crc_errors   : 0x%x\n", hdr->f.crc_errors);
+	dev_dbg(hw->dev, "index0       :   %d\n", hdr->index0);
+	dev_dbg(hw->dev, "index1       :   %d\n", hdr->index1);
+	dev_dbg(hw->dev, "index2       :   %d\n", hdr->index2);
+	dev_dbg(hw->dev, "index3       :   %d\n", hdr->index3);
+	dev_dbg(hw->dev, "global_pkt_id:   %d\n", hdr->global_pkt_id);
+	dev_dbg(hw->dev, "rule_pkt_id  :   %d\n", hdr->rule_pkt_id);
+}
+
 void kvx_eth_hw_change_mtu_cv1(struct kvx_eth_hw *hw, int lane, int mtu)
 {
 	updatel_bits(hw, ETH, RX_LB_CTRL(lane), RX_LB_CTRL_MTU_SIZE_MASK, mtu);
