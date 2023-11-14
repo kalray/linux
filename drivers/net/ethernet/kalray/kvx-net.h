@@ -193,6 +193,7 @@ struct kvx_eth_chip_rev_data {
 		unsigned int word_idx);
 	int (*const parser_disable)(struct kvx_eth_hw *hw, int parser_id);
 	void (*const eth_init_netdev_hdw)(struct kvx_eth_netdev *ndev);
+	int (*const kvx_eth_rx_hdr)(struct kvx_eth_netdev *ndev, struct sk_buff *skb);
 	void (*const eth_fill_tx_hdr)(struct kvx_eth_netdev *ndev, struct kvx_eth_netdev_tx *tx);
 	void (*const eth_hw_change_mtu)(struct kvx_eth_hw *hw, int lane, int mtu);
 	void (*const netdev_probe_hw)(struct kvx_eth_hw *hw, struct kvx_eth_netdev *ndev);
