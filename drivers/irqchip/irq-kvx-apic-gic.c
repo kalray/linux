@@ -69,7 +69,7 @@ struct kvx_apic_gic {
 	struct gic_out_irq_line output_irq[GIC_CPU_OUT_COUNT];
 
 	/* Input interrupt status */
-	struct gic_in_irq_line input_irq[KVX_GIC_INPUT_IT_COUNT];
+	struct gic_in_irq_line input_irq[KVX_GIC_INPUT_IT_COUNT_MAX];
 };
 
 static int gic_parent_irq;
@@ -231,7 +231,7 @@ apic_gic_init(struct kvx_apic_gic *gic)
 	uint64_t status[KVX_GIC_STATUS_LAC_ARRAY_SIZE];
 
 	/* Initialize all input lines (device -> )*/
-	for (line = 0; line < KVX_GIC_INPUT_IT_COUNT; line++) {
+	for (line = 0; line < gic->input_nr_irqs; line++) {
 		input_irq_line = &gic->input_irq[line];
 		input_irq_line->enabled = false;
 		/* All input lines map on output 0 */
@@ -247,7 +247,7 @@ apic_gic_init(struct kvx_apic_gic *gic)
 			cpu * (KVX_GIC_ELEM_SIZE * GIC_PER_CPU_IT_COUNT);
 
 		/* Disable all external lines on this core */
-		for (line = 0; line < KVX_GIC_INPUT_IT_COUNT; line++)
+		for (line = 0; line < gic->input_nr_irqs; line++)
 			irq_line_set_enable(output_irq_line,
 					&gic->input_irq[line], 0x0);
 
@@ -289,7 +289,7 @@ kvx_init_apic_gic(struct device_node *node, struct device_node *parent)
 						&gic->input_nr_irqs))
 		gic->input_nr_irqs = KVX_GIC_INPUT_IT_COUNT;
 
-	if (WARN_ON(gic->input_nr_irqs > KVX_GIC_INPUT_IT_COUNT)) {
+	if (WARN_ON(gic->input_nr_irqs > KVX_GIC_INPUT_IT_COUNT_MAX)) {
 		ret = -EINVAL;
 		goto err_kfree;
 	}
