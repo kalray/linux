@@ -176,6 +176,7 @@ struct kvx_eth_netdev {
 	struct work_struct link_cfg;
 	atomic_t link_cfg_running;
 	struct platform_device *rproc_pd[NB_CLUSTER-1];
+	bool rx_dma_cache_shoot_through;
 };
 
 struct kvx_eth_chip_rev_data {

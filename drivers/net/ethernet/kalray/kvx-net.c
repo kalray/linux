@@ -1044,8 +1044,10 @@ static int kvx_eth_rx_frame(struct kvx_eth_ring *rxr, u32 qdesc_idx,
 		netdev_err(netdev, "Rx buffer exceeds PAGE_SIZE\n");
 		return -ENOBUFS;
 	}
-	dma_dir = page_pool_get_dma_dir(rxr->pool.pagepool);
-	dma_sync_single_for_cpu(ndev->dev, buf, len, dma_dir);
+	if (!(ndev->rx_dma_cache_shoot_through)) {
+		dma_dir = page_pool_get_dma_dir(rxr->pool.pagepool);
+		dma_sync_single_for_cpu(ndev->dev, buf, len, dma_dir);
+	}
 
 	if (likely(!rxr->skb)) {
 		va = page_address(page);
@@ -2186,6 +2188,18 @@ kvx_eth_create_netdev(struct platform_device *pdev, struct kvx_eth_dev *dev)
 	INIT_WORK(&ndev->link_cfg, kvx_eth_link_cfg);
 	rev_d = kvx_eth_get_rev_data(ndev->hw);
 	ndev->link_poll_en = !(rev_d->lnk_dwn_it_support);
+
+	if (kvx_eth_get_rev_data(ndev->hw)->revision == COOLIDGE_V1) {
+		ndev->rx_dma_cache_shoot_through = false;
+	} else {
+		/*
+		 * Ideally, we could check that shoot-through
+		 * have not been disabled by checking bits of
+		 * smem_psht_rd_dis in global_config field of
+		 * mppa secure cluster registers
+		 */
+		ndev->rx_dma_cache_shoot_through = true;
+	}
 
 	phy_mode = fwnode_get_phy_mode(pdev->dev.fwnode);
 	if (phy_mode < 0) {
