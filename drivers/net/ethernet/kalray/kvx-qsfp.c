@@ -27,6 +27,9 @@ static int i2c_read(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
 	u8 bus_addr = 0x50;
 	size_t this_len;
 	int ret;
+#ifdef CONFIG_TRACING
+	size_t init_len = len;
+#endif
 
 	msgs[0].addr = bus_addr;
 	msgs[0].flags = 0;
@@ -45,8 +48,10 @@ static int i2c_read(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
 		msgs[1].len = this_len;
 
 		ret = i2c_transfer(i2c, msgs, ARRAY_SIZE(msgs));
-		if (ret < 0)
+		if (ret < 0) {
+			trace_register(addr, buf, init_len, 0);
 			return ret;
+		}
 
 		if (ret != ARRAY_SIZE(msgs))
 			break;
@@ -56,7 +61,10 @@ static int i2c_read(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
 		len -= this_len;
 	}
 
-	return msgs[1].buf - (u8 *)buf;
+	ret = msgs[1].buf - (u8 *)buf;
+	trace_register(addr, buf, init_len, ret == init_len);
+
+	return ret;
 }
 
 /** i2c_write - write bytes on i2c. Make sure the eeprom is on
@@ -89,6 +97,8 @@ static int i2c_write(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
 	usleep_range(2000, 3000);
 
 	kfree(msgs[0].buf);
+
+	trace_register(addr, buf, len, ret == ARRAY_SIZE(msgs));
 
 	if (ret < 0)
 		return ret;
