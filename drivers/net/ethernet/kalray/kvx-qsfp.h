@@ -130,6 +130,14 @@
 #define QSFP_DELAY_MODSEL_SETUP_IN_MS       2
 #define QSFP_INT_FLAGS_CLEAR_DELAY_IN_MS    10
 
+#ifdef CONFIG_TRACING
+#define trace_register(off, buf, len, ret)                                     \
+	trace_printk("[%s] %s(off=%u len=%u) = %*ph\n", (ret) ? "ok" : "fail", \
+		     __func__, off, (u32)len, (u32)len, (u8 *)buf)
+#else
+#define trace_register(off, buf, len, ret)
+#endif /* CONFIG_TRACING */
+
 #define kvx_qsfp_to_ops_data(qsfp, data_t) ((data_t *)qsfp->ops_data)
 #define kvx_set_mode(bm, mode) __set_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, bm)
 #define kvx_test_mode(addr, mode) test_bit(ETHTOOL_LINK_MODE_ ## mode ## _BIT, addr)
