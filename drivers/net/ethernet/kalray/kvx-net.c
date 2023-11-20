@@ -2125,7 +2125,8 @@ void kvx_eth_qsfp_cdr_lol(struct kvx_qsfp *qsfp)
 	/* disable link polling  */
 	if (ndev->link_poll_en) {
 		ndev->link_poll_en = false;
-		cancel_delayed_work(&ndev->link_poll);
+		if (delayed_work_pending(&ndev->link_poll))
+			cancel_delayed_work(&ndev->link_poll);
 	}
 
 	if (kvx_eth_mac_getlink(ndev->hw, &ndev->cfg))
