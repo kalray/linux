@@ -223,9 +223,15 @@ static int i2c_rw(struct kvx_qsfp *qsfp,
 
 static bool is_eeprom_cache_initialized(struct kvx_qsfp *qsfp)
 {
-	u8 *cache = (u8 *)&qsfp->eeprom;
+	int ret;
 
-	return cache[SFP_IDENTIFIER_OFFSET] != 0;
+	ret = wait_for_completion_timeout(&qsfp->eeprom_init,
+					  msecs_to_jiffies(WAIT_EEPROM_INIT_TIMEOUT_MS));
+	if (ret == 0) {
+		dev_err(qsfp->dev, "timeout: eeprom initialization failed\n");
+		return false;
+	}
+	return true;
 }
 
 static bool is_qsfp_ready_state(struct kvx_qsfp *qsfp)
@@ -240,32 +246,6 @@ static bool is_qsfp_ready_state(struct kvx_qsfp *qsfp)
 		return false;
 	}
 	return true;
-}
-
-/* eeprom_cache_readb - read 1 byte from eeprom cache (page 0 only)
- * @qsfp: qsfp prvdata
- * @offset: eeprom offset [0-255] for page 0
- *
- * Returns 1 byte from the eeprom at offset @offset without performing an
- * i2c transfer. When calling this function, make sure that the data at the
- * offset is always constant in the SFF-8636.
- */
-static u8 eeprom_cache_readb(struct kvx_qsfp *qsfp, unsigned int offset)
-{
-	u8 val, *cache = (u8 *)&qsfp->eeprom;
-	int ret;
-
-	/* if eeprom cache not initialized yet, read byte on i2c */
-	if (!is_eeprom_cache_initialized(qsfp)) {
-		ret = i2c_rw(qsfp, i2c_read, &val, 0, offset, 1);
-		if (ret != 1) {
-			dev_err(qsfp->dev, "eeprom readb failed: offset=%d\n", offset);
-			val = 0;
-		}
-		return val;
-	}
-
-	return cache[offset];
 }
 
 /* page_offset_from_ethtool_offset - convert ethtool offset to page & offset
@@ -506,7 +486,7 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 	int ret = 0;
 	u8 options;
 
-	if (!is_qsfp_ready_state(qsfp))
+	if (!is_eeprom_cache_initialized(qsfp))
 		return -ETIMEDOUT;
 
 	switch (kvx_qsfp_transceiver_id(qsfp)) {
@@ -517,7 +497,7 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 	case SFP_PHYS_ID_QSFP:
 	case SFP_PHYS_ID_QSFP_PLUS:
 	case SFP_PHYS_ID_QSFP28:
-		options = eeprom_cache_readb(qsfp, SFF8636_OPTIONS_OFFSET2);
+		options = qsfp->eeprom.options.offset2;
 		modinfo->type = ETH_MODULE_SFF_8636;
 		/* min length: copper cables have only page 0 */
 		modinfo->eeprom_len = ETH_MODULE_SFF_8636_LEN;
@@ -571,23 +551,34 @@ EXPORT_SYMBOL_GPL(is_cable_connected);
 
 u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp)
 {
-	return eeprom_cache_readb(qsfp, SFF8636_DEVICE_ID_OFFSET);
+	if (!is_eeprom_cache_initialized(qsfp))
+		return -ETIMEDOUT;
+
+	return qsfp->eeprom.identifier;
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_id);
 
 
 u8 kvx_qsfp_transceiver_ext_id(struct kvx_qsfp *qsfp)
 {
-	return eeprom_cache_readb(qsfp, SFF8636_EXT_ID_OFFSET);
+	if (!is_eeprom_cache_initialized(qsfp))
+		return -ETIMEDOUT;
+
+	return qsfp->eeprom.ext_identifier;
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_ext_id);
 
 u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
 {
-	u8 nominal_br = eeprom_cache_readb(qsfp, SFF8636_NOMINAL_BITRATE_OFFSET);
+	u8 nominal_br;
+
+	if (!is_eeprom_cache_initialized(qsfp))
+		return -ETIMEDOUT;
+
+	nominal_br = qsfp->eeprom.signaling_rate_nominal;
 
 	if (nominal_br == 0xFF) {
-		nominal_br = eeprom_cache_readb(qsfp, SFF8636_NOMINAL_BITRATE_250_OFFSET);
+		nominal_br = qsfp->eeprom.baud_rate_nominal;
 		nominal_br *= 250; /* Units of 250Mbps */
 	} else {
 		nominal_br *= 100; /* Units of 100Mbps */
@@ -599,14 +590,18 @@ EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_nominal_br);
 
 static u8 kvx_qsfp_transceiver_compliance_code(struct kvx_qsfp *qsfp)
 {
-	return eeprom_cache_readb(qsfp, SFF8636_COMPLIANCE_CODES_OFFSET);
+	if (!is_eeprom_cache_initialized(qsfp))
+		return -ETIMEDOUT;
+
+	return qsfp->eeprom.spec_compliance.ethernet;
 }
 
 u8 kvx_qsfp_transceiver_tech(struct kvx_qsfp *qsfp)
 {
-	u8 tech = eeprom_cache_readb(qsfp, SFF8636_DEVICE_TECH_OFFSET);
+	if (!is_eeprom_cache_initialized(qsfp))
+		return -ETIMEDOUT;
 
-	return tech & SFF8636_TRANS_TECH_MASK;
+	return qsfp->eeprom.device_tech & SFF8636_TRANS_TECH_MASK;
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_tech);
 
@@ -752,7 +747,7 @@ static struct kvx_qsfp_param_capability qsfp_param_caps[] = {
 static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 {
 	int ret, i, j, off, err = 0;
-	u8 val;
+	u8 val, *eeprom = (u8 *)&qsfp->eeprom;
 	bool cap_found;
 
 	if (!qsfp->i2c || !qsfp->param) {
@@ -761,6 +756,9 @@ static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 	}
 	if (!is_cable_connected(qsfp))
 		return -EINVAL;
+
+	if (!is_eeprom_cache_initialized(qsfp))
+		return -ETIMEDOUT;
 
 	/* Only tune fiber and active copper */
 	if (is_cable_passive_copper(qsfp)) {
@@ -779,8 +777,7 @@ static int kvx_qsfp_tune(struct kvx_qsfp *qsfp)
 			if (qsfp->param[i].page == qsfp_param_caps[j].param.page &&
 			    qsfp->param[i].offset == qsfp_param_caps[j].param.offset) {
 				/* check capability bit */
-				val = eeprom_cache_readb(qsfp, qsfp_param_caps[j].cap_offset);
-				val &= qsfp_param_caps[j].cap_bit;
+				val = eeprom[qsfp_param_caps[j].cap_offset] & qsfp_param_caps[j].cap_bit;
 				if (val || qsfp_param_caps[j].force_update) {
 					off = ethtool_offset_from_page_offset(qsfp->param[i].page,
 									      qsfp->param[i].offset);
@@ -922,10 +919,10 @@ static bool tx_disable_fast_path_supported(struct kvx_qsfp *qsfp)
 	/* SFF-8636: TxDis Fast Mode Supported is not relevant for
 	 * passive cables and optional for the others
 	 */
-	if (is_cable_passive_copper(qsfp))
+	if (!is_eeprom_cache_initialized(qsfp) || is_cable_passive_copper(qsfp))
 		return 0;
 
-	val = eeprom_cache_readb(qsfp, SFF8636_TIMING_OPTION_OFFSET);
+	val = qsfp->eeprom.crtl_options_ad.txdis_rxlosl_cap;
 	return (val & SFF8636_TIMING_TXDIS_FASTPATH_MASK);
 }
 
@@ -966,7 +963,7 @@ static u32 kvx_qsfp_parse_max_power(struct kvx_qsfp *qsfp)
 	/* check whether class 8 is available */
 	val = kvx_qsfp_transceiver_ext_id(qsfp);
 	if (val & SFF8636_EXT_ID_POWER_CLASS_8)
-		return eeprom_cache_readb(qsfp, SFF8636_MAX_POWER_OFFSET) * 100;
+		return qsfp->eeprom.max_power_consumption * 100;
 
 	c14 = (val & SFF8636_EXT_ID_POWER_CLASS_14) >> 6;
 	c57 = (val & SFF8636_EXT_ID_POWER_CLASS_57);
@@ -1089,7 +1086,7 @@ void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
 	}
 
 	if (mode & SFF8636_COMPLIANCE_EXTENDED) {
-		ext = eeprom_cache_readb(qsfp, SFF8636_EXT_COMPLIANCE_CODES_OFFSET);
+		ext = qsfp->eeprom.link_codes;
 		switch (ext) {
 		case SFF8024_ECC_UNSPEC:
 			break;
@@ -1251,6 +1248,7 @@ static int kvx_qsfp_init(struct kvx_qsfp *qsfp)
 		dev_err(qsfp->dev, "Failed to initialize qsfp eeprom cache\n");
 		return -EFAULT;
 	}
+	complete_all(&qsfp->eeprom_init);
 
 	kvx_qsfp_print_module_status(qsfp);
 
@@ -1398,6 +1396,7 @@ static int kvx_qsfp_sm_main(struct kvx_qsfp *qsfp)
 		}
 		fallthrough;
 	case QSFP_S_RESET:
+		reinit_completion(&qsfp->eeprom_init);
 		if (!is_cable_connected(qsfp))
 			return QSFP_S_DOWN;
 		kvx_qsfp_reset_opt_features(qsfp);
@@ -1725,6 +1724,7 @@ static int kvx_qsfp_probe(struct platform_device *pdev)
 	/* set state machine to the initial state and start it */
 	qsfp->sm_state = QSFP_S_RESET;
 	init_completion(&qsfp->sm_s_ready);
+	init_completion(&qsfp->eeprom_init);
 	queue_work(kvx_qsfp_wq, &qsfp->sm_task);
 
 	err = sysfs_create_group(&qsfp->dev->kobj, &sysfs_attr_group);
