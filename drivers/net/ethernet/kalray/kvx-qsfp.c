@@ -1137,31 +1137,6 @@ void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_parse_support);
 
-/** kvx_qsfp_set_int_flags_masks - set the int flags mask bits based on the callbacks defined
- * @qsfp: qsfp prvdata
- *
- * Firstly, all interrupts are masked, then only those needed are unmasked.
- */
-static void kvx_qsfp_set_int_flags_mask(struct kvx_qsfp *qsfp)
-{
-	size_t len;
-
-	/* avoid overwriting vendor specific section (2 bytes at the end) */
-	len = qsfp_eeprom_len(int_flags_mask) - qsfp_eeprom_len(int_flags_mask.vendor);
-	memset(&qsfp->eeprom.int_flags_mask, 0xff, len);
-
-	/* avoid overwriting reserved section (4 bytes at the end) */
-	len = qsfp_eeprom_len(channel_monitor_mask) - qsfp_eeprom_len(channel_monitor_mask.reserved);
-	memset(&qsfp->eeprom.channel_monitor_mask, 0xff, len);
-
-	if (qsfp->ops && qsfp->ops->cdr_lol) {
-		/* enable CDR LOL interrupt flags */
-		qsfp->eeprom.int_flags_mask.rx_tx_cdr_lol = 0;
-	}
-
-	update_interrupt_flags_mask(qsfp);
-}
-
 static inline bool kvx_qsfp_cdr_rx_tx_supported(struct kvx_qsfp *qsfp)
 {
 	u8 ext_id = qsfp->eeprom.ext_identifier;
@@ -1204,6 +1179,34 @@ static void kvx_qsfp_set_cdr_ctrl(struct kvx_qsfp *qsfp, u8 mask)
 	ret = qsfp_update_eeprom(qsfp, control.cdr_control);
 	if (ret != 0)
 		dev_err(qsfp->dev, "failed to set CDR control\n");
+}
+
+/** kvx_qsfp_set_int_flags_masks - set the int flags mask bits based on the callbacks defined
+ * @qsfp: qsfp prvdata
+ *
+ * Firstly, all interrupts are masked, then only those needed are unmasked.
+ */
+static void kvx_qsfp_set_int_flags_mask(struct kvx_qsfp *qsfp)
+{
+	size_t len;
+
+	/* avoid overwriting vendor specific section (2 bytes at the end) */
+	len = qsfp_eeprom_len(int_flags_mask) - qsfp_eeprom_len(int_flags_mask.vendor);
+	memset(&qsfp->eeprom.int_flags_mask, 0xff, len);
+
+	/* avoid overwriting reserved section (4 bytes at the end) */
+	len = qsfp_eeprom_len(channel_monitor_mask) - qsfp_eeprom_len(channel_monitor_mask.reserved);
+	memset(&qsfp->eeprom.channel_monitor_mask, 0xff, len);
+
+	if (qsfp->ops && qsfp->ops->cdr_lol && kvx_qsfp_cdr_rx_tx_lol_supported(qsfp)) {
+		/* enable CDR */
+		kvx_qsfp_set_cdr_ctrl(qsfp, 0xff);
+
+		/* enable CDR LOL interrupt flags */
+		qsfp->eeprom.int_flags_mask.rx_tx_cdr_lol = 0;
+	}
+
+	update_interrupt_flags_mask(qsfp);
 }
 
 /** kvx_qsfp_init - driver init, eeprom cache init
@@ -1258,14 +1261,6 @@ static int kvx_qsfp_init(struct kvx_qsfp *qsfp)
 	else if (tx_disable_supported(qsfp)) /* disable tx via eeprom */
 		qsfp->opt_features.tx_disable = kvx_qsfp_tx_disable_ee;
 	/* else tx_disable is not supported (copper passive cables) */
-
-	/* if any cdr-related callback is defined, then enable all CDRs both Rx/Tx */
-	if (qsfp->ops && qsfp->ops->cdr_lol) {
-		if (kvx_qsfp_cdr_rx_tx_supported(qsfp))
-			kvx_qsfp_set_cdr_ctrl(qsfp, 0xff);
-		else
-			qsfp->ops->cdr_lol = NULL;
-	}
 
 	return 0;
 err:
