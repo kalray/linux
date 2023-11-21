@@ -520,10 +520,10 @@ int kvx_qsfp_module_info(struct kvx_qsfp *qsfp, struct ethtool_modinfo *modinfo)
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_module_info);
 
-/** update_interrupt_flags - read interrupt flags and update the cache
+/** refresh_interrupt_flags - read interrupt flags and update the cache
  * @qsfp: qsfp prvdata
  */
-static void update_interrupt_flags(struct kvx_qsfp *qsfp)
+static void refresh_interrupt_flags(struct kvx_qsfp *qsfp)
 {
 	int ret;
 
@@ -1336,26 +1336,7 @@ static void kvx_qsfp_sm_event(struct work_struct *work)
 			/* copy for comparison after int flags update */
 			cdr_lol[0] = !!qsfp->eeprom.int_flags.lol;
 
-			update_interrupt_flags(qsfp);
-
-			/*
-			 * IRQ line is configured as IRQF_TRIGGER_FALLING, thus an interrupt will be triggered
-			 * if an int flag is asserted, but won't be retrigged if the int flag remains
-			 * asserted. This avoids hundreds of interrupts per second, thus spending too much
-			 * time in interrupt context.
-			 * Additionally, int flags need to be cleared in order to have new interrupts.
-			 * Therefore, we keep polling int flags until they are all cleared.
-			 * Int flags may take some time to reset (e.g. cdr_lol), thus rescheduling delayed
-			 * work ensures that all int flags are cleared and irq is in expected state.
-			 */
-			if (!bitmap_empty((unsigned long *)&qsfp->eeprom.int_flags,
-					  8 * sizeof(qsfp->eeprom.int_flags))) {
-				set_bit(QSFP_E_INTL, &qsfp->irq_event);
-
-				if (!delayed_work_pending(&qsfp->irq_event_task))
-					queue_delayed_work(kvx_qsfp_wq, &qsfp->irq_event_task,
-							   msecs_to_jiffies(QSFP_INT_FLAGS_CLEAR_DELAY_IN_MS));
-			}
+			refresh_interrupt_flags(qsfp);
 
 			cdr_lol[1] = !!qsfp->eeprom.int_flags.lol;
 
@@ -1363,6 +1344,28 @@ static void kvx_qsfp_sm_event(struct work_struct *work)
 			if (qsfp->ops && qsfp->ops->cdr_lol &&
 			    cdr_lol[1] != 0 && cdr_lol[0] != cdr_lol[1])
 				qsfp->ops->cdr_lol(qsfp);
+
+			/*
+			 * IRQ line is configured as IRQF_TRIGGER_FALLING, thus an interrupt will be triggered
+			 * if an int flag is asserted, but won't be retrigged if the int flag remains
+			 * asserted. This avoids hundreds of interrupts per second, thus spending too much
+			 * time in interrupt context. Therefore, we keep polling int flags while the IntL
+			 * output remains low.
+			 */
+			qsfp_refresh_eeprom(qsfp, status);
+			if (qsfp->cable_connected &&
+			    (qsfp->eeprom.status & SFF8636_STATUS_INTL) == 0) {
+				set_bit(QSFP_E_INTL, &qsfp->irq_event);
+
+				if (!delayed_work_pending(&qsfp->irq_event_task))
+					queue_delayed_work(kvx_qsfp_wq, &qsfp->irq_event_task,
+							   msecs_to_jiffies(QSFP_INT_FLAGS_CLEAR_DELAY_IN_MS));
+			} else {
+				/* make sure that int flags are cleared in order to have new interrupts */
+				if (!bitmap_empty((unsigned long *)&qsfp->eeprom.int_flags,
+						  8 * sizeof(qsfp->eeprom.int_flags)))
+					refresh_interrupt_flags(qsfp);
+			}
 		}
 	}
 }
