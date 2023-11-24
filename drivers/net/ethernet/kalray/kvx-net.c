@@ -452,7 +452,8 @@ static int kvx_eth_netdev_open(struct net_device *netdev)
 		napi_enable(&r->napi);
 	}
 
-	kvx_eth_up(netdev);
+	if (!netif_carrier_ok(netdev))
+		kvx_eth_up(netdev);
 
 	return 0;
 }
@@ -2105,7 +2106,9 @@ void kvx_eth_qsfp_connect(struct kvx_qsfp *qsfp)
 	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
 
 	bitmap_zero(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS);
-	kvx_eth_up(ndev->netdev);
+
+	if (!netif_carrier_ok(ndev->netdev))
+		kvx_eth_up(ndev->netdev);
 }
 
 void kvx_eth_qsfp_disconnect(struct kvx_qsfp *qsfp)
