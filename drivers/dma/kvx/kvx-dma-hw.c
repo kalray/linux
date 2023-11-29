@@ -1181,7 +1181,10 @@ void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
 	writeq_relaxed((hdr_en << 32) | eot, &job->param[4]);
 	writeq_relaxed(tx_job->hdr_addr, &job->param[5]);
 	writeq_relaxed(0, &job->param[6]);
-	writeq_relaxed(object_len, &job->param[7]);
+	if (phy->chip_rev_data->revision == COOLIDGE_V1)
+		writeq_relaxed(object_len, &job->param[7]);          //legacy code, param[7] ignored ?
+	else
+		writeq_relaxed(tx_job->credit_size, &job->param[7]); //credit param size in bytes
 	writeq_relaxed(config, &job->config);
 	/* Expect write done */
 	wmb();

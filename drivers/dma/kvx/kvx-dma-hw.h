@@ -23,6 +23,8 @@ struct kvx_dma_chip_rev_data {
 	enum coolidge_rev revision;
 };
 
+#define KVX_DMA_FLIT_SIZE 16  //only CV2
+
 #define KVX_DMA_CACHE_ID  (1ULL)
 #define KVX_DMA_THREAD_ID (1ULL)
 
@@ -67,6 +69,7 @@ enum dma_error_bit {
  * @src_dma_addr: Source dma_addr of buffer to transmit
  * @dst_dma_addr: Destination dma_addr
  * @len: Buffer length
+ * @credit_size: Size provided in parameter 7 of a job descriptor to increment DMA credits counter
  * @comp_q_id: Id of completion queue
  * @route_id: Route id in route table
  * @nb: Number of buffer to send
@@ -83,6 +86,7 @@ struct kvx_dma_tx_job {
 	u64 src_dma_addr;
 	u64 dst_dma_addr;
 	u64 len;
+	u64 credit_size; //only CV2
 	u64 comp_q_id;
 	u64 route_id;
 	u64 nb;

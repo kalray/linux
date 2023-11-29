@@ -289,6 +289,7 @@ int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
 	struct scatterlist *sgent;
 	u64 eot, start_ticket;
 	int i, ret = 0;
+	int size_tmp, pkt_sum = 0, dma_credit_sum = 0;
 
 	ret = kvx_dma_pkt_tx_acquire_jobs(p, sg_len, job_idx);
 	if (ret) {
@@ -309,6 +310,27 @@ int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
 		txd.route_id = route_id;
 		txd.fence_before = 1;
 		txd.fence_after = 0;
+
+		/* credit, just fill txd.credit_size here */
+		/* only used by CV2, txd.credit_size never used later when CV1 */
+		size_tmp = txd.len;
+		if (txd.hdr_addr)
+			size_tmp += sizeof(union eth_tx_metadata);
+		txd.credit_size = roundup(size_tmp, KVX_DMA_FLIT_SIZE);
+		pkt_sum += size_tmp;
+		//The implementation of DMA/eth tx credit is based on flit size (16-byte upper rounding)
+		//It could cause credit misalignment between DMA and eth tx (if job size not multiple of 16):
+		// -the ethernet sees only the packet size (jobs are concatenated in the stage one fifo)
+		// -the DMA uses each job size provided in parameter 7 to increment its credits counter
+		//The solution used here is to 'lie' to the DMA when difference reach 1 flit
+		dma_credit_sum += txd.credit_size;
+		size_tmp = dma_credit_sum - roundup(pkt_sum, KVX_DMA_FLIT_SIZE);
+		if (size_tmp > 0) {
+			//misalignment, need to 'lie'
+			txd.credit_size -= size_tmp;
+			dma_credit_sum  -= size_tmp;
+		}
+
 		kvx_dma_pkt_tx_write_job(p, start_ticket, &txd, eot);
 		txd.hdr_addr = 0;
 		start_ticket++;
