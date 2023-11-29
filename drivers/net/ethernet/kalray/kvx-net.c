@@ -1387,6 +1387,7 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 	struct kvx_eth_hw *hw =  ndev->hw;
 	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
 	const struct kvx_eth_chip_rev_data *rev_d = dev->chip_rev_data;
+	int jobq_id, phys_port_id = ndev->hw->eth_id * KVX_ETH_LANE_NB + ndev->cfg.id;
 
 	r->count = kvx_dma_get_max_nb_desc(dma_cfg->pdev);
 	kvx_eth_reset_ring(r);
@@ -1411,8 +1412,13 @@ int kvx_eth_alloc_rx_ring(struct kvx_eth_netdev *ndev, struct kvx_eth_ring *r)
 					      &r->param, kvx_eth_dma_irq_rx, r);
 		if (ret)
 			goto chan_failed;
+
+		if (kvx_eth_get_rev_data(ndev->hw)->revision == COOLIDGE_V1)
+			jobq_id = rx_chan;
+		else
+			jobq_id = phys_port_id; //Just need an unused jobq, could be dynamic
 		ret = kvx_dma_reserve_rx_jobq(dma_cfg->pdev, &r->rx_jobq,
-					      rx_chan, r->param.rx_cache_id,
+					      jobq_id, r->param.rx_cache_id,
 					      rx_jobq_prio[r->type]);
 		if (ret)
 			goto jobq_failed;
@@ -2007,11 +2013,13 @@ int kvx_eth_netdev_parse_dt(struct platform_device *pdev,
 		return -EINVAL;
 	}
 
-	/* Always the case (means that netdev can share tx dma jobq) */
-	ndev->cfg.tx_fifo_id = dma_cfg->tx_chan_id.start;
-	if (ndev->cfg.tx_fifo_id >= TX_FIFO_NB) {
-		dev_err(ndev->dev, "tx_fifo >= %d\n", TX_FIFO_NB);
-		return -EINVAL;
+	if (kvx_eth_get_rev_data(ndev->hw)->revision == COOLIDGE_V1) {
+		/* Always the case (means that netdev can share tx dma jobq) */
+		ndev->cfg.tx_fifo_id = dma_cfg->tx_chan_id.start;
+		if (ndev->cfg.tx_fifo_id >= TX_FIFO_NB) {
+			dev_err(ndev->dev, "tx_fifo >= %d\n", TX_FIFO_NB);
+			return -EINVAL;
+		}
 	}
 
 	/* Default tx eq. parameter tuning */
