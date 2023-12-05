@@ -1210,10 +1210,12 @@ static int kvx_eth_change_mtu(struct net_device *netdev, int new_mtu)
 
 	rev_d->eth_hw_change_mtu(ndev->hw, ndev->cfg.id, max_frame_len);
 
-	if (!atomic_read(&ndev->link_cfg_running) && !work_pending(&ndev->link_cfg)) {
-		ret = kvx_eth_mac_cfg(hw, &ndev->cfg);
-		if (ret)
-			dev_warn(hw->dev, "Failed to reconfigure MAC\n");
+	if (netif_carrier_ok(netdev)) {
+		if (!atomic_read(&ndev->link_cfg_running) && !work_pending(&ndev->link_cfg)) {
+			ret = kvx_eth_mac_cfg(hw, &ndev->cfg);
+			if (ret)
+				dev_warn(hw->dev, "Failed to reconfigure MAC (ret = %d)\n", ret);
+		}
 	}
 
 	return ret;
