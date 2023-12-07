@@ -68,6 +68,28 @@ void write_parser_ram_word_cv2(struct kvx_eth_hw *hw, u32 data, unsigned int par
 		word_idx * PARSER_RAM_WORD_SIZE);
 }
 
+/**
+ * kvs_clear_parser_f_cv2() - Clear a sysfs parser structure, use this when you delete a
+ *   parser to replicate the change on the sysfs
+ * @hw: this ethernet hw device
+ * @parser_id: the parser physical id
+ */
+static void kvx_clear_parser_f_cv2(struct kvx_eth_hw *hw, int parser_id)
+{
+	struct kvx_eth_parser_cv2_f *parser_f = &hw->parser_cv2_f[parser_id];
+	int i;
+
+	parser_f->enable = false;
+	for (i = 0; i < ARRAY_SIZE(parser_f->rules); ++i) {
+		parser_f->rules[i].enable = false;
+		parser_f->rules[i].type = 0;
+		parser_f->rules[i].add_metadata_index = 0;
+		parser_f->rules[i].check_header_checksum = 0;
+	}
+	kvx_update_parser_desc_cv2(hw, parser_id);
+}
+
+
 /** parser_disable_cv2() - Disable parser parser_id
  * Context: can not be called in interrupt context (readq_poll_timeout)
  *
@@ -93,6 +115,23 @@ int parser_disable_cv2(struct kvx_eth_hw *hw, int parser_id)
 
 	/* Reset hit_cnt */
 	kvx_lbana_readl(hw, off + KVX_ETH_LBA_PARSER_HIT_CNT_LAC_OFFSET);
-	clear_parser_f(hw, parser_id);
+	kvx_clear_parser_f_cv2(hw, parser_id);
 	return 0;
+}
+
+void kvx_update_parser_desc_cv2(struct kvx_eth_hw *hw,
+		unsigned int parser)
+{
+	struct kvx_eth_parser_cv2_f *parser_f = &hw->parser_cv2_f[parser];
+	char *buf = parser_f->desc;
+	unsigned int rule;
+
+	for (rule = 0; rule < ARRAY_SIZE(parser_f->rules); ++rule) {
+		buf += sprintf(buf, PARSER_RULE_FMT,
+				parser_f->rules[rule].enable,
+				parser_f->rules[rule].type,
+				parser_f->rules[rule].add_metadata_index,
+				parser_f->rules[rule].check_header_checksum);
+	}
+	BUG_ON(buf >= parser_f->desc + sizeof(parser_f->desc));
 }

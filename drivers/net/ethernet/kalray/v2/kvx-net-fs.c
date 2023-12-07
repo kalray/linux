@@ -353,6 +353,7 @@ FIELD_RW_ENTRY(parser_cv2_f, ov_rss_idx_qpn_msk, 0, 0xFFFFFFFF);
 FIELD_RW_ENTRY(parser_cv2_f, xcos_trust_pcp, 0, 0x1);
 FIELD_RW_ENTRY(parser_cv2_f, xcos_trust_dscp, 0, 0x1);
 FIELD_RW_ENTRY(parser_cv2_f, xcos_trust_tc, 0, 0x1);
+FIELD_R_STRING_ENTRY(parser_cv2_f, desc, 0, 0);
 
 static struct attribute *parser_cv2_f_attrs[] = {
 	&parser_cv2_f_disp_policy_attr.attr,
@@ -369,6 +370,7 @@ static struct attribute *parser_cv2_f_attrs[] = {
 	&parser_cv2_f_xcos_trust_pcp_attr.attr,
 	&parser_cv2_f_xcos_trust_dscp_attr.attr,
 	&parser_cv2_f_xcos_trust_tc_attr.attr,
+	&parser_cv2_f_desc_attr.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(parser_cv2_f);

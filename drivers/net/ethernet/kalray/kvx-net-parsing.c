@@ -14,44 +14,6 @@
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
 
-static void update_parser_desc(struct kvx_eth_hw *hw,
-		unsigned int parser)
-{
-	struct kvx_eth_parser_f *parser_f = &hw->parser_f[parser];
-	char *buf = parser_f->desc;
-	unsigned int rule;
-
-	for (rule = 0; rule < ARRAY_SIZE(parser_f->rules); ++rule) {
-		buf += sprintf(buf, PARSER_RULE_FMT,
-				parser_f->rules[rule].enable,
-				parser_f->rules[rule].type,
-				parser_f->rules[rule].add_metadata_index,
-				parser_f->rules[rule].check_header_checksum);
-	}
-	BUG_ON(buf >= parser_f->desc + sizeof(parser_f->desc));
-}
-
-/**
- * clear_parser_f() - Clear a sysfs parser structure, use this when you delete a
- *   parser to replicate the change on the sysfs
- * @hw: this ethernet hw device
- * @parser_id: the parser physical id
- */
-void clear_parser_f(struct kvx_eth_hw *hw, int parser_id)
-{
-	struct kvx_eth_parser_f *parser_f = &hw->parser_f[parser_id];
-	int i;
-
-	parser_f->enable = false;
-	for (i = 0; i < ARRAY_SIZE(parser_f->rules); ++i) {
-		parser_f->rules[i].enable = false;
-		parser_f->rules[i].type = 0;
-		parser_f->rules[i].add_metadata_index = 0;
-		parser_f->rules[i].check_header_checksum = 0;
-	}
-	update_parser_desc(hw, parser_id);
-}
-
 /**
  * update_parser_f() - Fill the sysfs structure from a parser rule, use this
  *   when you modify a parser to reflect the change
@@ -66,12 +28,21 @@ static int update_parser_f(struct kvx_eth_hw *hw,
 	union filter_desc **rules;
 	int rule, rules_len;
 	int add_metadata_index, check_header_checksum;
-	struct kvx_eth_rule_f *rule_f;
-	struct kvx_eth_dev *dev = KVX_HW2DEV(hw);
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+	bool *parser_enable;
+	struct kvx_eth_rule_f *parser_rules;
+
+
+	if (rev_d->revision == COOLIDGE_V1) {
+		parser_rules = hw->parser_f[parser_id].rules;
+		parser_enable = &hw->parser_f[parser_id].enable;
+	} else {
+		parser_rules = hw->parser_cv2_f[parser_id].rules;
+		parser_enable = &hw->parser_cv2_f[parser_id].enable;
+	}
 
 	rules = hw->parsing.parsers[filter_id].filters;
 	rules_len =  hw->parsing.parsers[filter_id].nb_layers;
-
 	for (rule = 0; rule < rules_len; ++rule) {
 		union filter_desc *desc = rules[rule];
 		u32 ptype = (*(u32 *)desc) & PTYPE_MASK;
@@ -86,7 +57,7 @@ static int update_parser_f(struct kvx_eth_hw *hw,
 			check_header_checksum = 0;
 			break;
 		case PTYPE_IP_V4:
-			if (dev->chip_rev_data->revision == COOLIDGE_V1) {
+			if (rev_d->revision == COOLIDGE_V1) {
 				add_metadata_index = desc->cv1_ipv4.add_metadata_index;
 				check_header_checksum = desc->cv1_ipv4.check_header_checksum;
 			} else {
@@ -125,15 +96,13 @@ static int update_parser_f(struct kvx_eth_hw *hw,
 		default:
 			return -EINVAL;
 		}
-
-		rule_f = &hw->parser_f[parser_id].rules[rule];
-		rule_f->enable = true;
-		rule_f->type = ptype;
-		rule_f->add_metadata_index = add_metadata_index;
-		rule_f->check_header_checksum = check_header_checksum;
+		parser_rules[rule].enable = true;
+		parser_rules[rule].type = ptype;
+		parser_rules[rule].add_metadata_index = add_metadata_index;
+		parser_rules[rule].check_header_checksum = check_header_checksum;
 	}
-	hw->parser_f[parser_id].enable = true;
-	update_parser_desc(hw, parser_id);
+	*parser_enable = true;
+	rev_d->update_parser_desc(hw, parser_id);
 	return 0;
 }
 

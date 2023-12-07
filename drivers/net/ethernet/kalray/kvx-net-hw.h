@@ -2189,7 +2189,6 @@ int parser_config_wrapper(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 void parser_disp(struct kvx_eth_hw *hw, unsigned int parser_id);
 int parser_disable_wrapper(struct kvx_eth_hw *hw, int parser_id);
 int parser_check(unsigned int parser_id, unsigned int word_index, enum coolidge_rev chip_rev);
-void clear_parser_f(struct kvx_eth_hw *hw, int parser_id);
 
 /* STATS */
 void kvx_eth_update_stats64(struct kvx_eth_hw *hw, int lane_id,

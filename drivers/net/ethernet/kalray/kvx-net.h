@@ -236,6 +236,7 @@ struct kvx_eth_chip_rev_data {
 	void (*const phy_rx_ber_param_update)(void *data);
 	void (*const phy_tx_bert_param_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_tx_bert_param *p);
 	void (*const phy_rx_bert_param_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_rx_bert_param *p);
+	void (*const update_parser_desc)(struct kvx_eth_hw *hw, unsigned int parser);
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);
@@ -289,6 +290,8 @@ void write_parser_ram_word_cv2(struct kvx_eth_hw *hw, u32 data, unsigned int par
 			  unsigned int word_idx);
 int parser_disable_cv1(struct kvx_eth_hw *hw, int parser_id);
 int parser_disable_cv2(struct kvx_eth_hw *hw, int parser_id);
+void kvx_update_parser_desc(struct kvx_eth_hw *hw, unsigned int parser);
+void kvx_update_parser_desc_cv2(struct kvx_eth_hw *hw, unsigned int parser);
 int parser_commit_filter_cv1(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 		unsigned int parser_id, unsigned int word_index, enum parser_dispatch_policy policy, int prio);
 int parser_commit_filter_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
