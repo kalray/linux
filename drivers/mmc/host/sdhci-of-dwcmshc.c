@@ -64,6 +64,13 @@
 #define DLL_CMDOUT_SRC_CLK_NEG		BIT(28)
 #define DLL_CMDOUT_EN_SRC_CLK_NEG	BIT(29)
 
+/* Coolidge kv3 specific macros */
+#define sd_dat_stb_delay(delay)		(delay << 9)
+#define rx_delay_static_cfg(delay)	(delay << 11)
+#define tx_delay_static_cfg(delay)	(delay << 5)
+#define tx_tuning_clk_sel(delay)	(delay)
+#define RX_CONFIG_OVERRIDE_ENABLE	BIT(15)
+
 #define DLL_LOCK_WO_TMOUT(x) \
 	((((x) & DWCMSHC_EMMC_DLL_LOCKED) == DWCMSHC_EMMC_DLL_LOCKED) && \
 	(((x) & DWCMSHC_EMMC_DLL_TIMEOUT) == 0))
@@ -310,6 +317,16 @@ static void dwcmshc_rk3568_set_clock(struct sdhci_host *host, unsigned int clock
 	sdhci_writel(host, extra, DWCMSHC_EMMC_DLL_STRBIN);
 }
 
+static void kalray_kv32_sdhci_reset(struct sdhci_host *host, u8 mask)
+{
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct dwcmshc_priv *priv = sdhci_pltfm_priv(pltfm_host);
+	int reg = priv->vendor_specific_area1 + SDHCI_GPIO_OUT;
+
+	sdhci_reset(host, mask);
+	sdhci_writel(host, tx_delay_static_cfg(0xf) | tx_tuning_clk_sel(4), reg);
+}
+
 static void rk35xx_sdhci_reset(struct sdhci_host *host, u8 mask)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -325,12 +342,51 @@ static void rk35xx_sdhci_reset(struct sdhci_host *host, u8 mask)
 	sdhci_reset(host, mask);
 }
 
+static void kalray_kv32_sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
+{
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct dwcmshc_priv *priv = sdhci_pltfm_priv(pltfm_host);
+	int reg = priv->vendor_specific_area1 + SDHCI_GPIO_OUT;
+	u32 delay_cfg;
+
+	delay_cfg = sdhci_readl(host, reg);
+	delay_cfg &= ~(sd_dat_stb_delay(3) | rx_delay_static_cfg(15) | RX_CONFIG_OVERRIDE_ENABLE);
+
+	if (clock >= 200000000)
+		delay_cfg |= sd_dat_stb_delay(3);
+	else if (clock >= 150000000)
+		delay_cfg |= rx_delay_static_cfg(1) | sd_dat_stb_delay(2);
+	else if (clock >= 100000000)
+		delay_cfg |= rx_delay_static_cfg(3) | sd_dat_stb_delay(1);
+	else if (clock >= 75000000)
+		delay_cfg |= rx_delay_static_cfg(7);
+	else if (clock >= 50000000)
+		delay_cfg |= rx_delay_static_cfg(15);
+
+	sdhci_writel(host, delay_cfg, reg);
+
+	if (clock >= 50000000) {
+		delay_cfg |= RX_CONFIG_OVERRIDE_ENABLE;
+		sdhci_writel(host, delay_cfg, reg);
+	}
+	sdhci_set_clock(host, clock);
+}
+
 static const struct sdhci_ops sdhci_dwcmshc_ops = {
 	.set_clock		= sdhci_set_clock,
 	.set_bus_width		= sdhci_set_bus_width,
 	.set_uhs_signaling	= dwcmshc_set_uhs_signaling,
 	.get_max_clock		= dwcmshc_get_max_clock,
 	.reset			= sdhci_reset,
+	.adma_write_desc	= dwcmshc_adma_write_desc,
+};
+
+static const struct sdhci_ops kalray_kv32_sdhci_dwcmshc_ops = {
+	.set_clock		= kalray_kv32_sdhci_set_clock,
+	.set_bus_width		= sdhci_set_bus_width,
+	.set_uhs_signaling	= dwcmshc_set_uhs_signaling,
+	.get_max_clock		= dwcmshc_get_max_clock,
+	.reset			= kalray_kv32_sdhci_reset,
 	.adma_write_desc	= dwcmshc_adma_write_desc,
 };
 
@@ -362,6 +418,12 @@ static const struct sdhci_pltfm_data sdhci_dwcmshc_kalray_kv31_pdata = {
 	.ops = &sdhci_dwcmshc_ops,
 	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN | SDHCI_QUIRK_BROKEN_TIMEOUT_VAL,
 	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN | SDHCI_QUIRK2_BROKEN_HS200 | SDHCI_QUIRK2_NO_1_8_V | SDHCI_QUIRK2_DISABLE_HW_TIMEOUT,
+};
+
+static const struct sdhci_pltfm_data sdhci_dwcmshc_kalray_kv32_pdata = {
+	.ops = &kalray_kv32_sdhci_dwcmshc_ops,
+	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN | SDHCI_QUIRK_BROKEN_TIMEOUT_VAL,
+	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN | SDHCI_QUIRK2_DISABLE_HW_TIMEOUT,
 };
 
 static const struct sdhci_pltfm_data sdhci_dwcmshc_rk35xx_pdata = {
@@ -443,6 +505,10 @@ static const struct of_device_id sdhci_dwcmshc_dt_ids[] = {
 	{
 		.compatible = "kalray,kv3-1-dwcmshc-sdhci",
 		.data = &sdhci_dwcmshc_kalray_kv31_pdata,
+	},
+	{
+		.compatible = "kalray,kv3-2-dwcmshc-sdhci",
+		.data = &sdhci_dwcmshc_kalray_kv32_pdata,
 	},
 	{},
 };
