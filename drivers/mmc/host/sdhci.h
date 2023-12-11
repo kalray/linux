@@ -281,6 +281,12 @@
 #define   SDHCI_SPEC_420	5
 
 /*
+ * Vendor specific registers
+ */
+
+#define SDHCI_GPIO_OUT		0x34
+
+/*
  * End of controller registers.
  */
 
