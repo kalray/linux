@@ -317,7 +317,7 @@ static void dwcmshc_rk3568_set_clock(struct sdhci_host *host, unsigned int clock
 	sdhci_writel(host, extra, DWCMSHC_EMMC_DLL_STRBIN);
 }
 
-static void kalray_kv32_sdhci_reset(struct sdhci_host *host, u8 mask)
+static void kalray_kv3_2_sdhci_reset(struct sdhci_host *host, u8 mask)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct dwcmshc_priv *priv = sdhci_pltfm_priv(pltfm_host);
@@ -342,7 +342,7 @@ static void rk35xx_sdhci_reset(struct sdhci_host *host, u8 mask)
 	sdhci_reset(host, mask);
 }
 
-static void kalray_kv32_sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
+static void kalray_kv3_2_sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct dwcmshc_priv *priv = sdhci_pltfm_priv(pltfm_host);
@@ -381,12 +381,12 @@ static const struct sdhci_ops sdhci_dwcmshc_ops = {
 	.adma_write_desc	= dwcmshc_adma_write_desc,
 };
 
-static const struct sdhci_ops kalray_kv32_sdhci_dwcmshc_ops = {
-	.set_clock		= kalray_kv32_sdhci_set_clock,
+static const struct sdhci_ops kalray_kv3_2_sdhci_dwcmshc_ops = {
+	.set_clock		= kalray_kv3_2_sdhci_set_clock,
 	.set_bus_width		= sdhci_set_bus_width,
 	.set_uhs_signaling	= dwcmshc_set_uhs_signaling,
 	.get_max_clock		= dwcmshc_get_max_clock,
-	.reset			= kalray_kv32_sdhci_reset,
+	.reset			= kalray_kv3_2_sdhci_reset,
 	.adma_write_desc	= dwcmshc_adma_write_desc,
 };
 
@@ -414,14 +414,14 @@ static const struct sdhci_pltfm_data sdhci_dwcmshc_bf3_pdata = {
 };
 #endif
 
-static const struct sdhci_pltfm_data sdhci_dwcmshc_kalray_kv31_pdata = {
+static const struct sdhci_pltfm_data sdhci_dwcmshc_kalray_kv3_1_pdata = {
 	.ops = &sdhci_dwcmshc_ops,
 	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN | SDHCI_QUIRK_BROKEN_TIMEOUT_VAL,
 	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN | SDHCI_QUIRK2_BROKEN_HS200 | SDHCI_QUIRK2_NO_1_8_V | SDHCI_QUIRK2_DISABLE_HW_TIMEOUT,
 };
 
-static const struct sdhci_pltfm_data sdhci_dwcmshc_kalray_kv32_pdata = {
-	.ops = &kalray_kv32_sdhci_dwcmshc_ops,
+static const struct sdhci_pltfm_data sdhci_dwcmshc_kalray_kv3_2_pdata = {
+	.ops = &kalray_kv3_2_sdhci_dwcmshc_ops,
 	.quirks = SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN | SDHCI_QUIRK_BROKEN_TIMEOUT_VAL,
 	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN | SDHCI_QUIRK2_DISABLE_HW_TIMEOUT,
 };
@@ -504,11 +504,11 @@ static const struct of_device_id sdhci_dwcmshc_dt_ids[] = {
 	},
 	{
 		.compatible = "kalray,kv3-1-dwcmshc-sdhci",
-		.data = &sdhci_dwcmshc_kalray_kv31_pdata,
+		.data = &sdhci_dwcmshc_kalray_kv3_1_pdata,
 	},
 	{
 		.compatible = "kalray,kv3-2-dwcmshc-sdhci",
-		.data = &sdhci_dwcmshc_kalray_kv32_pdata,
+		.data = &sdhci_dwcmshc_kalray_kv3_2_pdata,
 	},
 	{},
 };
