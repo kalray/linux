@@ -149,6 +149,9 @@ static int phy_usb_generic_probe(struct platform_device *pdev)
 	if (IS_ERR(priv->gpiod_reset))
 		return dev_err_probe(dev, PTR_ERR(priv->gpiod_reset), "getting reset gpio\n");
 
+	if (priv->gpiod_reset)
+		gpiod_direction_output(priv->gpiod_reset, 1);
+
 	priv->clk = devm_clk_get_optional(dev, "main_clk");
 	if (IS_ERR(priv->clk))
 		return dev_err_probe(dev, PTR_ERR(priv->clk), "getting main_clk clock\n");
