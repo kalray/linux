@@ -438,8 +438,8 @@ int kvx_qsfp_set_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee, u8 *da
 bool is_cable_connected(struct kvx_qsfp *qsfp);
 bool is_cable_copper(struct kvx_qsfp *qsfp);
 void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support);
-u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp);
-u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp);
+int kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp);
+int kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp);
 int kvx_qsfp_ops_register(struct kvx_qsfp *qsfp, struct kvx_qsfp_ops *ops, void *ops_data);
 bool kvx_qsfp_int_flags_supported(struct kvx_qsfp *qsfp);
 

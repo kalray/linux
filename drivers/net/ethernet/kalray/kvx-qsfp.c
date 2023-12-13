@@ -549,7 +549,7 @@ bool is_cable_connected(struct kvx_qsfp *qsfp)
 }
 EXPORT_SYMBOL_GPL(is_cable_connected);
 
-u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp)
+int kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp)
 {
 	if (!is_eeprom_cache_initialized(qsfp))
 		return -ETIMEDOUT;
@@ -559,7 +559,7 @@ u8 kvx_qsfp_transceiver_id(struct kvx_qsfp *qsfp)
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_id);
 
 
-u8 kvx_qsfp_transceiver_ext_id(struct kvx_qsfp *qsfp)
+int kvx_qsfp_transceiver_ext_id(struct kvx_qsfp *qsfp)
 {
 	if (!is_eeprom_cache_initialized(qsfp))
 		return -ETIMEDOUT;
@@ -568,7 +568,7 @@ u8 kvx_qsfp_transceiver_ext_id(struct kvx_qsfp *qsfp)
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_ext_id);
 
-u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
+int kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
 {
 	u8 nominal_br;
 
@@ -588,15 +588,7 @@ u32 kvx_qsfp_transceiver_nominal_br(struct kvx_qsfp *qsfp)
 }
 EXPORT_SYMBOL_GPL(kvx_qsfp_transceiver_nominal_br);
 
-static u8 kvx_qsfp_transceiver_compliance_code(struct kvx_qsfp *qsfp)
-{
-	if (!is_eeprom_cache_initialized(qsfp))
-		return -ETIMEDOUT;
-
-	return qsfp->eeprom.spec_compliance.ethernet;
-}
-
-u8 kvx_qsfp_transceiver_tech(struct kvx_qsfp *qsfp)
+int kvx_qsfp_transceiver_tech(struct kvx_qsfp *qsfp)
 {
 	if (!is_eeprom_cache_initialized(qsfp))
 		return -ETIMEDOUT;
@@ -675,7 +667,7 @@ static void kvx_qsfp_print_module_status(struct kvx_qsfp *qsfp)
 
 	dev_info(qsfp->dev, "Cable oui: %02x:%02x:%02x pn: %.16s sn: %.16s comp_codes: 0x%x nominal_br: %dMbps\n",
 		 oui[0], oui[1], oui[2], &ee[SFF8636_VENDOR_PN_OFFSET],
-		 &ee[SFF8636_VENDOR_SN_OFFSET], kvx_qsfp_transceiver_compliance_code(qsfp),
+		 &ee[SFF8636_VENDOR_SN_OFFSET], qsfp->eeprom.spec_compliance.ethernet,
 		 kvx_qsfp_transceiver_nominal_br(qsfp));
 	dev_info(qsfp->dev, "Cable tech : 0x%x copper: %d\n",
 			   kvx_qsfp_transceiver_tech(qsfp), is_cable_copper(qsfp));
@@ -1054,10 +1046,34 @@ void kvx_qsfp_parse_support(struct kvx_qsfp *qsfp, unsigned long *support)
 {
 	u8 ext, mode;
 
-	mode = kvx_qsfp_transceiver_compliance_code(qsfp);
-
 	/* FEC off always supported (all cables support 10G or 25G) */
 	kvx_set_mode(support, FEC_NONE);
+
+	if (!is_eeprom_cache_initialized(qsfp)) {
+		/* If in doubt, support all modes */
+		kvx_set_mode(support, FEC_BASER); /* 25GBASE_CR_S only */
+		kvx_set_mode(support, FEC_RS);
+		kvx_set_mode(support, 10000baseSR_Full);
+		kvx_set_mode(support, 10000baseLR_Full);
+		kvx_set_mode(support, 10000baseLRM_Full);
+		kvx_set_mode(support, 10000baseCR_Full);
+		kvx_set_mode(support, 40000baseCR4_Full);
+		kvx_set_mode(support, 40000baseSR4_Full);
+		kvx_set_mode(support, 40000baseLR4_Full);
+		kvx_set_mode(support, 100000baseSR4_Full);
+		kvx_set_mode(support, 25000baseSR_Full);
+		kvx_set_mode(support, 25000baseCR_Full);
+		kvx_set_mode(support, 50000baseCR2_Full);
+		kvx_set_mode(support, 100000baseLR4_ER4_Full);
+		kvx_set_mode(support, 100000baseCR4_Full);
+		kvx_set_mode(support, 10000baseT_Full);
+		kvx_set_mode(support, 5000baseT_Full);
+		kvx_set_mode(support, 2500baseT_Full);
+
+		return;
+	}
+
+	mode = qsfp->eeprom.spec_compliance.ethernet;
 
 	/* Set ethtool support from the compliance fields. */
 	if (mode & SFF8636_COMPLIANCE_10GBASE_SR)
