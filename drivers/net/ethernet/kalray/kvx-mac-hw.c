@@ -2716,7 +2716,7 @@ next_state:
 		kvx_eth_mac_tx_flush(hw, cfg, false);
 
 		if (!cfg->autoneg_en)
-			return true; /* we are done here */
+			return (ret == 0); /* we are done here */
 
 		break;
 	case AN_STATE_ERROR:

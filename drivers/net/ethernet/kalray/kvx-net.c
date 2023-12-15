@@ -343,6 +343,7 @@ void kvx_net_cancel_link_cfg(struct kvx_eth_netdev *ndev)
 static void kvx_eth_link_cfg(struct work_struct *w)
 {
 	struct kvx_eth_netdev *ndev = container_of(w, struct kvx_eth_netdev, link_cfg);
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data_of_netdev(ndev->netdev);
 
 	atomic_set(&ndev->link_cfg_running, 1);
 
@@ -366,6 +367,10 @@ static void kvx_eth_link_cfg(struct work_struct *w)
 			break;
 
 		msleep(LINK_POLL_DELAY_IN_MS);
+		if (rev_d->phy_rx_adapt == NULL) {
+			/* restart from scratch when RxAdapt not fonctionnal */
+			ndev->cfg.restart_serdes = true;
+		}
 	}
 bail:
 	ndev->cfg.restart_serdes = false;
