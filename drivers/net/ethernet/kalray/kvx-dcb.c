@@ -135,6 +135,10 @@ int kvx_net_dcb_set_pfc_cv1(struct net_device *netdev, struct ieee_pfc *pfc)
 			pfc_cl_ena |= BIT(i);
 	}
 
+	if (!!pfc_cl_ena != !lb_f->pfc_f.global_pause_en) {
+		modified = true;
+	}
+
 	if (modified) {
 		netdev_warn(netdev, "pfc_handling_by_quanta %s\n",
 			lb_f->pfc_handling_by_quanta ? "enabled" : "disabled");
