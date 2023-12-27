@@ -142,9 +142,13 @@ int kvx_net_dcb_set_pfc_cv1(struct net_device *netdev, struct ieee_pfc *pfc)
 		if (pfc_cl_ena == 0) {
 			netdev_warn(netdev, "Global pause enabled\n");
 			lb_f->pfc_f.global_pause_en = 1;
+			lb_f->pfc_f.global_pfc_en = 0;
 		} else {
-			netdev_warn(netdev, "Global pause/PFC disabled\n");
+			netdev_warn(netdev, "Global pause disabled\n");
 			lb_f->pfc_f.global_pause_en = 0;
+			netdev_warn(netdev, "Global PFC %s\n",
+				lb_f->global_pfc_config ? "enabled" : "disabled");
+			lb_f->pfc_f.global_pfc_en = lb_f->global_pfc_config;
 		}
 		kvx_eth_pfc_f_cfg(ndev->hw, &lb_f->pfc_f);
 

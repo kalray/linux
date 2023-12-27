@@ -195,6 +195,8 @@ void kvx_eth_pfc_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_pfc_f *pfc)
 	updatel_bits(hw, ETH, off + RX_PFC_LANE_GLOBAL_DROP_LEVEL_OFFSET,
 		   RX_PFC_LANE_GLOBAL_DROP_LEVEL_MASK, pfc->global_drop_level);
 
+	WARN_ON(pfc->global_pause_en && pfc->global_pfc_en);
+
 	v = kvx_eth_readl(hw, off + RX_PFC_LANE_CTRL_OFFSET);
 	p = (unsigned long *)&v;
 	if (pfc->global_pfc_en) {
@@ -413,6 +415,11 @@ void kvx_eth_lb_f_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lb_f *lb)
 	if (hw->aggregated_only) {
 		l = (lane < 2) ? lane + 2 : lane - 2;
 		kvx_eth_writel(hw, val, RX_LB_CTRL(l));
+	}
+
+	if (!lb->pfc_f.global_pause_en && lb->global_pfc_config != lb->pfc_f.global_pfc_en) {
+		lb->pfc_f.global_pfc_en = lb->global_pfc_config;
+		kvx_eth_pfc_f_cfg(hw, &lb->pfc_f);
 	}
 }
 

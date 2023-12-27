@@ -29,6 +29,7 @@ FIELD_R_ENTRY(lb_f, default_hit_cnt, 0, U32_MAX);
 FIELD_R_ENTRY(lb_f, global_drop_cnt, 0, U32_MAX);
 FIELD_R_ENTRY(lb_f, global_no_pfc_drop_cnt, 0, U32_MAX);
 FIELD_RW_ENTRY(lb_f, pfc_handling_by_quanta, 0, 1);
+FIELD_RW_ENTRY(lb_f, global_pfc_config, 0, 1);
 
 
 static struct attribute *lb_f_attrs[] = {
@@ -47,6 +48,7 @@ static struct attribute *lb_f_attrs[] = {
 	&lb_f_global_drop_cnt_attr.attr,
 	&lb_f_global_no_pfc_drop_cnt_attr.attr,
 	&lb_f_pfc_handling_by_quanta_attr.attr,
+	&lb_f_global_pfc_config_attr.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(lb_f);
