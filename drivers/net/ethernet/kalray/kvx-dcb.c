@@ -110,21 +110,19 @@ int kvx_net_dcb_set_pfc_cv1(struct net_device *netdev, struct ieee_pfc *pfc)
 			modified = true;
 		}
 
-		if (lb_f->pfc_handling_by_quanta) {
-			/*
-			 * Set quanta to 0 on classes where pfc is disabled,
-			 * or restore quanta to its default value otherwise
-			 */
-			if (!cl_f->pfc_ena) {
-				if (cl_f->quanta != 0) {
-					cl_f->quanta = 0;
-					modified = true;
-				}
-			} else {
-				if (cl_f->quanta != DEFAULT_PAUSE_QUANTA) {
-					cl_f->quanta = DEFAULT_PAUSE_QUANTA;
-					modified = true;
-				}
+		/*
+		 * Set quanta to 0 on classes where pfc is disabled,
+		 * or restore quanta to its default value otherwise
+		 */
+		if (lb_f->pfc_handling_by_quanta && pfc->pfc_en && !cl_f->pfc_ena) {
+			if (cl_f->quanta != 0) {
+				cl_f->quanta = 0;
+				modified = true;
+			}
+		} else {
+			if (cl_f->quanta != DEFAULT_PAUSE_QUANTA) {
+				cl_f->quanta = DEFAULT_PAUSE_QUANTA;
+				modified = true;
 			}
 		}
 
