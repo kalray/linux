@@ -630,13 +630,12 @@ int kvx_phy_get_result_rx_adapt_cv1(struct kvx_eth_hw *hw, int lane_id, bool blo
  *
  * RX adaptation is done in brodcast mode, for all lanes simultaneously.
  *
- * Return: FOM on success, < 0 on error
+ * Return: 0 on success, < 0 on error
  */
 int kvx_phy_rx_adapt_broadcast_cv1(struct kvx_eth_hw *hw)
 {
-	struct kvx_eth_phy_param *p = &hw->phy_f.param[0];
 	u32 off, val;
-	int ret = 0;
+	int ret = 0, lane;
 	u16 v, mask;
 
 	if (hw->phy_f.loopback_mode == PHY_PMA_LOOPBACK)
@@ -667,12 +666,15 @@ int kvx_phy_rx_adapt_broadcast_cv1(struct kvx_eth_hw *hw)
 		return -ETIMEDOUT;
 	}
 
-	val = kvx_phy_readw(hw, RAWLANEX_DIG_PCS_XF_RX_ADAPT_FOM);
-	p->fom = GETF(val, RLX_PCS_XF_RX_ADAPT_FOM);
+	/* Loop through each lane and read FOM */
+	for (lane = 0; lane < KVX_ETH_LANE_NB; lane++) {
+		off = PHY_LANE_OFFSET + lane * PHY_LANE_ELEM_SIZE;
+		val = kvx_phymac_readl(hw, off + PHY_LANE_RX_SERDES_STATUS_OFFSET);
+		hw->phy_f.param[lane].fom = GETF(val, PHY_LANE_RX_SERDES_STATUS_ADAPT_FOM);
+		dev_dbg(hw->dev, "lane[%d] FOM %d\n", lane, hw->phy_f.param[lane].fom);
+	}
 
 #ifdef DEBUG
-	REG_DBG(hw->dev, val, RLX_PCS_XF_RX_ADAPT_FOM);
-
 	val = kvx_phymac_readl(hw, RAWLANEX_DIG_PCS_XF_RX_TXPRE_DIR);
 	REG_DBG(hw->dev, val, RLX_PCS_XF_RX_ADAPT_FOM_RX_TXPRE_DIR);
 
@@ -696,10 +698,9 @@ int kvx_phy_rx_adapt_broadcast_cv1(struct kvx_eth_hw *hw)
 		return -ETIMEDOUT;
 	}
 
-	dev_dbg(hw->dev, "FOM %d\n", p->fom);
-
-	return p->fom;
+	return 0;
 }
+
 
 int kvx_mac_phy_rx_adapt(struct kvx_eth_phy_param *p)
 {
@@ -2856,7 +2857,7 @@ void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 	int lane_fom_ok = 0, fom_retry = 4;
 	int lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 	int lane_fom[KVX_ETH_LANE_NB] = {0, 0, 0, 0};
-	int i;
+	int lane;
 	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 
 	if (rev_d->phy_rx_adapt == NULL)
@@ -2866,16 +2867,19 @@ void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 
 	do {
 		if (aggregated_lanes && rev_d->phy_rx_adapt_broadcast) {
-			if (rev_d->phy_rx_adapt_broadcast(hw) >= hw->fom_thres)
-				lane_fom_ok = lane_nb;
+			lane_fom_ok = 0;
+			rev_d->phy_rx_adapt_broadcast(hw);
+			for (lane = 0; lane < KVX_ETH_LANE_NB; lane++) {
+				if (hw->phy_f.param[lane].fom >= hw->fom_thres)
+					lane_fom_ok++;
+			}
 		} else {
 			lane_fom_ok = 0;
-			for (i = cfg->id; i < cfg->id + lane_nb; i++) {
-				if (!is_lane_in_use(hw, i))
+			for (lane = cfg->id; lane < cfg->id + lane_nb; lane++) {
+				if (!is_lane_in_use(hw, lane))
 					continue;
-
-				if (lane_fom[i] < hw->fom_thres)
-					lane_fom[i] = rev_d->phy_rx_adapt(hw, i);
+				if (lane_fom[lane] < hw->fom_thres)
+					lane_fom[lane] = rev_d->phy_rx_adapt(hw, lane);
 				else
 					lane_fom_ok++;
 			}
