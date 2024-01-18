@@ -891,9 +891,11 @@ static int kvx_dma_parse_dt(struct platform_device *pdev,
 		dev->dma_noc_route_ids.nb = KVX_DMA_NOC_ROUTE_TABLE_NUMBER;
 	}
 
-	if (of_property_read_u32(np, "kalray,dma-noc-vchan", &dev->vchan)) {
-		dev_err(&pdev->dev, "kalray,dma-noc-vchan is missing\n");
-		return -EINVAL;
+	if (dev->dma_noc_route_ids.nb != 0) {
+		if (of_property_read_u32(np, "kalray,dma-noc-vchan", &dev->vchan)) {
+			dev_err(&pdev->dev, "kalray,dma-noc-vchan is missing\n");
+			return -EINVAL;
+		}
 	}
 
 	node = of_parse_phandle(np, "memory-region", 0);
