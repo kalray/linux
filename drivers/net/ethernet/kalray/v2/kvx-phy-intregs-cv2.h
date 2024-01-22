@@ -1,0 +1,58 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * This file is subject to the terms and conditions of the GNU General Public
+ * License.  See the file "COPYING" in the main directory of this archive
+ * for more details.
+ *
+ * Copyright (C) 2023 Kalray Inc.
+ */
+
+#ifndef KVX_PHY_INT_REGS_CV2_H
+#define KVX_PHY_INT_REGS_CV2_H
+
+/* misc. */
+#define KVX_PHY_INT_LANE_OFFSET                           0x0800
+
+#define KVX_PHY_INT_LANE0_DIG_TX_LBERT_CTL_OFFSET          0x41C4
+#define KVX_PHY_INT_TX_LBERT_CTL_MODE_SHIFT                0
+#define KVX_PHY_INT_TX_LBERT_CTL_MODE_MASK                 0x000F
+#define KVX_PHY_INT_TX_LBERT_CTL_TRIGGER_ERR_SHIFT         4
+#define KVX_PHY_INT_TX_LBERT_CTL_TRIGGER_ERR_MASK          0x0010
+#define KVX_PHY_INT_TX_LBERT_CTL_PAT0_SHIFT                5
+#define KVX_PHY_INT_TX_LBERT_CTL_PAT0_MASK                 0x7FE0
+
+#define KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_0_OFFSET       0x41C8
+#define KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_1_OFFSET       0x41CC
+#define KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_2_OFFSET       0x41D0
+#define KVX_PHY_INT_LANE0_DIG_TX_LBERT_PAT1_3_OFFSET       0x41D4
+
+#define KVX_PHY_INT_LANE0_DIG_RX_LBERT_CTL_OFFSET          0x424C
+
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_MODE_SHIFT            0
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_MODE_MASK             0x000F
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_SYNC_SHIFT            4
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_SYNC_MASK             0x0010
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_PAT_SEL_SHIFT         5
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_PAT_SEL_MASK          0x0060
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_BER_SEL_SHIFT         7
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_BER_SEL_MASK          0x0080
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_USE_SAMPLE_CNT_SHIFT  8
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_USE_SAMPLE_CNT_MASK   0x0100
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_USE_PAT_SEL_SHIFT     9
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_USE_PAT_SEL_MASK      0x0200
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_ERROR_COUNT_CLR_N_SHIFT 10
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_ERROR_COUNT_CLR_N_MASK 0x0400
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_RESERVED_15_11_SHIFT  11
+#define KVX_PHY_INT_DIG_RX_LBERT_CTL_RESERVED_15_11_MASK   0xF800
+
+#define KVX_PHY_INT_LANE0_DIG_RX_LBERT_ERR_OFFSET          0x4250
+
+#define KVX_PHY_INT_DIG_RX_LBERT_ERR_COUNT_SHIFT           0
+#define KVX_PHY_INT_DIG_RX_LBERT_ERR_COUNT_MASK            0x7FFF
+#define KVX_PHY_INT_DIG_RX_LBERT_ERR_OV14_SHIFT            15
+#define KVX_PHY_INT_DIG_RX_LBERT_ERR_OV14_MASK             0x8000
+
+#define KVX_PHY_INT_RAWMEM_DIG_RAM_CMN                     0x30000
+#define KVX_PHY_INT_RAM_SIZE                               0x8000
+
+#endif /* KVX_PHY_INT_REGS_CV2_H */

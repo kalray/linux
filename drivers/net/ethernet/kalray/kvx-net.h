@@ -187,6 +187,7 @@ struct kvx_eth_chip_rev_data {
 	int num_res;
 	int default_mac_filter_param_pfc_etype;
 	const bool lnk_dwn_it_support;
+	int (* const kvx_phy_init_sequence)(struct kvx_eth_hw *hw, const struct firmware *fw);
 	void (* const fill_ipv4_filter)(struct kvx_eth_netdev *ndev, struct ethtool_rx_flow_spec *fs,
 		union filter_desc *flt,	int ptype_ovrd);
 	void (*const mac_pfc_cfg)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);

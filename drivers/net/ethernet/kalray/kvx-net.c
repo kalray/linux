@@ -36,6 +36,7 @@
 #include "kvx-net-hw.h"
 #include "v1/kvx-net-regs.h"
 #include "v2/kvx-ethrx-regs-cv2.h"
+#include "v2/kvx-phy-hw-cv2.h"
 #include "kvx-net-hdr.h"
 #include "kvx-mac-regs.h"
 #include "kvx-qsfp.h"
@@ -2411,7 +2412,7 @@ static struct platform_driver kvx_netdev_driver = {
 static int kvx_eth_phy_fw_update(struct platform_device *pdev)
 {
 	struct kvx_eth_dev *dev = platform_get_drvdata(pdev);
-	const struct firmware *fw;
+	const struct firmware *fw = NULL;
 	int ret = 0;
 
 	if (!load_phy_fw)
@@ -2420,14 +2421,15 @@ static int kvx_eth_phy_fw_update(struct platform_device *pdev)
 	dev_info(&pdev->dev, "Requesting phy firmware %s\n", KVX_PHY_FW_NAME);
 	ret = request_firmware(&fw, KVX_PHY_FW_NAME, &pdev->dev);
 	if (ret < 0 || fw->size == 0) {
-		dev_err(&pdev->dev, "Unable to load firmware %s\n",
+		fw = NULL;
+		dev_warn(&pdev->dev, "Unable to load firmware %s\n",
 			KVX_PHY_FW_NAME);
-		return ret;
 	}
 
 	/* Update parameters according to probbed fw informations */
-	ret = kvx_phy_fw_update(&dev->hw, fw->data);
-	release_firmware(fw);
+	ret = dev->chip_rev_data->kvx_phy_init_sequence(&dev->hw, fw);
+	if (fw)
+		release_firmware(fw);
 
 	return ret;
 }
@@ -2559,6 +2561,7 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv1 = {
 	.limited_parser_cap = true,
 	.kvx_eth_res_names = kvx_eth_res_names_cv1,
 	.num_res = KVX_ETH_NUM_RES_CV1,
+	.kvx_phy_init_sequence = kvx_phy_init_sequence_cv1,
 	.fill_ipv4_filter = fill_ipv4_filter_cv1,
 	.default_mac_filter_param_pfc_etype = 1,
 	.lnk_dwn_it_support = false,
@@ -2594,6 +2597,7 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
 	.num_res = KVX_ETH_NUM_RES_CV2,
 	.default_mac_filter_param_pfc_etype = 0,
 	.lnk_dwn_it_support = true,
+	.kvx_phy_init_sequence = kvx_phy_init_sequence_cv2,
 	.fill_ipv4_filter = fill_ipv4_filter_cv2,
 	.mac_pfc_cfg = kvx_mac_pfc_cfg_cv2,
 	.write_parser_ram_word = write_parser_ram_word_cv2,

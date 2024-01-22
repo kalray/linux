@@ -7,7 +7,7 @@ kvx_eth-y := 	kvx-net.o kvx-phy-hw.o \
 		kvx-net-parsing.o v1/kvx-net-parsing.o v2/kvx-net-parsing.o\
 		kvx-ethtool.o v1/kvx-ethtool.o v2/kvx-ethtool.o \
 		kvx-net-fs.o v1/kvx-net-fs.o v2/kvx-net-fs.o \
-		v1/kvx-net-tx.o v2/kvx-net-tx.o \
+		v1/kvx-net-tx.o v2/kvx-net-tx.o v2/kvx-phy-hw-cv2.o\
 		kvx-net-def-filters.o
 
 kvx_eth-$(CONFIG_DCB) += kvx-dcb.o

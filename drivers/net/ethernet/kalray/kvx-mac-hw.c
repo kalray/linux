@@ -13,6 +13,7 @@
 #include <linux/phylink.h>
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/firmware.h>
 
 #include "kvx-net.h"
 #include "kvx-net-hw.h"
@@ -51,21 +52,6 @@
 #define LT_DBG(dev, fmt, ...) dev_dbg(dev, dev_fmt(fmt), ##__VA_ARGS__)
 #define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 #define AN_REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
-
-#define kvx_poll(read, reg, mask, exp, timeout_in_ms) \
-({ \
-	unsigned long t = jiffies + msecs_to_jiffies(timeout_in_ms); \
-	u32 v = 0; \
-	do { v = read(hw, reg); \
-		if (exp == (v & (mask))) \
-			break; \
-		usleep_range(20, 50); \
-	} while (time_before(jiffies, t)); \
-	if (exp != (v & (mask))) \
-		dev_dbg(hw->dev, #reg" TIMEOUT l.%d (0x%x mask 0x%x exp 0x%x)\n", \
-			__LINE__, (u32)v, (u32)(v & (mask)), (u32)exp); \
-	(exp == (v & (mask))) ? 0 : -ETIMEDOUT; \
-})
 
 static void kvx_phymac_writel(struct kvx_eth_hw *hw, u32 val, u64 off)
 {
@@ -767,10 +753,10 @@ static int kvx_pll_wait_lock(struct kvx_eth_hw *hw)
 }
 
 /**
- * kvx_phy_fw_update() - Update phy rom code if not already done
+ * kvx_phy_init_sequence_cv1() - Update phy rom code if not already done
  * Reset phy and serdes
  */
-int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw)
+int kvx_phy_init_sequence_cv1(struct kvx_eth_hw *hw, const struct firmware *fw)
 {
 	u32 serdes_mask = get_serdes_mask(0, KVX_ETH_LANE_NB);
 	struct pll_cfg *pll = &hw->pll_cfg;
@@ -838,7 +824,7 @@ int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw)
 		 SERDES_ACK_TIMEOUT_MS);
 	/* Copy FW to RAM */
 	for (i = 0, addr = 0; i < KVX_PHY_RAM_SIZE; i += 2, addr += 4) {
-		data = (fw[i] << 8) | fw[i + 1];
+		data = (fw->data[i] << 8) | fw->data[i + 1];
 		kvx_phy_writew(hw, data, RAWMEM_DIG_RAM_CMN + addr);
 	}
 

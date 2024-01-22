@@ -18,6 +18,7 @@
 #include <net/page_pool.h>
 #include <linux/gpio/consumer.h>
 #include <linux/dma/kvx-dma-api.h>
+#include <linux/firmware.h>
 
 #include "kvx-net-hdr.h"
 #include "kvx-ethtool.h"
@@ -101,6 +102,21 @@
 #define for_each_cfg_lane(nb_lane, lane, cfg) \
 	for (nb_lane = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL), \
 		lane = cfg->id; lane < cfg->id + nb_lane; lane++)
+
+#define kvx_poll(read, reg, mask, exp, timeout_in_ms) \
+({ \
+	unsigned long t = jiffies + msecs_to_jiffies(timeout_in_ms); \
+	u32 v = 0; \
+	do { v = read(hw, reg); \
+		if (exp == (v & (mask))) \
+			break; \
+		usleep_range(20, 50); \
+	} while (time_before(jiffies, t)); \
+	if (exp != (v & (mask))) \
+		dev_dbg(hw->dev, #reg" TIMEOUT l.%d (0x%x mask 0x%x exp 0x%x)\n", \
+			__LINE__, (u32)v, (u32)(v & (mask)), (u32)exp); \
+	(exp == (v & (mask))) ? 0 : -ETIMEDOUT; \
+})
 
 enum kvx_eth_io {
 	KVX_ETH0 = 0,
@@ -1541,6 +1557,7 @@ enum pll_id {
 };
 
 enum serdes_width {
+	WIDTH_10BITS = 1,
 	WIDTH_16BITS = 2,
 	WIDTH_20BITS = 3,
 	WIDTH_32BITS = 4,
@@ -2030,9 +2047,9 @@ void kvx_phy_mac_10G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
 void kvx_phy_mac_25G_cfg(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg,
 			 enum serdes_width w);
-int kvx_phy_fw_update(struct kvx_eth_hw *hw, const u8 *fw_data);
 int kvx_eth_phy_lane_rx_serdes_data_enable(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_phy_rx_adaptation(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+int kvx_phy_init_sequence_cv1(struct kvx_eth_hw *hw, const struct firmware *fw);
 
 /* MAC */
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
