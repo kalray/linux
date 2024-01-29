@@ -22,6 +22,8 @@
 #include "kvx-phy-regs.h"
 #include "kvx-qsfp.h"
 
+#define AUTONEG_FSM_LOOP_MAX		5
+
 #define KVX_PHY_RAM_SIZE 0x8000
 
 #define MAC_SYNC_TIMEOUT_MS         500
@@ -53,6 +55,15 @@
 #define REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 #define AN_REG_DBG(dev, val, f) dev_dbg(dev, #f": 0x%lx\n", GETF(val, f))
 
+/* RTM TX FIR coefficients default param */
+struct ti_rtm_params fir_default_param = {.main = 14, .pre = 0, .post = 0};
+
+/* RTM TX FIR coefficients alternative params */
+struct ti_rtm_params fir_alternative_params[] = {
+	{.main = 11, .pre = 0, .post = -12},
+};
+const size_t fir_alternative_params_size = ARRAY_SIZE(fir_alternative_params);
+
 static void kvx_phymac_writel(struct kvx_eth_hw *hw, u32 val, u64 off)
 {
 	writel(val, hw->res[KVX_ETH_RES_PHYMAC].base + off);
@@ -81,6 +92,94 @@ u32 get_serdes_mask(int first_lane, int lane_nb)
 		return 0;
 
 	return GENMASK(first_lane + lane_nb - 1, first_lane);
+}
+
+static int kvx_eth_rtm_speed_cfg(struct kvx_eth_hw *hw, unsigned int speed)
+{
+	struct kvx_eth_rtm_params *params;
+	unsigned int lane_speed;
+	u8 rtm_channels, rtm;
+	int ret = 0, nb_lanes = kvx_eth_speed_to_nb_lanes(speed, &lane_speed);
+
+	if (nb_lanes == 0) {
+		dev_err(hw->dev, "incorrect speed %d\n", speed);
+		return -EINVAL;
+	}
+
+	for (rtm = 0; rtm < RTM_NB; rtm++) {
+		params = &hw->rtm_params[rtm];
+		if (!params->rtm)
+			continue;
+
+		dev_dbg(hw->dev, "Setting retimer%d speed to %d\n", rtm, lane_speed);
+		rtm_channels = TI_RTM_CHANNEL_FROM_ARRAY(params->channels, nb_lanes);
+		ret = ti_retimer_set_speed(params->rtm, rtm_channels, lane_speed);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
+void kvx_eth_set_rtm_tx_fir(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
+				struct ti_rtm_params *rtm_params)
+{
+	struct kvx_eth_rtm_params *rtm = &hw->rtm_params[RTM_TX];
+	u8 lane, lane_id, nb_lanes = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+
+	for (lane = cfg->id; lane < nb_lanes; lane++) {
+		lane_id = hw->rtm_params->channels[lane];
+		ti_retimer_set_tx_coef(rtm->rtm, BIT(lane_id), rtm_params);
+	}
+	dev_dbg(hw->dev, "Applied RTM TX fir: main = %d, pre = %d, post = %d\n", rtm_params->main,
+				rtm_params->pre, rtm_params->post);
+}
+
+/**
+ * kvx_eth_rtm_tx_coeff_update() - Update the RTM TX coefficients
+ * @hw: hardware description
+ * @cfg: lane configuration
+ *
+ * This function updates the RTM TX coeff. It iterates through a predefined set of coeff
+ * values and applies them to each lane (for copper cables). It switches to alternative
+ * coefficients if the default coefficient fails twice.
+ *
+ * No return value.
+ */
+static void kvx_eth_rtm_tx_coeff_update(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	struct kvx_eth_netdev *ndev = container_of(cfg, struct kvx_eth_netdev, cfg);
+	struct ti_rtm_params rtm_params;
+	const int max_default_coeff_attempts = 1; /* one default attempt + additional attempt */
+
+	if (!hw->rtm_tx_coef.using_alternate_coeffs) {
+		if (hw->rtm_tx_coef.default_coeff_attempts >= max_default_coeff_attempts) {
+			if (is_cable_copper(ndev->qsfp)) {
+				hw->rtm_tx_coef.using_alternate_coeffs = true;
+				hw->rtm_tx_coef.coeff_sets = fir_alternative_params;
+				hw->rtm_tx_coef.set_count = fir_alternative_params_size;
+				hw->rtm_tx_coef.index = 0;
+			} else {
+				dev_dbg(hw->dev, "No alternative RTM TX fir for fiber cables\n");
+				return;
+			}
+		} else {
+			hw->rtm_tx_coef.default_coeff_attempts++;
+			dev_dbg(hw->dev, "Attempt %d with default RTM TX fir\n", hw->rtm_tx_coef.default_coeff_attempts);
+			return;
+		}
+	}
+
+	if (hw->rtm_tx_coef.index < hw->rtm_tx_coef.set_count) {
+		rtm_params = hw->rtm_tx_coef.coeff_sets[hw->rtm_tx_coef.index];
+		kvx_eth_set_rtm_tx_fir(hw, cfg, &rtm_params);
+		hw->rtm_tx_coef.index++;
+	} else {
+		hw->rtm_tx_coef.default_coeff_attempts = 0;
+		hw->rtm_tx_coef.using_alternate_coeffs = false;
+		rtm_params = fir_default_param;
+		kvx_eth_set_rtm_tx_fir(hw, cfg, &rtm_params);
+	}
 }
 
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int max_frame_len)
@@ -2046,7 +2145,7 @@ void kvx_eth_lt_lp_fsm(struct kvx_eth_hw *hw, int lane)
 		}
 		break;
 	case LT_LP_STATE_DONE:
-		LT_DBG(hw->dev, "%s LT_LP_STATE_WAIT_HOLD lane[%d]\n",
+		LT_DBG(hw->dev, "%s LT_LP_STATE_DONE lane[%d]\n",
 		      __func__, lane);
 		break;
 	default:
@@ -2259,6 +2358,15 @@ static int kvx_eth_perform_link_training(struct kvx_eth_hw *hw,
 						lane);
 			}
 		}
+		/* In case of a failed link training attempt, updating the RTM TX FIR coefficients
+		 * with alternative coefficient parameters could potentially resolve the issue. This is
+		 * particularly relevant when the signal sent by the MPPA is not adequately received
+		 * by the LP. Some LP's successfully complete link training only after
+		 * applying these updated coefficients.
+		 */
+		if (hw->rtm_params[RTM_TX].rtm)
+			kvx_eth_rtm_tx_coeff_update(hw, cfg);
+
 		ret = -1;
 	}
 
@@ -2306,33 +2414,6 @@ static void kvx_eth_set_training_pattern(struct kvx_eth_hw *hw,
 
 		kvx_mac_writel(hw, val, lt_off + LT_KR_TRAINING_PATTERN_OFFSET);
 	}
-}
-
-static int kvx_eth_rtm_speed_cfg(struct kvx_eth_hw *hw, unsigned int speed)
-{
-	struct kvx_eth_rtm_params *params;
-	unsigned int lane_speed;
-	u8 rtm_channels, rtm;
-	int ret = 0, nb_lanes = kvx_eth_speed_to_nb_lanes(speed, &lane_speed);
-
-	if (nb_lanes == 0) {
-		dev_err(hw->dev, "incorrect speed %d\n", speed);
-		return -EINVAL;
-	}
-
-	for (rtm = 0; rtm < RTM_NB; rtm++) {
-		params = &hw->rtm_params[rtm];
-		if (!params->rtm)
-			continue;
-
-		dev_dbg(hw->dev, "Setting retimer%d speed to %d\n", rtm, lane_speed);
-		rtm_channels = TI_RTM_CHANNEL_FROM_ARRAY(params->channels, nb_lanes);
-		ret = ti_retimer_set_speed(params->rtm, rtm_channels, lane_speed);
-		if (ret)
-			break;
-	}
-
-	return ret;
 }
 
 /**
@@ -2413,8 +2494,8 @@ static int kvx_eth_mac_pcs_pma_autoneg_setup(struct kvx_eth_hw *hw,
 static bool kvx_eth_autoneg_fsm_execute(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	struct kvx_eth_dev *dev = container_of(hw, struct kvx_eth_dev, hw);
-	int ret, lane, lane_id = cfg->id, speed_fmt, fsm_loop = 5;
-	int nb_lane = KVX_ETH_LANE_NB; /* configure all lanes until the nogotiated speed is known */
+	int ret, lane, lane_id = cfg->id, speed_fmt, fsm_loop = AUTONEG_FSM_LOOP_MAX;
+	int nb_lane = KVX_ETH_LANE_NB; /* configure all lanes until the negotiated speed is known */
 	int state = AN_STATE_RESET;
 	u32 reg_clk = 100; /* MHz*/
 	u32 lt_off, an_off = MAC_CTRL_AN_OFFSET + lane_id * MAC_CTRL_AN_ELEM_SIZE;
@@ -2660,7 +2741,7 @@ next_state:
 	case AN_STATE_LT_PERFORM:
 		ret = kvx_eth_perform_link_training(hw, cfg);
 		if (ret) {
-			dev_err(hw->dev, "Link training failed\n");
+			dev_err(hw->dev, "Link training failed %d\n", ret);
 			state = AN_STATE_RESET;
 			goto next_state;
 		}
@@ -2788,6 +2869,14 @@ int kvx_eth_mac_setup_link(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	cfg->lc.fec = FEC_10G_FEC_REQUESTED | FEC_25G_BASE_R_REQUESTED |
 		FEC_25G_RS_REQUESTED;
 	cfg->lc.pause = 1;
+
+	if (hw->rtm_params[RTM_TX].rtm) {
+		hw->rtm_tx_coef.default_coeff_attempts = 0;
+		if (!cfg->autoneg_en && hw->rtm_tx_coef.using_alternate_coeffs) {
+			hw->rtm_tx_coef.using_alternate_coeffs = false;
+			kvx_eth_set_rtm_tx_fir(hw, cfg, &fir_default_param);
+		}
+	}
 
 	return kvx_eth_autoneg_fsm_execute(hw, cfg) ? 0 : -EAGAIN;
 }

@@ -2143,6 +2143,12 @@ void kvx_eth_qsfp_disconnect(struct kvx_qsfp *qsfp)
 {
 	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
 
+	/* Set back the RTM TX FIR */
+	if (ndev->hw->rtm_params[RTM_TX].rtm) {
+		ndev->hw->rtm_tx_coef.using_alternate_coeffs = false;
+		kvx_eth_set_rtm_tx_fir(ndev->hw, &ndev->cfg, &fir_default_param);
+	}
+
 	kvx_eth_down(ndev->netdev);
 }
 

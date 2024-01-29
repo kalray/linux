@@ -1625,6 +1625,14 @@ struct kvx_eth_rtm_params {
 	u32 channels[KVX_ETH_LANE_NB];
 };
 
+struct kvx_eth_rtm_tx_coeff_sets {
+	struct ti_rtm_params *coeff_sets;
+	size_t set_count;
+	int index;
+	bool using_alternate_coeffs;
+	int default_coeff_attempts;
+};
+
 /**
  * struct lt_saturate - Keep in memory if we already reached a maximum or minimum
  * value for link training FSM, this is useful to know if we reached the end of
@@ -1678,6 +1686,7 @@ struct lt_status {
  * @lut_entry_cv2_f: RX load balancer - LUT entries (cv2)
  * @lb_dlv_noc_f: Load balancer deliver - Completion level configuration (cv2)
  * @rtm_params: retimer relative parameters
+ * @rtm_tx_coef: retimer TX FIR coefficients set
  * @lt_status: link training fsm status structure
  * @mac_reset_lock: MAC reset critical section
  * @phy_serdes_reset_lock: PHY/Serdes reset critical section. It is protected from:
@@ -1725,6 +1734,7 @@ struct kvx_eth_hw {
 	struct kvx_eth_lb_dlv_noc_f lb_dlv_noc_f[NB_CLUSTER];
 	struct kvx_eth_phy_f phy_f;
 	struct kvx_eth_rtm_params rtm_params[RTM_NB];
+	struct kvx_eth_rtm_tx_coeff_sets rtm_tx_coef;
 	struct lt_status lt_status[KVX_ETH_LANE_NB];
 	struct mutex mac_reset_lock;
 	struct mutex phy_serdes_reset_lock;
@@ -1935,6 +1945,8 @@ enum kvx_eth_rx_lb_ana_parser_status_running_values {
 	KVX_ETH_RX_LBA_PARSER_STATUS_RUNNING = 0x01
 };
 
+extern struct ti_rtm_params fir_default_param;
+
 /* Helpers */
 static inline void kvx_eth_writeq(struct kvx_eth_hw *hw, u64 val, const u64 off)
 {
@@ -2034,6 +2046,10 @@ u32 noc_route_eth2c(enum kvx_eth_io eth_id, int cluster_id);
 void kvx_eth_dump_rx_hdr_cv1(struct kvx_eth_hw *hw, struct rx_metadata *hdr);
 void kvx_eth_dump_rx_hdr_cv2(struct kvx_eth_hw *hw, struct rx_metadata_cv2 *hdr);
 bool kvx_eth_speed_aggregated(const int speed);
+
+/* Retimer */
+void kvx_eth_set_rtm_tx_fir(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
+				struct ti_rtm_params *rtm_params);
 
 /* PHY */
 void kvx_eth_phy_f_init(struct kvx_eth_hw *hw);
