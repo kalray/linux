@@ -2598,7 +2598,10 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv1 = {
 	.phy_dynamic_global_reset = &kvx_phy_reset,
 	.phy_set_vph_indication = &kvx_phy_refclk_cfg,
 	.phy_dump_status = &kvx_eth_dump_phy_status,
-	.phy_mac_10G_cfg = &kvx_phy_mac_10G_cfg
+	.phy_mac_10G_cfg = &kvx_phy_mac_10G_cfg,
+	.phy_get_tx_eq_coef = &kvx_phy_get_tx_eq_coef_cv1,
+	.phy_set_tx_eq_coef = &kvx_phy_set_tx_eq_coef_cv1,
+	.phy_set_tx_default_eq_coef = &kvx_phy_set_tx_default_eq_coef_cv1,
 };
 
 static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
@@ -2640,6 +2643,9 @@ static const struct kvx_eth_chip_rev_data eth_chip_rev_data_cv2 = {
 	.phy_set_vph_indication = NULL,
 	.phy_dump_status = NULL,
 	.phy_mac_10G_cfg = NULL,
+	.phy_get_tx_eq_coef = &kvx_phy_get_tx_eq_coef_cv2,
+	.phy_set_tx_eq_coef = &kvx_phy_set_tx_eq_coef_cv2,
+	.phy_set_tx_default_eq_coef = &kvx_phy_set_tx_default_eq_coef_cv2,
 };
 static const struct of_device_id kvx_eth_match[] = {
 	{ .compatible = "kalray,coolidge-eth", .data = &eth_chip_rev_data_cv1 },

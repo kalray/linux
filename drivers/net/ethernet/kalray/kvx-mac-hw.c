@@ -1055,13 +1055,13 @@ int kvx_mac_phy_serdes_cfg(struct kvx_eth_hw *hw,
 int kvx_eth_phy_cfg(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
-	kvx_mac_phy_serdes_cfg(hw, cfg, 0);
 
+	kvx_mac_phy_serdes_cfg(hw, cfg, 0);
 	if (rev_d->phy_set_vph_indication) {
 		/* FTTB force refclk for 100G */
 		rev_d->phy_set_vph_indication(hw, SPEED_100000);
 	}
-	kvx_eth_phy_param_cfg(hw, hw->phy_f.param);
+	rev_d->phy_set_tx_default_eq_coef(hw, cfg);
 
 	return 0;
 }

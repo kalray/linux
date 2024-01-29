@@ -225,6 +225,9 @@ struct kvx_eth_chip_rev_data {
 	void (*const phy_set_vph_indication)(struct kvx_eth_hw *hw, unsigned int speed);
 	void (*const phy_dump_status)(struct kvx_eth_hw *hw);
 	void (*const phy_mac_10G_cfg)(struct kvx_eth_hw *hw, enum lane_rate_cfg rate_cfg, enum serdes_width w);
+	void (*const phy_get_tx_eq_coef)(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef);
+	void (*const phy_set_tx_eq_coef)(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef);
+	void (*const phy_set_tx_default_eq_coef)(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 };
 
 int kvx_eth_desc_unused(struct kvx_eth_ring *r);

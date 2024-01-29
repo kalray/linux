@@ -630,3 +630,44 @@ int kvx_phy_lane_rx_serdes_data_enable_cv2(struct kvx_eth_hw *hw, struct kvx_eth
 	}
 	return 0;
 }
+
+void kvx_phy_get_tx_eq_coef_cv2(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef)
+{
+	u32 base = KVX_PHY_SERDES_CONTROL_GRP_OFFSET + (lane_id * KVX_PHY_SERDES_CONTROL_GRP_ELEM_SIZE);
+	u32 v;
+
+	v = kvx_phy_readl(hw, base + KVX_PHY_SERDES_CONTROL_TX_SERDES_EQ_OFFSET);
+	coef->main = GETF(v, KVX_PHY_SERDES_CONTROL_TX_SERDES_EQ_EQ_MAIN);
+	coef->post = GETF(v, KVX_PHY_SERDES_CONTROL_TX_SERDES_EQ_EQ_POST);
+	coef->pre = GETF(v, KVX_PHY_SERDES_CONTROL_TX_SERDES_EQ_EQ_PRE);
+}
+
+void kvx_phy_set_tx_eq_coef_cv2(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef)
+{
+	u32 base = KVX_PHY_SERDES_CONTROL_GRP_OFFSET + (lane_id * KVX_PHY_SERDES_CONTROL_GRP_ELEM_SIZE);
+	u32 v = (coef->main << KVX_PHY_SERDES_CONTROL_TX_SERDES_EQ_EQ_MAIN_SHIFT) |
+			(coef->post << KVX_PHY_SERDES_CONTROL_TX_SERDES_EQ_EQ_POST_SHIFT) |
+			(coef->pre << KVX_PHY_SERDES_CONTROL_TX_SERDES_EQ_EQ_PRE_SHIFT);
+
+	kvx_phy_writel(hw, v, base + KVX_PHY_SERDES_CONTROL_TX_SERDES_EQ_OFFSET);
+}
+
+void kvx_phy_set_tx_default_eq_coef_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
+{
+	int lane_id = 0, lane_fst = 0;
+	int lane_nb = KVX_ETH_LANE_NB;
+	struct kvx_eth_phy_param *param;
+	struct tx_coefs coef;
+
+	if (cfg != NULL) {
+		lane_fst = cfg->id;
+		lane_nb = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
+	}
+	for (lane_id = lane_fst; lane_id < lane_nb + lane_fst ; lane_id++) {
+		param = &hw->phy_f.param[lane_id];
+		coef.main = param->swing;
+		coef.post = param->post;
+		coef.pre = param->pre;
+		kvx_phy_set_tx_eq_coef_cv2(hw, lane_id, &coef);
+	}
+}

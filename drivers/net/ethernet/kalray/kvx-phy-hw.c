@@ -12,6 +12,7 @@
 #include "kvx-phy-hw.h"
 #include "kvx-phy-regs.h"
 #include "kvx-mac-regs.h"
+#include "kvx-net.h"
 
 #define REG_DBG(dev, val, f) dev_info(dev, #f": 0x%lx\n", GETF(val, f))
 
@@ -59,8 +60,7 @@ static void rx_ber_param_update(void *data)
 }
 
 /* Reads actual values or overridden ones if enabled */
-static void kvx_phy_get_tx_coef(struct kvx_eth_hw *hw, int lane_id,
-	    struct tx_coefs *coef)
+void kvx_phy_get_tx_eq_coef_cv1(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef)
 {
 	u32 reg_main = LANE0_DIG_ASIC_TX_ASIC_IN_1 + lane_id * LANE_OFFSET;
 	u32 reg_prepost = LANE0_DIG_ASIC_TX_ASIC_IN_2 + lane_id * LANE_OFFSET;
@@ -90,13 +90,33 @@ static void kvx_phy_get_tx_coef(struct kvx_eth_hw *hw, int lane_id,
 	}
 }
 
+void kvx_phy_set_tx_eq_coef_cv1(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef)
+{
+	u32 off_main = LANE0_DIG_ASIC_TX_OVRD_IN_2 + lane_id * LANE_OFFSET;
+	u32 off_prepost = LANE0_DIG_ASIC_TX_OVRD_IN_3 + lane_id * LANE_OFFSET;
+	u16 v, mask;
+
+	mask = PRE_OVRD_EN_MASK | PRE_OVRD_CURSOR_MASK |
+		POST_OVRD_EN_MASK | POST_OVRD_CURSOR_MASK;
+	v = ((u32)coef->pre << PRE_OVRD_CURSOR_SHIFT) |
+		((u32)coef->post << POST_OVRD_CURSOR_SHIFT);
+	v |= (PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK);
+	updatew_bits(hw, PHY, off_prepost, mask, v);
+
+	mask = MAIN_OVRD_CURSOR_MASK | MAIN_OVRD_EN_MASK;
+	v = (u32)coef->main << MAIN_OVRD_CURSOR_SHIFT;
+	v |= MAIN_OVRD_EN_MASK;
+	updatew_bits(hw, PHY, off_main, mask, v);
+}
+
 void phy_param_update(void *data)
 {
 	struct kvx_eth_phy_param *p = (struct kvx_eth_phy_param *)data;
 	struct tx_coefs coef;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(p->hw);
 
 	/* fom is (already) updated after rx_adapt procedure */
-	kvx_phy_get_tx_coef(p->hw, p->lane_id, &coef);
+	rev_d->phy_get_tx_eq_coef(p->hw, p->lane_id, &coef);
 	p->swing = coef.main;
 	p->pre   = coef.pre;
 	p->post  = coef.post;
@@ -145,7 +165,7 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
 }
 
 /**
- * kvx_phy_param_tuning() - Set all lanes phy parameters (broadcast)
+ * kvx_phy_set_tx_default_eq_coef_cv1() - Set all lanes phy parameters (broadcast)
  *
  * Phy/serdes must be set prior to setting parameters (pre/post/swing).
  * Note that, since config is done in broadcast: for non-aggregated mode, all lanes
@@ -153,7 +173,7 @@ void kvx_eth_phy_f_init(struct kvx_eth_hw *hw)
  *
  * @hw: hw description
  */
-static void kvx_phy_param_tuning(struct kvx_eth_hw *hw)
+void kvx_phy_set_tx_default_eq_coef_cv1(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 {
 	struct kvx_eth_phy_param *param = &hw->phy_f.param[0];
 	u16 v,  mask;
@@ -332,14 +352,14 @@ int kvx_serdes_loopback(struct kvx_eth_hw *hw, int lane, int lane_nb)
 }
 
 /**
- * kvx_eth_get_tx_coef_delta() - Computes delta to apply on tx param
+ * kvx_eth_get_tx_eq_coef_delta() - Computes delta to apply on tx param
  *
  * Using alternate algorithm (assuming only one param change request at a time),
  * to maintain signal amplitude (specified in DWC phy spec - Alternate TX
  * Coefficient Update Algorithm for 10GBASE-KR)
  * Applies on [5:0] range, including [1:0] range for fractionnal pre/post coef
  */
-static void kvx_eth_get_tx_coef_delta(enum lt_coef_requests op,
+static void kvx_eth_get_tx_eq_coef_delta(enum lt_coef_requests op,
 			enum tx_coef_type param, struct tx_coefs *delta)
 {
 	memset(delta, 0, sizeof(*delta));
@@ -376,7 +396,7 @@ static void kvx_eth_get_tx_coef_delta(enum lt_coef_requests op,
 	}
 }
 
-static int kvx_eth_check_tx_coef_sat(enum lt_coef_requests op,
+static int kvx_eth_check_tx_eq_coef_sat(enum lt_coef_requests op,
 			enum tx_coef_type param, struct tx_coefs *cur)
 {
 	switch (param) {
@@ -414,7 +434,7 @@ static int kvx_eth_rtm_tx_coef(struct kvx_eth_hw *hw, int lane_id,
 	int lane = rtm->channels[lane_id];
 	int ret = 0;
 
-	kvx_eth_get_tx_coef_delta(op, param, &delta);
+	kvx_eth_get_tx_eq_coef_delta(op, param, &delta);
 
 	ret = ti_retimer_get_tx_coef(rtm->rtm, BIT(lane), &rtm_params);
 	dev_info(hw->dev, "%s lane[%d](rtm channel[%d]) pre: %d, post: %d, main: %d\n",
@@ -440,37 +460,25 @@ static int kvx_eth_rtm_tx_coef(struct kvx_eth_hw *hw, int lane_id,
 int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
 		     enum lt_coef_requests op, enum tx_coef_type param)
 {
-	u32 off_main = LANE0_DIG_ASIC_TX_OVRD_IN_2 + lane_id * LANE_OFFSET;
-	u32 off_prepost = LANE0_DIG_ASIC_TX_OVRD_IN_3 + lane_id * LANE_OFFSET;
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
 	struct tx_coefs delta, cur;
-	u16 v, mask;
 	int ret;
 
 	if (hw->rtm_params[RTM_TX].rtm)
 		return kvx_eth_rtm_tx_coef(hw, lane_id, op, param);
 
-	kvx_eth_get_tx_coef_delta(op, param, &delta);
+	kvx_eth_get_tx_eq_coef_delta(op, param, &delta);
 
 	/* Fallback if no retimers */
-	kvx_phy_get_tx_coef(hw, lane_id, &cur);
+	rev_d->phy_get_tx_eq_coef(hw, lane_id, &cur);
 	cur.main += delta.main;
 	cur.pre += delta.pre;
 	cur.post += delta.post;
 
-	ret = kvx_eth_check_tx_coef_sat(op, param, &cur);
+	ret = kvx_eth_check_tx_eq_coef_sat(op, param, &cur);
 	if (ret)
 		return ret;
-	mask = PRE_OVRD_EN_MASK | PRE_OVRD_CURSOR_MASK |
-		POST_OVRD_EN_MASK | POST_OVRD_CURSOR_MASK;
-	v = ((u32)cur.pre << PRE_OVRD_CURSOR_SHIFT) |
-		((u32)cur.post << POST_OVRD_CURSOR_SHIFT);
-	v |= (PRE_OVRD_EN_MASK | POST_OVRD_EN_MASK);
-	updatew_bits(hw, PHY, off_prepost, mask, v);
-
-	mask = MAIN_OVRD_CURSOR_MASK | MAIN_OVRD_EN_MASK;
-	v = (u32)cur.main << MAIN_OVRD_CURSOR_SHIFT;
-	v |= MAIN_OVRD_EN_MASK;
-	updatew_bits(hw, PHY, off_main, mask, v);
+	rev_d->phy_set_tx_eq_coef(hw, lane_id, &cur);
 
 	dev_dbg(hw->dev, "lane[%d] PRE/POST/MAIN: %d/%d/%d\n",
 		 lane_id, cur.pre, cur.post, cur.main);
@@ -480,7 +488,9 @@ int kvx_phy_tx_coef_op(struct kvx_eth_hw *hw, int lane_id,
 
 void kvx_eth_phy_param_cfg(struct kvx_eth_hw *hw, struct kvx_eth_phy_param *p)
 {
-	kvx_phy_param_tuning(hw);
+	const struct kvx_eth_chip_rev_data *rev_d = kvx_eth_get_rev_data(hw);
+
+	rev_d->phy_set_tx_default_eq_coef(hw, NULL);
 	if (p->trig_rx_adapt) {
 		kvx_mac_phy_rx_adapt(p);
 		p->trig_rx_adapt = false;

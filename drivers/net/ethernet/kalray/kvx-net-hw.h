@@ -2054,6 +2054,9 @@ int kvx_mac_phy_enable_serdes_cv1(struct kvx_eth_hw *hw, int fst_lane, int lane_
 int kvx_mac_phy_disable_serdes_cv1(struct kvx_eth_hw *hw, int fst_lane, int lane_nb);
 int kvx_eth_phy_pll_serdes_reconf_cv1(struct kvx_eth_hw *hw, unsigned int lane_id, unsigned int speed);
 void kvx_eth_dump_phy_status(struct kvx_eth_hw *hw);
+void kvx_phy_get_tx_eq_coef_cv1(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef);
+void kvx_phy_set_tx_eq_coef_cv1(struct kvx_eth_hw *hw, int lane_id, struct tx_coefs *coef);
+void kvx_phy_set_tx_default_eq_coef_cv1(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 
 /* MAC */
 void kvx_mac_hw_change_mtu(struct kvx_eth_hw *hw, int lane, int mtu);
