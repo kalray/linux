@@ -1276,6 +1276,7 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseSR_Full);
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseLR_Full);
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseER_Full);
+	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseKR_Full);
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 25000baseCR_Full);
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 25000baseSR_Full);
 	ethtool_link_ksettings_add_link_mode(cmd, supported, 40000baseCR4_Full);
@@ -1317,6 +1318,8 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 					advertising, 10000baseLR_Full);
 			ethtool_link_ksettings_add_link_mode(cmd,
 					advertising, 10000baseER_Full);
+			ethtool_link_ksettings_add_link_mode(cmd,
+					advertising, 10000baseKR_Full);
 			break;
 		case SPEED_100000:
 			ethtool_link_ksettings_add_link_mode(cmd,
@@ -1403,7 +1406,10 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 		}
 	}
 
-	kvx_eth_setup_link(ndev, restart_serdes);
+	bitmap_copy(ndev->cfg.cable_rate, cmd->link_modes.advertising,
+			__ETHTOOL_LINK_MODE_MASK_NBITS);
+
+	kvx_eth_setup_link(ndev, restart_serdes, false);
 
 	netdev_dbg(netdev, "%s set speed: %d\n", __func__, ndev->cfg.speed);
 bail:

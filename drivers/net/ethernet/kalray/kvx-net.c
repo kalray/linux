@@ -226,7 +226,8 @@ static void kvx_eth_update_carrier(struct kvx_eth_netdev *ndev, bool en)
 	}
 }
 
-void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes)
+void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes,
+		bool update_cable_modes)
 {
 	/* if ndev->cfg.restart_serdes is true, avoid setting it to false.
 	 * This way, we avoid the following scenario:
@@ -241,6 +242,8 @@ void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes)
 	 */
 	if (!ndev->cfg.restart_serdes)
 		ndev->cfg.restart_serdes = restart_serdes;
+
+	ndev->cfg.update_cable_modes = update_cable_modes;
 
 	/* if work is pending or running, no need to queue it  */
 	if (atomic_read(&ndev->link_cfg_running) || work_pending(&ndev->link_cfg))
@@ -402,7 +405,7 @@ static void kvx_eth_poll_link(struct work_struct *w)
 	}
 
 link_cfg:
-	kvx_eth_setup_link(ndev, false);
+	kvx_eth_setup_link(ndev, false, true);
 	return;
 bail:
 	if (ndev->link_poll_en)
@@ -433,7 +436,7 @@ void kvx_eth_up(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	kvx_eth_setup_link(ndev, true);
+	kvx_eth_setup_link(ndev, true, true);
 }
 
 /* kvx_eth_netdev_open() - Open ops
@@ -1767,7 +1770,7 @@ static irqreturn_t kvx_eth_irq_link_down(int irq, void *data)
 			 * - autoneg disabled: same speed,
 			 * - autoneg enabled: restart done in AN procedure
 			 */
-			kvx_eth_setup_link(ndev, false);
+			kvx_eth_setup_link(ndev, false, true);
 		}
 	}
 	spin_unlock(&hw->link_down_lock);
@@ -2146,7 +2149,7 @@ void kvx_eth_qsfp_cdr_lol(struct kvx_qsfp *qsfp)
 	if (kvx_eth_mac_getlink(ndev->hw, &ndev->cfg))
 		netdev_warn(ndev->netdev, "inconsistency detected: MAC status OK while qsfp lol asserted\n");
 
-	kvx_eth_setup_link(ndev, true);
+	kvx_eth_setup_link(ndev, true, true);
 }
 
 static struct kvx_qsfp_ops qsfp_ops = {

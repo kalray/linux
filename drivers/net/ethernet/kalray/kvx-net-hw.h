@@ -1489,6 +1489,7 @@ struct kvx_eth_lane_cfg {
 	struct list_head tx_fifo_list;
 	struct kvx_eth_mac_f mac_f;
 	u32 default_dispatch_entry;
+	bool update_cable_modes;
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(cable_rate);
 	bool autoneg_en;
 	bool restart_serdes;

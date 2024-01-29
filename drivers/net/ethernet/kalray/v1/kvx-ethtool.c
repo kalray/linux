@@ -90,7 +90,7 @@ int kvx_eth_set_pauseparam_cv1(struct net_device *netdev,
 	pfc_f->global_pause_en = pause_mask;
 	kvx_eth_pfc_f_cfg(ndev->hw, pfc_f);
 
-	kvx_eth_setup_link(ndev, false);
+	kvx_eth_setup_link(ndev, false, true);
 
 	return 0;
 }

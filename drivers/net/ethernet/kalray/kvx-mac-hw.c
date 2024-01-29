@@ -2708,12 +2708,33 @@ int kvx_eth_mac_setup_link(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	if (kvx_eth_phy_is_bert_en(hw))
 		return 0;
 
-	kvx_eth_update_cable_modes(ndev);
+	if (ndev->cfg.update_cable_modes) {
+		kvx_eth_update_cable_modes(ndev);
 
-	/* Force abilities */
-	cfg->lc.rate = (RATE_40GBASE_KR4 | RATE_40GBASE_CR4 |
-			RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S |
-			RATE_10GBASE_KR);
+		/* Force abilities */
+		cfg->lc.rate = (RATE_40GBASE_KR4 | RATE_40GBASE_CR4 |
+				RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S |
+				RATE_10GBASE_KR);
+	} else {
+		cfg->lc.rate = 0;
+
+		if (kvx_test_mode(cfg->cable_rate, 1000baseKX_Full))
+			cfg->lc.rate |= (RATE_1GBASE_KX);
+
+		if (kvx_test_mode(cfg->cable_rate, 10000baseKR_Full) ||
+		    kvx_test_mode(cfg->cable_rate, 10000baseCR_Full))
+			cfg->lc.rate |= (RATE_10GBASE_KR | RATE_10GBASE_KX4);
+
+		if (kvx_test_mode(cfg->cable_rate, 25000baseKR_Full) ||
+		    kvx_test_mode(cfg->cable_rate, 25000baseCR_Full))
+			cfg->lc.rate |= (RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S);
+
+		if (kvx_test_mode(cfg->cable_rate, 40000baseCR4_Full))
+			cfg->lc.rate |= (RATE_40GBASE_CR4);
+
+		if (kvx_test_mode(cfg->cable_rate, 40000baseKR4_Full))
+			cfg->lc.rate |= (RATE_40GBASE_KR4);
+	}
 
 	if (kvx_test_mode(cfg->cable_rate, 100000baseSR4_Full) ||
 	    kvx_test_mode(cfg->cable_rate, 100000baseKR4_Full) ||
