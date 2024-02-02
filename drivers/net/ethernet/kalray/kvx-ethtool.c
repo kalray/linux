@@ -374,18 +374,30 @@ static union tcp_filter_desc *fill_tcp_filter(struct kvx_eth_netdev *ndev,
 static union udp_filter_desc *fill_udp_filter(struct kvx_eth_netdev *ndev,
 		struct ethtool_rx_flow_spec *fs, union filter_desc *flt)
 {
+	int proto = REMOVE_FLOW_EXTS(fs->flow_type);
+
 	union udp_filter_desc *filter = &flt->udp;
-	struct ethtool_tcpip4_spec *l4_val  = &fs->h_u.udp_ip4_spec;
-	struct ethtool_tcpip4_spec *l4_mask = &fs->m_u.udp_ip4_spec;
-	u16 src_port = ntohs(l4_val->psrc);
-	u16 src_mask = ntohs(l4_mask->psrc);
-	u16 dst_port = ntohs(l4_val->pdst);
-	u16 dst_mask = ntohs(l4_mask->pdst);
+	u16 src_port;
+	u16 src_mask;
+	u16 dst_port;
+	u16 dst_mask;
 	int tt = flow_type_to_traffic_type(fs->flow_type);
 	u8 rx_hash_field;
 	int ret;
 
 	memcpy(filter, &udp_filter_default, sizeof(udp_filter_default));
+
+	if (proto == UDP_V4_FLOW) {
+		src_port = ntohs(fs->h_u.udp_ip4_spec.psrc);
+		src_mask = ntohs(fs->m_u.udp_ip4_spec.psrc);
+		dst_port = ntohs(fs->h_u.udp_ip4_spec.pdst);
+		dst_mask = ntohs(fs->m_u.udp_ip4_spec.pdst);
+	} else {
+		src_port = ntohs(fs->h_u.udp_ip6_spec.psrc);
+		src_mask = ntohs(fs->m_u.udp_ip6_spec.psrc);
+		dst_port = ntohs(fs->h_u.udp_ip6_spec.pdst);
+		dst_mask = ntohs(fs->m_u.udp_ip6_spec.pdst);
+	}
 
 	if (src_mask != 0) {
 		ret = fill_ports(filter, src, src_port, src_mask);
