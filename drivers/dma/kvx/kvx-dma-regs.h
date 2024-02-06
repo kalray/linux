@@ -14,13 +14,11 @@
 #define KVX_DMA_RX_JOB_CACHE_NUMBER          (4)
 #define KVX_DMA_TX_THREAD_NUMBER             (4)
 #define KVX_DMA_TX_PGRM_MEM_NUMBER           (128)
-#define KVX_DMA_TX_PGRM_TABLE_NUMBER         (16)
+#define KVX_DMA_TX_PGRM_TAB_NUMBER           (16)
 #define KVX_DMA_NOC_ROUTE_TABLE_NUMBER       (512)
 #define KVX_DMA_BW_LIMITER_TABLE_NUMBER      (16)
-#define KVX_DMA_TX_JOB_QUEUE_NUMBER          (64)
-#define KVX_DMA_TX_COMPLETION_QUEUE_NUMBER   (64)
-#define KVX_DMA_TX_PGRM_MEM_NUMBER           (128)
-#define KVX_DMA_TX_PGRM_TAB_NUMBER           (16)
+#define KVX_DMA_TX_JOB_QUEUE_NUMBER          (64) //72 in cv2
+#define KVX_DMA_TX_COMPLETION_QUEUE_NUMBER   (64) //72 in cv2
 #define KVX_DMA_ASN_MASK                     (0x1FF)
 #define KVX_DMA_NOTIF_ARG_INDEX_MASK         (0x3F)
 #define KVX_DMA_CV2_COMP_Q_MODE_SHIFT        (6)   /* only in coolidge v2 */

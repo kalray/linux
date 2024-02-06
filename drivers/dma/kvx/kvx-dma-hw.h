@@ -81,6 +81,8 @@ enum dma_error_bit {
  * @fence_after: Perform fence after launching this job
  * @eot: Only for MEM2ETH transfer type
  * @hdr_addr: eth tx header dma_addr
+ * @lock_tx_thread: Make the DMA lock the tx thread where the job is pushed, it aims to avoid descheduling at tx thread level.
+ * @lock_tx_jobq: Make the DMA lock the tx job queue where the job is pushed, it aims to avoid descheduling at tx job queue level.
  */
 struct kvx_dma_tx_job {
 	u64 src_dma_addr;
@@ -96,6 +98,8 @@ struct kvx_dma_tx_job {
 	u64 fence_after;
 	u64 eot;
 	u64 hdr_addr;
+	u64 lock_tx_thread;
+	u64 lock_tx_jobq;
 } __packed __aligned(8);
 
 /**
@@ -211,6 +215,7 @@ struct kvx_dma_tx_comp {
 struct kvx_dma_tx_job_desc {
 	u64 param[KVX_DMA_UC_NB_PARAMS];
 	u64 config;
+	u64 config_bis; // only CV2
 } __packed  __aligned(16);
 
 int is_asn_global(u32 asn);

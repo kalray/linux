@@ -858,7 +858,7 @@ static int kvx_dma_parse_dt(struct platform_device *pdev,
 				       (u32 *) &dev->dma_fws.ids, 2)  != 0) {
 		dev_warn(&pdev->dev, "Property kalray,dma-ucode-ids not found\n");
 		dev->dma_fws.ids.start = 0;
-		dev->dma_fws.ids.nb = KVX_DMA_TX_PGRM_TABLE_NUMBER;
+		dev->dma_fws.ids.nb = KVX_DMA_TX_PGRM_TAB_NUMBER;
 	}
 	if (of_property_read_u32_array(np, "kalray,dma-ucode-reg",
 				(u32 *) &dev->dma_fws.pgrm_mem, 2) != 0) {

@@ -81,10 +81,16 @@ struct kvx_dma_pkt_desc {
 /**
  * Tx job push config
  */
+#define KVX_DMA_COMPQ_ID_SHIFT     (0)
 #define KVX_DMA_ROUTE_ID_SHIFT     (16)
 #define KVX_DMA_PRGM_ID_SHIFT      (32)
 #define KVX_DMA_FENCE_BEFORE_SHIFT (40)
 #define KVX_DMA_FENCE_AFTER_SHIFT  (48)
+#define KVX_DMA_CRC_COMMAND_SHIFT  (56) //only CV2
+
+#define KVX_DMA_CRC_CONTEXT_ID_SHIFT     (0) //only CV2
+#define KVX_DMA_LOCK_TX_THREAD_SHIFT     (8) //only CV2
+#define KVX_DMA_LOCK_TX_JOBQ_SHIFT       (9) //only CV2
 
 /**
  * Tx monitoring reg
@@ -1020,7 +1026,9 @@ int kvx_dma_rdma_tx_push_mem2mem(struct kvx_dma_phy *phy,
 			(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
 			(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
 			pgrm_id << KVX_DMA_PRGM_ID_SHIFT |
-			entry << KVX_DMA_ROUTE_ID_SHIFT  | comp_queue_id,
+			entry << KVX_DMA_ROUTE_ID_SHIFT |
+			comp_queue_id << KVX_DMA_COMPQ_ID_SHIFT,
+		.config_bis = 0ULL,
 	};
 
 	dev_dbg(phy->dev, "%s s: 0x%llx d: 0x%llx len: %lld comp_q_id: %lld\n",
@@ -1069,7 +1077,8 @@ int kvx_dma_rdma_tx_push_mem2noc(struct kvx_dma_phy *phy,
 			(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
 			(pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
 			(noc_route_id << KVX_DMA_ROUTE_ID_SHIFT) |
-			comp_queue_id,
+			comp_queue_id << KVX_DMA_COMPQ_ID_SHIFT,
+		.config_bis = 0ULL,
 	};
 
 	return kvx_dma_push_job_fast(phy, &p, hw_job_id);
@@ -1134,11 +1143,11 @@ static void kvx_dma_dump_tx_jobq(struct kvx_dma_phy *phy)
 		r -= 2;
 	while (r <= rp) {
 		job = &tx_jobq[r & jobq->size_mask];
-		dev_dbg(phy->dev, "Tx jobq[%d][%lld] param: 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx\n",
+		dev_dbg(phy->dev, "Tx jobq[%d][%lld] param: 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx 0x%llx\n",
 			phy->hw_id, r & jobq->size_mask,
 			job->param[0], job->param[1], job->param[2],
 			job->param[3], job->param[4], job->param[5],
-			job->param[6], job->param[7], job->config
+			job->param[6], job->param[7], job->config, job->config_bis
 			);
 		r++;
 	}
@@ -1162,12 +1171,16 @@ void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
 	struct kvx_dma_tx_job_desc *job = &tx_jobq[idx];
 	const u64 object_len = tx_job->len;
 	u64 hdr_en = !!(tx_job->hdr_addr);
+	u64 config_bis = 0ULL;
 	u64 config = 0ULL |
 		(tx_job->fence_before << KVX_DMA_FENCE_BEFORE_SHIFT) |
 		(tx_job->fence_after << KVX_DMA_FENCE_AFTER_SHIFT) |
 		(mem2eth_ucode.pgrm_id << KVX_DMA_PRGM_ID_SHIFT) |
 		(tx_job->route_id << KVX_DMA_ROUTE_ID_SHIFT) |
-		tx_job->comp_q_id;
+		tx_job->comp_q_id << KVX_DMA_COMPQ_ID_SHIFT;
+	if (phy->chip_rev_data->revision == COOLIDGE_V2)
+		config_bis = (tx_job->lock_tx_thread << KVX_DMA_LOCK_TX_THREAD_SHIFT) |
+			(tx_job->lock_tx_jobq << KVX_DMA_LOCK_TX_JOBQ_SHIFT);
 
 	dev_dbg(phy->dev, "%s queue[%d] ticket: %lld route: 0x%llx hdr_en:%lld eot:%lld tx_hdr: 0x%llx\n",
 		 __func__, phy->hw_id, ticket, tx_job->route_id,
@@ -1186,6 +1199,8 @@ void kvx_dma_pkt_tx_write_job(struct kvx_dma_phy *phy, u64 ticket,
 	else
 		writeq_relaxed(tx_job->credit_size, &job->param[7]); //credit param size in bytes
 	writeq_relaxed(config, &job->config);
+	if (phy->chip_rev_data->revision == COOLIDGE_V2)
+		writeq_relaxed(config_bis, &job->config_bis);
 	/* Expect write done */
 	wmb();
 }
