@@ -310,8 +310,8 @@ int kvx_dma_prepare_pkt(void *phy, struct scatterlist *sg, size_t sg_len,
 		txd.route_id = route_id;
 		txd.fence_before = 1;
 		txd.fence_after = 0;
-		txd.lock_tx_thread = 0;
-		txd.lock_tx_jobq = 0;
+		txd.lock_tx_thread = 1;
+		txd.lock_tx_jobq = (!eot ? 1 : 0);
 
 		/* credit, just fill txd.credit_size here */
 		/* only used by CV2, txd.credit_size never used later when CV1 */
