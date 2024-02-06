@@ -2300,7 +2300,7 @@ static void kvx_netdev_probe_hw_cv2(struct kvx_eth_hw *hw, struct kvx_eth_netdev
 {
 	int i;
 
-	kvx_eth_lb_cv2_set_default(hw, ndev->dma_cfg.rx_chan_id.start);
+	kvx_eth_lb_cv2_set_default(hw, ndev->dma_cfg.rx_chan_id.start, ndev->dma_cfg.rx_cache_id);
 	for (i = 0; i < KVX_ETH_PHYS_PARSER_NB_CV2; ++i)
 		kvx_eth_parser_cv2_f_cfg(hw, &hw->parser_cv2_f[i]);
 	for (i = 0; i < RX_LB_LUT_ARRAY_SIZE; ++i)

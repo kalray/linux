@@ -2072,7 +2072,7 @@ u32 kvx_eth_lb_has_header(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 u32 kvx_eth_lb_has_footer(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 int parser_config_update(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_cv1_set_default(struct kvx_eth_hw *hw, int lane_id);
-void kvx_eth_lb_cv2_set_default(struct kvx_eth_hw *hw, u8 dispatch_info);
+void kvx_eth_lb_cv2_set_default(struct kvx_eth_hw *hw, u8 rx_chan_id, u8 rx_cache_id);
 void kvx_eth_lb_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_lb_cv2_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
 void kvx_eth_parser_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);

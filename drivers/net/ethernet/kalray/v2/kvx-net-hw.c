@@ -766,12 +766,22 @@ void kvx_eth_parser_cv2_f_init(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *c
 		}
 	}
 }
-void kvx_eth_lb_cv2_set_default(struct kvx_eth_hw *hw, u8 dispatch_info)
+void kvx_eth_lb_cv2_set_default(struct kvx_eth_hw *hw, u8 rx_chan_id, u8 rx_cache_id)
 {
 	int i;
+	u16 dispatch_info;
+
+	dispatch_info = 0ULL |
+		((rx_chan_id  << KVX_ETH_LBA_CONTROL_LB_DEFAULT_PARSER_DEFAULT_DISPATCH_INFO_RX_TAG_SHIFT) & KVX_ETH_LBA_CONTROL_LB_DEFAULT_PARSER_DEFAULT_DISPATCH_INFO_RX_TAG_MASK) |
+		 (rx_cache_id << KVX_ETH_LBA_CONTROL_LB_DEFAULT_PARSER_DEFAULT_DISPATCH_INFO_RX_CACHE_ID_SHIFT);
 
 	for (i = 0; i < KVX_ETH_LANE_NB; i++) {
-		kvx_lbana_writel(hw, 0, RX_LB_ERROR_CTRL(i));
-		kvx_lbana_writel(hw, dispatch_info, RX_LB_DEFAULT_RULE_DISPATCH_INFO(i));
+		hw->lb_cv2_f[i].keep_all_crc_error_pkt = 0;
+		hw->lb_cv2_f[i].keep_all_mac_error_pkt = 0;
+		hw->lb_cv2_f[i].keep_all_express_mac_error_pkt = 0;
+		hw->lb_cv2_f[i].keep_all_mtu_error_pkt = 0;
+		hw->lb_cv2_f[i].keep_all_express_mtu_error_pkt = 0;
+		hw->lb_cv2_f[i].default_dispatch_info = dispatch_info;
+		kvx_eth_lb_cv2_f_cfg(hw, &hw->lb_cv2_f[i]);
 	}
 }
