@@ -212,6 +212,46 @@ static void kvx_eth_reset_tx(struct kvx_eth_netdev *ndev)
 	}
 }
 
+static bool kvx_eth_rtm_cdr_lock(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_hw *hw = ndev->hw;
+	int i, nb_lanes = kvx_eth_speed_to_nb_lanes(ndev->cfg.speed, NULL);
+	u8 lane;
+
+	for (i = ndev->cfg.id; i < nb_lanes; i++) {
+		lane = (u8)hw->rtm_params->channels[i];
+
+		if (!ti_retimer_get_cdr_lock(hw->rtm_params[RTM_RX].rtm, BIT(lane)))
+			return false;
+	}
+
+	return true;
+}
+
+static void kvx_eth_rtm_tx_enable(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_hw *hw = ndev->hw;
+	int i, nb_lanes = kvx_eth_speed_to_nb_lanes(ndev->cfg.speed, NULL);
+	u8 lane;
+
+	for (i = ndev->cfg.id; i < ndev->cfg.id + nb_lanes; i++) {
+		lane = (u8)hw->rtm_params[RTM_TX].channels[i];
+		ti_retimer_tx_enable(hw->rtm_params[RTM_TX].rtm, BIT(lane));
+	}
+}
+
+static void kvx_eth_rtm_tx_disable(struct kvx_eth_netdev *ndev)
+{
+	struct kvx_eth_hw *hw = ndev->hw;
+	int i;
+	u8 lane;
+
+	for (i = ndev->cfg.id; i < KVX_ETH_LANE_NB; i++) {
+		lane = (u8)hw->rtm_params[RTM_TX].channels[i];
+		ti_retimer_tx_disable(hw->rtm_params[RTM_TX].rtm, BIT(lane));
+	}
+}
+
 static void kvx_eth_update_carrier(struct kvx_eth_netdev *ndev, bool en)
 {
 	if (en) {
@@ -286,6 +326,10 @@ static int kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 		ndev->cfg.duplex = DUPLEX_FULL;
 	}
 
+	/* Enable the TX retimer when bringing interface up */
+	if (hw->rtm_params[RTM_TX].rtm)
+		kvx_eth_rtm_tx_enable(ndev);
+
 	if (ndev->cfg.autoneg_en && hw->rxtx_crossed) {
 		netdev_err(ndev->netdev, "Autonegotiation is not supported with inverted lanes\n");
 		return -EOPNOTSUPP;
@@ -350,6 +394,8 @@ static void kvx_eth_link_cfg(struct work_struct *w)
 	if (netif_carrier_ok(ndev->netdev)) {
 		kvx_eth_reset_tx(ndev);
 		netif_tx_stop_all_queues(ndev->netdev);
+		if (ndev->hw->rtm_params[RTM_TX].rtm)
+			kvx_eth_rtm_tx_disable(ndev);
 		kvx_eth_update_carrier(ndev, false);
 	}
 
@@ -370,22 +416,6 @@ static void kvx_eth_link_cfg(struct work_struct *w)
 bail:
 	ndev->cfg.restart_serdes = false;
 	atomic_set(&ndev->link_cfg_running, 0); /* in case of break */
-}
-
-static bool kvx_eth_rtm_cdr_lock(struct kvx_eth_netdev *ndev)
-{
-	struct kvx_eth_hw *hw = ndev->hw;
-	int i, nb_lanes = kvx_eth_speed_to_nb_lanes(ndev->cfg.speed, NULL);
-	u8 lane;
-
-	for (i = ndev->cfg.id; i < nb_lanes; i++) {
-		lane = (u8)hw->rtm_params->channels[i];
-
-		if (!ti_retimer_get_cdr_lock(hw->rtm_params[RTM_RX].rtm, BIT(lane)))
-			return false;
-	}
-
-	return true;
 }
 
 static void kvx_eth_poll_link(struct work_struct *w)
@@ -490,6 +520,11 @@ void kvx_eth_down(struct net_device *netdev)
 	kvx_net_cancel_link_cfg(ndev);
 
 	kvx_eth_reset_tx(ndev);
+
+	/* Disable the TX retimer when bringing port down */
+	if (hw->rtm_params[RTM_TX].rtm)
+		kvx_eth_rtm_tx_disable(ndev);
+
 	netif_tx_stop_all_queues(ndev->netdev);
 	kvx_eth_update_carrier(ndev, false);
 }

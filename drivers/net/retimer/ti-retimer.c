@@ -560,6 +560,44 @@ u8 ti_retimer_get_rate(struct i2c_client *client, u8 channel)
 	return (rate & RATE_MASK);
 }
 
+int ti_retimer_tx_disable(struct i2c_client *client, u8 channel)
+{
+	struct seq_args sig_set_seq[] = {
+		/* Power down the driver */
+		{.reg = 0x15, .offset = 0x00, .mask = 0xff,
+		 .value = 0x18},
+		/* Force signal detect status to 0 */
+		{.reg = 0x14, .offset = 0x00, .mask = 0xff,
+		 .value = 0x44},
+		/* Power down signal detect block */
+		{.reg = 0x13, .offset = 0x00, .mask = 0xff,
+		 .value = 0xf0},
+	};
+
+	return ti_retimer_channel_write(client, channel, sig_set_seq,
+					ARRAY_SIZE(sig_set_seq));
+}
+EXPORT_SYMBOL(ti_retimer_tx_disable);
+
+int ti_retimer_tx_enable(struct i2c_client *client, u8 channel)
+{
+	struct seq_args sig_set_seq[] = {
+		/* Power up the driver */
+		{.reg = 0x15, .offset = 0x00, .mask = 0xff,
+		 .value = 0x10},
+		/* Signal detect normal operation */
+		{.reg = 0x14, .offset = 0x00, .mask = 0xff,
+		 .value = 0x04},
+		/* Enable signal detect block */
+		{.reg = 0x13, .offset = 0x00, .mask = 0xff,
+		 .value = 0xb0},
+	};
+
+	return ti_retimer_channel_write(client, channel, sig_set_seq,
+					ARRAY_SIZE(sig_set_seq));
+}
+EXPORT_SYMBOL(ti_retimer_tx_enable);
+
 static int retimer_cfg(struct ti_rtm_dev *rtm)
 {
 	struct device *dev = &rtm->client->dev;

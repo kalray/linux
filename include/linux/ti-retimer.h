@@ -41,7 +41,8 @@ extern int ti_retimer_get_tx_coef(struct i2c_client *client, u8 channel,
 		struct ti_rtm_params *params);
 extern int ti_retimer_set_tx_coef(struct i2c_client *client, u8 channel,
 		struct ti_rtm_params *params);
-extern int ti_retimer_get_status(struct i2c_client *client, u8 channel);
 extern u8 ti_retimer_get_cdr_lock(struct i2c_client *client, u8 channel);
+extern int ti_retimer_tx_disable(struct i2c_client *client, u8 channel);
+extern int ti_retimer_tx_enable(struct i2c_client *client, u8 channel);
 
 #endif /* __TI_RETIMER_H */
