@@ -1917,7 +1917,10 @@ static void kvx_eth_netdev_set_hw_addr(struct kvx_eth_netdev *ndev)
 	u64 h;
 	int err;
 
-	err = of_get_mac_address(ndev->netdev->dev.of_node, addr);
+	/* use the platform device set by kvx_eth_create_netdev() which
+	 * holds the right of_node.
+	 */
+	err = of_get_mac_address(ndev->dev->of_node, addr);
 	if (!err) {
 		a = (u8 *)addr;
 		/* set local assignment bit (IEEE802) */
