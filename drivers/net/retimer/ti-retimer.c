@@ -22,9 +22,8 @@
 #define TI_RTM_I2C_ADDR_BUF_SIZE (4)
 #define TI_RTM_SEQ_ARGS_SIZE     (4)
 #define TI_RTM_SEQ_ARGS_MAX_LEN  (32)
-#define TI_RTM_REGINIT_MAX_SIZE  (64)
+#define TI_RTM_REGINIT_MAX_SIZE  (256)
 #define TI_RTM_DEFAULT_TIMEOUT   (500)
-#define TI_RTM_MAX_REGINIT_SIZE  (256)
 
 #define VALUE_SIGN(val) (val < 0 ? TX_SIGN_MASK : 0)
 
@@ -603,7 +602,7 @@ static int parse_dt(struct ti_rtm_dev *rtm)
 	struct device_node *np = rtm->client->dev.of_node;
 	struct device *dev = &rtm->client->dev;
 	int index, i, ret = 0;
-	u32 tmp_reg_init[TI_RTM_MAX_REGINIT_SIZE];
+	u32 tmp_reg_init[TI_RTM_REGINIT_MAX_SIZE];
 
 	if (!np)
 		return -EINVAL;
