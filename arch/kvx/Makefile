@@ -21,8 +21,8 @@ KBUILD_CFLAGS_MODULE += -mfarcall
 
 KBUILD_LDFLAGS += -m elf64kvx
 
-head-y	:= arch/kvx/kernel/head.o
-libs-y  += arch/kvx/lib/
+head-y := arch/kvx/kernel/head.o
+libs-y += arch/kvx/lib/
 core-y += arch/kvx/kernel/ \
           arch/kvx/mm/ \
           arch/kvx/platform/
@@ -38,7 +38,7 @@ install:
 	$(Q)$(MAKE) $(build)=$(boot) BOOTIMAGE=$(KBUILD_IMAGE) install
 
 define archhelp
-	echo  '* bImage         - Alias to selected kernel format (bImage.gz by default)'
+  echo  '* bImage         - Alias to selected kernel format (bImage.gz by default)'
   echo  '  bImage.bin     - Uncompressed Kernel-only image for barebox (arch/$(ARCH)/boot/bImage.bin)'
   echo  '  bImage.bz2     - Kernel-only image for barebox (arch/$(ARCH)/boot/bImage.bz2)'
   echo  '* bImage.gz      - Kernel-only image for barebox (arch/$(ARCH)/boot/bImage.gz)'
