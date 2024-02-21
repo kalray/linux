@@ -176,10 +176,32 @@ static ssize_t rate_show(struct kobject *kobj, struct kobj_attribute *attr,
 }
 static struct kobj_attribute attr_rate = __ATTR_RO(rate);
 
+static ssize_t veo_show(struct kobject *kobj, struct kobj_attribute *attr,
+			     char *buf)
+{
+	struct ti_rtm_coef *p = (struct ti_rtm_coef *)kobj;
+	u8 val = ti_retimer_get_veo(p->i2c_client, BIT(p->channel));
+
+	return scnprintf(buf, STR_LEN, "%i\n", val);
+}
+static struct kobj_attribute attr_veo = __ATTR_RO(veo);
+
+static ssize_t heo_show(struct kobject *kobj, struct kobj_attribute *attr,
+			     char *buf)
+{
+	struct ti_rtm_coef *p = (struct ti_rtm_coef *)kobj;
+	u8 val = ti_retimer_get_heo(p->i2c_client, BIT(p->channel));
+
+	return scnprintf(buf, STR_LEN, "%i\n", val);
+}
+static struct kobj_attribute attr_heo = __ATTR_RO(heo);
+
 static struct attribute *attrs[] = {
 	&attr_cdr_lock.attr,
 	&attr_sig_det.attr,
 	&attr_rate.attr,
+	&attr_veo.attr,
+	&attr_heo.attr,
 	NULL,
 };
 

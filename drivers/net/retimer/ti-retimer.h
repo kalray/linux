@@ -122,5 +122,7 @@ u8 ti_retimer_get_rate(struct i2c_client *client, u8 channel);
 int ti_rtm_sysfs_init(struct ti_rtm_dev *dev);
 void ti_rtm_sysfs_uninit(struct ti_rtm_dev *dev);
 int ti_retimer_req_eom(struct i2c_client *client, u8 channel);
+u8 ti_retimer_get_veo(struct i2c_client *client, u8 channel);
+u8 ti_retimer_get_heo(struct i2c_client *client, u8 channel);
 
 #endif

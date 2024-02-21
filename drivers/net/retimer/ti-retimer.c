@@ -487,6 +487,36 @@ exit:
 	return 0;
 }
 
+u8 ti_retimer_get_veo(struct i2c_client *client, u8 channel)
+{
+	int ret = 0;
+	u8 buf;
+
+	ret = ti_retimer_channel_read(client, channel, VEO_REG, &buf, 1);
+	if (ret < 0) {
+		dev_err(&client->dev, "Unable to read VEO reg\n");
+		return ret;
+	}
+
+	return buf;
+}
+EXPORT_SYMBOL(ti_retimer_get_veo);
+
+u8 ti_retimer_get_heo(struct i2c_client *client, u8 channel)
+{
+	int ret = 0;
+	u8 buf;
+
+	ret = ti_retimer_channel_read(client, channel, HEO_REG, &buf, 1);
+	if (ret < 0) {
+		dev_err(&client->dev, "Unable to read HEO reg\n");
+		return ret;
+	}
+
+	return buf;
+}
+EXPORT_SYMBOL(ti_retimer_get_heo);
+
 static u8 get_sig_det(struct i2c_client *client, u8 channel)
 {
 	int ret = 0;
