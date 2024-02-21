@@ -432,9 +432,6 @@ int kvx_qsfp_get_module_eeprom(struct kvx_qsfp *qsfp, struct ethtool_eeprom *ee,
 	if (!is_qsfp_ready_state(qsfp))
 		return -ETIMEDOUT;
 
-	if (is_cable_copper(qsfp) && ee->offset + ee->len > 256)
-		return -EINVAL;
-
 	ret = kvx_qsfp_eeprom_refresh(qsfp, ee->offset, ee->len);
 	if (ret != ee->len)
 		return ret;
