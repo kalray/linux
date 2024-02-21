@@ -9,11 +9,12 @@
 
 #include <asm/processor.h>
 
-static void kvx_default_power_off(void)
+void kvx_default_power_off(void)
 {
 	smp_send_stop();
 	local_cpu_stop();
 }
+EXPORT_SYMBOL(kvx_default_power_off);
 
 void (*pm_power_off)(void) = kvx_default_power_off;
 EXPORT_SYMBOL(pm_power_off);

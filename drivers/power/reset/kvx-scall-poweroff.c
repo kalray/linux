@@ -11,6 +11,8 @@
 
 #define SCALL_NUM_EXIT	"0xfff"
 
+extern void (*kvx_default_power_off)(void);
+
 static void kvx_scall_poweroff(void)
 {
 	register int status asm("r0") = 0;
@@ -18,6 +20,12 @@ static void kvx_scall_poweroff(void)
 	asm volatile ("scall " SCALL_NUM_EXIT "\n\t;;"
 		      : /* out */
 		      : "r"(status));
+
+	/*
+	 * If the scall returns, this means no higher PL was
+	 * listening, so shutdown the system by calling stop
+	 */
+	kvx_default_power_off();
 
 	unreachable();
 }
