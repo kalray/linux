@@ -18,13 +18,13 @@
 static __always_inline bool arch_static_branch(struct static_key *key,
 					       bool branch)
 {
-	asm_volatile_goto("1:\n\t"
-			  "nop\n\t"
-			  ";;\n\t"
-			  ".pushsection __jump_table, \"aw\"\n\t"
-			  ".dword 1b, %l[l_yes], %c0\n\t"
-			  ".popsection\n\t"
-			  : :  "i" (&((char *)key)[branch]) :  : l_yes);
+	asm goto("1:\n\t"
+		 "nop\n\t"
+		 ";;\n\t"
+		 ".pushsection __jump_table, \"aw\"\n\t"
+		 ".dword 1b, %l[l_yes], %c0\n\t"
+		 ".popsection\n\t"
+		  : :  "i" (&((char *)key)[branch]) :  : l_yes);
 
 	return false;
 l_yes:
@@ -34,13 +34,13 @@ l_yes:
 static __always_inline bool arch_static_branch_jump(struct static_key *key,
 						    bool branch)
 {
-	asm_volatile_goto("1:\n\t"
-			  "goto %l[l_yes]\n\t"
-			  ";;\n\t"
-			  ".pushsection __jump_table, \"aw\"\n\t"
-			  ".dword 1b, %l[l_yes], %c0\n\t"
-			  ".popsection\n\t"
-			  : :  "i" (&((char *)key)[branch]) :  : l_yes);
+	asm goto("1:\n\t"
+		 "goto %l[l_yes]\n\t"
+		 ";;\n\t"
+		 ".pushsection __jump_table, \"aw\"\n\t"
+		 ".dword 1b, %l[l_yes], %c0\n\t"
+		 ".popsection\n\t"
+		 : :  "i" (&((char *)key)[branch]) :  : l_yes);
 
 	return false;
 l_yes:
