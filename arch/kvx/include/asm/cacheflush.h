@@ -160,7 +160,10 @@ static inline
 void flush_icache_user_range(struct vm_area_struct *vma, struct page *page,
 			     unsigned long vaddr, int len)
 {
-	sync_dcache_icache(vaddr, vaddr + len);
+	if (cpumask_test_cpu(smp_processor_id(), mm_cpumask(vma->vm_mm)))
+		sync_dcache_icache(vaddr, vaddr + len);
+	else
+		flush_icache_range(vaddr, vaddr + len);
 }
 
 #define copy_to_user_page(vma, page, vaddr, dst, src, len) \
