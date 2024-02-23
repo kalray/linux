@@ -1,23 +1,26 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2017-2023 Kalray Inc.
+ * Copyright (C) 2017-2024 Kalray Inc.
+ *
  * Author(s): Clement Leger
+ *            Jonathan Borne
  *            Luc Michel
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+#define pr_fmt(fmt)	"kvx_ipi_ctrl: " fmt
 
+#include <linux/smp.h>
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/module.h>
+#include <linux/irqchip.h>
 #include <linux/of_irq.h>
 #include <linux/cpumask.h>
 #include <linux/interrupt.h>
 #include <linux/cpuhotplug.h>
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
-
 #define IPI_INTERRUPT_OFFSET	0x0
 #define IPI_MASK_OFFSET		0x20
 
@@ -68,7 +71,7 @@ int __init kvx_ipi_ctrl_probe(irqreturn_t (*ipi_irq_handler)(int, void *))
 	unsigned int ipi_irq;
 	void __iomem *ipi_base;
 
-	np = of_find_compatible_node(NULL, NULL, "kalray,kvx-ipi-ctrl");
+	np = of_find_compatible_node(NULL, NULL, "kalray,coolidge-ipi-ctrl");
 	BUG_ON(!np);
 
 	ipi_base = of_iomap(np, 0);
@@ -103,7 +106,9 @@ int __init kvx_ipi_ctrl_probe(irqreturn_t (*ipi_irq_handler)(int, void *))
 		return ret;
 	}
 
+	set_smp_cross_call(kvx_ipi_send);
 	pr_info("controller probed\n");
 
 	return 0;
 }
+IRQCHIP_DECLARE(kvx_ipi_ctrl, "kalray,coolidge-ipi-ctrl", kvx_ipi_ctrl_probe);

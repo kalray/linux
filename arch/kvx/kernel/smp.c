@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2017-2023 Kalray Inc.
+ * Copyright (C) 2017-2024 Kalray Inc.
  * Author(s): Clement Leger
+ *            Jonathan Borne
  */
 
 #include <linux/smp.h>
@@ -15,6 +16,8 @@
 #include <asm/ipi.h>
 #include <asm/tlbflush.h>
 
+static void (*smp_cross_call)(const struct cpumask *);
+
 enum ipi_message_type {
 	IPI_RESCHEDULE,
 	IPI_CALL_FUNC,
@@ -26,6 +29,12 @@ enum ipi_message_type {
 static struct {
 	unsigned long bits ____cacheline_aligned;
 } ipi_data[NR_CPUS] __cacheline_aligned;
+
+
+void __init set_smp_cross_call(void (*fn)(const struct cpumask *))
+{
+	smp_cross_call = fn;
+}
 
 static void send_ipi_message(const struct cpumask *mask,
 			     enum ipi_message_type operation)
@@ -42,7 +51,7 @@ static void send_ipi_message(const struct cpumask *mask,
 
 	local_irq_save(flags);
 
-	kvx_ipi_send(mask);
+	smp_cross_call(mask);
 
 	local_irq_restore(flags);
 }

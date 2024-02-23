@@ -4,4 +4,3 @@
 #
 
 obj-$(CONFIG_SMP) += pwr_ctrl.o
-obj-$(CONFIG_SMP) += ipi.o

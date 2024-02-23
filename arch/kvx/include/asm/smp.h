@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2017-2023 Kalray Inc.
+ * Copyright (C) 2017-2024 Kalray Inc.
  * Author(s): Clement Leger
+ *            Jonathan Borne
  */
 
 #ifndef _ASM_KVX_SMP_H
@@ -13,6 +14,8 @@
 #include <asm/sfr.h>
 
 #ifdef CONFIG_SMP
+
+extern void set_smp_cross_call(void (*)(const struct cpumask *));
 
 /* Hook for the generic smp_call_function_many() routine. */
 void arch_send_call_function_ipi_mask(struct cpumask *mask);
