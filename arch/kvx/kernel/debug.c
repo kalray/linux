@@ -10,7 +10,6 @@
 #include <linux/spinlock.h>
 #include <linux/rcupdate.h>
 
-#include <asm/dame.h>
 #include <asm/debug.h>
 
 static DEFINE_SPINLOCK(debug_hook_lock);

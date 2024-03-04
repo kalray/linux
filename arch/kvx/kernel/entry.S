@@ -308,11 +308,15 @@ SYM_FUNC_START(return_from_exception)
 	/* Finally, restore $r0 value */
 	rswap $r0 = TMP_SCRATCH_SR
 	;;
+	barrier
+	;;
 	rfe
 	;;
 SYM_FUNC_END(return_from_exception)
 
 .macro debug_prologue
+	barrier
+	;;
 .endm
 
 .macro debug_function
@@ -735,6 +739,8 @@ asn_check_ok:
 	;;
 	get $r4 = TMP_SCRATCH_SR
 	;;
+	barrier
+	;;
 	rfe
 	;;
 
@@ -886,6 +892,13 @@ trap_slow_path:
 .endm
 
 .macro trap_function
+	/*
+	 * In the fast path we don't care about the DAME, because we won't
+	 * check it but if we enter the slow path we need to propagate it
+	 * because we will check it later in the C code
+	 */
+	barrier
+	;;
 	get $r2 = $ea
 	;;
 	get $r1 = $es
@@ -896,6 +909,8 @@ trap_slow_path:
 .endm
 
 .macro interrupt_prologue
+	barrier
+	;;
 .endm
 
 .macro interrupt_function
@@ -935,6 +950,8 @@ trap_slow_path:
 .endm
 
 .macro syscall_prologue
+	barrier
+	;;
 .endm
 
 .macro syscall_function

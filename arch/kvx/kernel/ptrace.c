@@ -19,7 +19,6 @@
 #include <linux/regset.h>
 #include <linux/hw_breakpoint.h>
 
-#include <asm/dame.h>
 #include <asm/ptrace.h>
 #include <asm/syscall.h>
 #include <asm/break_hook.h>

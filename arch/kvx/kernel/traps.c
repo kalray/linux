@@ -20,7 +20,6 @@
 #include <linux/uaccess.h>
 
 #include <asm/break_hook.h>
-#include <asm/dame.h>
 #include <asm/debug.h>
 #include <asm/ptrace.h>
 #include <asm/stacktrace.h>
