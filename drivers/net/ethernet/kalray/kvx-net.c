@@ -278,11 +278,9 @@ static int kvx_eth_link_configure(struct kvx_eth_netdev *ndev)
 	netdev_dbg(ndev->netdev, "%s speed: %d autoneg: %d\n", __func__,
 		   ndev->cfg.speed, ndev->cfg.autoneg_en);
 
-	if ((rev_d->phy_rx_adapt == NULL) && (ndev->cfg.speed == SPEED_UNKNOWN)) {
-		/* as rx_adapt not supported: autoneg not supported, default speed to 10G */
+	if (rev_d->phy_rx_adapt == NULL) {
+		/* as rx_adapt not supported: autoneg not supported */
 		ndev->cfg.autoneg_en = false;
-		ndev->cfg.speed = SPEED_10000;
-		ndev->cfg.duplex = DUPLEX_FULL;
 	}
 
 	if (dev->type->support_1000baseT_only == true) {
