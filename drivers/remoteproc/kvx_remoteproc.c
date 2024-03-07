@@ -25,6 +25,7 @@
 #include <linux/remoteproc/kvx_rproc.h>
 
 #include "remoteproc_internal.h"
+#include "remoteproc_elf_helpers.h"
 
 /**
  * Mailboxes types
@@ -206,6 +207,16 @@ struct fw_rsc_kalray_boot_params {
 
 #define ETH_NB (2)
 
+/*
+ * DTB section name
+ */
+#define KVX_RPROC_DTB_NAME ".dtb"
+
+/*
+ * DTB max size in byte that may be loaded in targeted remoteproc
+ */
+#define KVX_RPROC_DTB_SIZE_MAX (1024*1024)
+
 /**
  * struct kvx_rproc_mem - internal memory structure
  * @size: Size of the memory region
@@ -281,6 +292,8 @@ struct kvx_rproc {
 	bool has_dev_state;
 	char *params_args;
 	char *params_env;
+	char *params_dtb;
+	uint64_t dtb_size;
 	struct kvx_remoteproc_ethtx_credit ethtx_credit[ETH_NB];
 };
 
@@ -465,7 +478,7 @@ static int kvx_rproc_reset(struct kvx_rproc *kvx_rproc)
 	return ret;
 }
 
-static void kvx_rproc_free_args_env(struct kvx_rproc *kvx_rproc, char **str)
+static void kvx_rproc_free_args_env_dtb(struct kvx_rproc *kvx_rproc, char **str)
 {
 	if (*str) {
 		kfree(*str);
@@ -526,8 +539,9 @@ static int kvx_rproc_stop(struct rproc *rproc)
 			     KVX_MAX_VRING_PER_MBOX);
 
 	/* reset args and env to avoid reusing arguments between runs */
-	kvx_rproc_free_args_env(kvx_rproc, &kvx_rproc->params_args);
-	kvx_rproc_free_args_env(kvx_rproc, &kvx_rproc->params_env);
+	kvx_rproc_free_args_env_dtb(kvx_rproc, &kvx_rproc->params_args);
+	kvx_rproc_free_args_env_dtb(kvx_rproc, &kvx_rproc->params_env);
+	kvx_rproc_free_args_env_dtb(kvx_rproc, &kvx_rproc->params_dtb);
 	kvx_rproc->has_dev_state = false;
 	kvx_rproc->remote_status = FW_RSC_KALRAY_DEV_STATE_UNDEF;
 
@@ -1039,6 +1053,57 @@ static int kvx_rproc_mem_release(struct rproc *rproc,
 
 	return 0;
 }
+
+static int
+fw_elf_update_dtb(struct device *dev, struct kvx_rproc *mproc,
+		const struct firmware *fw)
+{
+	const void *shdr, *name_shdr;
+	int i;
+	const char *name_section;
+	const u8 *elf_data = (void *)fw->data;
+	u8 class = fw_elf_get_class(fw);
+	const void *ehdr = elf_data;
+	u16 shnum = elf_hdr_get_e_shnum(class, ehdr);
+	u32 elf_shdr_size = elf_size_of_shdr(class);
+	u16 shstrndx = elf_hdr_get_e_shstrndx(class, ehdr);
+	uint64_t base, offset;
+	uint64_t size;
+	char *dtb_ptr;
+
+	/* look for the resource table and handle it */
+	shdr = elf_data + elf_hdr_get_e_shoff(class, ehdr);
+	name_shdr = shdr + (shstrndx * elf_shdr_size);
+	name_section = elf_data + elf_shdr_get_sh_offset(class, name_shdr);
+
+	if (!mproc->params_dtb || !mproc->dtb_size) {
+		dev_info(dev, "No dtb provided, skipping.\n");
+		return 0;
+	}
+	for (i = 0; i < shnum; i++, shdr += elf_shdr_size) {
+		u32 name = elf_shdr_get_sh_name(class, shdr);
+
+		if (strcmp(name_section + name, KVX_RPROC_DTB_NAME))
+			continue;
+
+		base = elf_shdr_get_sh_addr(class, shdr);
+		offset = elf_shdr_get_sh_offset(class, shdr);
+		size = elf_shdr_get_sh_size(class, shdr);
+		dev_dbg(dev, "dtb found: base=%llx, size=%lld, offset=%llx\n",
+				base, size, offset);
+		dtb_ptr = (char *)(elf_data + offset);
+		if (size < mproc->dtb_size) {
+			dev_info(dev, "dtb area too small %lld<%lld, skipping\n",
+					size, mproc->dtb_size);
+			return 0;
+		}
+		dev_info(dev, "Update dtb of size %lld.\n", mproc->dtb_size);
+		memcpy(dtb_ptr, mproc->params_dtb, mproc->dtb_size);
+		return 0;
+	}
+	return 0;
+}
+
 static int kvx_rproc_parse_fw(struct rproc *rproc, const struct firmware *fw)
 {
 	int err;
@@ -1052,7 +1117,7 @@ static int kvx_rproc_parse_fw(struct rproc *rproc, const struct firmware *fw)
 	err = of_phandle_iterator_init(&it, np, "memory-region", NULL, 0);
 	/* This is not a failure, it means we don't have a memory-region node */
 	if (err)
-		goto load_rsc_table;
+		goto load_dtb;
 
 	while (of_phandle_iterator_next(&it) == 0) {
 		rmem = of_reserved_mem_lookup(it.node);
@@ -1077,8 +1142,9 @@ static int kvx_rproc_parse_fw(struct rproc *rproc, const struct firmware *fw)
 		dev_dbg(dev, "Adding memory region %s, ba = %pa, len = %pa\n",
 			it.node->name, &rmem->base, &rmem->size);
 	}
+load_dtb:
+	fw_elf_update_dtb(&rproc->dev, rproc->priv, fw);
 
-load_rsc_table:
 	return rproc_elf_load_rsc_table(rproc, fw);
 }
 
@@ -1204,9 +1270,78 @@ static ssize_t env_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(env);
 
+static ssize_t dtb_str_store(struct rproc *rproc,
+		const char *buf, size_t count,
+		char **str)
+{
+	char *p;
+	int err, len = KVX_RPROC_DTB_SIZE_MAX;
+	struct kvx_rproc *mproc = (struct kvx_rproc *) rproc->priv;
+
+	err = mutex_lock_interruptible(&rproc->lock);
+	if (err) {
+		dev_err(&rproc->dev, "can't lock rproc %s: %d\n",
+				rproc->name, err);
+		return -EINVAL;
+	}
+
+	if (*str) {
+		p = *str;
+	} else {
+		p = kmalloc(len, GFP_KERNEL);
+		if (!p) {
+			err = -ENOMEM;
+			goto out;
+		}
+		mproc->dtb_size = 0;
+		*str = p;
+	}
+	if (mproc->dtb_size + count > len) {
+		dev_err(&rproc->dev, "can't load dtb, too big rproc %s: size %lld > %d\n",
+				rproc->name, mproc->dtb_size + count, len);
+		mproc->dtb_size = 0;
+		kfree(p);
+		*str = NULL;
+		goto out;
+	}
+	memcpy(&p[mproc->dtb_size], buf, count);
+	mproc->dtb_size += count;
+out:
+	mutex_unlock(&rproc->lock);
+
+	return err;
+}
+
+static ssize_t dtb_show(struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	struct rproc *rproc = to_rproc(dev);
+	struct kvx_rproc *mproc = (struct kvx_rproc *) rproc->priv;
+
+	return sprintf(buf, "%s\n", mproc->params_env ?
+			mproc->params_env : "");
+}
+
+static ssize_t dtb_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	int ret;
+	struct rproc *rproc = to_rproc(dev);
+	struct kvx_rproc *mproc = (struct kvx_rproc *) rproc->priv;
+
+	ret = dtb_str_store(rproc, buf, count, &mproc->params_dtb);
+	dev_dbg(dev, "dtb store: base=%llx, count=%lld, ret=%d\n",
+			(u64)buf, (u64)count, ret);
+
+	return ret ? ret : count;
+}
+static DEVICE_ATTR_RW(dtb);
+
 static struct attribute *kvx_remoteproc_attrs[] = {
 	&dev_attr_args.attr,
 	&dev_attr_env.attr,
+	&dev_attr_dtb.attr,
 	NULL
 };
 
