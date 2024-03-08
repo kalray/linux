@@ -16,7 +16,7 @@
 #include <asm/ipi.h>
 #include <asm/tlbflush.h>
 
-static void (*smp_cross_call)(const struct cpumask *);
+static void (*smp_cross_call)(const struct cpumask *, unsigned int);
 
 enum ipi_message_type {
 	IPI_RESCHEDULE,
@@ -25,13 +25,7 @@ enum ipi_message_type {
 	IPI_MAX
 };
 
-/* A collection of single bit ipi messages.  */
-static struct {
-	unsigned long bits ____cacheline_aligned;
-} ipi_data[NR_CPUS] __cacheline_aligned;
-
-
-void __init set_smp_cross_call(void (*fn)(const struct cpumask *))
+void __init set_smp_cross_call(void (*fn)(const struct cpumask *, unsigned int))
 {
 	smp_cross_call = fn;
 }
@@ -39,21 +33,9 @@ void __init set_smp_cross_call(void (*fn)(const struct cpumask *))
 static void send_ipi_message(const struct cpumask *mask,
 			     enum ipi_message_type operation)
 {
-	unsigned long flags;
-	int cpu;
-
-	/* Set operation that must be done by receiver */
-	for_each_cpu(cpu, mask)
-		set_bit(operation, &ipi_data[cpu].bits);
-
-	/* Commit the write before sending IPI */
-	smp_wmb();
-
-	local_irq_save(flags);
-
-	smp_cross_call(mask);
-
-	local_irq_restore(flags);
+	if (!smp_cross_call)
+		panic("ipi controller init failed\n");
+	smp_cross_call(mask, (unsigned int)operation);
 }
 
 void arch_send_call_function_ipi_mask(struct cpumask *mask)
@@ -93,27 +75,16 @@ void smp_send_reschedule(int cpu)
 	send_ipi_message(cpumask_of(cpu), IPI_RESCHEDULE);
 }
 
-irqreturn_t ipi_call_interrupt(int irq, void *dev_id)
+void handle_IPI(unsigned long ops)
 {
-	unsigned long *pending_ipis = &ipi_data[smp_processor_id()].bits;
+	if (ops & (1 << IPI_RESCHEDULE))
+		scheduler_ipi();
 
-	while (true) {
-		unsigned long ops = xchg(pending_ipis, 0);
+	if (ops & (1 << IPI_CALL_FUNC))
+		generic_smp_call_function_interrupt();
 
-		if (ops == 0)
-			return IRQ_HANDLED;
+	if (ops & (1 << IPI_IRQ_WORK))
+		irq_work_run();
 
-		if (ops & (1 << IPI_RESCHEDULE))
-			scheduler_ipi();
-
-		if (ops & (1 << IPI_CALL_FUNC))
-			generic_smp_call_function_interrupt();
-
-		if (ops & (1 << IPI_IRQ_WORK))
-			irq_work_run();
-
-		BUG_ON((ops >> IPI_MAX) != 0);
-	}
-
-	return IRQ_HANDLED;
+	BUG_ON((ops >> IPI_MAX) != 0);
 }

@@ -9,7 +9,7 @@
 
 #include <linux/irqreturn.h>
 
-int kvx_ipi_ctrl_probe(irqreturn_t (*ipi_irq_handler)(int, void *));
+int kvx_ipi_ctrl_init(struct device_node *node, struct device_node *parent);
 
 void kvx_ipi_send(const struct cpumask *mask);
 

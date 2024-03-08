@@ -15,7 +15,7 @@
 
 #ifdef CONFIG_SMP
 
-extern void set_smp_cross_call(void (*)(const struct cpumask *));
+extern void set_smp_cross_call(void (*)(const struct cpumask *, unsigned int));
 
 /* Hook for the generic smp_call_function_many() routine. */
 void arch_send_call_function_ipi_mask(struct cpumask *mask);
@@ -27,14 +27,13 @@ void __init setup_processor(void);
 
 void smp_init_cpus(void);
 
-irqreturn_t ipi_call_interrupt(int irq, void *dev_id);
-
 #define raw_smp_processor_id() ((int) \
 	((kvx_sfr_get(PCR) & KVX_SFR_PCR_PID_MASK) \
 					>> KVX_SFR_PCR_PID_SHIFT))
 
 #define flush_cache_vmap(start, end)		do { } while (0)
 #define flush_cache_vunmap(start, end)		do { } while (0)
+extern void handle_IPI(unsigned long ops);
 
 #else
 

@@ -30,6 +30,9 @@
  */
 #define KVX_IPI_CPU_MASK	(~0xFFFF)
 
+/* A collection of single bit ipi messages.  */
+static DEFINE_PER_CPU_ALIGNED(unsigned long, ipi_data);
+
 struct kvx_ipi_ctrl {
 	void __iomem *regs;
 	unsigned int ipi_irq;
@@ -42,12 +45,27 @@ static struct kvx_ipi_ctrl kvx_ipi_controller;
  *
  * cpu: cpu to wakeup
  */
-void kvx_ipi_send(const struct cpumask *mask)
+void kvx_ipi_send(const struct cpumask *mask, unsigned int operation)
 {
 	const unsigned long *maskb = cpumask_bits(mask);
+	unsigned long flags;
+	int cpu;
+
+	/* Set operation that must be done by receiver */
+	for_each_cpu(cpu, mask)
+		set_bit(operation, &per_cpu(ipi_data, cpu));
+
+	/* Commit the write before sending IPI */
+	smp_wmb();
+
+	local_irq_save(flags);
 
 	WARN_ON(*maskb & KVX_IPI_CPU_MASK);
 	writel(*maskb, kvx_ipi_controller.regs + IPI_INTERRUPT_OFFSET);
+
+	local_irq_restore(flags);
+
+
 }
 
 static int kvx_ipi_starting_cpu(unsigned int cpu)
@@ -64,17 +82,32 @@ static int kvx_ipi_dying_cpu(unsigned int cpu)
 	return 0;
 }
 
-int __init kvx_ipi_ctrl_probe(irqreturn_t (*ipi_irq_handler)(int, void *))
+static irqreturn_t ipi_irq_handler(int irq, void *dev_id)
 {
-	struct device_node *np;
+	unsigned long *pending_ipis = &per_cpu(ipi_data, smp_processor_id());
+
+	while (true) {
+		unsigned long ops = xchg(pending_ipis, 0);
+
+		if (!ops)
+			return IRQ_HANDLED;
+
+		handle_IPI(ops);
+	}
+
+	return IRQ_HANDLED;
+}
+
+int __init kvx_ipi_ctrl_init(struct device_node *node,
+			     struct device_node *parent)
+{
 	int ret;
 	unsigned int ipi_irq;
 	void __iomem *ipi_base;
 
-	np = of_find_compatible_node(NULL, NULL, "kalray,coolidge-ipi-ctrl");
-	BUG_ON(!np);
+	BUG_ON(!node);
 
-	ipi_base = of_iomap(np, 0);
+	ipi_base = of_iomap(node, 0);
 	BUG_ON(!ipi_base);
 
 	kvx_ipi_controller.regs = ipi_base;
@@ -82,7 +115,7 @@ int __init kvx_ipi_ctrl_probe(irqreturn_t (*ipi_irq_handler)(int, void *))
 	/* Init mask for interrupts to PE0 -> PE15 */
 	writel(KVX_IPI_CPU_MASK, kvx_ipi_controller.regs + IPI_MASK_OFFSET);
 
-	ipi_irq = irq_of_parse_and_map(np, 0);
+	ipi_irq = irq_of_parse_and_map(node, 0);
 	if (!ipi_irq) {
 		pr_err("Failed to parse irq: %d\n", ipi_irq);
 		return -EINVAL;
@@ -111,4 +144,4 @@ int __init kvx_ipi_ctrl_probe(irqreturn_t (*ipi_irq_handler)(int, void *))
 
 	return 0;
 }
-IRQCHIP_DECLARE(kvx_ipi_ctrl, "kalray,coolidge-ipi-ctrl", kvx_ipi_ctrl_probe);
+IRQCHIP_DECLARE(kvx_ipi_ctrl, "kalray,coolidge-ipi-ctrl", kvx_ipi_ctrl_init);

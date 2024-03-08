@@ -81,10 +81,6 @@ int __init setup_smp(void)
 	if (ret)
 		panic("Failed to probe power controller !");
 
-	ret = kvx_ipi_ctrl_probe(ipi_call_interrupt);
-	if (ret)
-		panic("Failed to probe IPI controller !");
-
 	return 0;
 }
 
