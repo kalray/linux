@@ -1938,7 +1938,7 @@ static int kvx_eth_an_get_common_speed(struct kvx_eth_hw *hw, int lane_id,
 	}
 
 	if (common_tech & AN_KXAN_ABILITY_1_TECH_A1_MASK) {
-		dev_err(hw->dev, "Negotiated 10G-KX4 negotiated rate\n");
+		AN_DBG(hw->dev, "Negotiated 10G-KX4 negotiated rate\n");
 		ln->rate |= RATE_10GBASE_KX4;
 		ln->speed = SPEED_10000;
 	}
@@ -2832,42 +2832,52 @@ int kvx_eth_mac_setup_link(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg)
 	if (kvx_eth_phy_is_bert_en(hw))
 		return 0;
 
-	if (ndev->cfg.update_cable_modes) {
-		kvx_eth_update_cable_modes(ndev);
+	kvx_eth_update_cable_modes(ndev);
 
-		/* Force abilities */
-		cfg->lc.rate = (RATE_40GBASE_KR4 | RATE_40GBASE_CR4 |
-				RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S |
-				RATE_10GBASE_KR);
+	mutex_lock(&hw->advertise_lock);
+
+	if (bitmap_empty(ndev->cfg.advertising, __ETHTOOL_LINK_MODE_MASK_NBITS)) {
+		bitmap_copy(ndev->cfg.advertising, ndev->cfg.cable_supported,
+				__ETHTOOL_LINK_MODE_MASK_NBITS);
 	} else {
-		cfg->lc.rate = 0;
-
-		if (kvx_test_mode(cfg->cable_rate, 1000baseKX_Full))
-			cfg->lc.rate |= (RATE_1GBASE_KX);
-
-		if (kvx_test_mode(cfg->cable_rate, 10000baseKR_Full) ||
-		    kvx_test_mode(cfg->cable_rate, 10000baseCR_Full))
-			cfg->lc.rate |= (RATE_10GBASE_KR | RATE_10GBASE_KX4);
-
-		if (kvx_test_mode(cfg->cable_rate, 25000baseKR_Full) ||
-		    kvx_test_mode(cfg->cable_rate, 25000baseCR_Full))
-			cfg->lc.rate |= (RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S);
-
-		if (kvx_test_mode(cfg->cable_rate, 40000baseCR4_Full))
-			cfg->lc.rate |= (RATE_40GBASE_CR4);
-
-		if (kvx_test_mode(cfg->cable_rate, 40000baseKR4_Full))
-			cfg->lc.rate |= (RATE_40GBASE_KR4);
+		if (!bitmap_intersects(ndev->cfg.advertising, ndev->cfg.cable_supported,
+					__ETHTOOL_LINK_MODE_MASK_NBITS))
+			dev_warn(hw->dev, "Advertising unsupported mode\n");
 	}
 
-	if (kvx_test_mode(cfg->cable_rate, 100000baseSR4_Full) ||
-	    kvx_test_mode(cfg->cable_rate, 100000baseKR4_Full) ||
-	    kvx_test_mode(cfg->cable_rate, 100000baseCR4_Full) ||
-	    kvx_test_mode(cfg->cable_rate, 100000baseLR4_ER4_Full))
+	cfg->lc.rate = 0;
+
+	if (kvx_test_mode(cfg->advertising, 1000baseKX_Full))
+		cfg->lc.rate |= (RATE_1GBASE_KX);
+
+	if (kvx_test_mode(cfg->advertising, 10000baseKR_Full) ||
+	    kvx_test_mode(cfg->advertising, 10000baseCR_Full))
+		cfg->lc.rate |= (RATE_10GBASE_KR | RATE_10GBASE_KX4);
+
+	if (kvx_test_mode(cfg->advertising, 25000baseKR_Full) ||
+	    kvx_test_mode(cfg->advertising, 25000baseCR_Full))
+		cfg->lc.rate |= (RATE_25GBASE_KR_CR | RATE_25GBASE_KR_CR_S);
+
+	if (kvx_test_mode(cfg->advertising, 40000baseCR4_Full) ||
+	    kvx_test_mode(cfg->advertising, 40000baseKR4_Full))
+		cfg->lc.rate |= (RATE_40GBASE_CR4 | RATE_40GBASE_KR4);
+
+	if (kvx_test_mode(cfg->advertising, 100000baseSR4_Full) ||
+	    kvx_test_mode(cfg->advertising, 100000baseKR4_Full) ||
+	    kvx_test_mode(cfg->advertising, 100000baseCR4_Full) ||
+	    kvx_test_mode(cfg->advertising, 100000baseLR4_ER4_Full))
 		cfg->lc.rate |= (RATE_100GBASE_KR4 | RATE_100GBASE_CR4);
 
-	cfg->lc.fec = FEC_10G_FEC_REQUESTED | FEC_25G_BASE_R_REQUESTED |
-		FEC_25G_RS_REQUESTED;
+	cfg->lc.fec = FEC_10G_FEC_REQUESTED;
+
+	if (kvx_test_mode(cfg->advertising, FEC_RS))
+		cfg->lc.fec |= FEC_25G_RS_REQUESTED;
+
+	if (kvx_test_mode(cfg->advertising, FEC_BASER))
+		cfg->lc.fec |= FEC_25G_BASE_R_REQUESTED;
+
+	mutex_unlock(&hw->advertise_lock);
+
 	cfg->lc.pause = 1;
 
 	if (hw->rtm_params[RTM_TX].rtm) {

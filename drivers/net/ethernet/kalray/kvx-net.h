@@ -249,7 +249,7 @@ void kvx_eth_release_rx_ring(struct kvx_eth_ring *ring, int keep_dma_chan);
 void kvx_eth_up(struct net_device *netdev);
 void kvx_eth_down(struct net_device *netdev);
 void kvx_set_ethtool_ops(struct net_device *netdev);
-void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes, bool update_cable_modes);
+void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes);
 
 int kvx_eth_hw_sysfs_init(struct kvx_eth_hw *hw);
 int kvx_eth_hw_sysfs_init_cv1(struct kvx_eth_hw *hw);

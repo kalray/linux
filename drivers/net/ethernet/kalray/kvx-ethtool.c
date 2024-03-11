@@ -1260,112 +1260,15 @@ static int kvx_eth_get_link_ksettings(struct net_device *netdev,
 	ethtool_link_ksettings_zero_link_mode(cmd, advertising);
 	kvx_eth_update_cable_modes(ndev);
 
-	/*
-	 * Indicate all capabilities supported by the MAC
-	 * The type of media (fiber/copper/...) is dependant
-	 * on the module, the PCS encoding (R flag) is the same
-	 * so we must indicate that the MAC/PCS support them.
-	 */
-	ethtool_link_ksettings_add_link_mode(cmd, supported, Autoneg);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, Pause);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, Asym_Pause);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, TP);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, AUI);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, MII);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, FIBRE);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, BNC);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, Backplane);
+	mutex_lock(&ndev->hw->advertise_lock);
 
-	bitmap_copy(cmd->link_modes.advertising, cmd->link_modes.supported,
-		    __ETHTOOL_LINK_MODE_MASK_NBITS);
+	bitmap_copy(cmd->link_modes.advertising, ndev->cfg.advertising,
+			__ETHTOOL_LINK_MODE_MASK_NBITS);
 
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 10baseT_Half);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 10baseT_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 100baseT_Half);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 100baseT_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 1000baseT_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseCR_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseSR_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseLR_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseER_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 10000baseKR_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 25000baseCR_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 25000baseSR_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 40000baseCR4_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 40000baseSR4_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 40000baseLR4_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseKR4_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseCR4_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseSR4_Full);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, 100000baseLR4_ER4_Full);
+	mutex_unlock(&ndev->hw->advertise_lock);
 
-	ethtool_link_ksettings_add_link_mode(cmd, supported, FEC_NONE);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, FEC_BASER);
-	ethtool_link_ksettings_add_link_mode(cmd, supported, FEC_RS);
-
-	/*
-	 * Fill advertising with real expected speed. It *must* be different
-	 * for each requested speed for change rate test cases
-	 */
-	if (ndev->cfg.autoneg_en) {
-		bitmap_copy(cmd->link_modes.advertising, cmd->link_modes.supported,
-			    __ETHTOOL_LINK_MODE_MASK_NBITS);
-	} else {
-		/* when autoneg is off, only the speed set is advertised */
-		switch (ndev->cfg.speed) {
-		case SPEED_40000:
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 40000baseCR4_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 40000baseSR4_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 40000baseLR4_Full);
-			break;
-		case SPEED_10000:
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 10000baseCR_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 10000baseSR_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 10000baseLR_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 10000baseER_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 10000baseKR_Full);
-			break;
-		case SPEED_100000:
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 100000baseKR4_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 100000baseCR4_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 100000baseSR4_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 100000baseLR4_ER4_Full);
-			break;
-		case SPEED_25000:
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 25000baseCR_Full);
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, 25000baseSR_Full);
-			break;
-		default:
-			break;
-		}
-
-		if (ndev->cfg.fec & FEC_25G_RS_REQUESTED)
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, FEC_RS);
-		else if (ndev->cfg.fec & FEC_25G_BASE_R_REQUESTED)
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, FEC_BASER);
-		else
-			ethtool_link_ksettings_add_link_mode(cmd,
-					advertising, FEC_NONE);
-	}
-
-	bitmap_and(cmd->link_modes.advertising, cmd->link_modes.advertising,
-		   ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS);
+	bitmap_copy(cmd->link_modes.supported, ndev->cfg.cable_supported,
+			__ETHTOOL_LINK_MODE_MASK_NBITS);
 
 	cmd->base.speed = ndev->cfg.speed;
 	cmd->base.duplex = ndev->cfg.duplex;
@@ -1407,7 +1310,6 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 		 * SGMII autoneg is based on clause 37 (not clause 73).
 		 * This avoid a timeout and make link up faster.
 		 */
-		ndev->cfg.autoneg_en = false;
 		restart_serdes = true;
 	}
 
@@ -1418,10 +1320,14 @@ static int kvx_eth_set_link_ksettings(struct net_device *netdev,
 		}
 	}
 
-	bitmap_copy(ndev->cfg.cable_rate, cmd->link_modes.advertising,
+	mutex_lock(&ndev->hw->advertise_lock);
+
+	bitmap_copy(ndev->cfg.advertising, cmd->link_modes.advertising,
 			__ETHTOOL_LINK_MODE_MASK_NBITS);
 
-	kvx_eth_setup_link(ndev, restart_serdes, false);
+	mutex_unlock(&ndev->hw->advertise_lock);
+
+	kvx_eth_setup_link(ndev, restart_serdes);
 
 	netdev_dbg(netdev, "%s set speed: %d\n", __func__, ndev->cfg.speed);
 bail:

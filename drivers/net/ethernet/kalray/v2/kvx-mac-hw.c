@@ -95,7 +95,7 @@ void kvx_eth_mac_f_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 	} else if (pma_loopb_cur && !pma_loopb_req) {
 		hw->phy_f.loopback_mode = mac_f->loopback_mode;
 		kvx_phy_reinit_sequence_serdes_cv2(hw, cfg);
-		kvx_eth_setup_link(ndev, true, true);
+		kvx_eth_setup_link(ndev, true);
 	} else {
 		kvx_eth_mac_cfg(hw, cfg);
 	}

@@ -1495,7 +1495,8 @@ enum autoneg_states {
  * @mac_f: mac controller features
  * @transceiver: data related to connector
  * @default_dispatch_entry: default dispatch table entry used by current cluster
- * @cable_rate: cable supported rate
+ * @cable_supported: cable supported modes
+ * @advertising: advertised modes
  * @autoneg_en: autoneg enabled
  * @restart_serdes: relaunch serdes cfg needed
  */
@@ -1513,8 +1514,8 @@ struct kvx_eth_lane_cfg {
 	struct list_head tx_fifo_list;
 	struct kvx_eth_mac_f mac_f;
 	u32 default_dispatch_entry;
-	bool update_cable_modes;
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(cable_rate);
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(cable_supported);
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(advertising);
 	bool autoneg_en;
 	bool restart_serdes;
 };
@@ -1738,6 +1739,7 @@ struct kvx_eth_hw {
 	struct lt_status lt_status[KVX_ETH_LANE_NB];
 	struct mutex mac_reset_lock;
 	struct mutex phy_serdes_reset_lock;
+	struct mutex advertise_lock;
 	u32 rxtx_crossed;
 	u32 parsers_tictoc;
 	u32 limit_rx_pps;

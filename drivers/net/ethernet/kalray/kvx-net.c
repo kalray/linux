@@ -226,8 +226,7 @@ static void kvx_eth_update_carrier(struct kvx_eth_netdev *ndev, bool en)
 	}
 }
 
-void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes,
-		bool update_cable_modes)
+void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes)
 {
 	/* if ndev->cfg.restart_serdes is true, avoid setting it to false.
 	 * This way, we avoid the following scenario:
@@ -242,8 +241,6 @@ void kvx_eth_setup_link(struct kvx_eth_netdev *ndev, bool restart_serdes,
 	 */
 	if (!ndev->cfg.restart_serdes)
 		ndev->cfg.restart_serdes = restart_serdes;
-
-	ndev->cfg.update_cable_modes = update_cable_modes;
 
 	/* if work is pending or running, no need to queue it  */
 	if (atomic_read(&ndev->link_cfg_running) || work_pending(&ndev->link_cfg))
@@ -416,7 +413,7 @@ static void kvx_eth_poll_link(struct work_struct *w)
 	}
 
 link_cfg:
-	kvx_eth_setup_link(ndev, false, true);
+	kvx_eth_setup_link(ndev, false);
 	return;
 bail:
 	if (ndev->link_poll_en)
@@ -447,7 +444,7 @@ void kvx_eth_up(struct net_device *netdev)
 {
 	struct kvx_eth_netdev *ndev = netdev_priv(netdev);
 
-	kvx_eth_setup_link(ndev, true, true);
+	kvx_eth_setup_link(ndev, true);
 }
 
 /* kvx_eth_netdev_open() - Open ops
@@ -1781,7 +1778,7 @@ static irqreturn_t kvx_eth_irq_link_down(int irq, void *data)
 			 * - autoneg disabled: same speed,
 			 * - autoneg enabled: restart done in AN procedure
 			 */
-			kvx_eth_setup_link(ndev, false, true);
+			kvx_eth_setup_link(ndev, false);
 		}
 	}
 	spin_unlock(&hw->link_down_lock);
@@ -2107,7 +2104,7 @@ int kvx_eth_speed_to_nb_lanes(unsigned int speed, unsigned int *lane_speed)
 
 void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev)
 {
-	if (!bitmap_empty(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS))
+	if (!bitmap_empty(ndev->cfg.cable_supported, __ETHTOOL_LINK_MODE_MASK_NBITS))
 		return;
 
 	if (!ndev->qsfp)
@@ -2116,24 +2113,24 @@ void kvx_eth_update_cable_modes(struct kvx_eth_netdev *ndev)
 	if (!is_cable_connected(ndev->qsfp))
 		return;
 
-	kvx_set_mode(ndev->cfg.cable_rate, Autoneg);
-	kvx_set_mode(ndev->cfg.cable_rate, Pause);
-	kvx_set_mode(ndev->cfg.cable_rate, Asym_Pause);
-	kvx_set_mode(ndev->cfg.cable_rate, TP);
-	kvx_set_mode(ndev->cfg.cable_rate, AUI);
-	kvx_set_mode(ndev->cfg.cable_rate, MII);
-	kvx_set_mode(ndev->cfg.cable_rate, FIBRE);
-	kvx_set_mode(ndev->cfg.cable_rate, BNC);
-	kvx_set_mode(ndev->cfg.cable_rate, Backplane);
+	kvx_set_mode(ndev->cfg.cable_supported, Autoneg);
+	kvx_set_mode(ndev->cfg.cable_supported, Pause);
+	kvx_set_mode(ndev->cfg.cable_supported, Asym_Pause);
+	kvx_set_mode(ndev->cfg.cable_supported, TP);
+	kvx_set_mode(ndev->cfg.cable_supported, AUI);
+	kvx_set_mode(ndev->cfg.cable_supported, MII);
+	kvx_set_mode(ndev->cfg.cable_supported, FIBRE);
+	kvx_set_mode(ndev->cfg.cable_supported, BNC);
+	kvx_set_mode(ndev->cfg.cable_supported, Backplane);
 
-	kvx_qsfp_parse_support(ndev->qsfp, ndev->cfg.cable_rate);
+	kvx_qsfp_parse_support(ndev->qsfp, ndev->cfg.cable_supported);
 }
 
 void kvx_eth_qsfp_connect(struct kvx_qsfp *qsfp)
 {
 	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
 
-	bitmap_zero(ndev->cfg.cable_rate, __ETHTOOL_LINK_MODE_MASK_NBITS);
+	bitmap_zero(ndev->cfg.cable_supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
 
 	if (!netif_carrier_ok(ndev->netdev))
 		kvx_eth_up(ndev->netdev);
@@ -2169,7 +2166,7 @@ void kvx_eth_qsfp_cdr_lol(struct kvx_qsfp *qsfp)
 	if (kvx_eth_mac_getlink(ndev->hw, &ndev->cfg))
 		netdev_warn(ndev->netdev, "inconsistency detected: MAC status OK while qsfp lol asserted\n");
 
-	kvx_eth_setup_link(ndev, true, true);
+	kvx_eth_setup_link(ndev, true);
 }
 
 static struct kvx_qsfp_ops qsfp_ops = {
@@ -2495,6 +2492,7 @@ static int kvx_eth_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&dev->list);
 	mutex_init(&dev->hw.mac_reset_lock);
 	mutex_init(&dev->hw.phy_serdes_reset_lock);
+	mutex_init(&dev->hw.advertise_lock);
 	spin_lock_init(&dev->hw.link_down_lock);
 
 	if (of_machine_is_compatible("kalray,haps"))
