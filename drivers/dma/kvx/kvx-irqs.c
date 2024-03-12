@@ -148,7 +148,11 @@ void kvx_dma_free_msi(struct platform_device *pdev)
 	platform_msi_domain_free_irqs(&pdev->dev);
 }
 
-#define CHECK_ERR(dev, reg, b) ({ if (reg & BIT(b)) dev_err(dev, #b"\n"); })
+#define CHECK_ERR(dev, reg, b) ({			\
+	if (reg & BIT(b))				\
+		dev_err_ratelimited(dev, #b"\n");	\
+})
+
 /**
  * Deals with DMA errors and clear them
  * @irq: IRQ number
@@ -163,7 +167,8 @@ irqreturn_t kvx_dma_err_irq_handler(int irq, void *data)
 		    KVX_DMA_IT_VECTOR_LAC_OFFSET);
 
 	if (!(reg & KVX_DMA_IT_VECTOR_MASK)) {
-		dev_err(dev->dma.dev, "DMA irq raised with empty irq vector\n");
+		dev_err_ratelimited(dev->dma.dev,
+				    "DMA irq raised with empty irq vector\n");
 		return IRQ_HANDLED;
 	}
 
