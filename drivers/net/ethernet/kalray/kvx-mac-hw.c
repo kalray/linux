@@ -2720,8 +2720,10 @@ next_state:
 		}
 
 		ret = kvx_eth_mac_cfg(hw, cfg);
-		if (ret)
-			dev_dbg(hw->dev, "Failed to configure MAC\n");
+		if (ret) {
+			dev_err(hw->dev, "Failed to configure MAC\n");
+			goto err;
+		}
 
 		/* According Spec (5.13 RX Equalization and Adaptation),
 		 * rx adaptation process **MUST** be done after rx_data_en is asserted
