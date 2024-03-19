@@ -2191,6 +2191,9 @@ void kvx_eth_qsfp_cdr_lol(struct kvx_qsfp *qsfp)
 {
 	struct kvx_eth_netdev *ndev = kvx_qsfp_to_ops_data(qsfp, struct kvx_eth_netdev);
 
+	if (!netif_running(ndev->netdev))
+		return;
+
 	/* disable link polling  */
 	if (ndev->link_poll_en) {
 		ndev->link_poll_en = false;
