@@ -542,12 +542,25 @@ static int kvx_phy_init_sequence_opt_cv2(struct kvx_eth_hw *hw, const struct fir
 		return ret;
 	}
 	if (fw) {
-		dev_err(hw->dev, "phy fmw update not supported\n");
-		return -EINVAL; /* not tested */
-		/* Copy FW to RAM */
-		for (i = 0, addr = 0; i < KVX_PHY_INT_RAM_SIZE; i += 2, addr += 4) {
+		dev_info(hw->dev, "PHY fw update\n");
+		/* Copy FW to RAM: specific sequence for RAM acces (workaround) */
+		for (i = 0, addr = 0; i < KVX_PHY_INT_RAM_SIZE ; i += 2, addr += 4) {
 			data = (fw->data[i] << 8) | fw->data[i + 1];
-			kvx_phy_writel(hw, data, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
+			kvx_phyint_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
+			kvx_phyint_writew(hw, data, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
+			kvx_phyint_writew(hw, data, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
+			kvx_phyint_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
+		}
+
+		for (i = 0, addr = 0; i < KVX_PHY_INT_RAM_SIZE ; i += 2, addr += 4) {
+			kvx_phyint_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
+			data = kvx_phyint_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
+			kvx_phyint_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
+			if (data != ((fw->data[i] << 8) | fw->data[i + 1])) {
+				dev_err(hw->dev, "PHY fw copy failure\n");
+				ret = -EINVAL;
+				goto exit;
+			}
 		}
 	}
 	updatel_bits(hw, PHYCTL, KVX_PHY_SRAM_CTRL_OFFSET,
@@ -559,6 +572,7 @@ static int kvx_phy_init_sequence_opt_cv2(struct kvx_eth_hw *hw, const struct fir
 	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_STATUS_OFFSET,
 		(KVX_PHY_SERDES_STATUS_RX_ACK_MASK|KVX_PHY_SERDES_STATUS_TX_ACK_MASK),
 		0, PHY_SERDES_ACK_TIMEOUT_MS);
+exit:
 	if (ret) {
 		dev_err(hw->dev, "phy fmw init sequence completion failed\n");
 		return ret;
