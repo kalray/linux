@@ -12,13 +12,14 @@
 #include <linux/of_fdt.h>
 #include <linux/module.h>
 #include <linux/random.h>
+#include <linux/kconfig.h>
 #include <linux/sys_soc.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/platform_device.h>
 
 #define LOT_ID_STR_LEN	8
 
-#define EWS_LOT_ID_MASK		0x1ffffffffffULL
+#define EWS_LOT_ID_MASK		0x3ffffffffffULL
 #define EWS_WAFER_ID_SHIFT	42
 #define EWS_WAFER_ID_MASK	0x1fULL
 
@@ -32,24 +33,26 @@ struct kvx_socinfo {
 	struct soc_device *soc_dev;
 };
 
+static const char alphabet[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_";
+
 static int base38_decode(char *s, u64 val, int nb_char)
 {
 	int i;
-	const char *alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_?";
+	const int base = sizeof(alphabet);
 
 	if (s == NULL)
 		return -1;
 
 	for (i = 0; i < nb_char; i++) {
-		s[i] = alphabet[val % strlen(alphabet)];
-		val /= strlen(alphabet);
+		s[i] = alphabet[val % base];
+		val /= base;
 	}
 
 	return 0;
 }
 
 static int kvx_soc_info_read_serial(struct platform_device *pdev,
-				    struct soc_device_attribute *sda)
+		struct soc_device_attribute *sda)
 {
 	char lot_id[LOT_ID_STR_LEN + 1] = "";
 	char com_ap;
@@ -63,7 +66,9 @@ static int kvx_soc_info_read_serial(struct platform_device *pdev,
 	if (ret)
 		return ret;
 
-	ews_val = (ews_val >> 32) | (ews_val << 32);
+	if (IS_ENABLED(CONFIG_KVX_SUBARCH_KV3_1))
+		ews_val = (ews_val >> 32) | (ews_val << 32);
+
 	wafer_id = (ews_val >> EWS_WAFER_ID_SHIFT) & EWS_WAFER_ID_MASK;
 	base38_decode(lot_id, ews_val & EWS_LOT_ID_MASK, LOT_ID_STR_LEN);
 
@@ -73,9 +78,8 @@ static int kvx_soc_info_read_serial(struct platform_device *pdev,
 
 	device_id = (ft_val >> FT_DEVICE_ID_SHIFT) & FT_DEVICE_ID_MASK;
 	base38_decode(&com_ap, (ft_val >> FT_COM_AP_SHIFT) & FT_COM_AP_MASK, 1);
-
 	sda->serial_number = kasprintf(GFP_KERNEL, "%sA-%d%c-%03d", lot_id,
-				       wafer_id, com_ap, device_id);
+			wafer_id, com_ap, device_id);
 	if (!sda->serial_number)
 		return -ENOMEM;
 
