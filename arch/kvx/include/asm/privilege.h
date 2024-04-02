@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2017-2023 Kalray Inc.
+ * Copyright (C) 2017-2024 Kalray Inc.
  * Author(s): Clement Leger
  *            Yann Sionneau
  *            Marius Gligor
+ *            Julian Vetter
  */
 
 #ifndef _ASM_KVX_PRIVILEGE_H
@@ -29,10 +30,10 @@
 #define SYO_WFXL_OWN(__field, __pl) \
 	SFR_SET_VAL_WFXL(SYO, __field, __pl)
 
-#define SYO_WFXL_VALUE(__pl) (SYO_WFXL_OWN(Q0, __pl) | \
-			      SYO_WFXL_OWN(Q1, __pl) | \
-			      SYO_WFXL_OWN(Q2, __pl) | \
-			      SYO_WFXL_OWN(Q3, __pl))
+#define SYO_WFXL_VALUE(__pl)	(SYO_WFXL_OWN(Q0, __pl) | \
+				 SYO_WFXL_OWN(Q1, __pl) | \
+				 SYO_WFXL_OWN(Q2, __pl) | \
+				 SYO_WFXL_OWN(Q3, __pl))
 
 #define SYO_WFXL_VALUE_PL_CUR_PLUS_1	SYO_WFXL_VALUE(PL_CUR_PLUS_1)
 #define SYO_WFXL_VALUE_PL_CUR		SYO_WFXL_VALUE(PL_CUR)
@@ -42,7 +43,6 @@
  */
 #define HTO_WFXL_OWN(__field, __pl) \
 	SFR_SET_VAL_WFXL(HTO, __field, __pl)
-
 
 #define HTO_WFXL_VALUE_BASE(__pl)	(HTO_WFXL_OWN(OPC, __pl) | \
 					 HTO_WFXL_OWN(DMIS, __pl) | \
@@ -96,22 +96,22 @@
 #define ITO_WFXM_OWN(__field, __pl) \
 	SFR_SET_VAL_WFXM(ITO, __field, __pl)
 
-#define ITO_WFXM_VALUE(__pl) (ITO_WFXM_OWN(IT16, __pl) | \
-			      ITO_WFXM_OWN(IT17, __pl) | \
-			      ITO_WFXM_OWN(IT18, __pl) | \
-			      ITO_WFXM_OWN(IT19, __pl) | \
-			      ITO_WFXM_OWN(IT20, __pl) | \
-			      ITO_WFXM_OWN(IT21, __pl) | \
-			      ITO_WFXM_OWN(IT22, __pl) | \
-			      ITO_WFXM_OWN(IT23, __pl) | \
-			      ITO_WFXM_OWN(IT24, __pl) | \
-			      ITO_WFXM_OWN(IT25, __pl) | \
-			      ITO_WFXM_OWN(IT26, __pl) | \
-			      ITO_WFXM_OWN(IT27, __pl) | \
-			      ITO_WFXM_OWN(IT28, __pl) | \
-			      ITO_WFXM_OWN(IT29, __pl) | \
-			      ITO_WFXM_OWN(IT30, __pl) | \
-			      ITO_WFXM_OWN(IT31, __pl))
+#define ITO_WFXM_VALUE(__pl)	(ITO_WFXM_OWN(IT16, __pl) | \
+				 ITO_WFXM_OWN(IT17, __pl) | \
+				 ITO_WFXM_OWN(IT18, __pl) | \
+				 ITO_WFXM_OWN(IT19, __pl) | \
+				 ITO_WFXM_OWN(IT20, __pl) | \
+				 ITO_WFXM_OWN(IT21, __pl) | \
+				 ITO_WFXM_OWN(IT22, __pl) | \
+				 ITO_WFXM_OWN(IT23, __pl) | \
+				 ITO_WFXM_OWN(IT24, __pl) | \
+				 ITO_WFXM_OWN(IT25, __pl) | \
+				 ITO_WFXM_OWN(IT26, __pl) | \
+				 ITO_WFXM_OWN(IT27, __pl) | \
+				 ITO_WFXM_OWN(IT28, __pl) | \
+				 ITO_WFXM_OWN(IT29, __pl) | \
+				 ITO_WFXM_OWN(IT30, __pl) | \
+				 ITO_WFXM_OWN(IT31, __pl))
 
 #define ITO_WFXM_VALUE_PL_CUR_PLUS_1	ITO_WFXM_VALUE(PL_CUR_PLUS_1)
 #define ITO_WFXM_VALUE_PL_CUR		ITO_WFXM_VALUE(PL_CUR)
@@ -124,19 +124,32 @@
 	SFR_SET_VAL_WFXL(DO, __field, __pl)
 
 #if defined(CONFIG_KVX_SUBARCH_KV3_1)
-#define DO_WFXL_VALUE(__pl) (DO_WFXL_OWN(B0, __pl) | \
-			     DO_WFXL_OWN(B1, __pl) | \
-			     DO_WFXL_OWN(W0, __pl) | \
-			     DO_WFXL_OWN(W1, __pl))
+#define DO_WFXL_VALUE(__pl)	(DO_WFXL_OWN(B0, __pl) | \
+				 DO_WFXL_OWN(B1, __pl) | \
+				 DO_WFXL_OWN(W0, __pl) | \
+				 DO_WFXL_OWN(W1, __pl))
+
+#define DO_WFXL_VALUE_PL_CUR_PLUS_1	DO_WFXL_VALUE(PL_CUR_PLUS_1)
 #elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-#define DO_WFXL_VALUE(__pl) (DO_WFXL_OWN(B2, __pl) | \
-			     DO_WFXL_OWN(B3, __pl) | \
-			     DO_WFXL_OWN(W2, __pl) | \
-			     DO_WFXL_OWN(W3, __pl))
+#define DO_WFXL_VALUE(__pl)	(DO_WFXL_OWN(B2, __pl) | \
+				 DO_WFXL_OWN(B3, __pl) | \
+				 DO_WFXL_OWN(W2, __pl) | \
+				 DO_WFXL_OWN(W3, __pl))
+
+#define DO_WFXL_VALUE_PL_CUR_PLUS_1	(DO_WFXL_VALUE(PL_CUR_PLUS_1) | \
+					 DO_WFXL_OWN(B0, PL_CUR_PLUS_1) | \
+					 DO_WFXL_OWN(B1, PL_CUR_PLUS_1) | \
+					 DO_WFXL_OWN(W0, PL_CUR_PLUS_1) | \
+					 DO_WFXL_OWN(W1, PL_CUR_PLUS_1) | \
+					 DO_WFXL_OWN(BI0, PL_CUR_PLUS_1) | \
+					 DO_WFXL_OWN(BI1, PL_CUR_PLUS_1) | \
+					 DO_WFXL_OWN(BI2, PL_CUR_PLUS_1) | \
+					 DO_WFXL_OWN(BI3, PL_CUR_PLUS_1))
+#else
+#error Unsupported arch
 #endif
 
-#define DO_WFXL_VALUE_PL_CUR_PLUS_1     DO_WFXL_VALUE(PL_CUR_PLUS_1)
-#define DO_WFXL_VALUE_PL_CUR            DO_WFXL_VALUE(PL_CUR)
+#define DO_WFXL_VALUE_PL_CUR		DO_WFXL_VALUE(PL_CUR)
 
 /**
  * Misc owner configuration
@@ -167,7 +180,21 @@
 #define MO_WFXM_OWN(__field, __pl) \
 	SFR_SET_VAL_WFXM(MO, __field, __pl)
 
+#if defined(CONFIG_KVX_SUBARCH_KV3_1)
 #define MO_WFXM_VALUE(__pl)	(MO_WFXM_OWN(PMIT, __pl))
+#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
+#define MO_WFXM_VALUE(__pl)	(MO_WFXM_OWN(PMIT, __pl) | \
+				 MO_WFXM_OWN(COMM, __pl) | \
+				 MO_WFXM_OWN(TPCM, __pl) | \
+				 MO_WFXM_OWN(DISW, __pl) | \
+				 MO_WFXM_OWN(PM4, __pl) | \
+				 MO_WFXM_OWN(PM5, __pl) | \
+				 MO_WFXM_OWN(PM6, __pl) | \
+				 MO_WFXM_OWN(PM7, __pl) | \
+				 MO_WFXM_OWN(SRHPC, __pl))
+#else
+#error Unsupported arch
+#endif
 
 #define MO_WFXM_VALUE_PL_CUR_PLUS_1	MO_WFXM_VALUE(PL_CUR_PLUS_1)
 #define MO_WFXM_VALUE_PL_CUR		MO_WFXM_VALUE(PL_CUR)
@@ -193,7 +220,7 @@
 					 PSO_WFXL_OWN(IL0, __pl) | \
 					 PSO_WFXL_OWN(IL1, __pl) | \
 					 PSO_WFXL_OWN(VS0, __pl))
-/* Request additionnal VS1 when alone */
+
 #define PSO_WFXL_VALUE_PL_CUR_PLUS_1	(PSO_WFXL_BASE_VALUE(PL_CUR_PLUS_1) | \
 					 PSO_WFXL_OWN(VS1, PL_CUR_PLUS_1))
 #define PSO_WFXL_VALUE_PL_CUR		PSO_WFXL_BASE_VALUE(PL_CUR)
@@ -211,7 +238,6 @@
 				 PSO_WFXM_OWN(PMJ3, __pl) | \
 				 PSO_WFXM_OWN(MMUP, __pl))
 
-/* Request additionnal VS1 */
 #define PSO_WFXM_VALUE_PL_CUR_PLUS_1	PSO_WFXM_VALUE(PL_CUR_PLUS_1)
 #define PSO_WFXM_VALUE_PL_CUR		PSO_WFXM_VALUE(PL_CUR)
 
