@@ -49,6 +49,7 @@ static int i2c_read(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
 
 		ret = i2c_transfer(i2c, msgs, ARRAY_SIZE(msgs));
 		if (ret < 0) {
+			dev_err(&i2c->dev, "%s failed ret=%d\n", __func__, ret);
 			trace_register(addr, buf, init_len, 0);
 			return ret;
 		}
@@ -61,7 +62,7 @@ static int i2c_read(struct i2c_adapter *i2c, u8 addr, u8 *buf, size_t len)
 		len -= this_len;
 	}
 
-	ret = msgs[1].buf - (u8 *)buf;
+	ret = msgs[1].buf - buf;
 	trace_register(addr, buf, init_len, ret == init_len);
 
 	return ret;
