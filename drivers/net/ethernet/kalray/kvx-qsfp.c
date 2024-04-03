@@ -128,28 +128,31 @@ static void eeprom_wait_data_ready(struct i2c_adapter *i2c, u32 timeout_ms)
  */
 static int select_eeprom_page(struct kvx_qsfp *qsfp, u8 page)
 {
+	const int max_retry = 2;
 	int ret, i;
-	u8 p = 0xFF;
+	u8 p;
 
 	if (qsfp->module_flat_mem)
 		return 0;
 
 	ret = i2c_read(qsfp->i2c, SFP_PAGE_OFFSET, &p, sizeof(p));
-	if ((ret == sizeof(p)) && (p == page))
+	if (ret != sizeof(p))
+		goto err;
+
+	if (p == page)
 		return 0;
 
-	for (i = 0; i < 2; i++) {
+	for (i = 0; i < max_retry; i++) {
 		ret = i2c_write(qsfp->i2c, SFP_PAGE_OFFSET, &page, sizeof(page));
 		if (ret == sizeof(page))
 			return 0;
 	}
 
-	if (ret != sizeof(page)) {
-		dev_warn(qsfp->dev, "Unable to change eeprom page(%d)\n", page);
-		return -EINVAL;
-	}
-
-	return 0;
+err:
+	dev_err(qsfp->dev, "Unable to change eeprom page(%d): %d\n", page, ret);
+	if (ret < 0)
+		return ret;
+	return -EIO;
 }
 
 static inline struct gpio_desc *get_gpio_desc(struct kvx_qsfp *qsfp, u8 gpio_id)
