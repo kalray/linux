@@ -41,7 +41,7 @@
 #include "kvx-mac-regs.h"
 #include "kvx-qsfp.h"
 
-#define KVX_PHY_FW_NAME_CV1 "dwc_phy.bin"
+#define KVX_PHY_FW_NAME_CV1 "dwc_phy_cv1.bin"
 #define KVX_PHY_FW_NAME_CV2 "dwc_phy_cv2.bin"
 
 #define KVX_RX_HEADROOM  (NET_IP_ALIGN + NET_SKB_PAD)

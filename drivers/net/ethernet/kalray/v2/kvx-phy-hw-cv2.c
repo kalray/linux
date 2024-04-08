@@ -328,6 +328,26 @@ static inline u16 kvx_phyint_readw(struct kvx_eth_hw *hw, u64 off)
 	return readw(hw->res[KVX_ETH_RES_PHY].base + off);
 }
 
+/* specific sequence for RAM acces (workaround) */
+static inline void kvx_phyint_specific_writew(struct kvx_eth_hw *hw, u16 val, u64 off)
+{
+	kvx_phyint_readw(hw, off);
+	kvx_phyint_writew(hw, val, off);
+	kvx_phyint_writew(hw, val, off);
+	kvx_phyint_readw(hw, off);
+}
+
+/* specific sequence for RAM acces (workaround) */
+static inline u16 kvx_phyint_specific_readw(struct kvx_eth_hw *hw, u64 off)
+{
+	u16 val;
+
+	kvx_phyint_readw(hw, off);
+	val = kvx_phyint_readw(hw, off);
+	kvx_phyint_readw(hw, off);
+	return val;
+}
+
 static void kvx_eth_phy_mplla_configure(struct kvx_eth_hw *hw)
 {
 	u32 base = KVX_PHY_PLL_PRESET_GRP_OFFSET; /* pll preset 0 */
@@ -543,25 +563,41 @@ static int kvx_phy_init_sequence_opt_cv2(struct kvx_eth_hw *hw, const struct fir
 	}
 	if (fw) {
 		dev_info(hw->dev, "PHY fw update\n");
-		/* Copy FW to RAM: specific sequence for RAM acces (workaround) */
-		for (i = 0, addr = 0; i < KVX_PHY_INT_RAM_SIZE ; i += 2, addr += 4) {
+		for (i = 0, addr = 0; i < fw->size ; i += 2, addr += 4) {
+			if (i == KVX_PHY_INT_RAM_SIZE) {
+				addr = 0;
+				data = kvx_phyint_specific_readw(hw,
+								 KVX_PHY_INT_FSM_OP_XTND_OFFSET);
+				data |= KVX_PHY_INT_FSM_OP_XTND_MEM_ADDR_EXT_EN_MASK;
+				kvx_phyint_specific_writew(hw, data,
+							   KVX_PHY_INT_FSM_OP_XTND_OFFSET);
+			}
 			data = (fw->data[i] << 8) | fw->data[i + 1];
-			kvx_phyint_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
-			kvx_phyint_writew(hw, data, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
-			kvx_phyint_writew(hw, data, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
-			kvx_phyint_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
+			kvx_phyint_specific_writew(hw, data, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
 		}
+		data = kvx_phyint_specific_readw(hw, KVX_PHY_INT_FSM_OP_XTND_OFFSET);
+		data &= ~(KVX_PHY_INT_FSM_OP_XTND_MEM_ADDR_EXT_EN_MASK);
+		kvx_phyint_specific_writew(hw, data, KVX_PHY_INT_FSM_OP_XTND_OFFSET);
 
-		for (i = 0, addr = 0; i < KVX_PHY_INT_RAM_SIZE ; i += 2, addr += 4) {
-			kvx_phyint_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
-			data = kvx_phyint_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
-			kvx_phyint_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
+		for (i = 0, addr = 0; i < fw->size ; i += 2, addr += 4) {
+			if (i == KVX_PHY_INT_RAM_SIZE) {
+				addr = 0;
+				data = kvx_phyint_specific_readw(hw,
+								 KVX_PHY_INT_FSM_OP_XTND_OFFSET);
+				data |= KVX_PHY_INT_FSM_OP_XTND_MEM_ADDR_EXT_EN_MASK;
+				kvx_phyint_specific_writew(hw, data,
+							   KVX_PHY_INT_FSM_OP_XTND_OFFSET);
+			}
+			data = kvx_phyint_specific_readw(hw, KVX_PHY_INT_RAWMEM_DIG_RAM_CMN + addr);
 			if (data != ((fw->data[i] << 8) | fw->data[i + 1])) {
 				dev_err(hw->dev, "PHY fw copy failure\n");
 				ret = -EINVAL;
 				goto exit;
 			}
 		}
+		data = kvx_phyint_specific_readw(hw, KVX_PHY_INT_FSM_OP_XTND_OFFSET);
+		data &= ~(KVX_PHY_INT_FSM_OP_XTND_MEM_ADDR_EXT_EN_MASK);
+		kvx_phyint_specific_writew(hw, data, KVX_PHY_INT_FSM_OP_XTND_OFFSET);
 	}
 	updatel_bits(hw, PHYCTL, KVX_PHY_SRAM_CTRL_OFFSET,
 		KVX_PHY_SRAM_CTRL_SRAM_LD_DONE_MASK, KVX_PHY_SRAM_CTRL_SRAM_LD_DONE_MASK);
@@ -572,6 +608,18 @@ static int kvx_phy_init_sequence_opt_cv2(struct kvx_eth_hw *hw, const struct fir
 	ret = kvx_poll(kvx_phy_readl, KVX_PHY_SERDES_STATUS_OFFSET,
 		(KVX_PHY_SERDES_STATUS_RX_ACK_MASK|KVX_PHY_SERDES_STATUS_TX_ACK_MASK),
 		0, PHY_SERDES_ACK_TIMEOUT_MS);
+
+	data = kvx_phyint_specific_readw(hw, KVX_PHY_INT_DIG_AON_FW_VERSION_0_OFFSET);
+	dev_info(hw->dev, "PHY fw version: %d.%d.%d\n",
+		 (data >> KVX_PHY_INT_DIG_AON_FW_VERSION_0_A_SHIFT) & 0xF,
+		 (data >> KVX_PHY_INT_DIG_AON_FW_VERSION_0_B_SHIFT) & 0xFF,
+		 (data >> KVX_PHY_INT_DIG_AON_FW_VERSION_0_C_SHIFT) & 0xF);
+	data = kvx_phyint_specific_readw(hw, KVX_PHY_INT_DIG_AON_FW_VERSION_1_OFFSET);
+	dev_info(hw->dev, "PHY fw date (d/m/y): %d/%d/%d\n",
+		 (data >> KVX_PHY_INT_DIG_AON_FW_VERSION_1_DAY_SHIFT) & 0x1F,
+		 (data >> KVX_PHY_INT_DIG_AON_FW_VERSION_1_MTH_SHIFT) & 0xF,
+		 2018 + (((data >> KVX_PHY_INT_DIG_AON_FW_VERSION_1_YEAR_SHIFT) & 0x7)));
+
 exit:
 	if (ret) {
 		dev_err(hw->dev, "phy fmw init sequence completion failed\n");
