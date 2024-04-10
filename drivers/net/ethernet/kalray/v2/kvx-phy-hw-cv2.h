@@ -39,4 +39,5 @@ void kvx_phy_rx_ber_param_update_cv2(void *data);
 void kvx_phy_tx_bert_param_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_tx_bert_param *p);
 void kvx_phy_rx_bert_param_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_rx_bert_param *p);
 void kvx_phy_reinit_sequence_serdes_cv2(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg);
+void kvx_phy_set_force_sig_detect_cv2(struct kvx_eth_hw *hw, bool enable);
 #endif

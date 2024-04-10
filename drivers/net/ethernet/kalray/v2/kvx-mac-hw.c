@@ -97,6 +97,7 @@ void kvx_eth_mac_f_cfg_cv2(struct kvx_eth_hw *hw, struct kvx_eth_mac_f *mac_f)
 		kvx_phy_reinit_sequence_serdes_cv2(hw, cfg);
 		kvx_eth_setup_link(ndev, true);
 	} else {
+		kvx_phy_set_force_sig_detect_cv2(hw, mac_f->loopback_mode == MAC_SERDES_LOOPBACK);
 		kvx_eth_mac_cfg(hw, cfg);
 	}
 }

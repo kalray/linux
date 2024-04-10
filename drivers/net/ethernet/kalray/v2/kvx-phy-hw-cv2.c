@@ -1219,3 +1219,10 @@ void kvx_phy_reinit_sequence_serdes_cv2(struct kvx_eth_hw *hw, struct kvx_eth_la
 	kvx_phy_init_sequence_opt_cv2(hw, NULL, false);
 	kvx_phy_enable_serdes_cv2(hw, cfg->id, lane_nb, lane_speed);
 }
+
+void kvx_phy_set_force_sig_detect_cv2(struct kvx_eth_hw *hw, bool enable)
+{
+	updatel_bits(hw, PHYCTL, KVX_PHY_SERDES_CTRL_OFFSET,
+		     KVX_PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK,
+		     enable ? KVX_PHY_SERDES_CTRL_FORCE_SIGNAL_DET_MASK : 0);
+}
