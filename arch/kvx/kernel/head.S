@@ -375,10 +375,7 @@ SYM_FUNC_START(asm_rm_cfg_pwr_ctrl)
 	;;
 	sd PWR_CTRL_GLOBAL_CONFIG_SET_OFFSET[$r26] = $r27
 	#elif defined(CONFIG_KVX_SUBARCH_KV3_2)
-	make $r27 = KVX_SEC_CLUSTER_REGS_GLOBAL_CONFIG_PE_EN
-	make $r32 = KVX_SEC_CLUSTER_REGS_ADDR
-	;;
-	sd SEC_CLUSTER_REGS_GLOBAL_CONFIG_SET_OFFSET[$r32] = $r27
+	/* Nothing to do for CV2: all masters are secure by default at boot */
 	#else
 	#error Unsupported arch
 	#endif
