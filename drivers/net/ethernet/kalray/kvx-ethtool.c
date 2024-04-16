@@ -1399,12 +1399,14 @@ static int kvx_eth_set_fecparam(struct net_device *netdev,
 	else
 		ndev->cfg.fec = 0;
 
-	kvx_eth_mac_setup_fec(ndev->hw, &ndev->cfg);
+	if (netif_carrier_ok(ndev->netdev)) {
+		kvx_eth_mac_setup_fec(ndev->hw, &ndev->cfg);
 
-	/* config MAC PCS */
-	ret = kvx_eth_mac_pcs_cfg(ndev->hw, &ndev->cfg);
-	if (ret)
-		netdev_warn(netdev, "PCS config failed\n");
+		/* config MAC PCS */
+		ret = kvx_eth_mac_pcs_cfg(ndev->hw, &ndev->cfg);
+		if (ret)
+			netdev_warn(netdev, "PCS config failed\n");
+	}
 
 	return ret;
 }
