@@ -128,7 +128,7 @@ void kvx_eth_set_rtm_tx_fir(struct kvx_eth_hw *hw, struct kvx_eth_lane_cfg *cfg,
 	u8 lane, lane_id, nb_lanes = kvx_eth_speed_to_nb_lanes(cfg->speed, NULL);
 
 	for (lane = cfg->id; lane < nb_lanes; lane++) {
-		lane_id = hw->rtm_params->channels[lane];
+		lane_id = rtm->channels[lane];
 		ti_retimer_set_tx_coef(rtm->rtm, BIT(lane_id), rtm_params);
 	}
 	dev_dbg(hw->dev, "Applied RTM TX fir: main = %d, pre = %d, post = %d\n", rtm_params->main,
