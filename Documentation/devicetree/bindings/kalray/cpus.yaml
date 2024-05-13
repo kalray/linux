@@ -1,0 +1,105 @@
+# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/kalray/cpus.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Kalray CPUs
+
+maintainers:
+  - Jonathan Borne <jborne@kalrayinc.com>
+  - Julian Vetter <jvetter@kalrayinc.com>
+  - Yann Sionneau <ysionneau@kalrayinc.com>
+
+allOf:
+  - $ref: /schemas/cpu.yaml#
+
+properties:
+  reg:
+    maxItems: 1
+    description: |
+      Contains the CPU number.
+
+  compatible:
+    oneOf:
+      - items:
+          - const: kalray,kv3-1-pe
+          - const: kalray,kv3-pe
+
+  clocks:
+    maxItems: 1
+
+  enable-method:
+    const: "kalray,coolidge-pwr-ctrl"
+
+  interrupt-controller:
+    type: object
+    additionalProperties: false
+    description: Describes the CPU's local interrupt controller
+
+    properties:
+      '#interrupt-cells':
+        const: 1
+
+      compatible:
+        const: kalray,kv3-1-intc
+
+      interrupt-controller: true
+
+      '#address-cells':
+        const: 0
+
+    required:
+      - compatible
+      - '#interrupt-cells'
+      - '#address-cells'
+      - interrupt-controller
+
+if:
+  properties:
+    reg:
+      const: 0
+then:
+  required:
+    - clocks
+
+required:
+  - reg
+  - compatible
+  - interrupt-controller
+
+unevaluatedProperties: false
+
+examples:
+  - |
+
+    cpus {
+        #size-cells = <0>;
+        #address-cells = <1>;
+
+       cpu@0 {
+         compatible = "kalray,kv3-1-pe";
+         device_type = "cpu";
+         reg = <0>;
+         clocks = <&core_clk>;
+         cpu_intc0: interrupt-controller {
+           compatible = "kalray,kv3-1-intc";
+           #interrupt-cells = <1>;
+           #address-cells = <0>;
+           interrupt-controller;
+         };
+       };
+
+
+       cpu@1 {
+         compatible = "kalray,kv3-1-pe";
+         device_type = "cpu";
+         reg = <1>;
+         cpu_intc1: interrupt-controller {
+           compatible = "kalray,kv3-1-intc";
+           #interrupt-cells = <1>;
+           #address-cells = <0>;
+           interrupt-controller;
+         };
+       };
+    };
