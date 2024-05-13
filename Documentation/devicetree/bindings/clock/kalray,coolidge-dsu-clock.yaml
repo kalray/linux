@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/clock/kalray,coolidge-dsu-clock.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Kalray Coolidge DSU Clock
+
+maintainers:
+  - Jonathan Borne <jborne@kalrayinc.com>
+  - Julian Vetter <jvetter@kalrayinc.com>
+  - Yann Sionneau <ysionneau@kalrayinc.com>
+
+description: |
+  DSU Clock is a free running counter that runs at Cluster clock frequency.
+
+properties:
+  compatible:
+    const: kalray,coolidge-dsu-clock
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    maxItems: 1
+
+required:
+  - reg
+  - clocks
+
+additionalProperties: false
+
+examples:
+  - |
+    dsu_clock@a44180 {
+        compatible = "kalray,coolidge-dsu-clock";
+        reg = <0x00 0xa44180 0x00 0x08>;
+        clocks = <&core_clk>;
+    };
