@@ -13,6 +13,7 @@ implementation.
    arm/index
    arm64/index
    loongarch/index
+   kvx/index
    m68k/index
    mips/index
    nios2/index
