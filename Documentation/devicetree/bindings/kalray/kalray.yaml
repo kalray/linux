@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/kalray/kalray.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Kalray SoC-based boards
+
+maintainers:
+  - Jonathan Borne <jborne@kalrayinc.com>
+  - Julian Vetter <jvetter@kalrayinc.com>
+  - Yann Sionneau <ysionneau@kalrayinc.com>
+
+properties:
+  $nodename:
+    const: '/'
+  compatible:
+    oneOf:
+      - description: Kalray Coolidge SoC on qemu
+        const: kalray,coolidge-qemu
+
+additionalProperties: true
