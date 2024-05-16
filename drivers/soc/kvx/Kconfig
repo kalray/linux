@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+
+config COOLIDGE_POWER_CONTROLLER
+	bool "Coolidge power controller"
+	default n
+	depends on KVX
+	help
+	  The Kalray Coolidge Power Controller is used to manage the power
+	  state of secondary CPU cores. Currently only powering up is
+	  supported.

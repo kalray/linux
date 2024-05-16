@@ -16,6 +16,7 @@ obj-$(CONFIG_ARCH_GEMINI)	+= gemini/
 obj-y				+= hisilicon/
 obj-y				+= imx/
 obj-y				+= ixp4xx/
+obj-$(CONFIG_KVX)		+= kvx/
 obj-$(CONFIG_SOC_XWAY)		+= lantiq/
 obj-$(CONFIG_LITEX_SOC_CONTROLLER) += litex/
 obj-y				+= loongson/
