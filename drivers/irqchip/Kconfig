@@ -337,6 +337,10 @@ config KVX_CORE_INTC
 	depends on KVX
 	select IRQ_DOMAIN
 
+config KVX_IPI_CTRL
+	bool
+	depends on KVX
+
 config KVX_APIC_GIC
 	bool
 	depends on KVX
