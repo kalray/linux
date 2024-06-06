@@ -754,6 +754,8 @@ patternProperties:
     description: Jide Tech
   "^joz,.*":
     description: JOZ BV
+  "^kalray,.*":
+    description: Kalray Inc.
   "^kam,.*":
     description: Kamstrup A/S
   "^karo,.*":
